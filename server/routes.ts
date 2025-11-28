@@ -144,57 +144,81 @@ export async function registerRoutes(
     }
   });
   
-  // Twilio SMS webhook
+  // Twilio SMS webhook - sends reply via API for reliability
   app.post("/api/twilio/webhook", async (req, res) => {
     try {
+      // Log full request for debugging
+      console.log("Twilio webhook received:", JSON.stringify(req.body));
+      
       const { Body: message, From: fromNumber } = req.body;
       
       if (!message || !fromNumber) {
-        return res.status(400).send("Missing message or phone number");
+        console.log("Missing message or phone number in webhook");
+        return res.status(200).send("OK"); // Return 200 to prevent Twilio retries
       }
       
       console.log(`SMS received from ${fromNumber}: ${message}`);
       
-      // Find or create SMS conversation
-      const conversation = findOrCreateSmsConversation(fromNumber);
+      // Immediately acknowledge receipt to Twilio (prevents timeout issues)
+      res.status(200).send("OK");
       
-      // Store user message
-      createMessage({
-        conversationId: conversation.id,
-        role: "user",
-        content: message,
-        source: "sms",
-      });
-      
-      // Get AI response
-      const aiResponse = await chat(conversation.id, message, false);
-      
-      // Store assistant message
-      createMessage({
-        conversationId: conversation.id,
-        role: "assistant",
-        content: aiResponse,
-        source: "sms",
-      });
-      
-      // Send SMS response using Twilio
-      const twilioResponse = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Message>${escapeXml(aiResponse)}</Message>
-</Response>`;
-      
-      res.set("Content-Type", "text/xml");
-      res.send(twilioResponse);
+      // Process message asynchronously
+      try {
+        // Find or create SMS conversation
+        const conversation = findOrCreateSmsConversation(fromNumber);
+        
+        // Store user message
+        createMessage({
+          conversationId: conversation.id,
+          role: "user",
+          content: message,
+          source: "sms",
+        });
+        
+        // Get AI response
+        const aiResponse = await chat(conversation.id, message, false);
+        
+        // Store assistant message
+        createMessage({
+          conversationId: conversation.id,
+          role: "assistant",
+          content: aiResponse,
+          source: "sms",
+        });
+        
+        // Send SMS reply via Twilio API
+        const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER;
+        if (twilioFromNumber) {
+          const client = getTwilioClient();
+          await client.messages.create({
+            body: aiResponse,
+            from: twilioFromNumber,
+            to: fromNumber,
+          });
+          console.log(`SMS reply sent to ${fromNumber}`);
+        } else {
+          console.error("TWILIO_PHONE_NUMBER not configured for reply");
+        }
+      } catch (processError: any) {
+        console.error("Error processing SMS:", processError);
+        // Try to send error message
+        try {
+          const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER;
+          if (twilioFromNumber) {
+            const client = getTwilioClient();
+            await client.messages.create({
+              body: "Sorry, I encountered an error. Please try again.",
+              from: twilioFromNumber,
+              to: fromNumber,
+            });
+          }
+        } catch (sendError) {
+          console.error("Failed to send error SMS:", sendError);
+        }
+      }
     } catch (error: any) {
       console.error("Twilio webhook error:", error);
-      
-      const errorResponse = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Message>Sorry, I encountered an error. Please try again.</Message>
-</Response>`;
-      
-      res.set("Content-Type", "text/xml");
-      res.send(errorResponse);
+      res.status(200).send("OK"); // Always return 200 to prevent retries
     }
   });
   
