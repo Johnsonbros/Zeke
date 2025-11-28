@@ -8,40 +8,60 @@ ZEKE is a single-user personal assistant for Nate Johnson. It is not multi-tenan
 
 ## Tech Stack
 - Backend: Node.js + TypeScript (Express)
-- DB: SQLite for persistent storage
-- External services: OpenAI API, Twilio (SMS)
-- Frontend: React with Tailwind CSS
+- DB: SQLite (better-sqlite3) for persistent storage
+- External services: OpenAI API (gpt-5), Twilio (SMS)
+- Frontend: React with Tailwind CSS, shadcn/ui components
 
 ## Memory Model
 - Single user (Nate) with a persistent profile.
 - Store all long-term memory in the database plus `zeke_profile.md` and `zeke_knowledge.md`.
 - Never delete memory without explicit instruction.
 - Summarize long conversation history into concise notes and store them.
+- Agent automatically extracts facts, preferences, and summaries from conversations.
 
 ## Project Structure
 - `/client` - React frontend with chat UI
+  - `/client/src/pages/chat.tsx` - Main chat interface
+  - `/client/src/App.tsx` - App root with routing
 - `/server` - Express backend with API routes
+  - `/server/routes.ts` - API endpoints for chat, conversations, memory
+  - `/server/db.ts` - SQLite database operations
+  - `/server/agent.ts` - OpenAI agent logic with memory extraction
 - `/shared` - Shared types and schemas
-- `zeke_profile.md` - Nate's core profile
-- `zeke_knowledge.md` - Accumulated knowledge base
+  - `/shared/schema.ts` - Drizzle schema definitions
+- `zeke_profile.md` - Nate's core profile (loaded as agent context)
+- `zeke_knowledge.md` - Accumulated knowledge base (loaded as agent context)
 
-## Key Files
-- `server/routes.ts` - API endpoints for chat, conversations, memory
-- `server/storage.ts` - SQLite database operations
-- `server/agent.ts` - OpenAI agent logic
-- `client/src/pages/chat.tsx` - Main chat interface
+## Database Schema (SQLite)
+- `conversations` - Chat sessions with title, source (web/sms), phoneNumber
+- `messages` - Individual messages with role (user/assistant) and content
+- `memory_notes` - Extracted memories (facts, preferences, summaries, notes)
+- `preferences` - Key-value preferences for Nate
 
 ## API Endpoints
 - POST /api/chat - Send message and get AI response
 - GET /api/conversations - List all conversations
 - GET /api/conversations/:id - Get conversation with messages
 - DELETE /api/conversations/:id - Delete a conversation
-- POST /api/twilio/webhook - Twilio SMS webhook
+- POST /api/twilio/webhook - Twilio SMS webhook (TwiML response)
 - GET /api/memory - Get memory notes
 - POST /api/memory - Add memory note
+- DELETE /api/memory/:id - Delete memory note
+- GET /api/preferences - Get all preferences
+- POST /api/preferences - Set a preference
+
+## Design System
+- Dark theme with coral red accent: hsl(9, 75%, 61%)
+- Background: hsl(20, 14%, 4%)
+- Text: hsl(45, 25%, 91%)
+- Font: Poppins
+- ChatGPT-style interface with sidebar and message bubbles
 
 ## Environment Variables Required
-- OPENAI_API_KEY - OpenAI API key
-- TWILIO_ACCOUNT_SID - Twilio account SID (optional)
-- TWILIO_AUTH_TOKEN - Twilio auth token (optional)
-- TWILIO_PHONE_NUMBER - Twilio phone number (optional)
+- OPENAI_API_KEY - OpenAI API key (required for AI responses)
+- TWILIO_ACCOUNT_SID - Twilio account SID (optional, for SMS)
+- TWILIO_AUTH_TOKEN - Twilio auth token (optional, for SMS)
+- TWILIO_PHONE_NUMBER - Twilio phone number (optional, for SMS)
+
+## Recent Changes
+- 2025-11-28: Initial implementation of ZEKE with full chat UI, SQLite storage, OpenAI agent, and Twilio webhook
