@@ -193,12 +193,18 @@ export default function ChatPage() {
         conversationId: data.conversationId,
         source: "web",
       });
-      return response as ChatResponse;
+      const result: ChatResponse = await response.json();
+      if (!result?.conversation?.id || !result?.message?.id) {
+        throw new Error("Invalid response from server");
+      }
+      return result;
     },
     onSuccess: (data) => {
-      setActiveConversationId(data.conversation.id);
-      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/conversations", data.conversation.id] });
+      if (data?.conversation?.id) {
+        setActiveConversationId(data.conversation.id);
+        queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/conversations", data.conversation.id] });
+      }
     },
     onError: (error: Error) => {
       toast({
