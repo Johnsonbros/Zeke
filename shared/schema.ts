@@ -1,18 +1,95 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+// Conversations table
+export const conversations = sqliteTable("conversations", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull().default("New Conversation"),
+  phoneNumber: text("phone_number"),
+  source: text("source", { enum: ["web", "sms"] }).notNull().default("web"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const insertConversationSchema = createInsertSchema(conversations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+export type InsertConversation = z.infer<typeof insertConversationSchema>;
+export type Conversation = typeof conversations.$inferSelect;
+
+// Messages table
+export const messages = sqliteTable("messages", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id").notNull().references(() => conversations.id),
+  role: text("role", { enum: ["user", "assistant"] }).notNull(),
+  content: text("content").notNull(),
+  source: text("source", { enum: ["web", "sms"] }).notNull().default("web"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertMessageSchema = createInsertSchema(messages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertMessage = z.infer<typeof insertMessageSchema>;
+export type Message = typeof messages.$inferSelect;
+
+// Memory notes table
+export const memoryNotes = sqliteTable("memory_notes", {
+  id: text("id").primaryKey(),
+  type: text("type", { enum: ["summary", "note", "preference", "fact"] }).notNull(),
+  content: text("content").notNull(),
+  context: text("context").notNull().default(""),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertMemoryNoteSchema = createInsertSchema(memoryNotes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertMemoryNote = z.infer<typeof insertMemoryNoteSchema>;
+export type MemoryNote = typeof memoryNotes.$inferSelect;
+
+// Preferences table
+export const preferences = sqliteTable("preferences", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  value: text("value").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertPreferenceSchema = createInsertSchema(preferences).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertPreference = z.infer<typeof insertPreferenceSchema>;
+export type Preference = typeof preferences.$inferSelect;
+
+// Chat request/response types for API contracts
+export const chatRequestSchema = z.object({
+  message: z.string().min(1),
+  conversationId: z.string().optional(),
+  source: z.enum(["web", "sms"]).default("web"),
+});
+
+export type ChatRequest = z.infer<typeof chatRequestSchema>;
+
+export type ChatResponse = {
+  message: Message;
+  conversation: Conversation;
+};
+
+// API response types
+export type ApiError = {
+  message: string;
+  code?: string;
+};
