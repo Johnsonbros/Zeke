@@ -17,6 +17,25 @@ import {
 import { chat } from "./agent";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema } from "@shared/schema";
 import twilio from "twilio";
+import { z } from "zod";
+
+// Initialize Twilio client for outbound SMS
+function getTwilioClient() {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  
+  if (!accountSid || !authToken) {
+    throw new Error("Twilio credentials not configured");
+  }
+  
+  return twilio(accountSid, authToken);
+}
+
+// Schema for outbound SMS
+const sendSmsSchema = z.object({
+  to: z.string().min(10, "Phone number required"),
+  message: z.string().min(1, "Message required"),
+});
 
 export async function registerRoutes(
   httpServer: Server,
@@ -242,6 +261,45 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Set preference error:", error);
       res.status(500).json({ message: "Failed to set preference" });
+    }
+  });
+  
+  // Send outbound SMS
+  app.post("/api/sms/send", async (req, res) => {
+    try {
+      const parsed = sendSmsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body" });
+      }
+      
+      const { to, message } = parsed.data;
+      const fromNumber = process.env.TWILIO_PHONE_NUMBER;
+      
+      if (!fromNumber) {
+        return res.status(500).json({ message: "Twilio phone number not configured" });
+      }
+      
+      const client = getTwilioClient();
+      
+      // Format phone number if needed
+      const formattedTo = to.startsWith("+") ? to : `+1${to.replace(/\D/g, "")}`;
+      
+      const result = await client.messages.create({
+        body: message,
+        from: fromNumber,
+        to: formattedTo,
+      });
+      
+      console.log(`SMS sent to ${formattedTo}: ${result.sid}`);
+      
+      res.json({ 
+        success: true, 
+        sid: result.sid,
+        to: formattedTo,
+      });
+    } catch (error: any) {
+      console.error("Send SMS error:", error);
+      res.status(500).json({ message: error.message || "Failed to send SMS" });
     }
   });
   
