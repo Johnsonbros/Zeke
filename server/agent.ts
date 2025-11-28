@@ -10,7 +10,7 @@ import {
 } from "./db";
 import type { Message } from "@shared/schema";
 
-// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+// Use gpt-4o as the default model
 // Lazily initialize OpenAI client to allow app to start without API key
 let openai: OpenAI | null = null;
 
@@ -139,7 +139,7 @@ async function generateConversationTitle(userMessage: string): Promise<string> {
   try {
     const client = getOpenAIClient();
     const response = await client.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -165,7 +165,7 @@ async function extractMemory(userMessage: string, assistantResponse: string): Pr
   try {
     const client = getOpenAIClient();
     const response = await client.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -266,7 +266,7 @@ export async function chat(
   try {
     const client = getOpenAIClient();
     const response = await client.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages,
       max_completion_tokens: 1024,
     });
