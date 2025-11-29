@@ -14,6 +14,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import {
   Collapsible,
@@ -102,6 +103,7 @@ const mainNavItems = [
 export function AppSidebar() {
   const [location] = useLocation();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const { setOpenMobile } = useSidebar();
 
   const { data: conversations } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations"],
@@ -110,10 +112,14 @@ export function AppSidebar() {
   const recentConversations = conversations?.slice(0, 10) || [];
   const conversationCount = conversations?.length || 0;
 
+  const closeSidebarOnMobile = () => {
+    setOpenMobile(false);
+  };
+
   return (
     <Sidebar>
       <SidebarHeader className="p-4">
-        <Link href="/">
+        <Link href="/" onClick={closeSidebarOnMobile}>
           <div className="flex items-center gap-3 cursor-pointer" data-testid="link-home">
             <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center">
               <span className="text-lg font-bold text-primary-foreground">Z</span>
@@ -127,7 +133,7 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <div className="px-4 pb-2">
-        <Link href="/chat">
+        <Link href="/chat" onClick={closeSidebarOnMobile}>
           <Button className="w-full gap-2" data-testid="button-new-chat">
             <Plus className="h-4 w-4" />
             New Chat
@@ -146,7 +152,11 @@ export function AppSidebar() {
                     isActive={location === item.href}
                     tooltip={item.description || item.title}
                   >
-                    <Link href={item.href} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                    <Link 
+                      href={item.href} 
+                      onClick={closeSidebarOnMobile}
+                      data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
                     </Link>
@@ -191,6 +201,7 @@ export function AppSidebar() {
                         >
                           <Link
                             href={`/chat?id=${conversation.id}`}
+                            onClick={closeSidebarOnMobile}
                             data-testid={`nav-conversation-${conversation.id}`}
                           >
                             <MessageSquare className="h-4 w-4" />
@@ -208,7 +219,7 @@ export function AppSidebar() {
                     ))
                   )}
                   {conversationCount > 10 && (
-                    <Link href="/chat">
+                    <Link href="/chat" onClick={closeSidebarOnMobile}>
                       <div className="px-2 py-2 text-xs text-primary text-center cursor-pointer hover:underline">
                         View all {conversationCount} conversations
                       </div>
@@ -222,7 +233,7 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="p-4">
-        <Link href="/profile">
+        <Link href="/profile" onClick={closeSidebarOnMobile}>
           <div
             className="flex items-center gap-3 p-2 rounded-lg hover-elevate cursor-pointer"
             data-testid="link-profile"
