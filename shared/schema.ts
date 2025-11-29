@@ -178,3 +178,102 @@ export const updateTaskSchema = z.object({
 export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type UpdateTask = z.infer<typeof updateTaskSchema>;
 export type Task = typeof tasks.$inferSelect;
+
+// Access levels for contacts
+export const accessLevels = ["admin", "family", "friend", "business", "restricted", "unknown"] as const;
+export type AccessLevel = typeof accessLevels[number];
+
+// Contacts table for managing who can communicate with ZEKE
+export const contacts = sqliteTable("contacts", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  phoneNumber: text("phone_number").notNull().unique(),
+  accessLevel: text("access_level", { enum: accessLevels }).notNull().default("unknown"),
+  relationship: text("relationship").default(""),
+  notes: text("notes").default(""),
+  canAccessPersonalInfo: integer("can_access_personal_info", { mode: "boolean" }).notNull().default(false),
+  canAccessCalendar: integer("can_access_calendar", { mode: "boolean" }).notNull().default(false),
+  canAccessTasks: integer("can_access_tasks", { mode: "boolean" }).notNull().default(false),
+  canAccessGrocery: integer("can_access_grocery", { mode: "boolean" }).notNull().default(false),
+  canSetReminders: integer("can_set_reminders", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertContactSchema = createInsertSchema(contacts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateContactSchema = z.object({
+  name: z.string().min(1).optional(),
+  phoneNumber: z.string().optional(),
+  accessLevel: z.enum(accessLevels).optional(),
+  relationship: z.string().optional(),
+  notes: z.string().optional(),
+  canAccessPersonalInfo: z.boolean().optional(),
+  canAccessCalendar: z.boolean().optional(),
+  canAccessTasks: z.boolean().optional(),
+  canAccessGrocery: z.boolean().optional(),
+  canSetReminders: z.boolean().optional(),
+});
+
+export type InsertContact = z.infer<typeof insertContactSchema>;
+export type UpdateContact = z.infer<typeof updateContactSchema>;
+export type Contact = typeof contacts.$inferSelect;
+
+// Default permissions by access level
+export const defaultPermissionsByLevel: Record<AccessLevel, {
+  canAccessPersonalInfo: boolean;
+  canAccessCalendar: boolean;
+  canAccessTasks: boolean;
+  canAccessGrocery: boolean;
+  canSetReminders: boolean;
+}> = {
+  admin: {
+    canAccessPersonalInfo: true,
+    canAccessCalendar: true,
+    canAccessTasks: true,
+    canAccessGrocery: true,
+    canSetReminders: true,
+  },
+  family: {
+    canAccessPersonalInfo: true,
+    canAccessCalendar: true,
+    canAccessTasks: false,
+    canAccessGrocery: true,
+    canSetReminders: true,
+  },
+  friend: {
+    canAccessPersonalInfo: false,
+    canAccessCalendar: false,
+    canAccessTasks: false,
+    canAccessGrocery: false,
+    canSetReminders: false,
+  },
+  business: {
+    canAccessPersonalInfo: false,
+    canAccessCalendar: false,
+    canAccessTasks: false,
+    canAccessGrocery: false,
+    canSetReminders: false,
+  },
+  restricted: {
+    canAccessPersonalInfo: false,
+    canAccessCalendar: false,
+    canAccessTasks: false,
+    canAccessGrocery: false,
+    canSetReminders: false,
+  },
+  unknown: {
+    canAccessPersonalInfo: false,
+    canAccessCalendar: false,
+    canAccessTasks: false,
+    canAccessGrocery: false,
+    canSetReminders: false,
+  },
+};
+
+// Master admin phone number
+export const MASTER_ADMIN_PHONE = "6176868763";

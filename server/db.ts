@@ -15,8 +15,13 @@ import type {
   InsertReminder,
   Task,
   InsertTask,
-  UpdateTask
+  UpdateTask,
+  Contact,
+  InsertContact,
+  UpdateContact,
+  AccessLevel
 } from "@shared/schema";
+import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
 // Initialize SQLite database
 const db = new Database("zeke.db");
@@ -238,6 +243,27 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category);
 `);
 
+// Create contacts table if it doesn't exist
+db.exec(`
+  CREATE TABLE IF NOT EXISTS contacts (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    phone_number TEXT NOT NULL UNIQUE,
+    access_level TEXT NOT NULL DEFAULT 'unknown',
+    relationship TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    can_access_personal_info INTEGER NOT NULL DEFAULT 0,
+    can_access_calendar INTEGER NOT NULL DEFAULT 0,
+    can_access_tasks INTEGER NOT NULL DEFAULT 0,
+    can_access_grocery INTEGER NOT NULL DEFAULT 0,
+    can_set_reminders INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(phone_number);
+  CREATE INDEX IF NOT EXISTS idx_contacts_access_level ON contacts(access_level);
+`);
+
 // Migration: Add mode column to conversations if it doesn't exist
 try {
   const convInfo = db.prepare("PRAGMA table_info(conversations)").all() as Array<{ name: string }>;
@@ -336,6 +362,22 @@ interface TaskRow {
   due_date: string | null;
   category: string;
   completed: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ContactRow {
+  id: string;
+  name: string;
+  phone_number: string;
+  access_level: string;
+  relationship: string;
+  notes: string;
+  can_access_personal_info: number;
+  can_access_calendar: number;
+  can_access_tasks: number;
+  can_access_grocery: number;
+  can_set_reminders: number;
   created_at: string;
   updated_at: string;
 }
@@ -1148,6 +1190,227 @@ export function searchTasks(query: string): Task[] {
       ORDER BY completed ASC, due_date ASC NULLS LAST, priority DESC
     `).all(searchTerm, searchTerm) as TaskRow[];
     return rows.map(mapTask);
+  });
+}
+
+// Helper to map database row to Contact type
+function mapContact(row: ContactRow): Contact {
+  return {
+    id: row.id,
+    name: row.name,
+    phoneNumber: row.phone_number,
+    accessLevel: row.access_level as AccessLevel,
+    relationship: row.relationship,
+    notes: row.notes,
+    canAccessPersonalInfo: Boolean(row.can_access_personal_info),
+    canAccessCalendar: Boolean(row.can_access_calendar),
+    canAccessTasks: Boolean(row.can_access_tasks),
+    canAccessGrocery: Boolean(row.can_access_grocery),
+    canSetReminders: Boolean(row.can_set_reminders),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// Helper to normalize phone number for comparison (strips formatting)
+export function normalizePhoneNumber(phone: string): string {
+  return phone.replace(/\D/g, "").replace(/^1/, ""); // Remove non-digits and leading 1
+}
+
+// Contact operations
+export function createContact(data: InsertContact): Contact {
+  return wrapDbOperation("createContact", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    const normalizedPhone = normalizePhoneNumber(data.phoneNumber);
+    const accessLevel = data.accessLevel || "unknown";
+    const relationship = data.relationship || "";
+    const notes = data.notes || "";
+    
+    // Apply default permissions based on access level if not explicitly set
+    const defaults = defaultPermissionsByLevel[accessLevel as AccessLevel];
+    const canAccessPersonalInfo = data.canAccessPersonalInfo ?? defaults.canAccessPersonalInfo;
+    const canAccessCalendar = data.canAccessCalendar ?? defaults.canAccessCalendar;
+    const canAccessTasks = data.canAccessTasks ?? defaults.canAccessTasks;
+    const canAccessGrocery = data.canAccessGrocery ?? defaults.canAccessGrocery;
+    const canSetReminders = data.canSetReminders ?? defaults.canSetReminders;
+    
+    db.prepare(`
+      INSERT INTO contacts (id, name, phone_number, access_level, relationship, notes, 
+        can_access_personal_info, can_access_calendar, can_access_tasks, can_access_grocery, can_set_reminders,
+        created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, data.name, normalizedPhone, accessLevel, relationship, notes,
+      canAccessPersonalInfo ? 1 : 0, canAccessCalendar ? 1 : 0, canAccessTasks ? 1 : 0, 
+      canAccessGrocery ? 1 : 0, canSetReminders ? 1 : 0, now, now
+    );
+    
+    return {
+      id,
+      name: data.name,
+      phoneNumber: normalizedPhone,
+      accessLevel: accessLevel as AccessLevel,
+      relationship,
+      notes,
+      canAccessPersonalInfo,
+      canAccessCalendar,
+      canAccessTasks,
+      canAccessGrocery,
+      canSetReminders,
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+}
+
+export function getContact(id: string): Contact | undefined {
+  return wrapDbOperation("getContact", () => {
+    const row = db.prepare(`
+      SELECT * FROM contacts WHERE id = ?
+    `).get(id) as ContactRow | undefined;
+    return row ? mapContact(row) : undefined;
+  });
+}
+
+export function getContactByPhone(phone: string): Contact | undefined {
+  return wrapDbOperation("getContactByPhone", () => {
+    const normalizedPhone = normalizePhoneNumber(phone);
+    const row = db.prepare(`
+      SELECT * FROM contacts WHERE phone_number = ?
+    `).get(normalizedPhone) as ContactRow | undefined;
+    return row ? mapContact(row) : undefined;
+  });
+}
+
+export function getAllContacts(): Contact[] {
+  return wrapDbOperation("getAllContacts", () => {
+    const rows = db.prepare(`
+      SELECT * FROM contacts ORDER BY name ASC
+    `).all() as ContactRow[];
+    return rows.map(mapContact);
+  });
+}
+
+export function getContactsByAccessLevel(level: AccessLevel): Contact[] {
+  return wrapDbOperation("getContactsByAccessLevel", () => {
+    const rows = db.prepare(`
+      SELECT * FROM contacts WHERE access_level = ? ORDER BY name ASC
+    `).all(level) as ContactRow[];
+    return rows.map(mapContact);
+  });
+}
+
+export function updateContact(id: string, data: UpdateContact): Contact | undefined {
+  return wrapDbOperation("updateContact", () => {
+    const existing = getContact(id);
+    if (!existing) return undefined;
+    
+    const now = getCurrentTimestamp();
+    const name = data.name ?? existing.name;
+    const phoneNumber = data.phoneNumber ? normalizePhoneNumber(data.phoneNumber) : existing.phoneNumber;
+    const accessLevel = data.accessLevel ?? existing.accessLevel;
+    const relationship = data.relationship ?? existing.relationship;
+    const notes = data.notes ?? existing.notes;
+    const canAccessPersonalInfo = data.canAccessPersonalInfo ?? existing.canAccessPersonalInfo;
+    const canAccessCalendar = data.canAccessCalendar ?? existing.canAccessCalendar;
+    const canAccessTasks = data.canAccessTasks ?? existing.canAccessTasks;
+    const canAccessGrocery = data.canAccessGrocery ?? existing.canAccessGrocery;
+    const canSetReminders = data.canSetReminders ?? existing.canSetReminders;
+    
+    db.prepare(`
+      UPDATE contacts 
+      SET name = ?, phone_number = ?, access_level = ?, relationship = ?, notes = ?,
+          can_access_personal_info = ?, can_access_calendar = ?, can_access_tasks = ?,
+          can_access_grocery = ?, can_set_reminders = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      name, phoneNumber, accessLevel, relationship, notes,
+      canAccessPersonalInfo ? 1 : 0, canAccessCalendar ? 1 : 0, canAccessTasks ? 1 : 0,
+      canAccessGrocery ? 1 : 0, canSetReminders ? 1 : 0, now, id
+    );
+    
+    return getContact(id);
+  });
+}
+
+export function deleteContact(id: string): boolean {
+  return wrapDbOperation("deleteContact", () => {
+    const result = db.prepare(`DELETE FROM contacts WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// Check if a phone number is the master admin
+export function isMasterAdmin(phone: string): boolean {
+  const normalizedPhone = normalizePhoneNumber(phone);
+  const masterNormalized = normalizePhoneNumber(MASTER_ADMIN_PHONE);
+  return normalizedPhone === masterNormalized;
+}
+
+// Get or create contact for a phone number (for incoming SMS)
+export function getOrCreateContactForPhone(phone: string): Contact {
+  return wrapDbOperation("getOrCreateContactForPhone", () => {
+    const normalizedPhone = normalizePhoneNumber(phone);
+    
+    // Check if master admin
+    if (isMasterAdmin(phone)) {
+      const existing = getContactByPhone(phone);
+      if (existing) return existing;
+      
+      // Create master admin contact
+      return createContact({
+        name: "Nate (Admin)",
+        phoneNumber: normalizedPhone,
+        accessLevel: "admin",
+        relationship: "Owner",
+        notes: "Master admin account",
+        canAccessPersonalInfo: true,
+        canAccessCalendar: true,
+        canAccessTasks: true,
+        canAccessGrocery: true,
+        canSetReminders: true,
+      });
+    }
+    
+    // Check for existing contact
+    const existing = getContactByPhone(phone);
+    if (existing) return existing;
+    
+    // Create unknown contact
+    return createContact({
+      name: `Unknown (${normalizedPhone})`,
+      phoneNumber: normalizedPhone,
+      accessLevel: "unknown",
+      relationship: "",
+      notes: "Auto-created from incoming SMS",
+    });
+  });
+}
+
+// Get conversations for a specific contact
+export function getConversationsByPhone(phone: string): Conversation[] {
+  return wrapDbOperation("getConversationsByPhone", () => {
+    const normalizedPhone = normalizePhoneNumber(phone);
+    const rows = db.prepare(`
+      SELECT * FROM conversations 
+      WHERE phone_number = ? 
+      ORDER BY updated_at DESC
+    `).all(normalizedPhone) as ConversationRow[];
+    return rows.map(mapConversation);
+  });
+}
+
+// Get message count for a contact
+export function getMessageCountForPhone(phone: string): number {
+  return wrapDbOperation("getMessageCountForPhone", () => {
+    const normalizedPhone = normalizePhoneNumber(phone);
+    const result = db.prepare(`
+      SELECT COUNT(*) as count FROM messages m
+      JOIN conversations c ON m.conversation_id = c.id
+      WHERE c.phone_number = ?
+    `).get(normalizedPhone) as { count: number };
+    return result.count;
   });
 }
 
