@@ -716,4 +716,11 @@ export function clearPurchasedGroceryItems(): number {
   });
 }
 
+export function clearAllGroceryItems(): number {
+  return wrapDbOperation("clearAllGroceryItems", () => {
+    const result = db.prepare(`DELETE FROM grocery_items`).run();
+    return result.changes;
+  });
+}
+
 export { db };

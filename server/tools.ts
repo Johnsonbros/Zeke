@@ -6,7 +6,8 @@ import {
   getAllGroceryItems, 
   toggleGroceryItemPurchased, 
   deleteGroceryItem,
-  clearPurchasedGroceryItems
+  clearPurchasedGroceryItems,
+  clearAllGroceryItems
 } from "./db";
 
 interface Reminder {
@@ -257,6 +258,18 @@ export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
     function: {
       name: "clear_purchased_groceries",
       description: "Clear all purchased items from the grocery list.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "clear_all_groceries",
+      description: "Clear ALL items from the grocery list entirely. Use when user says 'clear the list', 'empty the list', 'start fresh', or 'got them all'.",
       parameters: {
         type: "object",
         properties: {},
@@ -762,6 +775,21 @@ export async function executeTool(
         });
       } catch (error) {
         return JSON.stringify({ success: false, error: "Failed to clear purchased items" });
+      }
+    }
+    
+    case "clear_all_groceries": {
+      try {
+        const count = clearAllGroceryItems();
+        return JSON.stringify({
+          success: true,
+          message: count > 0 
+            ? `Cleared all ${count} item(s) from the grocery list. List is now empty.`
+            : "The grocery list was already empty",
+          items_cleared: count,
+        });
+      } catch (error) {
+        return JSON.stringify({ success: false, error: "Failed to clear grocery list" });
       }
     }
     
