@@ -85,12 +85,17 @@ export async function listCalendars(): Promise<CalendarInfo[]> {
   }));
 }
 
+export interface CalendarFetchResult {
+  events: CalendarEvent[];
+  failedCalendars: { id: string; name: string; error: string }[];
+}
+
 export async function listCalendarEvents(
   timeMin?: Date, 
   timeMax?: Date, 
   maxResults: number = 10,
   calendarIds?: string[]
-): Promise<CalendarEvent[]> {
+): Promise<CalendarFetchResult> {
   const calendar = await getGoogleCalendarClient();
   
   const now = new Date();
@@ -103,6 +108,7 @@ export async function listCalendarEvents(
   const calendarMap = new Map(calendarsInfo.map(c => [c.id, c]));
   
   const allEvents: CalendarEvent[] = [];
+  const failedCalendars: { id: string; name: string; error: string }[] = [];
   
   for (const calendarId of targetCalendarIds) {
     try {
@@ -132,14 +138,21 @@ export async function listCalendarEvents(
       }));
       
       allEvents.push(...mappedEvents);
-    } catch (error) {
-      console.error(`Error fetching events from calendar ${calendarId}:`, error);
+    } catch (error: any) {
+      const calInfo = calendarMap.get(calendarId);
+      const errorMessage = error?.message || 'Unknown error';
+      console.error(`Error fetching events from calendar ${calendarId}:`, errorMessage);
+      failedCalendars.push({
+        id: calendarId,
+        name: calInfo?.summary || calendarId,
+        error: errorMessage,
+      });
     }
   }
   
   allEvents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
   
-  return allEvents;
+  return { events: allEvents, failedCalendars };
 }
 
 export async function getTodaysEvents(): Promise<CalendarEvent[]> {
@@ -147,14 +160,16 @@ export async function getTodaysEvents(): Promise<CalendarEvent[]> {
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   
-  return listCalendarEvents(startOfDay, endOfDay, 50);
+  const result = await listCalendarEvents(startOfDay, endOfDay, 50);
+  return result.events;
 }
 
 export async function getUpcomingEvents(days: number = 7): Promise<CalendarEvent[]> {
   const now = new Date();
   const endDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
   
-  return listCalendarEvents(now, endDate, 50);
+  const result = await listCalendarEvents(now, endDate, 50);
+  return result.events;
 }
 
 export async function createCalendarEvent(

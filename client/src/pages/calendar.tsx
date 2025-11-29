@@ -84,6 +84,11 @@ interface CalendarEvent {
   backgroundColor?: string;
 }
 
+interface CalendarFetchResult {
+  events: CalendarEvent[];
+  failedCalendars: { id: string; name: string; error: string }[];
+}
+
 type ViewType = "today" | "week" | "month";
 
 interface EventEditDialogProps {
@@ -612,8 +617,9 @@ export default function CalendarPage() {
 
   const dateRange = getDateRange();
   const calendarIdsParam = selectedCalendars.size > 0 ? [...selectedCalendars].join(',') : '';
+  const { toast } = useToast();
 
-  const { data: events, isLoading, error } = useQuery<CalendarEvent[]>({
+  const { data: eventsData, isLoading, error } = useQuery<CalendarFetchResult>({
     queryKey: [
       "/api/calendar/events",
       dateRange.start.toISOString(),
@@ -637,6 +643,20 @@ export default function CalendarPage() {
     },
     enabled: selectedCalendars.size > 0,
   });
+
+  const events = eventsData?.events;
+  const failedCalendars = eventsData?.failedCalendars;
+
+  useEffect(() => {
+    if (failedCalendars && failedCalendars.length > 0) {
+      const calendarNames = failedCalendars.map(c => c.name).join(', ');
+      toast({
+        title: "Some calendars couldn't be loaded",
+        description: `Events from ${calendarNames} may be missing.`,
+        variant: "destructive",
+      });
+    }
+  }, [failedCalendars, toast]);
 
   const navigatePrev = () => {
     if (view === "week") {

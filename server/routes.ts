@@ -1485,21 +1485,23 @@ export async function registerRoutes(
   app.get("/api/calendar/events", async (req, res) => {
     try {
       const { start, end, days, calendars } = req.query;
-      let events: CalendarEvent[];
       
       const calendarIds = calendars 
         ? (calendars as string).split(',').filter(Boolean) 
         : undefined;
       
+      let result;
       if (start && end) {
-        events = await listCalendarEvents(new Date(start as string), new Date(end as string), 100, calendarIds);
+        result = await listCalendarEvents(new Date(start as string), new Date(end as string), 100, calendarIds);
       } else if (days) {
-        events = await getUpcomingEvents(parseInt(days as string));
+        const events = await getUpcomingEvents(parseInt(days as string));
+        result = { events, failedCalendars: [] };
       } else {
-        events = await getUpcomingEvents(7);
+        const events = await getUpcomingEvents(7);
+        result = { events, failedCalendars: [] };
       }
       
-      res.json(events);
+      res.json(result);
     } catch (error: any) {
       console.error("Calendar fetch error:", error);
       res.status(500).json({ error: error.message || "Failed to fetch calendar events" });
