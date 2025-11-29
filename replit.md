@@ -9,7 +9,7 @@ ZEKE is a single-user personal assistant for Nate Johnson. It is not multi-tenan
 ## Tech Stack
 - Backend: Node.js + TypeScript (Express)
 - DB: SQLite (better-sqlite3) for persistent storage
-- External services: OpenAI API (gpt-5), Twilio (SMS)
+- External services: OpenAI API (gpt-5.1), Twilio (SMS)
 - Frontend: React with Tailwind CSS, shadcn/ui components
 
 ## Memory Model

@@ -218,7 +218,7 @@ async function generateConversationTitle(userMessage: string): Promise<string> {
   try {
     const client = getOpenAIClient();
     const response = await client.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5.1",
       messages: [
         {
           role: "system",
@@ -248,7 +248,7 @@ async function extractMemory(
   try {
     const client = getOpenAIClient();
     const response = await client.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5.1",
       messages: [
         {
           role: "system",
@@ -389,7 +389,7 @@ export async function chat(
       iterations++;
 
       const response = await client.chat.completions.create({
-        model: "gpt-4o",
+        model: "gpt-5.1",
         messages,
         tools: toolDefinitions,
         tool_choice: "auto",
