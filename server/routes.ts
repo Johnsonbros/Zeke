@@ -31,6 +31,21 @@ function getTwilioClient() {
   return twilio(accountSid, authToken);
 }
 
+// Format phone number for Twilio - handles various input formats
+function formatPhoneNumber(phone: string): string {
+  const digits = phone.trim().replace(/\D/g, ""); // Remove all non-digits
+  // If it's 11 digits starting with 1, it already has US country code
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+${digits}`;
+  } else if (digits.length === 10) {
+    // 10 digit US number, add +1
+    return `+1${digits}`;
+  } else {
+    // Other formats, just add + if needed
+    return phone.trim().startsWith("+") ? phone.trim() : `+${digits}`;
+  }
+}
+
 // Schema for outbound SMS
 const sendSmsSchema = z.object({
   to: z.string().min(10, "Phone number required"),
@@ -89,12 +104,13 @@ export async function registerRoutes(
         if (twilioFromNumber) {
           try {
             const client = getTwilioClient();
+            const formattedPhone = formatPhoneNumber(conversation.phoneNumber);
             await client.messages.create({
               body: aiResponse,
               from: twilioFromNumber,
-              to: conversation.phoneNumber,
+              to: formattedPhone,
             });
-            console.log(`SMS reply sent to ${conversation.phoneNumber} from web chat`);
+            console.log(`SMS reply sent to ${formattedPhone} from web chat`);
           } catch (smsError: any) {
             console.error("Failed to send SMS reply:", smsError);
             // Don't fail the request, just log the error
@@ -171,13 +187,15 @@ export async function registerRoutes(
       // Log full request for debugging
       console.log("Twilio webhook received:", JSON.stringify(req.body));
       
-      const { Body: message, From: fromNumber } = req.body;
+      const { Body: message, From: rawFromNumber } = req.body;
       
-      if (!message || !fromNumber) {
+      if (!message || !rawFromNumber) {
         console.log("Missing message or phone number in webhook");
         return res.status(200).send("OK"); // Return 200 to prevent Twilio retries
       }
       
+      // Format phone number consistently
+      const fromNumber = formatPhoneNumber(rawFromNumber);
       console.log(`SMS received from ${fromNumber}: ${message}`);
       
       // Immediately acknowledge receipt to Twilio (prevents timeout issues)
@@ -185,7 +203,7 @@ export async function registerRoutes(
       
       // Process message asynchronously
       try {
-        // Find or create SMS conversation
+        // Find or create SMS conversation using formatted phone number
         const conversation = findOrCreateSmsConversation(fromNumber);
         
         // Store user message
@@ -326,8 +344,8 @@ export async function registerRoutes(
       
       const client = getTwilioClient();
       
-      // Format phone number if needed
-      const formattedTo = to.startsWith("+") ? to : `+1${to.replace(/\D/g, "")}`;
+      // Format phone number
+      const formattedTo = formatPhoneNumber(to);
       
       const result = await client.messages.create({
         body: message,
