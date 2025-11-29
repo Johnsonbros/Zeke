@@ -8,7 +8,9 @@ import type {
   MemoryNote,
   InsertMemoryNote,
   Preference,
-  InsertPreference
+  InsertPreference,
+  GroceryItem,
+  InsertGroceryItem
 } from "@shared/schema";
 
 // Initialize SQLite database
@@ -181,6 +183,22 @@ if (tablesExist()) {
   `);
 }
 
+// Create grocery_items table if it doesn't exist
+db.exec(`
+  CREATE TABLE IF NOT EXISTS grocery_items (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    quantity TEXT DEFAULT '1',
+    category TEXT DEFAULT 'Other',
+    added_by TEXT NOT NULL,
+    purchased INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_grocery_purchased ON grocery_items(purchased);
+  CREATE INDEX IF NOT EXISTS idx_grocery_category ON grocery_items(category);
+`);
+
 // Database row types (snake_case from SQLite)
 interface ConversationRow {
   id: string;
@@ -213,6 +231,17 @@ interface PreferenceRow {
   id: string;
   key: string;
   value: string;
+  updated_at: string;
+}
+
+interface GroceryItemRow {
+  id: string;
+  name: string;
+  quantity: string;
+  category: string;
+  added_by: string;
+  purchased: number;
+  created_at: string;
   updated_at: string;
 }
 
@@ -573,6 +602,117 @@ export function getConversationByPhoneNumber(phoneNumber: string): Conversation 
       LIMIT 1
     `).get(phoneNumber) as ConversationRow | undefined;
     return row ? mapConversation(row) : undefined;
+  });
+}
+
+// Helper to map database row to GroceryItem type
+function mapGroceryItem(row: GroceryItemRow): GroceryItem {
+  return {
+    id: row.id,
+    name: row.name,
+    quantity: row.quantity,
+    category: row.category,
+    addedBy: row.added_by,
+    purchased: Boolean(row.purchased),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// Grocery item operations
+export function createGroceryItem(data: InsertGroceryItem): GroceryItem {
+  return wrapDbOperation("createGroceryItem", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    const quantity = data.quantity || "1";
+    const category = data.category || "Other";
+    const purchased = data.purchased ?? false;
+    
+    db.prepare(`
+      INSERT INTO grocery_items (id, name, quantity, category, added_by, purchased, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.name, quantity, category, data.addedBy, purchased ? 1 : 0, now, now);
+    
+    return {
+      id,
+      name: data.name,
+      quantity,
+      category,
+      addedBy: data.addedBy,
+      purchased,
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+}
+
+export function getAllGroceryItems(): GroceryItem[] {
+  return wrapDbOperation("getAllGroceryItems", () => {
+    const rows = db.prepare(`
+      SELECT * FROM grocery_items ORDER BY purchased ASC, created_at DESC
+    `).all() as GroceryItemRow[];
+    return rows.map(mapGroceryItem);
+  });
+}
+
+export function getGroceryItem(id: string): GroceryItem | undefined {
+  return wrapDbOperation("getGroceryItem", () => {
+    const row = db.prepare(`
+      SELECT * FROM grocery_items WHERE id = ?
+    `).get(id) as GroceryItemRow | undefined;
+    return row ? mapGroceryItem(row) : undefined;
+  });
+}
+
+export function updateGroceryItem(id: string, data: Partial<Omit<GroceryItem, "id" | "createdAt" | "updatedAt">>): GroceryItem | undefined {
+  return wrapDbOperation("updateGroceryItem", () => {
+    const existing = getGroceryItem(id);
+    if (!existing) return undefined;
+    
+    const now = getCurrentTimestamp();
+    const name = data.name ?? existing.name;
+    const quantity = data.quantity ?? existing.quantity;
+    const category = data.category ?? existing.category;
+    const addedBy = data.addedBy ?? existing.addedBy;
+    const purchased = data.purchased ?? existing.purchased;
+    
+    db.prepare(`
+      UPDATE grocery_items 
+      SET name = ?, quantity = ?, category = ?, added_by = ?, purchased = ?, updated_at = ? 
+      WHERE id = ?
+    `).run(name, quantity, category, addedBy, purchased ? 1 : 0, now, id);
+    
+    return getGroceryItem(id);
+  });
+}
+
+export function toggleGroceryItemPurchased(id: string): GroceryItem | undefined {
+  return wrapDbOperation("toggleGroceryItemPurchased", () => {
+    const existing = getGroceryItem(id);
+    if (!existing) return undefined;
+    
+    const now = getCurrentTimestamp();
+    const newPurchased = !existing.purchased;
+    
+    db.prepare(`
+      UPDATE grocery_items SET purchased = ?, updated_at = ? WHERE id = ?
+    `).run(newPurchased ? 1 : 0, now, id);
+    
+    return getGroceryItem(id);
+  });
+}
+
+export function deleteGroceryItem(id: string): boolean {
+  return wrapDbOperation("deleteGroceryItem", () => {
+    const result = db.prepare(`DELETE FROM grocery_items WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function clearPurchasedGroceryItems(): number {
+  return wrapDbOperation("clearPurchasedGroceryItems", () => {
+    const result = db.prepare(`DELETE FROM grocery_items WHERE purchased = 1`).run();
+    return result.changes;
   });
 }
 

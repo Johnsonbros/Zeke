@@ -12,11 +12,18 @@ import {
   createMemoryNote,
   deleteMemoryNote,
   getAllPreferences,
-  setPreference
+  setPreference,
+  createGroceryItem,
+  getAllGroceryItems,
+  getGroceryItem,
+  updateGroceryItem,
+  toggleGroceryItemPurchased,
+  deleteGroceryItem,
+  clearPurchasedGroceryItems
 } from "./db";
 import { chat } from "./agent";
 import { setSendSmsCallback } from "./tools";
-import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema } from "@shared/schema";
+import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
 
@@ -387,6 +394,104 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Send SMS error:", error);
       res.status(500).json({ message: error.message || "Failed to send SMS" });
+    }
+  });
+  
+  // === GROCERY LIST API ROUTES ===
+  
+  // Get all grocery items
+  app.get("/api/grocery", async (_req, res) => {
+    try {
+      const items = getAllGroceryItems();
+      res.json(items);
+    } catch (error: any) {
+      console.error("Get grocery items error:", error);
+      res.status(500).json({ message: "Failed to get grocery items" });
+    }
+  });
+  
+  // Create grocery item
+  app.post("/api/grocery", async (req, res) => {
+    try {
+      const parsed = insertGroceryItemSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      const item = createGroceryItem(parsed.data);
+      res.json(item);
+    } catch (error: any) {
+      console.error("Create grocery item error:", error);
+      res.status(500).json({ message: "Failed to create grocery item" });
+    }
+  });
+  
+  // Update grocery item
+  app.patch("/api/grocery/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing = getGroceryItem(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Grocery item not found" });
+      }
+      
+      const parsed = updateGroceryItemSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      const item = updateGroceryItem(id, parsed.data);
+      res.json(item);
+    } catch (error: any) {
+      console.error("Update grocery item error:", error);
+      res.status(500).json({ message: "Failed to update grocery item" });
+    }
+  });
+  
+  // Toggle grocery item purchased status
+  app.post("/api/grocery/:id/toggle", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const item = toggleGroceryItemPurchased(id);
+      
+      if (!item) {
+        return res.status(404).json({ message: "Grocery item not found" });
+      }
+      
+      res.json(item);
+    } catch (error: any) {
+      console.error("Toggle grocery item error:", error);
+      res.status(500).json({ message: "Failed to toggle grocery item" });
+    }
+  });
+  
+  // Delete grocery item
+  app.delete("/api/grocery/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing = getGroceryItem(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Grocery item not found" });
+      }
+      
+      deleteGroceryItem(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete grocery item error:", error);
+      res.status(500).json({ message: "Failed to delete grocery item" });
+    }
+  });
+  
+  // Clear all purchased items
+  app.post("/api/grocery/clear-purchased", async (_req, res) => {
+    try {
+      const count = clearPurchasedGroceryItems();
+      res.json({ success: true, deleted: count });
+    } catch (error: any) {
+      console.error("Clear purchased items error:", error);
+      res.status(500).json({ message: "Failed to clear purchased items" });
     }
   });
   

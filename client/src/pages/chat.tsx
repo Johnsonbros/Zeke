@@ -15,8 +15,10 @@ import {
   Trash2, 
   Menu,
   X,
-  Smartphone
+  Smartphone,
+  ShoppingCart
 } from "lucide-react";
+import { Link } from "wouter";
 import type { Conversation, Message, ChatResponse } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -368,7 +370,17 @@ export default function ChatPage() {
           </div>
         </ScrollArea>
 
-        <div className="p-3 border-t border-sidebar-border">
+        <div className="p-3 border-t border-sidebar-border space-y-2">
+          <Link href="/grocery">
+            <Button 
+              variant="ghost" 
+              className="w-full justify-start gap-2 h-10"
+              data-testid="link-grocery-list"
+            >
+              <ShoppingCart className="h-4 w-4" />
+              Grocery List
+            </Button>
+          </Link>
           <div className="flex items-center gap-3 px-2">
             <Avatar className="h-8 w-8">
               <AvatarFallback className="bg-accent text-accent-foreground text-sm font-medium">

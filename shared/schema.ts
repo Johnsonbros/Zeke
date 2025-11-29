@@ -93,3 +93,33 @@ export type ApiError = {
   message: string;
   code?: string;
 };
+
+// Grocery list items table
+export const groceryItems = sqliteTable("grocery_items", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  quantity: text("quantity").default("1"),
+  category: text("category").default("Other"),
+  addedBy: text("added_by").notNull(),
+  purchased: integer("purchased", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertGroceryItemSchema = createInsertSchema(groceryItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateGroceryItemSchema = z.object({
+  name: z.string().min(1).optional(),
+  quantity: z.string().optional(),
+  category: z.string().optional(),
+  addedBy: z.string().optional(),
+  purchased: z.boolean().optional(),
+});
+
+export type InsertGroceryItem = z.infer<typeof insertGroceryItemSchema>;
+export type UpdateGroceryItem = z.infer<typeof updateGroceryItemSchema>;
+export type GroceryItem = typeof groceryItems.$inferSelect;
