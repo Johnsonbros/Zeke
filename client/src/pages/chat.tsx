@@ -9,6 +9,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { 
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { 
   Send, 
   Plus, 
   MessageSquare, 
@@ -17,7 +22,11 @@ import {
   X,
   Smartphone,
   ShoppingCart,
-  Sparkles
+  Sparkles,
+  History,
+  ChevronDown,
+  Brain,
+  Settings
 } from "lucide-react";
 import { Link } from "wouter";
 import type { Conversation, Message, ChatResponse } from "@shared/schema";
@@ -175,6 +184,7 @@ export default function ChatPage() {
   const [inputValue, setInputValue] = useState("");
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
@@ -349,85 +359,145 @@ export default function ChatPage() {
         `}
         data-testid="sidebar"
       >
-        <div className="p-3 md:p-4 flex items-center justify-between gap-2">
+        { /* Sidebar Header */ }
+        <div className="p-4 border-b border-sidebar-border">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+              <span className="text-lg font-bold text-primary">Z</span>
+            </div>
+            <div className="flex-1">
+              <h2 className="text-base font-semibold">ZEKE</h2>
+              <p className="text-[11px] text-muted-foreground">Your Personal AI</p>
+            </div>
+            {isMobile && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setSidebarOpen(false)}
+                className="h-9 w-9 shrink-0"
+                data-testid="button-close-sidebar"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
           <Button 
             onClick={handleNewChatWithSidebarClose} 
-            className="flex-1 gap-2 h-11 md:h-9"
+            className="w-full gap-2 h-10"
             data-testid="button-new-chat"
           >
             <Plus className="h-4 w-4" />
             New Chat
           </Button>
-          {isMobile && (
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setSidebarOpen(false)}
-              className="h-11 w-11 shrink-0"
-              data-testid="button-close-sidebar"
-            >
-              <X className="h-5 w-5" />
-            </Button>
-          )}
         </div>
         
-        <ScrollArea className="flex-1 px-2">
-          <div className="space-y-1 pb-4">
-            {conversationsLoading ? (
-              <div className="space-y-2 px-2">
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-14 rounded-lg" />
-                ))}
-              </div>
-            ) : conversations?.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8 px-4">
-                No conversations yet
-              </p>
-            ) : (
-              conversations?.map((conv) => (
-                <ConversationItem
-                  key={conv.id}
-                  conversation={conv}
-                  isActive={conv.id === activeConversationId}
-                  onClick={() => handleConversationSelect(conv.id)}
-                  onDelete={() => deleteConversationMutation.mutate(conv.id)}
-                />
-              ))
-            )}
-          </div>
-        </ScrollArea>
-
-        <div className="p-3 border-t border-sidebar-border space-y-2">
+        { /* Main Actions */ }
+        <div className="flex-1 p-3 space-y-1">
           <Button 
             variant="ghost" 
-            className="w-full justify-start gap-2 h-10"
+            className="w-full justify-start gap-3 h-11"
             onClick={() => gettingToKnowMutation.mutate()}
             disabled={gettingToKnowMutation.isPending}
             data-testid="button-getting-to-know"
           >
-            <Sparkles className="h-4 w-4" />
-            Getting To Know You
+            <Sparkles className="h-4 w-4 text-primary" />
+            <div className="flex flex-col items-start">
+              <span className="text-sm">Getting To Know You</span>
+              <span className="text-[10px] text-muted-foreground">Help ZEKE understand you</span>
+            </div>
           </Button>
+          
           <Link href="/grocery">
             <Button 
               variant="ghost" 
-              className="w-full justify-start gap-2 h-10"
+              className="w-full justify-start gap-3 h-11"
               data-testid="link-grocery-list"
             >
-              <ShoppingCart className="h-4 w-4" />
-              Grocery List
+              <ShoppingCart className="h-4 w-4 text-green-500" />
+              <div className="flex flex-col items-start">
+                <span className="text-sm">Grocery List</span>
+                <span className="text-[10px] text-muted-foreground">Shared family list</span>
+              </div>
             </Button>
           </Link>
-          <div className="flex items-center gap-3 px-2">
-            <Avatar className="h-8 w-8">
+          
+          <Link href="/memory">
+            <Button 
+              variant="ghost" 
+              className="w-full justify-start gap-3 h-11"
+              data-testid="link-memory"
+            >
+              <Brain className="h-4 w-4 text-purple-500" />
+              <div className="flex flex-col items-start">
+                <span className="text-sm">ZEKE's Memory</span>
+                <span className="text-[10px] text-muted-foreground">What ZEKE knows about you</span>
+              </div>
+            </Button>
+          </Link>
+
+          { /* Collapsible History Section */ }
+          <Collapsible open={historyOpen} onOpenChange={setHistoryOpen} className="mt-4">
+            <CollapsibleTrigger asChild>
+              <Button 
+                variant="ghost" 
+                className="w-full justify-between gap-2 h-9 text-muted-foreground"
+                data-testid="button-toggle-history"
+              >
+                <div className="flex items-center gap-2">
+                  <History className="h-4 w-4" />
+                  <span className="text-xs">Chat History</span>
+                  {conversations && conversations.length > 0 && (
+                    <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full">
+                      {conversations.length}
+                    </span>
+                  )}
+                </div>
+                <ChevronDown className={`h-4 w-4 transition-transform ${historyOpen ? "rotate-180" : ""}`} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-1">
+              <ScrollArea className="h-[200px]">
+                <div className="space-y-1 pr-2">
+                  {conversationsLoading ? (
+                    <div className="space-y-2">
+                      {[1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-10 rounded-lg" />
+                      ))}
+                    </div>
+                  ) : conversations?.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-4">
+                      No history yet
+                    </p>
+                  ) : (
+                    conversations?.map((conv) => (
+                      <ConversationItem
+                        key={conv.id}
+                        conversation={conv}
+                        isActive={conv.id === activeConversationId}
+                        onClick={() => handleConversationSelect(conv.id)}
+                        onDelete={() => deleteConversationMutation.mutate(conv.id)}
+                      />
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+
+        { /* Profile Section */ }
+        <div className="p-3 border-t border-sidebar-border">
+          <div className="flex items-center gap-3 px-2 py-2 rounded-lg hover-elevate cursor-pointer">
+            <Avatar className="h-9 w-9">
               <AvatarFallback className="bg-accent text-accent-foreground text-sm font-medium">
                 NJ
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">Nate Johnson</p>
-              <p className="text-[11px] text-muted-foreground">CEO, Johnson Bros.</p>
+              <p className="text-[10px] text-muted-foreground">CEO, Johnson Bros.</p>
             </div>
+            <Settings className="h-4 w-4 text-muted-foreground" />
           </div>
         </div>
       </aside>

@@ -1,0 +1,265 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { 
+  ArrowLeft, 
+  Brain, 
+  Trash2, 
+  User, 
+  Heart, 
+  Lightbulb,
+  FileText,
+  Clock
+} from "lucide-react";
+import { Link } from "wouter";
+import type { MemoryNote } from "@shared/schema";
+import { format } from "date-fns";
+
+function getMemoryIcon(type: string) {
+  switch (type) {
+    case "fact":
+      return <Lightbulb className="h-4 w-4" />;
+    case "preference":
+      return <Heart className="h-4 w-4" />;
+    case "summary":
+      return <FileText className="h-4 w-4" />;
+    case "note":
+      return <Brain className="h-4 w-4" />;
+    default:
+      return <Brain className="h-4 w-4" />;
+  }
+}
+
+function getMemoryColor(type: string) {
+  switch (type) {
+    case "fact":
+      return "bg-blue-500/10 text-blue-500";
+    case "preference":
+      return "bg-pink-500/10 text-pink-500";
+    case "summary":
+      return "bg-amber-500/10 text-amber-500";
+    case "note":
+      return "bg-purple-500/10 text-purple-500";
+    default:
+      return "bg-muted text-muted-foreground";
+  }
+}
+
+function MemoryCard({ 
+  memory, 
+  onDelete 
+}: { 
+  memory: MemoryNote; 
+  onDelete: () => void;
+}) {
+  const isSuperseded = memory.isSuperseded;
+  
+  return (
+    <Card 
+      className={`group transition-all ${isSuperseded ? "opacity-50" : ""}`}
+      data-testid={`memory-card-${memory.id}`}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start gap-3">
+          <div className={`p-2 rounded-lg ${getMemoryColor(memory.type)}`}>
+            {getMemoryIcon(memory.type)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <Badge variant="secondary" className="text-[10px] capitalize">
+                {memory.type}
+              </Badge>
+              {isSuperseded && (
+                <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                  Superseded
+                </Badge>
+              )}
+            </div>
+            <p className="text-sm leading-relaxed">{memory.content}</p>
+            {memory.context && (
+              <p className="text-xs text-muted-foreground mt-1 italic">
+                {memory.context}
+              </p>
+            )}
+            <div className="flex items-center gap-2 mt-2">
+              <Clock className="h-3 w-3 text-muted-foreground" />
+              <span className="text-[10px] text-muted-foreground">
+                {format(new Date(memory.createdAt), "MMM d, yyyy 'at' h:mm a")}
+              </span>
+            </div>
+          </div>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+            onClick={onDelete}
+            data-testid={`delete-memory-${memory.id}`}
+          >
+            <Trash2 className="h-4 w-4 text-muted-foreground" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function MemoryPage() {
+  const { toast } = useToast();
+
+  const { data: memories, isLoading } = useQuery<MemoryNote[]>({
+    queryKey: ["/api/memory"],
+  });
+
+  const deleteMemoryMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/memory/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/memory"] });
+      toast({
+        title: "Memory deleted",
+        description: "The memory has been removed.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to delete",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const activeMemories = memories?.filter(m => !m.isSuperseded) || [];
+  const supersededMemories = memories?.filter(m => m.isSuperseded) || [];
+
+  const factCount = activeMemories.filter(m => m.type === "fact").length;
+  const preferenceCount = activeMemories.filter(m => m.type === "preference").length;
+  const summaryCount = activeMemories.filter(m => m.type === "summary").length;
+  const noteCount = activeMemories.filter(m => m.type === "note").length;
+
+  return (
+    <div className="min-h-screen bg-background" data-testid="memory-page">
+      <header className="sticky top-0 z-10 h-14 border-b border-border bg-background/80 backdrop-blur flex items-center gap-3 px-4">
+        <Link href="/">
+          <Button size="icon" variant="ghost" data-testid="button-back">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+        </Link>
+        <div className="flex items-center gap-2">
+          <Brain className="h-5 w-5 text-primary" />
+          <h1 className="text-lg font-semibold">ZEKE's Memory</h1>
+        </div>
+      </header>
+
+      <main className="max-w-3xl mx-auto p-4 pb-8">
+        <div className="mb-6">
+          <p className="text-muted-foreground text-sm">
+            Everything ZEKE has learned about you and your family. These memories help ZEKE be a better assistant.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <Card className="p-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-blue-500/10">
+                <Lightbulb className="h-4 w-4 text-blue-500" />
+              </div>
+              <div>
+                <p className="text-lg font-semibold">{factCount}</p>
+                <p className="text-[10px] text-muted-foreground">Facts</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-pink-500/10">
+                <Heart className="h-4 w-4 text-pink-500" />
+              </div>
+              <div>
+                <p className="text-lg font-semibold">{preferenceCount}</p>
+                <p className="text-[10px] text-muted-foreground">Preferences</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-amber-500/10">
+                <FileText className="h-4 w-4 text-amber-500" />
+              </div>
+              <div>
+                <p className="text-lg font-semibold">{summaryCount}</p>
+                <p className="text-[10px] text-muted-foreground">Summaries</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-purple-500/10">
+                <Brain className="h-4 w-4 text-purple-500" />
+              </div>
+              <div>
+                <p className="text-lg font-semibold">{noteCount}</p>
+                <p className="text-[10px] text-muted-foreground">Notes</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {isLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Card key={i} className="h-24 animate-pulse bg-muted" />
+            ))}
+          </div>
+        ) : activeMemories.length === 0 && supersededMemories.length === 0 ? (
+          <Card className="p-8 text-center">
+            <Brain className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium mb-2">No memories yet</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Chat with ZEKE to start building memories. ZEKE learns from your conversations.
+            </p>
+            <Link href="/">
+              <Button data-testid="button-start-chatting">Start Chatting</Button>
+            </Link>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            {activeMemories.length > 0 && (
+              <div className="space-y-3">
+                <h2 className="text-sm font-medium text-muted-foreground">Active Memories ({activeMemories.length})</h2>
+                {activeMemories.map((memory) => (
+                  <MemoryCard
+                    key={memory.id}
+                    memory={memory}
+                    onDelete={() => deleteMemoryMutation.mutate(memory.id)}
+                  />
+                ))}
+              </div>
+            )}
+            
+            {supersededMemories.length > 0 && (
+              <div className="space-y-3">
+                <h2 className="text-sm font-medium text-muted-foreground">Superseded ({supersededMemories.length})</h2>
+                <p className="text-xs text-muted-foreground">
+                  These memories were corrected or updated with newer information.
+                </p>
+                {supersededMemories.map((memory) => (
+                  <MemoryCard
+                    key={memory.id}
+                    memory={memory}
+                    onDelete={() => deleteMemoryMutation.mutate(memory.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
