@@ -50,16 +50,17 @@ export async function createMemoryWithEmbedding(
 ): Promise<{ note: MemoryNote; isDuplicate: boolean; duplicateOf?: string; wasCreated: boolean }> {
   const { checkDuplicates = true, duplicateThreshold = 0.92, supersedesContentLike } = options;
 
+  const existingNotes = getAllMemoryNotes().map(toSemanticMemory);
+
   try {
     const embedding = await Promise.race([
       generateEmbedding(data.content),
       new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error("Embedding generation timeout")), 10000)
+        setTimeout(() => reject(new Error("Embedding generation timeout")), 5000)
       )
     ]);
 
     if (checkDuplicates && !supersedesContentLike) {
-      const existingNotes = getAllMemoryNotes().map(toSemanticMemory);
       const notesWithEmbeddings = existingNotes
         .filter(n => n.parsedEmbedding !== null)
         .map(toEmbeddingFormat);
@@ -96,6 +97,22 @@ export async function createMemoryWithEmbedding(
     return { note, isDuplicate: false, wasCreated: true };
   } catch (error) {
     console.error("Error creating memory with embedding, falling back to basic:", error);
+    
+    if (checkDuplicates && !supersedesContentLike) {
+      const exactMatch = existingNotes.find(n => 
+        n.content.toLowerCase().trim() === data.content.toLowerCase().trim()
+      );
+      if (exactMatch) {
+        console.log(`Duplicate memory detected (exact match fallback): "${data.content}"`);
+        return { 
+          note: exactMatch, 
+          isDuplicate: true, 
+          duplicateOf: exactMatch.id,
+          wasCreated: false
+        };
+      }
+    }
+    
     const note = createMemoryNote({ 
       type: data.type,
       content: data.content,

@@ -121,6 +121,7 @@ Security: File tools have directory traversal protection using path.normalize() 
   - Automatic memory deduplication (92% similarity threshold)
   - Smart context retrieval prioritizing relevant memories over recent ones
   - Graceful fallback to keyword search if semantic search fails
+  - All conversation titles and memories are now always generated in English
 - 2025-11-29: Redesigned chat sidebar - cleaner UI with ZEKE branding, main actions (Getting To Know You, Grocery List, Memory), collapsible Chat History section, and profile at bottom
 - 2025-11-29: Added Memory page (/memory) - view all of ZEKE's memories with stats, type filters, and supersession tracking
 - 2025-11-29: Added Daily Check-In feature - ZEKE texts Nate once per day with 3 multiple choice questions to deeply understand him and his family
