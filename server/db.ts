@@ -10,7 +10,9 @@ import type {
   Preference,
   InsertPreference,
   GroceryItem,
-  InsertGroceryItem
+  InsertGroceryItem,
+  Reminder,
+  InsertReminder
 } from "@shared/schema";
 
 // Initialize SQLite database
@@ -199,6 +201,21 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_grocery_category ON grocery_items(category);
 `);
 
+// Create reminders table if it doesn't exist
+db.exec(`
+  CREATE TABLE IF NOT EXISTS reminders (
+    id TEXT PRIMARY KEY,
+    message TEXT NOT NULL,
+    recipient_phone TEXT,
+    conversation_id TEXT,
+    scheduled_for TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_reminders_scheduled ON reminders(scheduled_for);
+  CREATE INDEX IF NOT EXISTS idx_reminders_completed ON reminders(completed);
+`);
+
 // Database row types (snake_case from SQLite)
 interface ConversationRow {
   id: string;
@@ -245,6 +262,16 @@ interface GroceryItemRow {
   updated_at: string;
 }
 
+interface ReminderRow {
+  id: string;
+  message: string;
+  recipient_phone: string | null;
+  conversation_id: string | null;
+  scheduled_for: string;
+  created_at: string;
+  completed: number;
+}
+
 // Helper to map database row to Conversation type (snake_case -> camelCase)
 function mapConversation(row: ConversationRow): Conversation {
   return {
@@ -288,6 +315,19 @@ function mapPreference(row: PreferenceRow): Preference {
     key: row.key,
     value: row.value,
     updatedAt: row.updated_at,
+  };
+}
+
+// Helper to map database row to Reminder type
+function mapReminder(row: ReminderRow): Reminder {
+  return {
+    id: row.id,
+    message: row.message,
+    recipientPhone: row.recipient_phone,
+    conversationId: row.conversation_id,
+    scheduledFor: row.scheduled_for,
+    createdAt: row.created_at,
+    completed: Boolean(row.completed),
   };
 }
 
@@ -720,6 +760,74 @@ export function clearAllGroceryItems(): number {
   return wrapDbOperation("clearAllGroceryItems", () => {
     const result = db.prepare(`DELETE FROM grocery_items`).run();
     return result.changes;
+  });
+}
+
+// Reminder operations
+export function createReminder(data: InsertReminder): Reminder {
+  return wrapDbOperation("createReminder", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO reminders (id, message, recipient_phone, conversation_id, scheduled_for, created_at, completed)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.message, data.recipientPhone || null, data.conversationId || null, data.scheduledFor, now, data.completed ? 1 : 0);
+    
+    return {
+      id,
+      message: data.message,
+      recipientPhone: data.recipientPhone || null,
+      conversationId: data.conversationId || null,
+      scheduledFor: data.scheduledFor,
+      createdAt: now,
+      completed: data.completed || false,
+    };
+  });
+}
+
+export function getReminder(id: string): Reminder | undefined {
+  return wrapDbOperation("getReminder", () => {
+    const row = db.prepare(`
+      SELECT * FROM reminders WHERE id = ?
+    `).get(id) as ReminderRow | undefined;
+    return row ? mapReminder(row) : undefined;
+  });
+}
+
+export function getPendingReminders(): Reminder[] {
+  return wrapDbOperation("getPendingReminders", () => {
+    const rows = db.prepare(`
+      SELECT * FROM reminders 
+      WHERE completed = 0 
+      ORDER BY scheduled_for ASC
+    `).all() as ReminderRow[];
+    return rows.map(mapReminder);
+  });
+}
+
+export function getAllReminders(): Reminder[] {
+  return wrapDbOperation("getAllReminders", () => {
+    const rows = db.prepare(`
+      SELECT * FROM reminders ORDER BY scheduled_for ASC
+    `).all() as ReminderRow[];
+    return rows.map(mapReminder);
+  });
+}
+
+export function updateReminderCompleted(id: string, completed: boolean): Reminder | undefined {
+  return wrapDbOperation("updateReminderCompleted", () => {
+    db.prepare(`
+      UPDATE reminders SET completed = ? WHERE id = ?
+    `).run(completed ? 1 : 0, id);
+    return getReminder(id);
+  });
+}
+
+export function deleteReminder(id: string): boolean {
+  return wrapDbOperation("deleteReminder", () => {
+    const result = db.prepare(`DELETE FROM reminders WHERE id = ?`).run(id);
+    return result.changes > 0;
   });
 }
 

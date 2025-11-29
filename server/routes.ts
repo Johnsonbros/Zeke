@@ -22,7 +22,7 @@ import {
   clearPurchasedGroceryItems
 } from "./db";
 import { chat } from "./agent";
-import { setSendSmsCallback } from "./tools";
+import { setSendSmsCallback, restorePendingReminders } from "./tools";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
@@ -87,6 +87,9 @@ export async function registerRoutes(
       throw error;
     }
   });
+  
+  // Restore pending reminders from database after server startup
+  restorePendingReminders();
   
   // Chat endpoint - sends message and gets AI response
   app.post("/api/chat", async (req, res) => {

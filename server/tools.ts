@@ -7,17 +7,16 @@ import {
   toggleGroceryItemPurchased, 
   deleteGroceryItem,
   clearPurchasedGroceryItems,
-  clearAllGroceryItems
+  clearAllGroceryItems,
+  createReminder as dbCreateReminder,
+  getReminder,
+  getPendingReminders,
+  updateReminderCompleted,
+  deleteReminder as dbDeleteReminder
 } from "./db";
+import type { Reminder } from "@shared/schema";
 
-interface Reminder {
-  id: string;
-  message: string;
-  recipientPhone: string | null;
-  conversationId: string | null;
-  scheduledFor: Date;
-  createdAt: Date;
-  completed: boolean;
+interface ActiveReminder extends Reminder {
   timeoutId?: NodeJS.Timeout;
 }
 
@@ -41,7 +40,8 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
 }
 
-const reminders: Map<string, Reminder> = new Map();
+// Map to track active timeout IDs for reminders (by reminder ID)
+const activeTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
 export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
@@ -308,7 +308,20 @@ export function setNotifyUserCallback(callback: (conversationId: string, message
   notifyUserCallback = callback;
 }
 
-async function executeReminder(reminder: Reminder) {
+async function executeReminder(reminderId: string) {
+  const reminder = getReminder(reminderId);
+  if (!reminder) {
+    console.log(`Reminder ${reminderId} not found in database, may have been cancelled`);
+    activeTimeouts.delete(reminderId);
+    return;
+  }
+  
+  if (reminder.completed) {
+    console.log(`Reminder ${reminderId} already completed, skipping`);
+    activeTimeouts.delete(reminderId);
+    return;
+  }
+  
   console.log(`Executing reminder: ${reminder.id} - "${reminder.message}"`);
   
   try {
@@ -322,8 +335,8 @@ async function executeReminder(reminder: Reminder) {
       console.log(`Reminder fired but no delivery method: ${reminder.message}`);
     }
     
-    reminder.completed = true;
-    reminders.delete(reminder.id);
+    updateReminderCompleted(reminderId, true);
+    activeTimeouts.delete(reminderId);
   } catch (error) {
     console.error("Failed to execute reminder:", error);
   }
@@ -379,23 +392,19 @@ export async function executeTool(
         scheduledFor = new Date(Date.now() + 5 * 60 * 1000);
       }
       
-      const reminder: Reminder = {
-        id: generateId(),
+      const reminder = dbCreateReminder({
         message,
         recipientPhone: recipient_phone || null,
         conversationId: conversationId || null,
-        scheduledFor,
-        createdAt: new Date(),
+        scheduledFor: scheduledFor.toISOString(),
         completed: false,
-      };
+      });
       
       const delay = scheduledFor.getTime() - Date.now();
       if (delay > 0) {
-        const timeoutId = setTimeout(() => executeReminder(reminder), delay);
-        reminder.timeoutId = timeoutId;
+        const timeoutId = setTimeout(() => executeReminder(reminder.id), delay);
+        activeTimeouts.set(reminder.id, timeoutId);
       }
-      
-      reminders.set(reminder.id, reminder);
       
       const timeStr = scheduledFor.toLocaleString("en-US", { 
         timeZone: "America/New_York",
@@ -416,14 +425,13 @@ export async function executeTool(
     }
     
     case "list_reminders": {
-      const pendingReminders = Array.from(reminders.values())
-        .filter(r => !r.completed)
-        .map(r => ({
-          id: r.id,
-          message: r.message,
-          scheduled_for: r.scheduledFor.toLocaleString("en-US", { timeZone: "America/New_York" }),
-          recipient: r.recipientPhone || "this conversation",
-        }));
+      const dbReminders = getPendingReminders();
+      const pendingReminders = dbReminders.map(r => ({
+        id: r.id,
+        message: r.message,
+        scheduled_for: new Date(r.scheduledFor).toLocaleString("en-US", { timeZone: "America/New_York" }),
+        recipient: r.recipientPhone || "this conversation",
+      }));
       
       if (pendingReminders.length === 0) {
         return JSON.stringify({ reminders: [], message: "No pending reminders" });
@@ -434,16 +442,18 @@ export async function executeTool(
     
     case "cancel_reminder": {
       const { reminder_id } = args as CancelReminderArgs;
-      const reminder = reminders.get(reminder_id);
+      const reminder = getReminder(reminder_id);
       
       if (!reminder) {
         return JSON.stringify({ success: false, error: "Reminder not found" });
       }
       
-      if (reminder.timeoutId) {
-        clearTimeout(reminder.timeoutId);
+      const timeoutId = activeTimeouts.get(reminder_id);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        activeTimeouts.delete(reminder_id);
       }
-      reminders.delete(reminder_id);
+      dbDeleteReminder(reminder_id);
       
       return JSON.stringify({ success: true, message: `Reminder ${reminder_id} cancelled` });
     }
@@ -938,6 +948,36 @@ export async function executeTool(
   }
 }
 
-export function getActiveReminders(): Reminder[] {
-  return Array.from(reminders.values()).filter(r => !r.completed);
+export function getActiveReminders(): { id: string; message: string; scheduledFor: Date }[] {
+  const pendingReminders = getPendingReminders();
+  return pendingReminders.map(r => ({
+    id: r.id,
+    message: r.message,
+    scheduledFor: new Date(r.scheduledFor),
+  }));
+}
+
+export function restorePendingReminders(): number {
+  const pendingReminders = getPendingReminders();
+  let restoredCount = 0;
+  
+  for (const reminder of pendingReminders) {
+    const scheduledTime = new Date(reminder.scheduledFor).getTime();
+    const now = Date.now();
+    const delay = scheduledTime - now;
+    
+    if (delay > 0) {
+      const timeoutId = setTimeout(() => executeReminder(reminder.id), delay);
+      activeTimeouts.set(reminder.id, timeoutId);
+      restoredCount++;
+      console.log(`Restored reminder ${reminder.id}: "${reminder.message}" scheduled for ${new Date(reminder.scheduledFor).toLocaleString("en-US", { timeZone: "America/New_York" })}`);
+    } else {
+      console.log(`Reminder ${reminder.id} is past due (scheduled for ${reminder.scheduledFor}), executing immediately`);
+      executeReminder(reminder.id);
+      restoredCount++;
+    }
+  }
+  
+  console.log(`Restored ${restoredCount} pending reminder(s) from database`);
+  return restoredCount;
 }

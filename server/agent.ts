@@ -331,9 +331,15 @@ If nothing important to remember, return: {"memories": []}`,
           continue;
         }
 
+        const validTypes = ['fact', 'preference', 'summary', 'note'];
+        if (!validTypes.includes(memory.type)) {
+          console.log("Skipping invalid memory type:", memory.type);
+          continue;
+        }
+
         try {
           createMemoryNote({
-            type: memory.type,
+            type: memory.type as "fact" | "preference" | "summary" | "note",
             content: memory.content,
             context: memory.context || "",
           });
@@ -419,26 +425,28 @@ export async function chat(
 
       // Execute each tool call and add results
       for (const toolCall of message.tool_calls) {
-        const toolName = toolCall.function.name;
-        let toolArgs: Record<string, unknown>;
+        if (toolCall.type === 'function') {
+          const toolName = toolCall.function.name;
+          let toolArgs: Record<string, unknown>;
 
-        try {
-          toolArgs = JSON.parse(toolCall.function.arguments);
-        } catch {
-          toolArgs = {};
+          try {
+            toolArgs = JSON.parse(toolCall.function.arguments);
+          } catch {
+            toolArgs = {};
+          }
+
+          console.log(`Tool call: ${toolName}`, toolArgs);
+
+          const result = await executeTool(toolName, toolArgs, conversationId);
+
+          console.log(`Tool result: ${result.substring(0, 200)}...`);
+
+          messages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: result,
+          });
         }
-
-        console.log(`Tool call: ${toolName}`, toolArgs);
-
-        const result = await executeTool(toolName, toolArgs, conversationId);
-
-        console.log(`Tool result: ${result.substring(0, 200)}...`);
-
-        messages.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          content: result,
-        });
       }
     }
 

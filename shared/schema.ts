@@ -123,3 +123,22 @@ export const updateGroceryItemSchema = z.object({
 export type InsertGroceryItem = z.infer<typeof insertGroceryItemSchema>;
 export type UpdateGroceryItem = z.infer<typeof updateGroceryItemSchema>;
 export type GroceryItem = typeof groceryItems.$inferSelect;
+
+// Reminders table for persistent reminders
+export const reminders = sqliteTable("reminders", {
+  id: text("id").primaryKey(),
+  message: text("message").notNull(),
+  recipientPhone: text("recipient_phone"),
+  conversationId: text("conversation_id"),
+  scheduledFor: text("scheduled_for").notNull(),
+  createdAt: text("created_at").notNull(),
+  completed: integer("completed", { mode: "boolean" }).notNull().default(false),
+});
+
+export const insertReminderSchema = createInsertSchema(reminders).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertReminder = z.infer<typeof insertReminderSchema>;
+export type Reminder = typeof reminders.$inferSelect;
