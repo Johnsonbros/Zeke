@@ -312,3 +312,137 @@ export const insertAutomationSchema = createInsertSchema(automations).omit({
 
 export type InsertAutomation = z.infer<typeof insertAutomationSchema>;
 export type Automation = typeof automations.$inferSelect;
+
+// User profile table for storing detailed personal context about Nate
+export const userProfile = sqliteTable("user_profile", {
+  id: text("id").primaryKey(),
+  section: text("section").notNull(),
+  data: text("data").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertProfileSchema = createInsertSchema(userProfile).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertProfile = z.infer<typeof insertProfileSchema>;
+export type UserProfile = typeof userProfile.$inferSelect;
+
+// Profile section types for structured data
+export const profileSections = [
+  "basic_info",
+  "work",
+  "family",
+  "interests",
+  "preferences",
+  "goals",
+  "health",
+  "routines",
+  "important_dates",
+  "custom"
+] as const;
+export type ProfileSection = typeof profileSections[number];
+
+// Structured profile data types
+export interface BasicInfoData {
+  fullName: string;
+  nickname?: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  birthday?: string;
+  bio?: string;
+}
+
+export interface WorkData {
+  company?: string;
+  role?: string;
+  industry?: string;
+  workStyle?: string;
+  careerGoals?: string;
+  workSchedule?: string;
+  notes?: string;
+}
+
+export interface FamilyData {
+  relationshipStatus?: string;
+  spouse?: string;
+  children?: string[];
+  parents?: string;
+  siblings?: string;
+  pets?: string[];
+  notes?: string;
+}
+
+export interface InterestsData {
+  hobbies?: string[];
+  sports?: string[];
+  music?: string[];
+  movies?: string[];
+  books?: string[];
+  travel?: string[];
+  other?: string[];
+}
+
+export interface PreferencesData {
+  communicationStyle?: string;
+  foodPreferences?: string;
+  dietaryRestrictions?: string[];
+  coffeeOrTea?: string;
+  morningOrNight?: string;
+  workFromHome?: string;
+  other?: string;
+}
+
+export interface GoalsData {
+  shortTerm?: string[];
+  longTerm?: string[];
+  thisYear?: string[];
+  thisMonth?: string[];
+  notes?: string;
+}
+
+export interface HealthData {
+  exerciseRoutine?: string;
+  diet?: string;
+  sleepSchedule?: string;
+  allergies?: string[];
+  medications?: string;
+  notes?: string;
+}
+
+export interface RoutinesData {
+  morning?: string;
+  evening?: string;
+  workday?: string;
+  weekend?: string;
+  notes?: string;
+}
+
+export interface ImportantDateData {
+  name: string;
+  date: string;
+  type: string;
+  recurring?: boolean;
+  notes?: string;
+}
+
+export interface CustomFieldData {
+  label: string;
+  value: string;
+}
+
+// Full profile type
+export interface FullProfile {
+  basicInfo?: BasicInfoData;
+  work?: WorkData;
+  family?: FamilyData;
+  interests?: InterestsData;
+  preferences?: PreferencesData;
+  goals?: GoalsData;
+  health?: HealthData;
+  routines?: RoutinesData;
+  importantDates?: ImportantDateData[];
+  custom?: CustomFieldData[];
+}
