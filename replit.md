@@ -86,7 +86,8 @@ ZEKE has access to these tools via OpenAI function calling:
 - **get_morning_briefing** - Comprehensive morning summary combining weather, calendar, tasks, and reminders. Can optionally send via SMS.
 
 ### Utilities
-- **web_search** - Search the web using DuckDuckGo API
+- **perplexity_search** - AI-powered web search using Perplexity. PREFERRED for complex questions, research, current events. Returns synthesized answers with source citations. Falls back to web_search if API key not configured.
+- **web_search** - Basic web search using DuckDuckGo API (fallback when Perplexity unavailable)
 - **read_file** - Read files from notes/, data/, or config files (secure path validation)
 - **write_file** - Write files to notes/ or data/ directories (secure path validation)
 - **list_files** - List files in allowed directories
@@ -143,12 +144,18 @@ Security: File tools have directory traversal protection using path.normalize() 
 
 ## Environment Variables Required
 - OPENAI_API_KEY - OpenAI API key (required for AI responses)
+- PERPLEXITY_API_KEY - Perplexity API key (optional, for enhanced AI-powered search with citations)
 - TWILIO_ACCOUNT_SID - Twilio account SID (optional, for SMS)
 - TWILIO_AUTH_TOKEN - Twilio auth token (optional, for SMS)
 - TWILIO_PHONE_NUMBER - Twilio phone number (optional, for SMS)
 - OPENWEATHERMAP_API_KEY - OpenWeatherMap API key (optional, for weather features and morning briefing)
 
 ## Recent Changes
+- 2025-11-29: **Perplexity Search Integration** - Added AI-powered search using Perplexity API:
+  - perplexity_search tool for complex questions, research, and current events
+  - Returns synthesized answers with source citations
+  - Supports recency filter (day/week/month/year) for time-sensitive queries
+  - Graceful fallback to DuckDuckGo if Perplexity unavailable
 - 2025-11-29: **Task Management System** - Full to-do list functionality with:
   - Tasks with title, description, priority (low/medium/high), due dates, and categories (work/personal/family)
   - Agent tools for adding, updating, completing, and deleting tasks
@@ -189,7 +196,7 @@ Security: File tools have directory traversal protection using path.normalize() 
 
 ## ZEKE Behavior Guidelines
 ZEKE is configured to be ACTION-ORIENTED, not a suggestion machine:
-- Always uses tools (especially web_search) when asked for information
+- Always uses tools when asked for information - prefer perplexity_search for complex questions, research, and detailed answers
 - Shares what was found (URLs, partial info) instead of deflecting
 - Never tells users to "check the website themselves" or "search for it"
 - Provides actionable results even when exact info isn't found

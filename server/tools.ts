@@ -138,13 +138,35 @@ export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "web_search",
-      description: "Search the web for ANY information the user needs. ALWAYS use this tool when asked about: phone numbers, addresses, business hours, contact information, current events, facts, news, prices, reviews, or any factual question. Don't tell the user to search themselves - use this tool instead.",
+      description: "Basic web search using DuckDuckGo. Use perplexity_search instead for complex questions that need comprehensive answers with sources.",
       parameters: {
         type: "object",
         properties: {
           query: {
             type: "string",
             description: "The search query - be specific, include location if relevant (e.g., 'Atrius Health Braintree MA phone number')",
+          },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "perplexity_search",
+      description: "AI-powered web search using Perplexity. PREFERRED for complex questions, research, current events, detailed explanations, and any query that benefits from synthesized answers with citations. Returns a comprehensive answer with source URLs.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "The question or search query - can be conversational (e.g., 'What are the best restaurants in Boston for Italian food?' or 'How do I set up a 529 college savings plan?')",
+          },
+          recency: {
+            type: "string",
+            enum: ["day", "week", "month", "year"],
+            description: "Optional: Filter results by recency. Use 'day' for breaking news, 'week' for recent events, 'month' for general queries. Default is no filter.",
           },
         },
         required: ["query"],
@@ -751,6 +773,11 @@ interface WebSearchArgs {
   query: string;
 }
 
+interface PerplexitySearchArgs {
+  query: string;
+  recency?: "day" | "week" | "month" | "year";
+}
+
 interface ReadFileArgs {
   file_path: string;
 }
@@ -1025,6 +1052,83 @@ export async function executeTool(
           error: "Search failed. Please try again.",
           results: [] 
         });
+      }
+    }
+    
+    case "perplexity_search": {
+      const { query, recency } = args as PerplexitySearchArgs;
+      
+      const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
+      
+      if (!PERPLEXITY_API_KEY) {
+        // Fall back to regular web search if Perplexity is not configured
+        console.log("Perplexity API key not configured, falling back to web_search");
+        return executeTool("web_search", { query }, conversationId);
+      }
+      
+      try {
+        const requestBody: any = {
+          model: "llama-3.1-sonar-small-128k-online",
+          messages: [
+            {
+              role: "system",
+              content: "You are a helpful research assistant. Provide accurate, well-sourced answers. Be concise but thorough. Include specific details like phone numbers, addresses, prices, and dates when relevant."
+            },
+            {
+              role: "user",
+              content: query
+            }
+          ],
+          temperature: 0.2,
+          top_p: 0.9,
+          return_images: false,
+          return_related_questions: false,
+          stream: false,
+          frequency_penalty: 1
+        };
+        
+        // Add recency filter if specified
+        if (recency) {
+          requestBody.search_recency_filter = recency;
+        }
+        
+        const response = await fetch("https://api.perplexity.ai/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(requestBody)
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Perplexity API error:", response.status, errorText);
+          // Fall back to regular web search on API error
+          console.log("Falling back to web_search due to Perplexity API error");
+          return executeTool("web_search", { query }, conversationId);
+        }
+        
+        const data = await response.json();
+        
+        const answer = data.choices?.[0]?.message?.content || "No answer generated";
+        const citations = data.citations || [];
+        
+        return JSON.stringify({
+          query,
+          answer,
+          sources: citations.slice(0, 6),
+          model: data.model,
+          note: citations.length > 0 
+            ? `Answer synthesized from ${citations.length} source(s)` 
+            : "Answer generated based on web search results"
+        });
+        
+      } catch (error) {
+        console.error("Perplexity search error:", error);
+        // Fall back to regular web search on error
+        console.log("Falling back to web_search due to Perplexity error");
+        return executeTool("web_search", { query }, conversationId);
       }
     }
     
