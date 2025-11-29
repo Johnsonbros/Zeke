@@ -55,9 +55,9 @@ ZEKE has access to these tools via OpenAI function calling:
 Security: File tools have directory traversal protection using path.normalize() and path.resolve() with strict whitelist validation.
 
 ## Database Schema (SQLite)
-- `conversations` - Chat sessions with title, source (web/sms), phoneNumber
+- `conversations` - Chat sessions with title, source (web/sms), phoneNumber, mode (null or "getting_to_know")
 - `messages` - Individual messages with role (user/assistant) and content
-- `memory_notes` - Extracted memories (facts, preferences, summaries, notes)
+- `memory_notes` - Extracted memories (facts, preferences, summaries, notes) with supersession support (isSuperseded, supersededBy)
 - `preferences` - Key-value preferences for Nate
 - `grocery_items` - Shared grocery list (id, name, quantity, category, purchased, addedBy)
 
@@ -66,6 +66,7 @@ Security: File tools have directory traversal protection using path.normalize() 
 - GET /api/conversations - List all conversations
 - GET /api/conversations/:id - Get conversation with messages
 - DELETE /api/conversations/:id - Delete a conversation
+- POST /api/conversations/getting-to-know - Start a "Getting To Know You" onboarding conversation
 - POST /api/twilio/webhook - Twilio SMS webhook (TwiML response)
 - GET /api/memory - Get memory notes
 - POST /api/memory - Add memory note
@@ -92,6 +93,8 @@ Security: File tools have directory traversal protection using path.normalize() 
 - TWILIO_PHONE_NUMBER - Twilio phone number (optional, for SMS)
 
 ## Recent Changes
+- 2025-11-29: Added "Getting To Know You" feature - ZEKE proactively asks questions to learn about Nate and handles memory corrections (e.g., "My brother's name is Nick, not Kyle")
+- 2025-11-29: Memory supersession system - when correcting information, old memories are marked as superseded rather than deleted, preserving history
 - 2025-11-29: Fixed SMS reminder system - reminders now persist to SQLite database and survive server restarts
 - 2025-11-29: ZEKE now automatically includes phone number when setting reminders via SMS, ensuring reminders are delivered as text messages
 - 2025-11-29: Improved ZEKE's proactive behavior - now uses web search automatically when asked for information (phone numbers, addresses, etc.) and shares what it finds instead of deflecting to users
