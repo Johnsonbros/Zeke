@@ -22,14 +22,15 @@ ZEKE is a single-user personal assistant for Nate Johnson. It is not multi-tenan
 ## Project Structure
 - `/client` - React frontend with chat UI
   - `/client/src/pages/chat.tsx` - Main chat interface
+  - `/client/src/pages/grocery.tsx` - Collaborative grocery list
   - `/client/src/App.tsx` - App root with routing
 - `/server` - Express backend with API routes
-  - `/server/routes.ts` - API endpoints for chat, conversations, memory
+  - `/server/routes.ts` - API endpoints for chat, conversations, memory, grocery
   - `/server/db.ts` - SQLite database operations
   - `/server/agent.ts` - OpenAI agent logic with memory extraction and tool calling
   - `/server/tools.ts` - Tool definitions and execution for OpenAI function calling
 - `/shared` - Shared types and schemas
-  - `/shared/schema.ts` - Drizzle schema definitions
+  - `/shared/schema.ts` - Drizzle schema definitions (includes groceryItems)
 - `/notes` - User notes directory (writable by ZEKE file tools)
 - `/data` - Data storage directory (writable by ZEKE file tools)
 - `zeke_profile.md` - Nate's core profile (loaded as agent context)
@@ -53,6 +54,7 @@ Security: File tools have directory traversal protection using path.normalize() 
 - `messages` - Individual messages with role (user/assistant) and content
 - `memory_notes` - Extracted memories (facts, preferences, summaries, notes)
 - `preferences` - Key-value preferences for Nate
+- `grocery_items` - Shared grocery list (id, name, quantity, category, purchased, addedBy)
 
 ## API Endpoints
 - POST /api/chat - Send message and get AI response
@@ -65,6 +67,11 @@ Security: File tools have directory traversal protection using path.normalize() 
 - DELETE /api/memory/:id - Delete memory note
 - GET /api/preferences - Get all preferences
 - POST /api/preferences - Set a preference
+- GET /api/grocery - List all grocery items
+- POST /api/grocery - Add a grocery item
+- PATCH /api/grocery/:id - Update item (toggle purchased, change quantity)
+- DELETE /api/grocery/:id - Delete a grocery item
+- DELETE /api/grocery - Clear all purchased items
 
 ## Design System
 - Dark theme with coral red accent: hsl(9, 75%, 61%)
@@ -80,5 +87,6 @@ Security: File tools have directory traversal protection using path.normalize() 
 - TWILIO_PHONE_NUMBER - Twilio phone number (optional, for SMS)
 
 ## Recent Changes
+- 2025-11-29: Added collaborative grocery list feature for Nate, ZEKE, and Shakita with categories, quantities, and purchased status tracking
 - 2025-11-29: Added tool calling system (reminders, web search, file access, time queries) with security hardening
 - 2025-11-28: Initial implementation of ZEKE with full chat UI, SQLite storage, OpenAI agent, and Twilio webhook
