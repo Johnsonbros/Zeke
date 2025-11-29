@@ -46,27 +46,27 @@ function EventCard({ event }: { event: CalendarEvent }) {
 
   return (
     <Card
-      className="p-3 hover-elevate cursor-pointer border-l-2 border-l-primary"
+      className="p-2 sm:p-3 hover-elevate cursor-pointer border-l-2 border-l-primary"
       data-testid={`event-card-${event.id}`}
     >
-      <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium line-clamp-2">{event.summary}</span>
+      <div className="flex flex-col gap-0.5 sm:gap-1">
+        <span className="text-xs sm:text-sm font-medium line-clamp-2">{event.summary}</span>
         {!event.allDay && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Clock className="h-3 w-3" />
-            <span>
+          <div className="flex items-center gap-1 text-[10px] sm:text-xs text-muted-foreground">
+            <Clock className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" />
+            <span className="truncate">
               {format(startDate, "h:mm a")} - {format(endDate, "h:mm a")}
             </span>
           </div>
         )}
         {event.allDay && (
-          <Badge variant="secondary" className="w-fit text-xs">
+          <Badge variant="secondary" className="w-fit text-[10px] sm:text-xs">
             All day
           </Badge>
         )}
         {event.location && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <MapPin className="h-3 w-3" />
+          <div className="flex items-center gap-1 text-[10px] sm:text-xs text-muted-foreground">
+            <MapPin className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" />
             <span className="truncate">{event.location}</span>
           </div>
         )}
@@ -90,17 +90,17 @@ function DayColumn({
   });
 
   return (
-    <div className="flex-1 min-w-[140px] flex flex-col">
+    <div className="flex-1 min-w-[100px] sm:min-w-[120px] md:min-w-[140px] flex flex-col border-r last:border-r-0">
       <div
-        className={`text-center py-3 border-b ${
+        className={`text-center py-2 sm:py-3 border-b ${
           isCurrentDay ? "bg-primary/10" : ""
         }`}
       >
-        <div className="text-xs text-muted-foreground uppercase">
+        <div className="text-[10px] sm:text-xs text-muted-foreground uppercase">
           {format(date, "EEE")}
         </div>
         <div
-          className={`text-lg font-semibold ${
+          className={`text-base sm:text-lg font-semibold ${
             isCurrentDay ? "text-primary" : ""
           }`}
         >
@@ -108,9 +108,9 @@ function DayColumn({
         </div>
       </div>
       <ScrollArea className="flex-1">
-        <div className="p-2 space-y-2">
+        <div className="p-1.5 sm:p-2 space-y-1.5 sm:space-y-2">
           {dayEvents.length === 0 ? (
-            <div className="text-xs text-muted-foreground text-center py-4">
+            <div className="text-[10px] sm:text-xs text-muted-foreground text-center py-3 sm:py-4">
               No events
             </div>
           ) : (
@@ -216,26 +216,27 @@ export default function CalendarPage() {
 
   return (
     <div className="flex flex-col h-full" data-testid="calendar-page">
-      <div className="flex flex-col gap-4 p-4 md:p-6 border-b">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <CalendarIcon className="h-5 w-5 text-primary" />
+      <div className="flex flex-col gap-3 sm:gap-4 p-3 sm:p-4 md:p-6 border-b">
+        <div className="flex items-center justify-between gap-2 sm:gap-4 flex-wrap">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+              <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-xl font-semibold">Calendar</h1>
-              <p className="text-sm text-muted-foreground">
+              <h1 className="text-lg sm:text-xl font-semibold">Calendar</h1>
+              <p className="text-xs sm:text-sm text-muted-foreground">
                 {format(dateRange.start, "MMM d")} -{" "}
                 {format(dateRange.end, "MMM d, yyyy")}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="flex items-center rounded-lg border p-1">
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="flex items-center rounded-lg border p-0.5 sm:p-1">
               <Button
                 variant={view === "today" ? "default" : "ghost"}
                 size="sm"
+                className="h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm"
                 onClick={() => {
                   setView("today");
                   goToToday();
@@ -247,6 +248,7 @@ export default function CalendarPage() {
               <Button
                 variant={view === "week" ? "default" : "ghost"}
                 size="sm"
+                className="h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm"
                 onClick={() => setView("week")}
                 data-testid="view-toggle-week"
               >
@@ -255,6 +257,7 @@ export default function CalendarPage() {
               <Button
                 variant={view === "month" ? "default" : "ghost"}
                 size="sm"
+                className="h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm hidden sm:inline-flex"
                 onClick={() => setView("month")}
                 data-testid="view-toggle-month"
               >
@@ -265,18 +268,20 @@ export default function CalendarPage() {
         </div>
 
         {view !== "today" && (
-          <div className="flex items-center justify-center gap-2">
+          <div className="flex items-center justify-center gap-1.5 sm:gap-2">
             <Button
               variant="outline"
               size="icon"
+              className="h-8 w-8 sm:h-9 sm:w-9"
               onClick={navigatePrev}
               data-testid="nav-prev-week"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </Button>
             <Button
               variant="outline"
               size="sm"
+              className="h-8 sm:h-9 px-3 sm:px-4 text-xs sm:text-sm"
               onClick={goToToday}
             >
               Today
@@ -284,10 +289,11 @@ export default function CalendarPage() {
             <Button
               variant="outline"
               size="icon"
+              className="h-8 w-8 sm:h-9 sm:w-9"
               onClick={navigateNext}
               data-testid="nav-next-week"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </Button>
           </div>
         )}
@@ -297,11 +303,11 @@ export default function CalendarPage() {
         {isLoading ? (
           <CalendarSkeleton />
         ) : error ? (
-          <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
-            <CalendarIcon className="h-12 w-12 text-muted-foreground" />
+          <div className="flex flex-col items-center justify-center h-full gap-3 sm:gap-4 p-4 sm:p-6 md:p-8">
+            <CalendarIcon className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground" />
             <div className="text-center">
-              <p className="text-lg font-medium">Unable to load calendar</p>
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="text-base sm:text-lg font-medium">Unable to load calendar</p>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-1">
                 {error instanceof Error
                   ? error.message
                   : "Please try again later"}
@@ -310,12 +316,12 @@ export default function CalendarPage() {
           </div>
         ) : view === "today" ? (
           <ScrollArea className="h-full">
-            <div className="p-4 md:p-6 space-y-3 max-w-2xl mx-auto">
-              <div className="text-center mb-6">
-                <div className="text-2xl font-semibold">
+            <div className="p-3 sm:p-4 md:p-6 space-y-2 sm:space-y-3 max-w-2xl mx-auto">
+              <div className="text-center mb-4 sm:mb-6">
+                <div className="text-xl sm:text-2xl font-semibold">
                   {format(currentDate, "EEEE")}
                 </div>
-                <div className="text-muted-foreground">
+                <div className="text-sm sm:text-base text-muted-foreground">
                   {format(currentDate, "MMMM d, yyyy")}
                 </div>
               </div>
@@ -324,9 +330,9 @@ export default function CalendarPage() {
                   <EventCard key={event.id} event={event} />
                 ))
               ) : (
-                <div className="flex flex-col items-center justify-center py-12 gap-3">
-                  <CalendarIcon className="h-10 w-10 text-muted-foreground" />
-                  <p className="text-muted-foreground">No events today</p>
+                <div className="flex flex-col items-center justify-center py-8 sm:py-12 gap-2 sm:gap-3">
+                  <CalendarIcon className="h-8 w-8 sm:h-10 sm:w-10 text-muted-foreground" />
+                  <p className="text-sm sm:text-base text-muted-foreground">No events today</p>
                 </div>
               )}
             </div>

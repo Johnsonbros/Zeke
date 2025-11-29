@@ -153,51 +153,51 @@ function ContactCard({
   
   return (
     <Card 
-      className={`p-3 md:p-4 cursor-pointer hover-elevate transition-all ${isSelected ? "ring-2 ring-primary" : ""}`}
+      className={`p-2.5 sm:p-3 md:p-4 cursor-pointer hover-elevate transition-all ${isSelected ? "ring-2 ring-primary" : ""}`}
       onClick={onClick}
       data-testid={`contact-card-${contact.id}`}
     >
-      <div className="flex items-start gap-3">
-        <Avatar className="h-10 w-10 shrink-0">
-          <AvatarFallback className={`${isMasterAdmin ? "bg-primary text-primary-foreground" : "bg-accent"}`}>
+      <div className="flex items-start gap-2 sm:gap-3">
+        <Avatar className="h-9 w-9 sm:h-10 sm:w-10 shrink-0">
+          <AvatarFallback className={`text-xs sm:text-sm ${isMasterAdmin ? "bg-primary text-primary-foreground" : "bg-accent"}`}>
             {getInitials(contact.name)}
           </AvatarFallback>
         </Avatar>
         
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm truncate" data-testid={`text-contact-name-${contact.id}`}>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <span className="font-medium text-xs sm:text-sm truncate" data-testid={`text-contact-name-${contact.id}`}>
               {contact.name}
             </span>
             {isMasterAdmin && (
-              <Badge variant="default" className="text-xs gap-1">
-                <Crown className="h-3 w-3" />
+              <Badge variant="default" className="text-[10px] sm:text-xs gap-0.5 sm:gap-1">
+                <Crown className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                 Master
               </Badge>
             )}
           </div>
           
-          <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-            <Phone className="h-3 w-3" />
-            <span>{formatPhoneDisplay(contact.phoneNumber)}</span>
+          <div className="flex items-center gap-1 text-[10px] sm:text-xs text-muted-foreground mt-0.5">
+            <Phone className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" />
+            <span className="truncate">{formatPhoneDisplay(contact.phoneNumber)}</span>
           </div>
           
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <Badge variant="outline" className={`text-xs gap-1 ${config.color}`}>
-              <Icon className="h-3 w-3" />
+          <div className="flex items-center gap-1 sm:gap-2 mt-1.5 sm:mt-2 flex-wrap">
+            <Badge variant="outline" className={`text-[10px] sm:text-xs gap-0.5 sm:gap-1 ${config.color}`}>
+              <Icon className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
               {config.label}
             </Badge>
             
             {contact.messageCount > 0 && (
-              <Badge variant="secondary" className="text-xs gap-1">
-                <MessageSquare className="h-3 w-3" />
+              <Badge variant="secondary" className="text-[10px] sm:text-xs gap-0.5 sm:gap-1">
+                <MessageSquare className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                 {contact.messageCount}
               </Badge>
             )}
           </div>
         </div>
         
-        <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+        <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground shrink-0" />
       </div>
     </Card>
   );
@@ -219,20 +219,21 @@ function PermissionToggle({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between p-3 rounded-lg border border-border">
-      <div className="flex items-center gap-3">
-        <div className={`p-2 rounded-lg ${checked ? "bg-primary/20" : "bg-muted"}`}>
-          <Icon className={`h-4 w-4 ${checked ? "text-primary" : "text-muted-foreground"}`} />
+    <div className="flex items-center justify-between p-2 sm:p-3 gap-2 rounded-lg border border-border">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        <div className={`p-1.5 sm:p-2 rounded-lg shrink-0 ${checked ? "bg-primary/20" : "bg-muted"}`}>
+          <Icon className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${checked ? "text-primary" : "text-muted-foreground"}`} />
         </div>
-        <div>
-          <p className="text-sm font-medium">{label}</p>
-          <p className="text-xs text-muted-foreground">{description}</p>
+        <div className="min-w-0">
+          <p className="text-xs sm:text-sm font-medium truncate">{label}</p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{description}</p>
         </div>
       </div>
       <Switch 
         checked={checked} 
         onCheckedChange={onCheckedChange}
         disabled={disabled}
+        className="shrink-0"
       />
     </div>
   );
@@ -287,32 +288,32 @@ function ContactDetailPanel({
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between p-4 border-b border-border">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={onClose} data-testid="button-close-detail">
-            <X className="h-4 w-4" />
+      <div className="flex items-center justify-between p-3 sm:p-4 gap-2 border-b border-border">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" onClick={onClose} data-testid="button-close-detail">
+            <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </Button>
-          <h2 className="font-semibold">Contact Details</h2>
+          <h2 className="font-semibold text-sm sm:text-base">Contact Details</h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           {isEditing ? (
             <>
-              <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)}>
+              <Button variant="ghost" size="sm" className="h-7 sm:h-8 text-xs sm:text-sm px-2 sm:px-3" onClick={() => setIsEditing(false)}>
                 Cancel
               </Button>
-              <Button size="sm" onClick={handleSave} data-testid="button-save-contact">
-                <Check className="h-4 w-4 mr-1" />
+              <Button size="sm" className="h-7 sm:h-8 text-xs sm:text-sm px-2 sm:px-3" onClick={handleSave} data-testid="button-save-contact">
+                <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-0.5 sm:mr-1" />
                 Save
               </Button>
             </>
           ) : (
             <>
-              <Button variant="ghost" size="icon" onClick={() => setIsEditing(true)} data-testid="button-edit-contact">
-                <Pencil className="h-4 w-4" />
+              <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" onClick={() => setIsEditing(true)} data-testid="button-edit-contact">
+                <Pencil className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </Button>
               {!isMasterAdmin && (
-                <Button variant="ghost" size="icon" onClick={onDelete} className="text-destructive" data-testid="button-delete-contact">
-                  <Trash2 className="h-4 w-4" />
+                <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9 text-destructive" onClick={onDelete} data-testid="button-delete-contact">
+                  <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 </Button>
               )}
             </>
@@ -321,30 +322,30 @@ function ContactDetailPanel({
       </div>
       
       <ScrollArea className="flex-1">
-        <div className="p-4 space-y-6">
-          <div className="flex items-center gap-4">
-            <Avatar className="h-16 w-16">
-              <AvatarFallback className={`text-xl ${isMasterAdmin ? "bg-primary text-primary-foreground" : "bg-accent"}`}>
+        <div className="p-3 sm:p-4 space-y-4 sm:space-y-6">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <Avatar className="h-12 w-12 sm:h-16 sm:w-16 shrink-0">
+              <AvatarFallback className={`text-base sm:text-xl ${isMasterAdmin ? "bg-primary text-primary-foreground" : "bg-accent"}`}>
                 {getInitials(contact.name)}
               </AvatarFallback>
             </Avatar>
-            <div>
+            <div className="min-w-0 flex-1">
               {isEditing ? (
                 <Input 
                   {...form.register("name")}
-                  className="font-semibold text-lg mb-1"
+                  className="font-semibold text-base sm:text-lg mb-1"
                   data-testid="input-edit-name"
                 />
               ) : (
-                <h3 className="font-semibold text-lg">{contact.name}</h3>
+                <h3 className="font-semibold text-base sm:text-lg truncate">{contact.name}</h3>
               )}
-              <div className="flex items-center gap-1 text-muted-foreground">
-                <Phone className="h-4 w-4" />
-                <span>{formatPhoneDisplay(contact.phoneNumber)}</span>
+              <div className="flex items-center gap-1 text-xs sm:text-sm text-muted-foreground">
+                <Phone className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
+                <span className="truncate">{formatPhoneDisplay(contact.phoneNumber)}</span>
               </div>
               {isMasterAdmin && (
-                <Badge variant="default" className="mt-2 gap-1">
-                  <Crown className="h-3 w-3" />
+                <Badge variant="default" className="mt-1.5 sm:mt-2 gap-0.5 sm:gap-1 text-[10px] sm:text-xs">
+                  <Crown className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                   Master Admin
                 </Badge>
               )}
@@ -611,22 +612,22 @@ export default function ContactsPage() {
   }, {} as Record<string, number>) || {};
 
   return (
-    <div className="flex h-screen bg-background">
-      <div className={`${selectedContact ? "hidden md:flex" : "flex"} flex-col flex-1 border-r border-border`}>
-        <header className="flex items-center justify-between p-4 border-b border-border shrink-0">
-          <div className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-primary" />
-            <h1 className="font-semibold text-lg">Contacts</h1>
+    <div className="flex h-full bg-background">
+      <div className={`${selectedContact ? "hidden md:flex" : "flex"} flex-col flex-1 min-w-0 border-r border-border`}>
+        <header className="flex items-center justify-between p-3 sm:p-4 gap-2 border-b border-border shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <Users className="h-4 w-4 sm:h-5 sm:w-5 text-primary shrink-0" />
+            <h1 className="font-semibold text-base sm:text-lg">Contacts</h1>
           </div>
-          <Button size="sm" onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-contact">
-            <Plus className="h-4 w-4 mr-1" />
+          <Button size="sm" className="h-8 sm:h-9 text-xs sm:text-sm px-2 sm:px-3" onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-contact">
+            <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-0.5 sm:mr-1" />
             Add
           </Button>
         </header>
         
-        <div className="p-4 border-b border-border">
+        <div className="p-2.5 sm:p-4 border-b border-border">
           <Select value={filterLevel} onValueChange={(v) => setFilterLevel(v as AccessLevel | "all")}>
-            <SelectTrigger data-testid="select-filter-level">
+            <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm" data-testid="select-filter-level">
               <SelectValue placeholder="Filter by access level" />
             </SelectTrigger>
             <SelectContent>
@@ -638,8 +639,8 @@ export default function ContactsPage() {
                 return (
                   <SelectItem key={level} value={level}>
                     <div className="flex items-center gap-2">
-                      <LevelIcon className={`h-4 w-4 ${levelConfig.color}`} />
-                      <span>{levelConfig.label} ({count})</span>
+                      <LevelIcon className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${levelConfig.color}`} />
+                      <span className="text-xs sm:text-sm">{levelConfig.label} ({count})</span>
                     </div>
                   </SelectItem>
                 );
@@ -649,18 +650,18 @@ export default function ContactsPage() {
         </div>
 
         <ScrollArea className="flex-1">
-          <div className="p-4 space-y-3">
+          <div className="p-2.5 sm:p-4 space-y-2 sm:space-y-3">
             {isLoading ? (
               Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-24 rounded-lg" />
+                <Skeleton key={i} className="h-20 sm:h-24 rounded-lg" />
               ))
             ) : filteredContacts.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="h-12 w-12 mx-auto text-muted-foreground opacity-50 mb-4" />
-                <p className="text-muted-foreground">
+              <div className="text-center py-8 sm:py-12">
+                <Users className="h-10 w-10 sm:h-12 sm:w-12 mx-auto text-muted-foreground opacity-50 mb-3 sm:mb-4" />
+                <p className="text-sm sm:text-base text-muted-foreground">
                   {filterLevel === "all" ? "No contacts yet" : `No ${filterLevel} contacts`}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
                   Contacts are automatically created when someone texts ZEKE
                 </p>
               </div>
@@ -679,7 +680,7 @@ export default function ContactsPage() {
       </div>
       
       {selectedContact && (
-        <div className="flex-1 md:max-w-md lg:max-w-lg border-l border-border">
+        <div className="flex-1 w-full md:max-w-md lg:max-w-lg border-l border-border">
           <ContactDetailPanel
             contact={selectedContact}
             onClose={() => setSelectedContactId(null)}

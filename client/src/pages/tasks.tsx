@@ -112,7 +112,7 @@ function TaskItemRow({
   
   return (
     <div 
-      className={`group flex items-center gap-3 px-3 md:px-4 py-3 rounded-lg border border-border hover-elevate transition-all cursor-pointer ${
+      className={`group flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-3 rounded-lg border border-border hover-elevate transition-all cursor-pointer ${
         task.completed ? "opacity-60" : ""
       } ${isOverdue ? "border-red-500/50" : ""}`}
       data-testid={`task-item-${task.id}`}
@@ -130,52 +130,52 @@ function TaskItemRow({
         <Checkbox
           checked={task.completed}
           onCheckedChange={onToggle}
-          className="h-5 w-5"
+          className="h-4 w-4 sm:h-5 sm:w-5"
           data-testid={`checkbox-task-${task.id}`}
         />
       </div>
       
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
           <span 
-            className={`text-sm font-medium ${task.completed ? "line-through text-muted-foreground" : ""}`}
+            className={`text-xs sm:text-sm font-medium ${task.completed ? "line-through text-muted-foreground" : ""}`}
             data-testid={`text-task-title-${task.id}`}
           >
             {task.title}
           </span>
           <Badge 
             variant="outline" 
-            className={`text-xs ${getPriorityColor(task.priority)}`}
+            className={`text-[10px] sm:text-xs ${getPriorityColor(task.priority)}`}
           >
             {task.priority}
           </Badge>
-          <Badge variant="secondary" className="text-xs gap-1">
+          <Badge variant="secondary" className="text-[10px] sm:text-xs gap-0.5 sm:gap-1">
             {getCategoryIcon(task.category)}
-            {task.category}
+            <span className="hidden xs:inline">{task.category}</span>
           </Badge>
         </div>
         {task.description && (
-          <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{task.description}</p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 line-clamp-1">{task.description}</p>
         )}
         {task.dueDate && (
-          <div className={`flex items-center gap-1 mt-1 text-xs ${
+          <div className={`flex items-center gap-1 mt-0.5 sm:mt-1 text-[10px] sm:text-xs ${
             isOverdue ? "text-red-500" : isDueToday ? "text-yellow-500" : "text-muted-foreground"
           }`}>
-            {isOverdue && <AlertCircle className="h-3 w-3" />}
-            <Calendar className="h-3 w-3" />
+            {isOverdue && <AlertCircle className="h-2.5 w-2.5 sm:h-3 sm:w-3" />}
+            <Calendar className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
             <span>
-              {isOverdue ? "Overdue: " : isDueToday ? "Due today: " : "Due: "}
-              {format(parseISO(task.dueDate), "MMM d, yyyy")}
+              {isOverdue ? "Late: " : isDueToday ? "Today: " : ""}
+              {format(parseISO(task.dueDate), "MMM d")}
             </span>
           </div>
         )}
       </div>
       
-      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-0.5 sm:gap-1" onClick={(e) => e.stopPropagation()}>
         <Button
           size="icon"
           variant="ghost"
-          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
           onClick={onEdit}
           data-testid={`button-edit-task-${task.id}`}
         >
@@ -184,7 +184,7 @@ function TaskItemRow({
         <Button
           size="icon"
           variant="ghost"
-          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
           onClick={onDelete}
           disabled={isDeleting}
           data-testid={`button-delete-task-${task.id}`}
@@ -553,10 +553,10 @@ export default function TasksPage() {
 
   return (
     <div className="flex flex-col h-screen h-[100dvh] bg-background" data-testid="tasks-page">
-      <header className="h-14 md:h-16 border-b border-border flex items-center justify-between gap-3 px-3 md:px-6 shrink-0">
-        <div className="flex items-center gap-2">
-          <ListTodo className="h-5 w-5 text-primary" />
-          <h1 className="text-lg md:text-xl font-semibold" data-testid="text-page-title">Tasks</h1>
+      <header className="h-11 sm:h-14 border-b border-border flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 md:px-6 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <ListTodo className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+          <h1 className="text-base sm:text-lg md:text-xl font-semibold" data-testid="text-page-title">Tasks</h1>
         </div>
         
         {completedTasks.length > 0 && (
@@ -565,19 +565,19 @@ export default function TasksPage() {
             size="sm"
             onClick={() => clearCompletedMutation.mutate()}
             disabled={clearCompletedMutation.isPending}
-            className="gap-1.5"
+            className="gap-1 sm:gap-1.5 text-xs sm:text-sm"
             data-testid="button-clear-completed"
           >
-            <Check className="h-4 w-4" />
-            Clear {completedTasks.length}
+            <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            <span className="hidden xs:inline">Clear</span> {completedTasks.length}
           </Button>
         )}
       </header>
 
       <div className="flex-1 overflow-hidden flex flex-col max-w-2xl mx-auto w-full">
-        <div className="p-3 md:p-4 border-b border-border shrink-0">
+        <div className="p-2 sm:p-3 md:p-4 border-b border-border shrink-0">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2 sm:space-y-3">
               <FormField
                 control={form.control}
                 name="title"
@@ -671,40 +671,40 @@ export default function TasksPage() {
           </Form>
         </div>
 
-        <div className="p-3 md:p-4 border-b border-border shrink-0">
-          <div className="flex gap-2 flex-wrap">
+        <div className="p-2 sm:p-3 md:p-4 border-b border-border shrink-0">
+          <div className="flex gap-1.5 sm:gap-2 flex-wrap">
             {(["all", "work", "personal", "family", "overdue", "today"] as FilterType[]).map((f) => (
               <Button
                 key={f}
                 size="sm"
                 variant={filter === f ? "default" : "outline"}
                 onClick={() => setFilter(f)}
-                className="capitalize h-8"
+                className="capitalize h-7 sm:h-8 text-xs sm:text-sm px-2 sm:px-3"
                 data-testid={`filter-${f}`}
               >
-                {f === "all" ? "All" : f === "overdue" ? "Overdue" : f === "today" ? "Due Today" : f}
+                {f === "all" ? "All" : f === "overdue" ? "Overdue" : f === "today" ? "Today" : f}
               </Button>
             ))}
           </div>
         </div>
 
         <ScrollArea className="flex-1">
-          <div className="p-3 md:p-4 space-y-4">
+          <div className="p-2 sm:p-3 md:p-4 space-y-3 sm:space-y-4">
             {isLoading ? (
               <TaskListSkeleton />
             ) : totalTasks === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                  <ListTodo className="h-7 w-7 text-primary" />
+              <div className="flex flex-col items-center justify-center py-12 sm:py-16 text-center">
+                <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-full bg-primary/10 flex items-center justify-center mb-3 sm:mb-4">
+                  <ListTodo className="h-6 w-6 sm:h-7 sm:w-7 text-primary" />
                 </div>
-                <h2 className="text-lg font-medium mb-1" data-testid="text-empty-state">No tasks</h2>
-                <p className="text-sm text-muted-foreground">Add tasks above or ask ZEKE to help you manage them</p>
+                <h2 className="text-base sm:text-lg font-medium mb-1" data-testid="text-empty-state">No tasks</h2>
+                <p className="text-xs sm:text-sm text-muted-foreground px-4">Add tasks above or ask ZEKE to help you manage them</p>
               </div>
             ) : (
               <>
                 {pendingTasks.length > 0 && (
-                  <div className="space-y-2">
-                    <h2 className="text-sm font-medium text-muted-foreground px-1">
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <h2 className="text-xs sm:text-sm font-medium text-muted-foreground px-1">
                       To Do ({pendingTasks.length})
                     </h2>
                     {pendingTasks.map((task) => (
@@ -722,11 +722,11 @@ export default function TasksPage() {
                 
                 {completedTasks.length > 0 && (
                   <Collapsible open={showCompleted} onOpenChange={setShowCompleted}>
-                    <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-muted-foreground px-1 hover:text-foreground transition-colors w-full">
-                      <ChevronDown className={`h-4 w-4 transition-transform ${showCompleted ? "" : "-rotate-90"}`} />
+                    <CollapsibleTrigger className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium text-muted-foreground px-1 hover:text-foreground transition-colors w-full">
+                      <ChevronDown className={`h-3.5 w-3.5 sm:h-4 sm:w-4 transition-transform ${showCompleted ? "" : "-rotate-90"}`} />
                       Completed ({completedTasks.length})
                     </CollapsibleTrigger>
-                    <CollapsibleContent className="space-y-2 mt-2">
+                    <CollapsibleContent className="space-y-1.5 sm:space-y-2 mt-1.5 sm:mt-2">
                       {completedTasks.map((task) => (
                         <TaskItemRow
                           key={task.id}
@@ -745,8 +745,8 @@ export default function TasksPage() {
           </div>
         </ScrollArea>
 
-        <div className="p-3 md:p-4 border-t border-border text-center shrink-0">
-          <p className="text-xs text-muted-foreground">
+        <div className="p-2 sm:p-3 md:p-4 border-t border-border text-center shrink-0">
+          <p className="text-[10px] sm:text-xs text-muted-foreground">
             Ask ZEKE to add, complete, or manage your tasks
           </p>
         </div>

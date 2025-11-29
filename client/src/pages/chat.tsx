@@ -36,17 +36,17 @@ import { format, isToday, isTomorrow, isPast, parseISO } from "date-fns";
 
 function TypingIndicator() {
   return (
-    <div className="flex items-start gap-3 px-4 py-3" data-testid="typing-indicator">
-      <Avatar className="h-8 w-8 shrink-0">
-        <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
+    <div className="flex items-start gap-2 sm:gap-3 px-2 sm:px-4 py-2 sm:py-3" data-testid="typing-indicator">
+      <Avatar className="h-7 w-7 sm:h-8 sm:w-8 shrink-0">
+        <AvatarFallback className="bg-primary text-primary-foreground text-xs sm:text-sm font-semibold">
           Z
         </AvatarFallback>
       </Avatar>
-      <div className="bg-accent rounded-lg px-4 py-3">
+      <div className="bg-accent rounded-lg px-3 py-2 sm:px-4 sm:py-3">
         <div className="flex gap-1">
-          <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-          <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-          <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+          <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+          <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+          <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
         </div>
       </div>
     </div>
@@ -59,12 +59,12 @@ function MessageBubble({ message }: { message: Message }) {
   
   return (
     <div 
-      className={`flex items-start gap-3 px-4 py-2 ${isUser ? "flex-row-reverse" : ""}`}
+      className={`flex items-start gap-2 sm:gap-3 px-2 sm:px-4 py-1.5 sm:py-2 ${isUser ? "flex-row-reverse" : ""}`}
       data-testid={`message-${message.id}`}
     >
-      <Avatar className="h-8 w-8 shrink-0">
+      <Avatar className="h-7 w-7 sm:h-8 sm:w-8 shrink-0">
         <AvatarFallback 
-          className={`text-sm font-semibold ${
+          className={`text-xs sm:text-sm font-semibold ${
             isUser 
               ? "bg-accent text-accent-foreground" 
               : "bg-primary text-primary-foreground"
@@ -74,9 +74,9 @@ function MessageBubble({ message }: { message: Message }) {
         </AvatarFallback>
       </Avatar>
       
-      <div className={`flex flex-col max-w-[70%] ${isUser ? "items-end" : "items-start"}`}>
+      <div className={`flex flex-col max-w-[80%] sm:max-w-[75%] md:max-w-[70%] ${isUser ? "items-end" : "items-start"}`}>
         <div 
-          className={`rounded-lg px-4 py-3 relative ${
+          className={`rounded-lg px-3 py-2 sm:px-4 sm:py-3 relative ${
             isUser 
               ? "bg-primary text-primary-foreground" 
               : "bg-accent text-accent-foreground"
@@ -84,16 +84,16 @@ function MessageBubble({ message }: { message: Message }) {
         >
           {isSms && (
             <div 
-              className={`absolute -top-1 ${isUser ? "-left-1" : "-right-1"} flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground text-[10px]`}
+              className={`absolute -top-1 ${isUser ? "-left-1" : "-right-1"} flex items-center gap-0.5 sm:gap-1 px-1 sm:px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground text-[9px] sm:text-[10px]`}
               data-testid={`sms-badge-${message.id}`}
             >
-              <Smartphone className="h-2.5 w-2.5" />
+              <Smartphone className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
               <span>SMS</span>
             </div>
           )}
-          <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
+          <p className="text-xs sm:text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
         </div>
-        <span className="text-[11px] text-muted-foreground mt-1 px-1">
+        <span className="text-[10px] sm:text-[11px] text-muted-foreground mt-0.5 sm:mt-1 px-1">
           {format(new Date(message.createdAt), "h:mm a")}
         </span>
       </div>
@@ -245,15 +245,15 @@ function EmptyState({ onSendMessage }: { onSendMessage: (message: string) => voi
 
   return (
     <ScrollArea className="h-full">
-      <div className="flex flex-col items-center py-10 px-4 max-w-2xl mx-auto gap-8" data-testid="empty-state">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
-            <span className="text-3xl font-bold text-primary">Z</span>
+      <div className="flex flex-col items-center py-6 sm:py-8 md:py-10 px-3 sm:px-4 max-w-2xl mx-auto gap-5 sm:gap-6 md:gap-8" data-testid="empty-state">
+        <div className="flex flex-col items-center gap-1.5 sm:gap-2 text-center">
+          <div className="h-12 w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 rounded-full bg-primary/10 flex items-center justify-center">
+            <span className="text-2xl sm:text-2xl md:text-3xl font-bold text-primary">Z</span>
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight mt-2" data-testid="empty-state-title">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-semibold tracking-tight mt-1.5 sm:mt-2" data-testid="empty-state-title">
             {getTimeGreeting()}
           </h1>
-          <p className="text-muted-foreground" data-testid="empty-state-subtitle">
+          <p className="text-sm sm:text-base text-muted-foreground" data-testid="empty-state-subtitle">
             {personalizedSubtitle}
           </p>
         </div>
@@ -500,39 +500,39 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-full" data-testid="chat-page">
-      <aside className="hidden md:flex w-[260px] border-r flex-col bg-sidebar">
-        <div className="p-3 border-b">
+      <aside className="hidden md:flex w-[240px] lg:w-[260px] border-r flex-col bg-sidebar">
+        <div className="p-2 sm:p-3 border-b">
           <Button onClick={handleNewChat} className="w-full gap-2" data-testid="button-new-chat">
             <Plus className="h-4 w-4" />
             New Chat
           </Button>
         </div>
 
-        <div className="p-3 space-y-1">
+        <div className="p-2 sm:p-3 space-y-1">
           <Button 
             variant="ghost" 
-            className="w-full justify-start gap-3 h-10"
+            className="w-full justify-start gap-2 sm:gap-3 h-9 sm:h-10"
             onClick={() => gettingToKnowMutation.mutate()}
             disabled={gettingToKnowMutation.isPending}
             data-testid="button-getting-to-know"
           >
             <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm">Getting To Know You</span>
+            <span className="text-xs sm:text-sm">Getting To Know You</span>
           </Button>
         </div>
 
         <div className="flex-1 overflow-hidden">
-          <Collapsible open={historyOpen} onOpenChange={setHistoryOpen} className="px-3">
+          <Collapsible open={historyOpen} onOpenChange={setHistoryOpen} className="px-2 sm:px-3">
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" className="w-full justify-between h-9 text-muted-foreground mb-1" data-testid="button-toggle-history">
+              <Button variant="ghost" className="w-full justify-between h-8 sm:h-9 text-muted-foreground mb-1" data-testid="button-toggle-history">
                 <div className="flex items-center gap-2">
-                  <History className="h-4 w-4" />
+                  <History className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   <span className="text-xs">History</span>
                   {conversations && conversations.length > 0 && (
                     <Badge variant="secondary" className="text-[10px]">{conversations.length}</Badge>
                   )}
                 </div>
-                <ChevronDown className={`h-4 w-4 transition-transform ${historyOpen ? "rotate-180" : ""}`} />
+                <ChevronDown className={`h-3.5 w-3.5 sm:h-4 sm:w-4 transition-transform ${historyOpen ? "rotate-180" : ""}`} />
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent>
@@ -563,20 +563,20 @@ export default function ChatPage() {
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0">
-        <header className="h-12 border-b flex items-center justify-between px-4 shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <h1 className="text-lg font-semibold truncate">
+        <header className="h-11 sm:h-12 border-b flex items-center justify-between px-3 sm:px-4 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <h1 className="text-base sm:text-lg font-semibold truncate">
               {messagesData?.conversation?.title || "Chat with ZEKE"}
             </h1>
             {messagesData?.conversation?.mode === "getting_to_know" && (
-              <Badge variant="secondary" className="gap-1" data-testid="badge-getting-to-know">
-                <Sparkles className="h-3 w-3" />
+              <Badge variant="secondary" className="gap-1 text-[10px] sm:text-xs" data-testid="badge-getting-to-know">
+                <Sparkles className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                 Learning
               </Badge>
             )}
           </div>
-          <div className="md:hidden flex items-center gap-2">
-            <Button size="sm" variant="ghost" onClick={handleNewChat} data-testid="button-new-chat-mobile">
+          <div className="md:hidden flex items-center gap-1.5 sm:gap-2">
+            <Button size="icon" variant="ghost" onClick={handleNewChat} className="h-8 w-8 sm:h-9 sm:w-9" data-testid="button-new-chat-mobile">
               <Plus className="h-4 w-4" />
             </Button>
           </div>
@@ -589,7 +589,7 @@ export default function ChatPage() {
             }} />
           ) : (
             <ScrollArea className="h-full">
-              <div className="py-4">
+              <div className="py-3 sm:py-4">
                 {messagesLoading ? (
                   <ChatSkeleton />
                 ) : (
@@ -606,8 +606,8 @@ export default function ChatPage() {
           )}
         </div>
 
-        <div className="p-4 border-t bg-background/80 backdrop-blur shrink-0">
-          <div className="flex items-end gap-3 max-w-4xl mx-auto">
+        <div className="p-2 sm:p-3 md:p-4 border-t bg-background/80 backdrop-blur shrink-0">
+          <div className="flex items-end gap-2 sm:gap-3 max-w-4xl mx-auto">
             <div className="flex-1 relative">
               <Textarea
                 ref={textareaRef}
@@ -615,7 +615,7 @@ export default function ChatPage() {
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Message ZEKE..."
-                className="min-h-[48px] max-h-[150px] resize-none text-base py-3 px-4"
+                className="min-h-[44px] sm:min-h-[48px] max-h-[120px] sm:max-h-[150px] resize-none text-sm sm:text-base py-2.5 sm:py-3 px-3 sm:px-4"
                 rows={1}
                 disabled={sendMessageMutation.isPending}
                 data-testid="input-message"
@@ -625,13 +625,13 @@ export default function ChatPage() {
               size="icon"
               onClick={handleSend}
               disabled={!inputValue.trim() || sendMessageMutation.isPending}
-              className="h-12 w-12 rounded-full shrink-0"
+              className="h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 rounded-full shrink-0"
               data-testid="button-send"
             >
-              <Send className="h-5 w-5" />
+              <Send className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground text-center mt-2 hidden md:block">
+          <p className="text-[10px] sm:text-[11px] text-muted-foreground text-center mt-1.5 sm:mt-2 hidden md:block">
             ZEKE can make mistakes. Consider checking important info.
           </p>
         </div>

@@ -88,17 +88,17 @@ function StatCard({
   return (
     <Link href={href}>
       <Card className={`hover-elevate cursor-pointer transition-all ${variantClasses[variant]}`} data-testid={`stat-card-${title.toLowerCase().replace(/\s+/g, "-")}`}>
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between gap-4">
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex items-center justify-between gap-2 sm:gap-4">
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-muted-foreground">{title}</p>
-              <p className="text-2xl font-semibold mt-1" data-testid={`stat-value-${title.toLowerCase().replace(/\s+/g, "-")}`}>{value}</p>
+              <p className="text-xs sm:text-sm text-muted-foreground truncate">{title}</p>
+              <p className="text-xl sm:text-2xl font-semibold mt-0.5 sm:mt-1" data-testid={`stat-value-${title.toLowerCase().replace(/\s+/g, "-")}`}>{value}</p>
               {subtitle && (
-                <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">{subtitle}</p>
               )}
             </div>
-            <div className="p-3 rounded-lg bg-primary/10">
-              <Icon className="h-5 w-5 text-primary" />
+            <div className="p-2 sm:p-3 rounded-lg bg-primary/10 shrink-0">
+              <Icon className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
             </div>
           </div>
         </CardContent>
@@ -125,29 +125,29 @@ function FeatureCard({
   return (
     <Link href={href}>
       <Card className="hover-elevate cursor-pointer h-full" data-testid={`feature-card-${title.toLowerCase().replace(/\s+/g, "-")}`}>
-        <CardContent className="p-4 h-full flex flex-col">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-accent">
-              <Icon className="h-5 w-5 text-accent-foreground" />
+        <CardContent className="p-3 sm:p-4 h-full flex flex-col">
+          <div className="flex items-start gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 rounded-lg bg-accent shrink-0">
+              <Icon className="h-4 w-4 sm:h-5 sm:w-5 text-accent-foreground" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-medium text-sm">{title}</h3>
+              <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+                <h3 className="font-medium text-xs sm:text-sm">{title}</h3>
                 {badge && (
-                  <Badge variant={badge.variant || "secondary"} className="text-[10px]">
+                  <Badge variant={badge.variant || "secondary"} className="text-[9px] sm:text-[10px]">
                     {badge.text}
                   </Badge>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 line-clamp-2">
                 {description}
               </p>
             </div>
           </div>
           {action && (
-            <div className="flex items-center gap-1 text-xs text-primary mt-3 pt-3 border-t">
+            <div className="flex items-center gap-1 text-[10px] sm:text-xs text-primary mt-2 sm:mt-3 pt-2 sm:pt-3 border-t">
               <span>{action}</span>
-              <ArrowRight className="h-3 w-3" />
+              <ArrowRight className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
             </div>
           )}
         </CardContent>
@@ -360,24 +360,24 @@ export default function DashboardPage() {
 
   return (
     <div className="h-full overflow-auto">
-      <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
+      <div className="max-w-6xl mx-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold" data-testid="text-greeting">
+          <h1 className="text-xl sm:text-2xl font-semibold" data-testid="text-greeting">
             {getTimeGreeting()}, Nate
           </h1>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-xs sm:text-sm">
             Here's what's happening with ZEKE today
           </p>
         </div>
 
         {isLoading ? (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
             {[...Array(5)].map((_, i) => (
-              <Skeleton key={i} className="h-[100px]" />
+              <Skeleton key={i} className="h-[90px] sm:h-[100px]" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
             <StatCard
               title="Today's Events"
               value={todayEvents?.length || 0}
@@ -417,18 +417,18 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-              <CardTitle className="text-base font-medium">Today's Schedule</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-sm sm:text-base font-medium">Today's Schedule</CardTitle>
               <Link href="/calendar">
-                <Button size="sm" variant="ghost" data-testid="button-view-all-calendar">
+                <Button size="sm" variant="ghost" className="h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm" data-testid="button-view-all-calendar">
                   View all
-                  <ArrowRight className="h-3 w-3 ml-1" />
+                  <ArrowRight className="h-2.5 w-2.5 sm:h-3 sm:w-3 ml-1" />
                 </Button>
               </Link>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
               {calendarLoading ? (
                 <div className="space-y-2">
                   {[...Array(3)].map((_, i) => (
@@ -442,16 +442,16 @@ export default function DashboardPage() {
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-              <CardTitle className="text-base font-medium">Tasks</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-sm sm:text-base font-medium">Tasks</CardTitle>
               <Link href="/tasks">
-                <Button size="sm" variant="ghost" data-testid="button-view-all-tasks">
+                <Button size="sm" variant="ghost" className="h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm" data-testid="button-view-all-tasks">
                   View all
-                  <ArrowRight className="h-3 w-3 ml-1" />
+                  <ArrowRight className="h-2.5 w-2.5 sm:h-3 sm:w-3 ml-1" />
                 </Button>
               </Link>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
               {tasksLoading ? (
                 <div className="space-y-2">
                   {[...Array(3)].map((_, i) => (
@@ -464,17 +464,17 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-              <CardTitle className="text-base font-medium">Grocery List</CardTitle>
+          <Card className="sm:col-span-2 lg:col-span-1">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-sm sm:text-base font-medium">Grocery List</CardTitle>
               <Link href="/grocery">
-                <Button size="sm" variant="ghost" data-testid="button-view-all-grocery">
+                <Button size="sm" variant="ghost" className="h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm" data-testid="button-view-all-grocery">
                   View all
-                  <ArrowRight className="h-3 w-3 ml-1" />
+                  <ArrowRight className="h-2.5 w-2.5 sm:h-3 sm:w-3 ml-1" />
                 </Button>
               </Link>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
               {groceryLoading ? (
                 <div className="space-y-2">
                   {[...Array(3)].map((_, i) => (
@@ -489,8 +489,8 @@ export default function DashboardPage() {
         </div>
 
         <div>
-          <h2 className="text-lg font-medium mb-4">Quick Access</h2>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <h2 className="text-base sm:text-lg font-medium mb-3 sm:mb-4">Quick Access</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
             <FeatureCard
               title="Chat with ZEKE"
               description="Ask questions, get help, or just chat"
@@ -529,7 +529,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
           <FeatureCard
             title="SMS Log"
             description="View all SMS activity and conversations"

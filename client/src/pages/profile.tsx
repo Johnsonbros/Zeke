@@ -91,29 +91,31 @@ function ArrayInput({
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-2">
+      <div className="flex gap-1.5 sm:gap-2">
         <Input
           value={newItem}
           onChange={(e) => setNewItem(e.target.value)}
           placeholder={placeholder}
           onKeyPress={(e) => e.key === "Enter" && addItem()}
+          className="text-sm"
           data-testid={`input-${testIdPrefix}-new`}
         />
         <Button
           size="icon"
           variant="outline"
+          className="h-9 w-9 sm:h-10 sm:w-10 shrink-0"
           onClick={addItem}
           data-testid={`button-add-${testIdPrefix}`}
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
         </Button>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5 sm:gap-2">
         {items.map((item, index) => (
           <Badge
             key={index}
             variant="secondary"
-            className="gap-1 pr-1"
+            className="gap-0.5 sm:gap-1 pr-0.5 sm:pr-1 text-xs sm:text-sm"
           >
             <span data-testid={`text-${testIdPrefix}-${index}`}>{item}</span>
             <Button
@@ -123,7 +125,7 @@ function ArrayInput({
               onClick={() => removeItem(index)}
               data-testid={`button-remove-${testIdPrefix}-${index}`}
             >
-              <X className="h-3 w-3" />
+              <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
             </Button>
           </Badge>
         ))}
@@ -152,80 +154,88 @@ function BasicInfoSection({
   };
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Full Name</label>
+    <div className="space-y-3 sm:space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+        <div className="space-y-1.5 sm:space-y-2">
+          <label className="text-xs sm:text-sm font-medium">Full Name</label>
           <Input
             value={formData.fullName || ""}
             onChange={(e) => handleChange("fullName", e.target.value)}
             placeholder="Your full name"
+            className="text-sm"
             data-testid="input-fullName"
           />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Nickname</label>
+        <div className="space-y-1.5 sm:space-y-2">
+          <label className="text-xs sm:text-sm font-medium">Nickname</label>
           <Input
             value={formData.nickname || ""}
             onChange={(e) => handleChange("nickname", e.target.value)}
             placeholder="What should ZEKE call you?"
+            className="text-sm"
             data-testid="input-nickname"
           />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Email</label>
+        <div className="space-y-1.5 sm:space-y-2">
+          <label className="text-xs sm:text-sm font-medium">Email</label>
           <Input
             type="email"
             value={formData.email || ""}
             onChange={(e) => handleChange("email", e.target.value)}
             placeholder="your@email.com"
+            className="text-sm"
             data-testid="input-email"
           />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Phone</label>
+        <div className="space-y-1.5 sm:space-y-2">
+          <label className="text-xs sm:text-sm font-medium">Phone</label>
           <Input
             value={formData.phone || ""}
             onChange={(e) => handleChange("phone", e.target.value)}
             placeholder="(555) 555-5555"
+            className="text-sm"
             data-testid="input-phone"
           />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Location</label>
+        <div className="space-y-1.5 sm:space-y-2">
+          <label className="text-xs sm:text-sm font-medium">Location</label>
           <Input
             value={formData.location || ""}
             onChange={(e) => handleChange("location", e.target.value)}
             placeholder="City, State"
+            className="text-sm"
             data-testid="input-location"
           />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Birthday</label>
+        <div className="space-y-1.5 sm:space-y-2">
+          <label className="text-xs sm:text-sm font-medium">Birthday</label>
           <Input
             type="date"
             value={formData.birthday || ""}
             onChange={(e) => handleChange("birthday", e.target.value)}
+            className="text-sm"
             data-testid="input-birthday"
           />
         </div>
       </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Bio</label>
+      <div className="space-y-1.5 sm:space-y-2">
+        <label className="text-xs sm:text-sm font-medium">Bio</label>
         <Textarea
           value={formData.bio || ""}
           onChange={(e) => handleChange("bio", e.target.value)}
           placeholder="Tell ZEKE about yourself..."
           rows={3}
+          className="text-sm"
           data-testid="input-bio"
         />
       </div>
       <Button
         onClick={() => onSave(formData)}
         disabled={isSaving}
+        className="w-full sm:w-auto"
         data-testid="button-save-basic_info"
       >
-        <Save className="h-4 w-4 mr-2" />
+        <Save className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
         {isSaving ? "Saving..." : "Save Basic Info"}
       </Button>
     </div>
@@ -252,81 +262,89 @@ function WorkSection({
   };
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Company</label>
+    <div className="space-y-3 sm:space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+        <div className="space-y-1.5 sm:space-y-2">
+          <label className="text-xs sm:text-sm font-medium">Company</label>
           <Input
             value={formData.company || ""}
             onChange={(e) => handleChange("company", e.target.value)}
             placeholder="Where do you work?"
+            className="text-sm"
             data-testid="input-company"
           />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Role</label>
+        <div className="space-y-1.5 sm:space-y-2">
+          <label className="text-xs sm:text-sm font-medium">Role</label>
           <Input
             value={formData.role || ""}
             onChange={(e) => handleChange("role", e.target.value)}
             placeholder="Your job title"
+            className="text-sm"
             data-testid="input-role"
           />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Industry</label>
+        <div className="space-y-1.5 sm:space-y-2">
+          <label className="text-xs sm:text-sm font-medium">Industry</label>
           <Input
             value={formData.industry || ""}
             onChange={(e) => handleChange("industry", e.target.value)}
             placeholder="e.g., Technology, Healthcare"
+            className="text-sm"
             data-testid="input-industry"
           />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Work Schedule</label>
+        <div className="space-y-1.5 sm:space-y-2">
+          <label className="text-xs sm:text-sm font-medium">Work Schedule</label>
           <Input
             value={formData.workSchedule || ""}
             onChange={(e) => handleChange("workSchedule", e.target.value)}
             placeholder="e.g., 9-5 M-F, Flexible"
+            className="text-sm"
             data-testid="input-workSchedule"
           />
         </div>
       </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Work Style</label>
+      <div className="space-y-1.5 sm:space-y-2">
+        <label className="text-xs sm:text-sm font-medium">Work Style</label>
         <Textarea
           value={formData.workStyle || ""}
           onChange={(e) => handleChange("workStyle", e.target.value)}
           placeholder="How do you like to work? Remote, hybrid, in-office?"
           rows={2}
+          className="text-sm"
           data-testid="input-workStyle"
         />
       </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Career Goals</label>
+      <div className="space-y-1.5 sm:space-y-2">
+        <label className="text-xs sm:text-sm font-medium">Career Goals</label>
         <Textarea
           value={formData.careerGoals || ""}
           onChange={(e) => handleChange("careerGoals", e.target.value)}
           placeholder="What are your professional aspirations?"
           rows={2}
+          className="text-sm"
           data-testid="input-careerGoals"
         />
       </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Notes</label>
+      <div className="space-y-1.5 sm:space-y-2">
+        <label className="text-xs sm:text-sm font-medium">Notes</label>
         <Textarea
           value={formData.notes || ""}
           onChange={(e) => handleChange("notes", e.target.value)}
           placeholder="Any other work-related notes..."
           rows={2}
+          className="text-sm"
           data-testid="input-work-notes"
         />
       </div>
       <Button
         onClick={() => onSave(formData)}
         disabled={isSaving}
+        className="w-full sm:w-auto"
         data-testid="button-save-work"
       >
-        <Save className="h-4 w-4 mr-2" />
+        <Save className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
         {isSaving ? "Saving..." : "Save Work Info"}
       </Button>
     </div>
@@ -1194,17 +1212,17 @@ export default function ProfilePage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background" data-testid="profile-page">
-        <header className="sticky top-0 z-10 h-14 border-b border-border bg-background/80 backdrop-blur flex items-center gap-3 px-4">
-          <div className="flex items-center gap-2">
-            <User className="h-5 w-5 text-primary" />
-            <h1 className="text-lg font-semibold">My Profile</h1>
+      <div className="h-full bg-background" data-testid="profile-page">
+        <header className="sticky top-0 z-10 h-11 sm:h-14 border-b border-border bg-background/80 backdrop-blur flex items-center gap-2 sm:gap-3 px-3 sm:px-4">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <User className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+            <h1 className="text-base sm:text-lg font-semibold">My Profile</h1>
           </div>
         </header>
-        <main className="max-w-3xl mx-auto p-4 pb-8">
-          <div className="space-y-4">
+        <main className="max-w-3xl mx-auto p-3 sm:p-4 pb-6 sm:pb-8">
+          <div className="space-y-3 sm:space-y-4">
             {[1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="h-16 w-full" />
+              <Skeleton key={i} className="h-14 sm:h-16 w-full" />
             ))}
           </div>
         </main>
@@ -1213,36 +1231,37 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-background" data-testid="profile-page">
-      <header className="sticky top-0 z-10 h-14 border-b border-border bg-background/80 backdrop-blur flex items-center gap-3 px-4">
-        <div className="flex items-center gap-2">
-          <User className="h-5 w-5 text-primary" />
-          <h1 className="text-lg font-semibold">My Profile</h1>
-        </div>
-      </header>
+    <ScrollArea className="h-full">
+      <div className="bg-background" data-testid="profile-page">
+        <header className="sticky top-0 z-10 h-11 sm:h-14 border-b border-border bg-background/80 backdrop-blur flex items-center gap-2 sm:gap-3 px-3 sm:px-4">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <User className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+            <h1 className="text-base sm:text-lg font-semibold">My Profile</h1>
+          </div>
+        </header>
 
-      <main className="max-w-3xl mx-auto p-4 pb-8">
-        <div className="mb-6">
-          <p className="text-muted-foreground text-sm">
-            Tell ZEKE about yourself so it can be a more effective personal assistant. The more context you provide, the better ZEKE can help you.
-          </p>
-        </div>
+        <main className="max-w-3xl mx-auto p-3 sm:p-4 pb-6 sm:pb-8">
+          <div className="mb-4 sm:mb-6">
+            <p className="text-muted-foreground text-xs sm:text-sm">
+              Tell ZEKE about yourself so it can be a more effective personal assistant. The more context you provide, the better ZEKE can help you.
+            </p>
+          </div>
 
-        <Accordion
-          type="single"
-          collapsible
-          className="space-y-4"
-          data-testid="tabs-profile-sections"
-        >
-          <AccordionItem value="basic_info" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg bg-blue-500/10`}>
-                  <User className="h-4 w-4 text-blue-500" />
+          <Accordion
+            type="single"
+            collapsible
+            className="space-y-2 sm:space-y-4"
+            data-testid="tabs-profile-sections"
+          >
+            <AccordionItem value="basic_info" className="border rounded-lg px-2 sm:px-4">
+              <AccordionTrigger className="hover:no-underline py-3 sm:py-4">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="p-1.5 sm:p-2 rounded-lg bg-blue-500/10">
+                    <User className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-500" />
+                  </div>
+                  <span className="font-medium text-sm sm:text-base">Basic Info</span>
                 </div>
-                <span className="font-medium">Basic Info</span>
-              </div>
-            </AccordionTrigger>
+              </AccordionTrigger>
             <AccordionContent>
               <BasicInfoSection
                 data={profile?.basicInfo || { fullName: "" }}
@@ -1252,13 +1271,13 @@ export default function ProfilePage() {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="work" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg bg-green-500/10`}>
-                  <Briefcase className="h-4 w-4 text-green-500" />
+          <AccordionItem value="work" className="border rounded-lg px-2 sm:px-4">
+            <AccordionTrigger className="hover:no-underline py-3 sm:py-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-green-500/10">
+                  <Briefcase className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500" />
                 </div>
-                <span className="font-medium">Work</span>
+                <span className="font-medium text-sm sm:text-base">Work</span>
               </div>
             </AccordionTrigger>
             <AccordionContent>
@@ -1270,13 +1289,13 @@ export default function ProfilePage() {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="family" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg bg-pink-500/10`}>
-                  <Users className="h-4 w-4 text-pink-500" />
+          <AccordionItem value="family" className="border rounded-lg px-2 sm:px-4">
+            <AccordionTrigger className="hover:no-underline py-3 sm:py-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-pink-500/10">
+                  <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-pink-500" />
                 </div>
-                <span className="font-medium">Family</span>
+                <span className="font-medium text-sm sm:text-base">Family</span>
               </div>
             </AccordionTrigger>
             <AccordionContent>
@@ -1288,13 +1307,13 @@ export default function ProfilePage() {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="interests" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg bg-red-500/10`}>
-                  <Heart className="h-4 w-4 text-red-500" />
+          <AccordionItem value="interests" className="border rounded-lg px-2 sm:px-4">
+            <AccordionTrigger className="hover:no-underline py-3 sm:py-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-red-500/10">
+                  <Heart className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-500" />
                 </div>
-                <span className="font-medium">Interests</span>
+                <span className="font-medium text-sm sm:text-base">Interests</span>
               </div>
             </AccordionTrigger>
             <AccordionContent>
@@ -1306,13 +1325,13 @@ export default function ProfilePage() {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="preferences" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg bg-purple-500/10`}>
-                  <Settings className="h-4 w-4 text-purple-500" />
+          <AccordionItem value="preferences" className="border rounded-lg px-2 sm:px-4">
+            <AccordionTrigger className="hover:no-underline py-3 sm:py-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-purple-500/10">
+                  <Settings className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-500" />
                 </div>
-                <span className="font-medium">Preferences</span>
+                <span className="font-medium text-sm sm:text-base">Preferences</span>
               </div>
             </AccordionTrigger>
             <AccordionContent>
@@ -1324,13 +1343,13 @@ export default function ProfilePage() {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="goals" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg bg-yellow-500/10`}>
-                  <Target className="h-4 w-4 text-yellow-500" />
+          <AccordionItem value="goals" className="border rounded-lg px-2 sm:px-4">
+            <AccordionTrigger className="hover:no-underline py-3 sm:py-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-yellow-500/10">
+                  <Target className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-yellow-500" />
                 </div>
-                <span className="font-medium">Goals</span>
+                <span className="font-medium text-sm sm:text-base">Goals</span>
               </div>
             </AccordionTrigger>
             <AccordionContent>
@@ -1342,13 +1361,13 @@ export default function ProfilePage() {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="health" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg bg-emerald-500/10`}>
-                  <Activity className="h-4 w-4 text-emerald-500" />
+          <AccordionItem value="health" className="border rounded-lg px-2 sm:px-4">
+            <AccordionTrigger className="hover:no-underline py-3 sm:py-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-emerald-500/10">
+                  <Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-500" />
                 </div>
-                <span className="font-medium">Health</span>
+                <span className="font-medium text-sm sm:text-base">Health</span>
               </div>
             </AccordionTrigger>
             <AccordionContent>
@@ -1360,13 +1379,13 @@ export default function ProfilePage() {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="routines" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg bg-orange-500/10`}>
-                  <Clock className="h-4 w-4 text-orange-500" />
+          <AccordionItem value="routines" className="border rounded-lg px-2 sm:px-4">
+            <AccordionTrigger className="hover:no-underline py-3 sm:py-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-orange-500/10">
+                  <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-orange-500" />
                 </div>
-                <span className="font-medium">Routines</span>
+                <span className="font-medium text-sm sm:text-base">Routines</span>
               </div>
             </AccordionTrigger>
             <AccordionContent>
@@ -1378,13 +1397,13 @@ export default function ProfilePage() {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="important_dates" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg bg-cyan-500/10`}>
-                  <Calendar className="h-4 w-4 text-cyan-500" />
+          <AccordionItem value="important_dates" className="border rounded-lg px-2 sm:px-4">
+            <AccordionTrigger className="hover:no-underline py-3 sm:py-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-cyan-500/10">
+                  <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-cyan-500" />
                 </div>
-                <span className="font-medium">Important Dates</span>
+                <span className="font-medium text-sm sm:text-base">Important Dates</span>
               </div>
             </AccordionTrigger>
             <AccordionContent>
@@ -1396,13 +1415,13 @@ export default function ProfilePage() {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="custom" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg bg-gray-500/10`}>
-                  <Settings className="h-4 w-4 text-gray-500" />
+          <AccordionItem value="custom" className="border rounded-lg px-2 sm:px-4">
+            <AccordionTrigger className="hover:no-underline py-3 sm:py-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-gray-500/10">
+                  <Settings className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-500" />
                 </div>
-                <span className="font-medium">Custom Fields</span>
+                <span className="font-medium text-sm sm:text-base">Custom Fields</span>
               </div>
             </AccordionTrigger>
             <AccordionContent>
@@ -1416,5 +1435,6 @@ export default function ProfilePage() {
         </Accordion>
       </main>
     </div>
+    </ScrollArea>
   );
 }

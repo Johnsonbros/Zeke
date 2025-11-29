@@ -68,7 +68,7 @@ function GroceryItemRow({
 }) {
   return (
     <div 
-      className={`group flex items-center gap-3 px-3 md:px-4 py-3 rounded-lg border border-border hover-elevate transition-all ${
+      className={`group flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-3 rounded-lg border border-border hover-elevate transition-all ${
         item.purchased ? "opacity-60" : ""
       }`}
       data-testid={`grocery-item-${item.id}`}
@@ -76,28 +76,28 @@ function GroceryItemRow({
       <Checkbox
         checked={item.purchased}
         onCheckedChange={onToggle}
-        className="h-5 w-5"
+        className="h-4 w-4 sm:h-5 sm:w-5"
         data-testid={`checkbox-item-${item.id}`}
       />
       
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
           <span 
-            className={`text-sm font-medium ${item.purchased ? "line-through text-muted-foreground" : ""}`}
+            className={`text-xs sm:text-sm font-medium ${item.purchased ? "line-through text-muted-foreground" : ""}`}
             data-testid={`text-item-name-${item.id}`}
           >
             {item.name}
           </span>
           {item.quantity && item.quantity !== "1" && (
-            <Badge variant="secondary" className="text-xs">
+            <Badge variant="secondary" className="text-[10px] sm:text-xs">
               x{item.quantity}
             </Badge>
           )}
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="text-[10px] sm:text-xs">
             {item.category}
           </Badge>
         </div>
-        <p className="text-xs text-muted-foreground mt-0.5">
+        <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
           Added by {item.addedBy}
         </p>
       </div>
@@ -105,7 +105,7 @@ function GroceryItemRow({
       <Button
         size="icon"
         variant="ghost"
-        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
         onClick={onDelete}
         disabled={isDeleting}
         data-testid={`button-delete-item-${item.id}`}
@@ -142,6 +142,11 @@ export default function GroceryPage() {
   const { data: items, isLoading } = useQuery<GroceryItem[]>({
     queryKey: ["/api/grocery"],
   });
+
+  const unpurchasedItems = items?.filter(item => !item.purchased) || [];
+  const purchasedItems = items?.filter(item => item.purchased) || [];
+  const totalItems = items?.length || 0;
+  const completedCount = purchasedItems.length;
 
   const addItemMutation = useMutation({
     mutationFn: async (data: GroceryFormValues) => {
@@ -226,17 +231,12 @@ export default function GroceryPage() {
     addItemMutation.mutate(data);
   };
 
-  const unpurchasedItems = items?.filter(item => !item.purchased) || [];
-  const purchasedItems = items?.filter(item => item.purchased) || [];
-  const totalItems = items?.length || 0;
-  const completedCount = purchasedItems.length;
-
   return (
     <div className="flex flex-col h-screen h-[100dvh] bg-background" data-testid="grocery-page">
-      <header className="h-14 md:h-16 border-b border-border flex items-center justify-between gap-3 px-3 md:px-6 shrink-0">
-        <div className="flex items-center gap-2">
-          <ShoppingCart className="h-5 w-5 text-primary" />
-          <h1 className="text-lg md:text-xl font-semibold" data-testid="text-page-title">Grocery List</h1>
+      <header className="h-11 sm:h-14 border-b border-border flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 md:px-6 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+          <h1 className="text-base sm:text-lg md:text-xl font-semibold" data-testid="text-page-title">Grocery List</h1>
         </div>
         
         {completedCount > 0 && (
@@ -245,20 +245,20 @@ export default function GroceryPage() {
             size="sm"
             onClick={() => clearPurchasedMutation.mutate()}
             disabled={clearPurchasedMutation.isPending}
-            className="gap-1.5"
+            className="gap-1 sm:gap-1.5 text-xs sm:text-sm"
             data-testid="button-clear-purchased"
           >
-            <Check className="h-4 w-4" />
-            Clear {completedCount}
+            <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            <span className="hidden xs:inline">Clear</span> {completedCount}
           </Button>
         )}
       </header>
 
       <div className="flex-1 overflow-hidden flex flex-col max-w-2xl mx-auto w-full">
-        <div className="p-3 md:p-4 border-b border-border shrink-0">
+        <div className="p-2 sm:p-3 md:p-4 border-b border-border shrink-0">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
-              <div className="flex gap-2">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2 sm:space-y-3">
+              <div className="flex gap-1.5 sm:gap-2">
                 <FormField
                   control={form.control}
                   name="name"
@@ -268,7 +268,7 @@ export default function GroceryPage() {
                         <Input
                           {...field}
                           placeholder="Add an item..."
-                          className="h-11"
+                          className="h-9 sm:h-11 text-sm sm:text-base"
                           disabled={addItemMutation.isPending}
                           data-testid="input-new-item"
                         />
@@ -285,7 +285,7 @@ export default function GroceryPage() {
                         <Input
                           {...field}
                           placeholder="Qty"
-                          className="w-16 h-11 text-center"
+                          className="w-12 sm:w-16 h-9 sm:h-11 text-center text-sm sm:text-base"
                           disabled={addItemMutation.isPending}
                           data-testid="input-quantity"
                         />
@@ -295,7 +295,7 @@ export default function GroceryPage() {
                 />
               </div>
               
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-1.5 sm:gap-2 flex-wrap">
                 <FormField
                   control={form.control}
                   name="category"
@@ -303,7 +303,7 @@ export default function GroceryPage() {
                     <FormItem>
                       <Select value={field.value} onValueChange={field.onChange}>
                         <FormControl>
-                          <SelectTrigger className="w-[130px] h-9" data-testid="select-category">
+                          <SelectTrigger className="w-[100px] sm:w-[130px] h-8 sm:h-9 text-xs sm:text-sm" data-testid="select-category">
                             <SelectValue placeholder="Category" />
                           </SelectTrigger>
                         </FormControl>
@@ -324,7 +324,7 @@ export default function GroceryPage() {
                     <FormItem>
                       <Select value={field.value} onValueChange={field.onChange}>
                         <FormControl>
-                          <SelectTrigger className="w-[120px] h-9" data-testid="select-added-by">
+                          <SelectTrigger className="w-[90px] sm:w-[120px] h-8 sm:h-9 text-xs sm:text-sm" data-testid="select-added-by">
                             <SelectValue placeholder="Added by" />
                           </SelectTrigger>
                         </FormControl>
@@ -341,7 +341,7 @@ export default function GroceryPage() {
                 <Button
                   type="submit"
                   disabled={addItemMutation.isPending}
-                  className="gap-1.5 h-9 flex-1 sm:flex-none"
+                  className="gap-1.5 flex-1 sm:flex-none"
                   data-testid="button-add-item"
                 >
                   <Plus className="h-4 w-4" />
@@ -353,22 +353,22 @@ export default function GroceryPage() {
         </div>
 
         <ScrollArea className="flex-1">
-          <div className="p-3 md:p-4 space-y-4">
+          <div className="p-2 sm:p-3 md:p-4 space-y-3 sm:space-y-4">
             {isLoading ? (
               <GroceryListSkeleton />
             ) : totalItems === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                  <Package className="h-7 w-7 text-primary" />
+              <div className="flex flex-col items-center justify-center py-12 sm:py-16 text-center">
+                <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-full bg-primary/10 flex items-center justify-center mb-3 sm:mb-4">
+                  <Package className="h-6 w-6 sm:h-7 sm:w-7 text-primary" />
                 </div>
-                <h2 className="text-lg font-medium mb-1" data-testid="text-empty-state">No items yet</h2>
-                <p className="text-sm text-muted-foreground">Add items to your grocery list above</p>
+                <h2 className="text-base sm:text-lg font-medium mb-1" data-testid="text-empty-state">No items yet</h2>
+                <p className="text-xs sm:text-sm text-muted-foreground px-4">Add items to your grocery list above</p>
               </div>
             ) : (
               <>
                 {unpurchasedItems.length > 0 && (
-                  <div className="space-y-2">
-                    <h2 className="text-sm font-medium text-muted-foreground px-1">
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <h2 className="text-xs sm:text-sm font-medium text-muted-foreground px-1">
                       To Buy ({unpurchasedItems.length})
                     </h2>
                     {unpurchasedItems.map((item) => (
@@ -384,8 +384,8 @@ export default function GroceryPage() {
                 )}
                 
                 {purchasedItems.length > 0 && (
-                  <div className="space-y-2 mt-6">
-                    <h2 className="text-sm font-medium text-muted-foreground px-1">
+                  <div className="space-y-1.5 sm:space-y-2 mt-4 sm:mt-6">
+                    <h2 className="text-xs sm:text-sm font-medium text-muted-foreground px-1">
                       Purchased ({purchasedItems.length})
                     </h2>
                     {purchasedItems.map((item) => (
@@ -404,8 +404,8 @@ export default function GroceryPage() {
           </div>
         </ScrollArea>
 
-        <div className="p-3 md:p-4 border-t border-border text-center shrink-0">
-          <p className="text-xs text-muted-foreground">
+        <div className="p-2 sm:p-3 md:p-4 border-t border-border text-center shrink-0">
+          <p className="text-[10px] sm:text-xs text-muted-foreground">
             Shared list for Nate, ZEKE, and Shakita
           </p>
         </div>
