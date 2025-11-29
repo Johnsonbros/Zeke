@@ -32,6 +32,21 @@ import {
   sendDailyCheckIn,
   setDailyCheckInSmsCallback
 } from "./dailyCheckIn";
+import {
+  listCalendarEvents,
+  getTodaysEvents,
+  getUpcomingEvents,
+  createCalendarEvent,
+  deleteCalendarEvent,
+  updateCalendarEvent,
+  type CalendarEvent,
+} from "./googleCalendar";
+import {
+  getCurrentWeather,
+  getWeatherForecast,
+  formatWeatherForSms,
+  formatForecastForSms,
+} from "./weather";
 
 interface ActiveReminder extends Reminder {
   timeoutId?: NodeJS.Timeout;
@@ -532,6 +547,140 @@ export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
       parameters: {
         type: "object",
         properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_calendar_events",
+      description: "Get calendar events from Google Calendar. Can get today's events, upcoming events, or events within a date range.",
+      parameters: {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            enum: ["today", "upcoming", "range"],
+            description: "Type of query: 'today' for today's events, 'upcoming' for next 7 days, 'range' for custom date range.",
+          },
+          days: {
+            type: "number",
+            description: "For 'upcoming' type: number of days to look ahead (default 7).",
+          },
+          start_date: {
+            type: "string",
+            description: "For 'range' type: start date in ISO format (e.g., '2024-01-15').",
+          },
+          end_date: {
+            type: "string",
+            description: "For 'range' type: end date in ISO format.",
+          },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_calendar_event",
+      description: "Create a new event on Google Calendar.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: {
+            type: "string",
+            description: "The event title/summary",
+          },
+          start_time: {
+            type: "string",
+            description: "Event start time in ISO format (e.g., '2024-01-15T14:00:00'). For all-day events, use date only (e.g., '2024-01-15').",
+          },
+          end_time: {
+            type: "string",
+            description: "Event end time in ISO format. If not provided, defaults to 1 hour after start for timed events.",
+          },
+          description: {
+            type: "string",
+            description: "Optional event description/notes.",
+          },
+          location: {
+            type: "string",
+            description: "Optional event location.",
+          },
+          all_day: {
+            type: "boolean",
+            description: "Whether this is an all-day event. Default is false.",
+          },
+        },
+        required: ["title", "start_time"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_calendar_event",
+      description: "Delete an event from Google Calendar by its ID.",
+      parameters: {
+        type: "object",
+        properties: {
+          event_id: {
+            type: "string",
+            description: "The ID of the event to delete (obtained from get_calendar_events).",
+          },
+        },
+        required: ["event_id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_weather",
+      description: "Get current weather and forecast for a location. Defaults to Boston, MA where Nate lives.",
+      parameters: {
+        type: "object",
+        properties: {
+          city: {
+            type: "string",
+            description: "City name. Default is 'Boston'.",
+          },
+          country: {
+            type: "string",
+            description: "Country code. Default is 'US'.",
+          },
+          include_forecast: {
+            type: "boolean",
+            description: "Whether to include multi-day forecast. Default is false.",
+          },
+          forecast_days: {
+            type: "number",
+            description: "Number of days for forecast (1-5). Default is 5.",
+          },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_morning_briefing",
+      description: "Get a comprehensive morning briefing for Nate. Combines weather, today's calendar events, pending tasks, and any pending reminders into a single summary. Perfect for starting the day.",
+      parameters: {
+        type: "object",
+        properties: {
+          send_sms: {
+            type: "boolean",
+            description: "Whether to also send the briefing via SMS. Default is false.",
+          },
+          phone_number: {
+            type: "string",
+            description: "Phone number to send SMS to (required if send_sms is true).",
+          },
+        },
         required: [],
       },
     },
@@ -1569,6 +1718,313 @@ export async function executeTool(
       } catch (error) {
         console.error("Failed to clear completed tasks:", error);
         return JSON.stringify({ success: false, error: "Failed to clear completed tasks" });
+      }
+    }
+    
+    case "get_calendar_events": {
+      const { type, days, start_date, end_date } = args as {
+        type?: "today" | "upcoming" | "range";
+        days?: number;
+        start_date?: string;
+        end_date?: string;
+      };
+      
+      try {
+        let events: CalendarEvent[];
+        
+        if (type === "today") {
+          events = await getTodaysEvents();
+        } else if (type === "range" && start_date && end_date) {
+          events = await listCalendarEvents(new Date(start_date), new Date(end_date));
+        } else {
+          events = await getUpcomingEvents(days || 7);
+        }
+        
+        if (events.length === 0) {
+          return JSON.stringify({
+            events: [],
+            message: type === "today" ? "No events scheduled for today" : "No upcoming events found",
+          });
+        }
+        
+        const formattedEvents = events.map(e => ({
+          id: e.id,
+          title: e.summary,
+          start: e.start,
+          end: e.end,
+          location: e.location,
+          allDay: e.allDay,
+        }));
+        
+        return JSON.stringify({
+          events: formattedEvents,
+          count: events.length,
+          summary: `Found ${events.length} event(s)`,
+        });
+      } catch (error: any) {
+        console.error("Failed to get calendar events:", error);
+        return JSON.stringify({ 
+          success: false, 
+          error: error.message || "Failed to get calendar events. Make sure Google Calendar is connected." 
+        });
+      }
+    }
+    
+    case "create_calendar_event": {
+      const { title, start_time, end_time, description, location, all_day } = args as {
+        title: string;
+        start_time: string;
+        end_time?: string;
+        description?: string;
+        location?: string;
+        all_day?: boolean;
+      };
+      
+      try {
+        const startDate = new Date(start_time);
+        let endDate: Date;
+        
+        if (end_time) {
+          endDate = new Date(end_time);
+        } else if (all_day) {
+          endDate = new Date(startDate);
+          endDate.setDate(endDate.getDate() + 1);
+        } else {
+          endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // 1 hour later
+        }
+        
+        const event = await createCalendarEvent(
+          title,
+          startDate,
+          endDate,
+          description,
+          location,
+          all_day
+        );
+        
+        const dateStr = new Date(event.start).toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          timeZone: "America/New_York",
+        });
+        
+        const timeStr = event.allDay ? "all day" : new Date(event.start).toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+          timeZone: "America/New_York",
+        });
+        
+        return JSON.stringify({
+          success: true,
+          message: `Created event "${title}" for ${dateStr}${!event.allDay ? ` at ${timeStr}` : ""}`,
+          event: {
+            id: event.id,
+            title: event.summary,
+            start: event.start,
+            end: event.end,
+            location: event.location,
+          },
+        });
+      } catch (error: any) {
+        console.error("Failed to create calendar event:", error);
+        return JSON.stringify({ 
+          success: false, 
+          error: error.message || "Failed to create calendar event" 
+        });
+      }
+    }
+    
+    case "delete_calendar_event": {
+      const { event_id } = args as { event_id: string };
+      
+      try {
+        await deleteCalendarEvent(event_id);
+        return JSON.stringify({
+          success: true,
+          message: "Event deleted from calendar",
+        });
+      } catch (error: any) {
+        console.error("Failed to delete calendar event:", error);
+        return JSON.stringify({ 
+          success: false, 
+          error: error.message || "Failed to delete calendar event" 
+        });
+      }
+    }
+    
+    case "get_weather": {
+      const { city, country, include_forecast, forecast_days } = args as {
+        city?: string;
+        country?: string;
+        include_forecast?: boolean;
+        forecast_days?: number;
+      };
+      
+      try {
+        const weather = await getCurrentWeather(city || "Boston", country || "US");
+        
+        const result: any = {
+          current: weather,
+          summary: `${weather.location}: ${weather.temperature}°F (feels like ${weather.feelsLike}°F), ${weather.description}`,
+        };
+        
+        if (include_forecast) {
+          const forecast = await getWeatherForecast(city || "Boston", country || "US", forecast_days || 5);
+          result.forecast = forecast;
+          result.forecast_summary = formatForecastForSms(forecast);
+        }
+        
+        return JSON.stringify(result);
+      } catch (error: any) {
+        console.error("Failed to get weather:", error);
+        return JSON.stringify({ 
+          success: false, 
+          error: error.message || "Failed to get weather. Make sure OpenWeatherMap API key is configured." 
+        });
+      }
+    }
+    
+    case "get_morning_briefing": {
+      const { send_sms, phone_number } = args as {
+        send_sms?: boolean;
+        phone_number?: string;
+      };
+      
+      try {
+        const briefingParts: string[] = [];
+        const now = new Date();
+        const dateStr = now.toLocaleDateString("en-US", {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+          timeZone: "America/New_York",
+        });
+        
+        briefingParts.push(`Good morning, Nate! Here's your briefing for ${dateStr}:`);
+        
+        // Weather
+        try {
+          const weather = await getCurrentWeather("Boston", "US");
+          briefingParts.push(`\nWeather: ${weather.temperature}°F (feels like ${weather.feelsLike}°F), ${weather.description}. Sunrise ${weather.sunrise}, Sunset ${weather.sunset}.`);
+        } catch (e) {
+          briefingParts.push("\nWeather: Unable to fetch weather data.");
+        }
+        
+        // Calendar events
+        try {
+          const events = await getTodaysEvents();
+          if (events.length === 0) {
+            briefingParts.push("\nCalendar: No events scheduled today.");
+          } else {
+            briefingParts.push(`\nCalendar (${events.length} event${events.length > 1 ? "s" : ""}):`);
+            for (const event of events.slice(0, 5)) {
+              if (event.allDay) {
+                briefingParts.push(`  - ${event.summary} (all day)`);
+              } else {
+                const time = new Date(event.start).toLocaleTimeString("en-US", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                  hour12: true,
+                  timeZone: "America/New_York",
+                });
+                briefingParts.push(`  - ${time}: ${event.summary}${event.location ? ` @ ${event.location}` : ""}`);
+              }
+            }
+            if (events.length > 5) {
+              briefingParts.push(`  + ${events.length - 5} more event(s)`);
+            }
+          }
+        } catch (e) {
+          briefingParts.push("\nCalendar: Unable to fetch calendar events.");
+        }
+        
+        // Tasks
+        try {
+          const tasks = getAllTasks(false);
+          const overdueTasks = getOverdueTasks();
+          const dueTodayTasks = getTasksDueToday();
+          const highPriorityTasks = tasks.filter(t => t.priority === "high" && !t.completed);
+          
+          if (tasks.length === 0) {
+            briefingParts.push("\nTasks: No pending tasks.");
+          } else {
+            briefingParts.push(`\nTasks (${tasks.length} pending):`);
+            
+            if (overdueTasks.length > 0) {
+              briefingParts.push(`  OVERDUE: ${overdueTasks.map(t => t.title).join(", ")}`);
+            }
+            
+            if (dueTodayTasks.length > 0) {
+              briefingParts.push(`  Due today: ${dueTodayTasks.map(t => t.title).join(", ")}`);
+            }
+            
+            if (highPriorityTasks.length > 0) {
+              const nonOverdueHighPriority = highPriorityTasks.filter(t => 
+                !overdueTasks.some(o => o.id === t.id) && 
+                !dueTodayTasks.some(d => d.id === t.id)
+              );
+              if (nonOverdueHighPriority.length > 0) {
+                briefingParts.push(`  High priority: ${nonOverdueHighPriority.map(t => t.title).join(", ")}`);
+              }
+            }
+          }
+        } catch (e) {
+          briefingParts.push("\nTasks: Unable to fetch tasks.");
+        }
+        
+        // Reminders
+        try {
+          const reminders = getPendingReminders();
+          const todayReminders = reminders.filter(r => {
+            const reminderDate = new Date(r.scheduledFor);
+            return reminderDate.toDateString() === now.toDateString();
+          });
+          
+          if (todayReminders.length > 0) {
+            briefingParts.push(`\nReminders today (${todayReminders.length}):`);
+            for (const r of todayReminders.slice(0, 3)) {
+              const time = new Date(r.scheduledFor).toLocaleTimeString("en-US", {
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+                timeZone: "America/New_York",
+              });
+              briefingParts.push(`  - ${time}: ${r.message}`);
+            }
+          }
+        } catch (e) {
+          // Reminders are optional
+        }
+        
+        briefingParts.push("\nHave a great day!");
+        
+        const briefing = briefingParts.join("\n");
+        
+        // Send SMS if requested
+        if (send_sms && phone_number && sendSmsCallback) {
+          let formattedPhone = phone_number.replace(/[^0-9+]/g, "");
+          if (formattedPhone.length === 10) {
+            formattedPhone = "+1" + formattedPhone;
+          } else if (!formattedPhone.startsWith("+")) {
+            formattedPhone = "+" + formattedPhone;
+          }
+          
+          await sendSmsCallback(formattedPhone, briefing);
+        }
+        
+        return JSON.stringify({
+          success: true,
+          briefing,
+          sent_sms: send_sms && phone_number ? true : false,
+        });
+      } catch (error: any) {
+        console.error("Failed to generate morning briefing:", error);
+        return JSON.stringify({ 
+          success: false, 
+          error: error.message || "Failed to generate morning briefing" 
+        });
       }
     }
     

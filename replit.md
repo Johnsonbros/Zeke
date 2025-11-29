@@ -55,6 +55,8 @@ ZEKE is a single-user personal assistant for Nate Johnson. It is not multi-tenan
 
 ## ZEKE Tools (OpenAI Function Calling)
 ZEKE has access to these tools via OpenAI function calling:
+
+### Communication & Reminders
 - **send_sms** - Send SMS text message to any phone number (requires Twilio configuration)
 - **configure_daily_checkin** - Set up daily check-in texts with 3 multiple choice questions to learn about Nate
 - **get_daily_checkin_status** - Check if daily check-in is active and get settings
@@ -63,11 +65,34 @@ ZEKE has access to these tools via OpenAI function calling:
 - **set_reminder** - Schedule reminders with delay_minutes or scheduled_time, can send SMS
 - **list_reminders** - List all pending reminders
 - **cancel_reminder** - Cancel a reminder by ID
+
+### Task Management
+- **add_task** - Add task to to-do list (title, description, priority, due_date, category)
+- **list_tasks** - List tasks (filter by category, show overdue/due today, include/exclude completed)
+- **update_task** - Update task properties
+- **complete_task** - Mark task as completed (or toggle)
+- **delete_task** - Remove task from list
+- **clear_completed_tasks** - Clear all completed tasks
+
+### Calendar (Google Calendar Integration)
+- **get_calendar_events** - Get calendar events (today, upcoming, or date range)
+- **create_calendar_event** - Create new event on Google Calendar
+- **delete_calendar_event** - Delete event by ID
+
+### Weather
+- **get_weather** - Get current weather and forecast (defaults to Boston, requires OpenWeatherMap API key)
+
+### Morning Briefing
+- **get_morning_briefing** - Comprehensive morning summary combining weather, calendar, tasks, and reminders. Can optionally send via SMS.
+
+### Utilities
 - **web_search** - Search the web using DuckDuckGo API
 - **read_file** - Read files from notes/, data/, or config files (secure path validation)
 - **write_file** - Write files to notes/ or data/ directories (secure path validation)
 - **list_files** - List files in allowed directories
 - **get_current_time** - Get current date/time in America/New_York timezone
+
+### Grocery List
 - **add_grocery_item** - Add item to shared grocery list (supports name, quantity, category, addedBy)
 - **list_grocery_items** - List all grocery items (to buy and purchased)
 - **mark_grocery_purchased** - Toggle item purchased status (partial name match)
@@ -82,6 +107,7 @@ Security: File tools have directory traversal protection using path.normalize() 
 - `memory_notes` - Extracted memories (facts, preferences, summaries, notes) with supersession support (isSuperseded, supersededBy) and embedding column for semantic search
 - `preferences` - Key-value preferences for Nate
 - `grocery_items` - Shared grocery list (id, name, quantity, category, purchased, addedBy)
+- `tasks` - To-do list (id, title, description, priority, dueDate, category, completed)
 
 ## API Endpoints
 - POST /api/chat - Send message and get AI response
@@ -99,7 +125,14 @@ Security: File tools have directory traversal protection using path.normalize() 
 - POST /api/grocery - Add a grocery item
 - PATCH /api/grocery/:id - Update item (toggle purchased, change quantity)
 - DELETE /api/grocery/:id - Delete a grocery item
-- DELETE /api/grocery - Clear all purchased items
+- POST /api/grocery/clear-purchased - Clear all purchased items
+- GET /api/tasks - List all tasks (with optional filters)
+- POST /api/tasks - Create a new task
+- GET /api/tasks/:id - Get task by ID
+- PATCH /api/tasks/:id - Update task
+- POST /api/tasks/:id/toggle - Toggle task completed status
+- DELETE /api/tasks/:id - Delete task
+- POST /api/tasks/clear-completed - Clear all completed tasks
 
 ## Design System
 - Dark theme with coral red accent: hsl(9, 75%, 61%)
@@ -113,8 +146,27 @@ Security: File tools have directory traversal protection using path.normalize() 
 - TWILIO_ACCOUNT_SID - Twilio account SID (optional, for SMS)
 - TWILIO_AUTH_TOKEN - Twilio auth token (optional, for SMS)
 - TWILIO_PHONE_NUMBER - Twilio phone number (optional, for SMS)
+- OPENWEATHERMAP_API_KEY - OpenWeatherMap API key (optional, for weather features and morning briefing)
 
 ## Recent Changes
+- 2025-11-29: **Task Management System** - Full to-do list functionality with:
+  - Tasks with title, description, priority (low/medium/high), due dates, and categories (work/personal/family)
+  - Agent tools for adding, updating, completing, and deleting tasks
+  - Web UI at /tasks with filtering, sorting, and bulk actions
+  - Overdue and due-today task tracking
+- 2025-11-29: **Google Calendar Integration** - Connect to Nate's Google Calendar:
+  - View today's events, upcoming events, or date range
+  - Create and delete calendar events
+  - Integrated into morning briefing
+- 2025-11-29: **Weather Integration** - Weather lookup via OpenWeatherMap:
+  - Current conditions and multi-day forecast
+  - Defaults to Boston, MA
+- 2025-11-29: **Morning Briefing** - Comprehensive daily summary combining:
+  - Current weather and forecast
+  - Today's calendar events
+  - Pending tasks (highlighting overdue and high priority)
+  - Today's reminders
+  - Can be sent via SMS
 - 2025-11-29: **Semantic Memory System Upgrade** - Implemented state-of-the-art AI memory architecture with:
   - Vector embeddings using OpenAI text-embedding-3-small for all memories
   - Semantic search with importance scoring (recency/relevance/importance)
