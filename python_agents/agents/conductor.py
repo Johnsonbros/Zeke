@@ -799,9 +799,19 @@ Always call the classify_intent tool with your classification.""",
                 processing_time_ms=processing_time,
             )
         
+        handoff_request = None
+        handoff_chain_len = len(self.handoff_chain)
+        if handoff_chain_len > 0:
+            last_handoff = self.handoff_chain[-1]
+            if last_handoff.target_agent == agent_id:
+                handoff_request = last_handoff
+        
         try:
             response = await specialist.run(message, context)
             processing_time = int((time.time() - start_time) * 1000)
+            
+            if handoff_request:
+                self.complete_handoff(handoff_request, success=True, agent_context=context)
             
             return AgentResponse(
                 agent_id=agent_id,
@@ -812,6 +822,10 @@ Always call the classify_intent tool with your classification.""",
         except Exception as e:
             processing_time = int((time.time() - start_time) * 1000)
             logger.error(f"Specialist agent {agent_id} failed: {e}")
+            
+            if handoff_request:
+                self.complete_handoff(handoff_request, success=False, agent_context=context)
+            
             return AgentResponse(
                 agent_id=agent_id,
                 success=False,

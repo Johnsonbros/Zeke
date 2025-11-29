@@ -81,6 +81,15 @@ from .safety_auditor import (
     get_safety_auditor,
 )
 
+from ..tracing import (
+    TraceContext,
+    TraceEvent,
+    TraceEventType,
+    TracingLogger,
+    get_tracing_logger,
+    create_trace_context,
+)
+
 __all__ = [
     "BaseAgent",
     "AgentId",
@@ -124,4 +133,10 @@ __all__ = [
     "PermissionCheckResult",
     "ValidationResult",
     "get_safety_auditor",
+    "TraceContext",
+    "TraceEvent",
+    "TraceEventType",
+    "TracingLogger",
+    "get_tracing_logger",
+    "create_trace_context",
 ]

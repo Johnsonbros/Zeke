@@ -6,6 +6,7 @@ This module provides the FastAPI application with:
 - Chat endpoint at /api/agents/chat for routing to Conductor
 - CORS configured for localhost Node.js service
 - Environment variable loading for configuration
+- Request-level tracing and audit logging
 """
 
 import logging
@@ -18,8 +19,10 @@ from pydantic import BaseModel, Field
 
 from .config import get_settings
 from .bridge import get_bridge
+from .tracing import create_trace_context, get_tracing_logger
 
 logger = logging.getLogger(__name__)
+trace_logger = get_tracing_logger()
 
 
 class ChatRequest(BaseModel):
@@ -35,6 +38,7 @@ class ChatResponse(BaseModel):
     response: str = Field(..., description="The agent's response")
     agent_id: str = Field(..., description="ID of the responding agent")
     conversation_id: str | None = Field(None, description="Conversation ID")
+    trace_id: str | None = Field(None, description="Trace ID for debugging")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
 
@@ -130,23 +134,44 @@ async def chat(request: ChatRequest) -> ChatResponse:
     Returns:
         ChatResponse: The agent's response with metadata
     """
+    trace_ctx = create_trace_context({
+        "conversation_id": request.conversation_id,
+        "source": request.metadata.get("source", "api"),
+        "phone_number": request.phone_number,
+    })
+    
+    trace_logger.log_request_start(
+        trace_ctx,
+        source=request.metadata.get("source", "api"),
+        user_message=request.message
+    )
+    
     try:
-        logger.info(f"Received chat request: {request.message[:100]}...")
+        logger.info(f"Received chat request: {request.message[:100]}... [trace_id={trace_ctx.trace_id}]")
         
         response = f"Python agents received: {request.message}"
+        
+        trace_logger.log_request_complete(
+            trace_ctx,
+            success=True,
+            response_preview=response
+        )
         
         return ChatResponse(
             response=response,
             agent_id="conductor",
             conversation_id=request.conversation_id,
+            trace_id=trace_ctx.trace_id,
             metadata={
                 "processed_by": "python_agents",
                 "status": "stub_response",
+                "trace_summary": trace_ctx.to_summary(),
             }
         )
         
     except Exception as e:
-        logger.error(f"Chat processing error: {e}")
+        logger.error(f"Chat processing error: {e} [trace_id={trace_ctx.trace_id}]")
+        trace_logger.log_request_complete(trace_ctx, success=False)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -158,18 +183,43 @@ async def get_agents_status() -> dict[str, Any]:
     Returns:
         dict: Status information for each agent
     """
+    from .agents import (
+        get_conductor,
+        get_memory_curator,
+        get_comms_pilot,
+        get_ops_planner,
+        get_research_scout,
+        get_safety_auditor,
+    )
+    
+    agents_info = {}
+    for get_agent, agent_name in [
+        (get_conductor, "conductor"),
+        (get_memory_curator, "memory_curator"),
+        (get_comms_pilot, "comms_pilot"),
+        (get_ops_planner, "ops_planner"),
+        (get_research_scout, "research_scout"),
+        (get_safety_auditor, "safety_auditor"),
+    ]:
+        try:
+            agent = get_agent()
+            agents_info[agent_name] = {
+                "status": agent.status.value,
+                "name": agent.name,
+                "tool_count": len(agent._tool_definitions),
+                "capabilities": [c.value for c in agent.capabilities],
+            }
+        except Exception as e:
+            agents_info[agent_name] = {
+                "status": "error",
+                "error": str(e),
+            }
+    
     return {
-        "agents": {
-            "conductor": {"status": "idle", "name": "Conductor"},
-            "memory_curator": {"status": "idle", "name": "MemoryCurator"},
-            "comms_pilot": {"status": "idle", "name": "CommsPilot"},
-            "ops_planner": {"status": "idle", "name": "OpsPlanner"},
-            "research_scout": {"status": "idle", "name": "ResearchScout"},
-            "personal_data_steward": {"status": "idle", "name": "PersonalDataSteward"},
-            "safety_auditor": {"status": "idle", "name": "SafetyAuditor"},
-        },
-        "total_agents": 7,
+        "agents": agents_info,
+        "total_agents": len(agents_info),
         "service_status": "running",
+        "tracing_enabled": True,
     }
 
 

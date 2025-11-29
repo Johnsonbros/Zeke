@@ -20,9 +20,11 @@ from agents import Agent, Runner
 from agents.tool import Tool, FunctionTool
 
 from ..bridge import get_bridge, NodeBridge
+from ..tracing import TraceContext, get_tracing_logger, create_trace_context
 
 
 logger = logging.getLogger(__name__)
+trace_logger = get_tracing_logger()
 
 
 def create_bridge_tool(
@@ -186,6 +188,7 @@ class AgentContext:
         user_profile: User profile information
         phone_number: Optional phone number for SMS context
         metadata: Additional metadata
+        trace_context: Optional tracing context for audit logging
     """
     user_message: str
     conversation_id: str | None = None
@@ -193,6 +196,16 @@ class AgentContext:
     user_profile: dict[str, Any] = field(default_factory=dict)
     phone_number: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    trace_context: TraceContext | None = None
+    
+    def ensure_trace_context(self) -> TraceContext:
+        """Get or create a trace context for this request."""
+        if self.trace_context is None:
+            self.trace_context = create_trace_context({
+                "conversation_id": self.conversation_id,
+                "source": self.metadata.get("source", "unknown")
+            })
+        return self.trace_context
 
 
 class BaseAgent(ABC):
@@ -306,14 +319,32 @@ class BaseAgent(ABC):
         Returns:
             str: The agent's response
         """
+        if context is None:
+            context = AgentContext(user_message=input_text)
+        
+        trace_ctx = context.ensure_trace_context()
+        span_id = trace_ctx.create_span(f"agent:{self.agent_id.value}")
+        trace_logger.log_agent_start(trace_ctx, self.agent_id.value, span_id=span_id)
+        
         self.status = AgentStatus.PROCESSING
         try:
-            result = await self._execute(input_text, context or AgentContext(user_message=input_text))
+            result = await self._execute(input_text, context)
             self.status = AgentStatus.IDLE
-            return result
+            
+            result_str = str(result) if result is not None else ""
+            result_preview = result_str[:100] if len(result_str) > 100 else result_str
+            
+            trace_logger.log_agent_complete(
+                trace_ctx, 
+                self.agent_id.value, 
+                result_preview=result_preview,
+                span_id=span_id
+            )
+            return result_str
         except Exception as e:
             self.status = AgentStatus.ERROR
             logger.error(f"Agent {self.name} error: {e}")
+            trace_logger.log_agent_error(trace_ctx, self.agent_id.value, str(e), span_id)
             raise
     
     @abstractmethod
@@ -333,7 +364,14 @@ class BaseAgent(ABC):
         """
         pass
     
-    def handoff_to(self, target_agent: AgentId, reason: HandoffReason, context: dict[str, Any] | None = None, message: str = "") -> HandoffRequest:
+    def handoff_to(
+        self, 
+        target_agent: AgentId, 
+        reason: HandoffReason, 
+        context: dict[str, Any] | None = None, 
+        message: str = "",
+        agent_context: AgentContext | None = None
+    ) -> HandoffRequest:
         """
         Create a handoff request to another agent.
         
@@ -342,6 +380,7 @@ class BaseAgent(ABC):
             reason: Reason for the handoff
             context: Context to pass to the target agent
             message: Human-readable message about the handoff
+            agent_context: Optional agent context for tracing
             
         Returns:
             HandoffRequest: The handoff request object
@@ -355,6 +394,15 @@ class BaseAgent(ABC):
                 f"Allowed targets: {self.handoff_targets}"
             )
         
+        if agent_context and agent_context.trace_context:
+            trace_logger.log_handoff(
+                agent_context.trace_context,
+                from_agent=self.agent_id.value,
+                to_agent=target_agent.value,
+                reason=reason.value,
+                message=message
+            )
+        
         self.status = AgentStatus.WAITING_FOR_HANDOFF
         
         return HandoffRequest(
@@ -365,18 +413,81 @@ class BaseAgent(ABC):
             message=message,
         )
     
-    async def execute_bridge_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    def complete_handoff(
+        self,
+        handoff_request: HandoffRequest,
+        success: bool,
+        agent_context: AgentContext | None = None
+    ) -> None:
         """
-        Execute a tool through the Node.js bridge.
+        Mark a handoff as complete and log the completion.
+        
+        Args:
+            handoff_request: The original handoff request
+            success: Whether the handoff was successful
+            agent_context: Optional agent context for tracing
+        """
+        self.status = AgentStatus.IDLE
+        
+        if agent_context and agent_context.trace_context:
+            trace_logger.log_handoff_complete(
+                agent_context.trace_context,
+                from_agent=handoff_request.source_agent.value,
+                to_agent=handoff_request.target_agent.value,
+                success=success
+            )
+    
+    async def execute_bridge_tool(
+        self, 
+        tool_name: str, 
+        arguments: dict[str, Any],
+        context: AgentContext | None = None
+    ) -> dict[str, Any]:
+        """
+        Execute a tool through the Node.js bridge with optional tracing.
         
         Args:
             tool_name: Name of the tool to execute
             arguments: Arguments for the tool
+            context: Optional agent context for tracing
             
         Returns:
             dict: Tool execution result
         """
-        return await self.bridge.execute_tool(tool_name, arguments)
+        span_id = None
+        if context and context.trace_context:
+            _, span_id = trace_logger.log_tool_start(
+                context.trace_context,
+                tool_name,
+                agent_id=self.agent_id.value,
+                args_preview=json.dumps(arguments)[:200] if arguments else ""
+            )
+        
+        try:
+            result = await self.bridge.execute_tool(tool_name, arguments)
+            
+            if context and context.trace_context and span_id:
+                success = result.get("success", True) if isinstance(result, dict) else True
+                trace_logger.log_tool_complete(
+                    context.trace_context,
+                    tool_name,
+                    span_id,
+                    agent_id=self.agent_id.value,
+                    result_preview=json.dumps(result)[:200] if result else "",
+                    success=success
+                )
+            
+            return result
+        except Exception as e:
+            if context and context.trace_context and span_id:
+                trace_logger.log_tool_error(
+                    context.trace_context,
+                    tool_name,
+                    span_id,
+                    str(e),
+                    agent_id=self.agent_id.value
+                )
+            raise
     
     def can_handle_capability(self, category: CapabilityCategory) -> bool:
         """
