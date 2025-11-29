@@ -22,6 +22,9 @@ import {
   Sparkles,
   Calendar,
   MapPin,
+  Send,
+  Inbox,
+  MessagesSquare,
 } from "lucide-react";
 import type { Task, GroceryItem, MemoryNote, Conversation } from "@shared/schema";
 import { format, isPast, isToday, parseISO, isWithinInterval, startOfDay, endOfDay } from "date-fns";
@@ -34,6 +37,22 @@ interface CalendarEvent {
   start: string;
   end: string;
   allDay: boolean;
+}
+
+interface SmsStats {
+  total: number;
+  inbound: number;
+  outbound: number;
+  failed: number;
+  bySource: Record<string, number>;
+}
+
+interface SmsConversation {
+  phone: string;
+  contactName?: string;
+  lastMessage?: string;
+  lastMessageTime?: string;
+  messageCount: number;
 }
 
 type DashboardStats = {
@@ -297,6 +316,113 @@ function CalendarPreview({ events }: { events: CalendarEvent[] }) {
   );
 }
 
+function CommunicationsWidget({ 
+  stats, 
+  conversations,
+  isLoading 
+}: { 
+  stats: SmsStats | undefined; 
+  conversations: SmsConversation[] | undefined;
+  isLoading: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <Card className="col-span-1 sm:col-span-2">
+        <CardHeader className="pb-2 sm:pb-3">
+          <Skeleton className="h-5 w-32" />
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Skeleton className="h-20" />
+          <Skeleton className="h-12" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="col-span-1 sm:col-span-2" data-testid="widget-communications">
+      <CardHeader className="pb-2 sm:pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-primary/10">
+              <MessagesSquare className="h-4 w-4 text-primary" />
+            </div>
+            <CardTitle className="text-sm sm:text-base">Communications</CardTitle>
+          </div>
+          <div className="flex gap-1">
+            <Link href="/contacts">
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" data-testid="button-view-contacts">
+                <Users className="h-3 w-3" />
+                <span className="hidden sm:inline">Contacts</span>
+              </Button>
+            </Link>
+            <Link href="/sms-log">
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" data-testid="button-view-sms-log">
+                <Phone className="h-3 w-3" />
+                <span className="hidden sm:inline">SMS Log</span>
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3 sm:space-y-4">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <div className="text-center p-2 sm:p-3 rounded-lg bg-muted/50">
+            <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+              <Inbox className="h-3 w-3" />
+              <span className="text-[10px] sm:text-xs">Received</span>
+            </div>
+            <p className="text-base sm:text-lg font-semibold" data-testid="stat-sms-inbound">{stats?.inbound || 0}</p>
+          </div>
+          <div className="text-center p-2 sm:p-3 rounded-lg bg-muted/50">
+            <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+              <Send className="h-3 w-3" />
+              <span className="text-[10px] sm:text-xs">Sent</span>
+            </div>
+            <p className="text-base sm:text-lg font-semibold" data-testid="stat-sms-outbound">{stats?.outbound || 0}</p>
+          </div>
+          <div className="text-center p-2 sm:p-3 rounded-lg bg-muted/50">
+            <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+              <MessageSquare className="h-3 w-3" />
+              <span className="text-[10px] sm:text-xs">Total</span>
+            </div>
+            <p className="text-base sm:text-lg font-semibold" data-testid="stat-sms-total">{stats?.total || 0}</p>
+          </div>
+        </div>
+
+        {conversations && conversations.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">Recent Conversations</p>
+            <div className="space-y-1.5">
+              {conversations.slice(0, 3).map((conv) => (
+                <Link key={conv.phone} href={`/contacts`}>
+                  <div className="flex items-center gap-2 sm:gap-3 p-2 rounded-lg border hover-elevate cursor-pointer" data-testid={`conversation-preview-${conv.phone}`}>
+                    <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-accent flex items-center justify-center shrink-0">
+                      <User className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent-foreground" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-medium truncate">{conv.contactName || conv.phone}</p>
+                      {conv.lastMessage && (
+                        <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{conv.lastMessage}</p>
+                      )}
+                    </div>
+                    <Badge variant="secondary" className="text-[9px] sm:text-[10px] shrink-0">{conv.messageCount}</Badge>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-4 text-muted-foreground">
+            <Phone className="h-6 w-6 mx-auto mb-1.5 opacity-50" />
+            <p className="text-xs sm:text-sm">No recent conversations</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function getTimeGreeting(): string {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
@@ -323,6 +449,14 @@ export default function DashboardPage() {
 
   const { data: todayEvents, isLoading: calendarLoading } = useQuery<CalendarEvent[]>({
     queryKey: ["/api/calendar/today"],
+  });
+
+  const { data: smsStats, isLoading: smsStatsLoading } = useQuery<SmsStats>({
+    queryKey: ["/api/twilio/stats"],
+  });
+
+  const { data: smsConversations, isLoading: smsConversationsLoading } = useQuery<SmsConversation[]>({
+    queryKey: ["/api/twilio/conversations"],
   });
 
   const stats: DashboardStats = {
@@ -357,6 +491,7 @@ export default function DashboardPage() {
   };
 
   const isLoading = tasksLoading || groceryLoading || memoriesLoading || conversationsLoading || calendarLoading;
+  const isSmsLoading = smsStatsLoading || smsConversationsLoading;
 
   return (
     <div className="h-full overflow-auto">
@@ -490,7 +625,7 @@ export default function DashboardPage() {
 
         <div>
           <h2 className="text-base sm:text-lg font-medium mb-3 sm:mb-4">Quick Access</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
             <FeatureCard
               title="Chat with ZEKE"
               description="Ask questions, get help, or just chat"
@@ -513,13 +648,6 @@ export default function DashboardPage() {
               action="Update profile"
             />
             <FeatureCard
-              title="Contacts"
-              description="Manage SMS access and permissions"
-              icon={Users}
-              href="/contacts"
-              action="View contacts"
-            />
-            <FeatureCard
               title="Automations"
               description="Scheduled tasks and reminders"
               icon={Zap}
@@ -530,12 +658,10 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
-          <FeatureCard
-            title="SMS Log"
-            description="View all SMS activity and conversations"
-            icon={Phone}
-            href="/sms-log"
-            action="View log"
+          <CommunicationsWidget 
+            stats={smsStats} 
+            conversations={smsConversations}
+            isLoading={isSmsLoading}
           />
           <FeatureCard
             title="ZEKE's Memory"
