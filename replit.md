@@ -46,6 +46,11 @@ ZEKE has access to these tools via OpenAI function calling:
 - **write_file** - Write files to notes/ or data/ directories (secure path validation)
 - **list_files** - List files in allowed directories
 - **get_current_time** - Get current date/time in America/New_York timezone
+- **add_grocery_item** - Add item to shared grocery list (supports name, quantity, category, addedBy)
+- **list_grocery_items** - List all grocery items (to buy and purchased)
+- **mark_grocery_purchased** - Toggle item purchased status (partial name match)
+- **remove_grocery_item** - Remove item from grocery list (partial name match)
+- **clear_purchased_groceries** - Clear all purchased items from list
 
 Security: File tools have directory traversal protection using path.normalize() and path.resolve() with strict whitelist validation.
 
