@@ -9,6 +9,7 @@ architecture. It includes:
 - MemoryCuratorAgent: Memory and context specialist
 - CommsPilotAgent: SMS and messaging specialist
 - OpsPlannerAgent: Scheduling, task management, and grocery specialist
+- ResearchScoutAgent: Information retrieval and search specialist
 - Handoff protocols for inter-agent communication
 
 The architecture follows a conductor-specialist pattern where a central
@@ -66,6 +67,12 @@ from .ops_planner import (
     get_ops_planner,
 )
 
+from .research_scout import (
+    ResearchScoutAgent,
+    SearchResult,
+    get_research_scout,
+)
+
 __all__ = [
     "BaseAgent",
     "AgentId",
@@ -102,4 +109,7 @@ __all__ = [
     "CalendarResult",
     "GroceryResult",
     "get_ops_planner",
+    "ResearchScoutAgent",
+    "SearchResult",
+    "get_research_scout",
 ]
