@@ -118,8 +118,8 @@ export async function registerRoutes(
         source,
       });
       
-      // Get AI response
-      const aiResponse = await chat(conversation.id, message, isNewConversation);
+      // Get AI response (pass phone number if this is an SMS conversation)
+      const aiResponse = await chat(conversation.id, message, isNewConversation, conversation.phoneNumber || undefined);
       
       // Store assistant message
       const assistantMessage = createMessage({
@@ -245,8 +245,8 @@ export async function registerRoutes(
           source: "sms",
         });
         
-        // Get AI response
-        const aiResponse = await chat(conversation.id, message, false);
+        // Get AI response (pass phone number so ZEKE can send SMS reminders)
+        const aiResponse = await chat(conversation.id, message, false, fromNumber);
         
         // Store assistant message
         createMessage({
