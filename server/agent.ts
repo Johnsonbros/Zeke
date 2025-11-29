@@ -5,7 +5,6 @@ import {
   getRecentMessages,
   getAllMemoryNotes,
   searchMemoryNotes,
-  createMemoryNote,
   updateConversationTitle,
   getConversation,
 } from "./db";
@@ -15,6 +14,10 @@ import {
   detectMemoryCorrection, 
   handleMemoryCorrection 
 } from "./gettingToKnow";
+import {
+  createMemoryWithEmbedding,
+  getSmartMemoryContext,
+} from "./semanticMemory";
 import type { Message } from "@shared/schema";
 
 // Use gpt-4o as the default model
@@ -59,15 +62,11 @@ function loadProfileContext(): string {
   return context;
 }
 
-// Get relevant memory context
-function getMemoryContext(userMessage: string): string {
-  // Get all memory notes
+// Get relevant memory context (sync fallback for when async isn't available)
+function getMemoryContextSync(userMessage: string): string {
   const allNotes = getAllMemoryNotes();
-
-  // Search for relevant notes based on the message
   const relevantNotes = searchMemoryNotes(userMessage);
 
-  // Get recent notes of each type
   const recentFacts = allNotes.filter((n) => n.type === "fact").slice(0, 5);
   const recentPreferences = allNotes
     .filter((n) => n.type === "preference")
@@ -113,10 +112,20 @@ function getMemoryContext(userMessage: string): string {
   return context;
 }
 
+// Get relevant memory context using semantic search
+async function getMemoryContext(userMessage: string): Promise<string> {
+  try {
+    return await getSmartMemoryContext(userMessage);
+  } catch (error) {
+    console.error("Semantic memory search failed, falling back to basic:", error);
+    return getMemoryContextSync(userMessage);
+  }
+}
+
 // Build the system prompt
-function buildSystemPrompt(userMessage: string, userPhoneNumber?: string): string {
+async function buildSystemPrompt(userMessage: string, userPhoneNumber?: string): Promise<string> {
   const profileContext = loadProfileContext();
-  const memoryContext = getMemoryContext(userMessage);
+  const memoryContext = await getMemoryContext(userMessage);
 
   const activeReminders = getActiveReminders();
   const reminderContext =
@@ -344,12 +353,17 @@ If nothing important to remember, return: {"memories": []}`,
         }
 
         try {
-          createMemoryNote({
+          const result = await createMemoryWithEmbedding({
             type: memory.type as "fact" | "preference" | "summary" | "note",
             content: memory.content,
             context: memory.context || "",
-          });
-          console.log(`Stored memory: [${memory.type}] ${memory.content}`);
+          }, { checkDuplicates: true });
+          
+          if (result.isDuplicate) {
+            console.log(`Skipped duplicate memory: [${memory.type}] ${memory.content}`);
+          } else if (result.wasCreated) {
+            console.log(`Stored memory with embedding: [${memory.type}] ${memory.content}`);
+          }
         } catch (storeError) {
           console.error(
             "Memory extraction: Failed to store memory:",
@@ -377,7 +391,7 @@ export async function chat(
   const isGettingToKnowMode = conversation?.mode === "getting_to_know";
 
   // Build system prompt with context (including phone number for SMS reminders)
-  let systemPrompt = buildSystemPrompt(userMessage, userPhoneNumber);
+  let systemPrompt = await buildSystemPrompt(userMessage, userPhoneNumber);
   
   // Apply Getting To Know You mode enhancements
   if (isGettingToKnowMode) {

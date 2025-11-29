@@ -238,8 +238,12 @@ try {
     console.log("Adding 'superseded_by' column to memory_notes table...");
     db.exec(`ALTER TABLE memory_notes ADD COLUMN superseded_by TEXT`);
   }
+  if (!memInfo.some(col => col.name === "embedding")) {
+    console.log("Adding 'embedding' column to memory_notes table for semantic search...");
+    db.exec(`ALTER TABLE memory_notes ADD COLUMN embedding TEXT`);
+  }
 } catch (e) {
-  console.error("Migration error for memory_notes supersession:", e);
+  console.error("Migration error for memory_notes:", e);
 }
 
 // Database row types (snake_case from SQLite)
@@ -267,6 +271,7 @@ interface MemoryNoteRow {
   type: string;
   content: string;
   context: string;
+  embedding: string | null;
   is_superseded: number;
   superseded_by: string | null;
   created_at: string;
@@ -333,11 +338,22 @@ function mapMemoryNote(row: MemoryNoteRow): MemoryNote {
     type: row.type as "summary" | "note" | "preference" | "fact",
     content: row.content,
     context: row.context,
+    embedding: row.embedding,
     isSuperseded: Boolean(row.is_superseded),
     supersededBy: row.superseded_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+// Helper to parse embedding from JSON string
+export function parseEmbedding(embeddingStr: string | null): number[] | null {
+  if (!embeddingStr) return null;
+  try {
+    return JSON.parse(embeddingStr);
+  } catch {
+    return null;
+  }
 }
 
 // Helper to map database row to Preference type
@@ -494,23 +510,30 @@ export function deleteMessage(id: string): boolean {
   });
 }
 
+// Type for creating memory notes with optional embedding as number[]
+export type CreateMemoryNoteInput = Omit<InsertMemoryNote, 'embedding'> & { embedding?: number[] };
+
 // Memory notes operations
-export function createMemoryNote(data: InsertMemoryNote): MemoryNote {
+export function createMemoryNote(data: CreateMemoryNoteInput): MemoryNote {
   return wrapDbOperation("createMemoryNote", () => {
     const id = uuidv4();
     const now = getCurrentTimestamp();
     const context = data.context || "";
+    const embeddingStr = data.embedding ? JSON.stringify(data.embedding) : null;
     
     db.prepare(`
-      INSERT INTO memory_notes (id, type, content, context, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, data.type, data.content, context, now, now);
+      INSERT INTO memory_notes (id, type, content, context, embedding, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.type, data.content, context, embeddingStr, now, now);
     
     return { 
       id, 
       type: data.type as "summary" | "note" | "preference" | "fact", 
       content: data.content, 
       context, 
+      embedding: embeddingStr,
+      isSuperseded: false,
+      supersededBy: null,
       createdAt: now, 
       updatedAt: now 
     };
@@ -560,6 +583,28 @@ export function updateMemoryNote(id: string, data: Partial<Pick<MemoryNote, "con
     `).run(content, context, now, id);
     
     return getMemoryNote(id);
+  });
+}
+
+export function updateMemoryNoteEmbedding(id: string, embedding: number[]): boolean {
+  return wrapDbOperation("updateMemoryNoteEmbedding", () => {
+    const embeddingStr = JSON.stringify(embedding);
+    const now = getCurrentTimestamp();
+    const result = db.prepare(`
+      UPDATE memory_notes SET embedding = ?, updated_at = ? WHERE id = ?
+    `).run(embeddingStr, now, id);
+    return result.changes > 0;
+  });
+}
+
+export function getMemoryNotesWithoutEmbeddings(): MemoryNote[] {
+  return wrapDbOperation("getMemoryNotesWithoutEmbeddings", () => {
+    const rows = db.prepare(`
+      SELECT * FROM memory_notes 
+      WHERE embedding IS NULL AND is_superseded = 0
+      ORDER BY updated_at DESC
+    `).all() as MemoryNoteRow[];
+    return rows.map(mapMemoryNote);
   });
 }
 
@@ -892,7 +937,7 @@ export function findMemoryNoteByContent(searchContent: string): MemoryNote | und
 }
 
 export function createMemoryNoteWithSupersession(
-  data: InsertMemoryNote, 
+  data: CreateMemoryNoteInput, 
   supersedesContentLike?: string
 ): MemoryNote {
   return wrapDbOperation("createMemoryNoteWithSupersession", () => {

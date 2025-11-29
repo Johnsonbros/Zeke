@@ -201,6 +201,25 @@ export async function handleMemoryCorrection(
   if (!correction.isCorrection || !correction.newMemory) return;
 
   try {
+    const { createMemoryWithEmbedding } = await import("./semanticMemory");
+    
+    const result = await createMemoryWithEmbedding({
+      type: "fact",
+      content: correction.newMemory,
+      context: `Corrected from: ${correction.wrongValue || 'unknown'}`,
+    }, { 
+      supersedesContentLike: correction.wrongValue || correction.subject,
+      checkDuplicates: false 
+    });
+
+    if (result.isDuplicate) {
+      console.log(`Memory correction skipped (duplicate): ${correction.newMemory}`);
+    } else {
+      console.log(`Stored corrected fact with embedding: ${correction.newMemory}`);
+    }
+  } catch (error) {
+    console.error("Error handling memory correction:", error);
+    
     const searchTerm = correction.wrongValue || correction.subject || "";
     const existingNote = searchTerm ? findMemoryNoteByContent(searchTerm) : undefined;
 
@@ -212,11 +231,9 @@ export async function handleMemoryCorrection(
 
     if (existingNote) {
       supersedeMemoryNote(existingNote.id, newNote.id);
-      console.log(`Corrected memory: "${existingNote.content}" -> "${correction.newMemory}"`);
+      console.log(`Corrected memory (fallback): "${existingNote.content}" -> "${correction.newMemory}"`);
     } else {
-      console.log(`Stored corrected fact: ${correction.newMemory}`);
+      console.log(`Stored corrected fact (fallback): ${correction.newMemory}`);
     }
-  } catch (error) {
-    console.error("Error handling memory correction:", error);
   }
 }

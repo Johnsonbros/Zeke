@@ -19,6 +19,20 @@ ZEKE is a single-user personal assistant for Nate Johnson. It is not multi-tenan
 - Summarize long conversation history into concise notes and store them.
 - Agent automatically extracts facts, preferences, and summaries from conversations.
 
+### Semantic Memory System (State-of-the-Art 2025)
+- **Vector Embeddings**: All memories are stored with OpenAI text-embedding-3-small embeddings for semantic search
+- **Importance Scoring**: Memories are ranked by three metrics:
+  - Recency (20%): How recently the memory was updated
+  - Relevance (60%): Semantic similarity to current query (cosine similarity)
+  - Importance (20%): Type-based importance (facts > preferences > notes > summaries)
+- **Automatic Deduplication**: New memories are checked against existing ones using 92% similarity threshold
+- **Semantic Retrieval**: `getSmartMemoryContext()` retrieves the most relevant memories based on meaning, not keywords
+- **Graceful Fallback**: If semantic search fails, system falls back to basic keyword search
+- **Key Files**:
+  - `/server/embeddings.ts` - Embedding generation and cosine similarity
+  - `/server/semanticMemory.ts` - Semantic search and smart context retrieval
+  - `/script/backfill-embeddings.ts` - Script to backfill embeddings for existing memories
+
 ## Project Structure
 - `/client` - React frontend with chat UI
   - `/client/src/pages/chat.tsx` - Main chat interface with redesigned sidebar
@@ -65,7 +79,7 @@ Security: File tools have directory traversal protection using path.normalize() 
 ## Database Schema (SQLite)
 - `conversations` - Chat sessions with title, source (web/sms), phoneNumber, mode (null or "getting_to_know")
 - `messages` - Individual messages with role (user/assistant) and content
-- `memory_notes` - Extracted memories (facts, preferences, summaries, notes) with supersession support (isSuperseded, supersededBy)
+- `memory_notes` - Extracted memories (facts, preferences, summaries, notes) with supersession support (isSuperseded, supersededBy) and embedding column for semantic search
 - `preferences` - Key-value preferences for Nate
 - `grocery_items` - Shared grocery list (id, name, quantity, category, purchased, addedBy)
 
@@ -101,6 +115,12 @@ Security: File tools have directory traversal protection using path.normalize() 
 - TWILIO_PHONE_NUMBER - Twilio phone number (optional, for SMS)
 
 ## Recent Changes
+- 2025-11-29: **Semantic Memory System Upgrade** - Implemented state-of-the-art AI memory architecture with:
+  - Vector embeddings using OpenAI text-embedding-3-small for all memories
+  - Semantic search with importance scoring (recency/relevance/importance)
+  - Automatic memory deduplication (92% similarity threshold)
+  - Smart context retrieval prioritizing relevant memories over recent ones
+  - Graceful fallback to keyword search if semantic search fails
 - 2025-11-29: Redesigned chat sidebar - cleaner UI with ZEKE branding, main actions (Getting To Know You, Grocery List, Memory), collapsible Chat History section, and profile at bottom
 - 2025-11-29: Added Memory page (/memory) - view all of ZEKE's memories with stats, type filters, and supersession tracking
 - 2025-11-29: Added Daily Check-In feature - ZEKE texts Nate once per day with 3 multiple choice questions to deeply understand him and his family

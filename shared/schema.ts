@@ -46,6 +46,7 @@ export const memoryNotes = sqliteTable("memory_notes", {
   type: text("type", { enum: ["summary", "note", "preference", "fact"] }).notNull(),
   content: text("content").notNull(),
   context: text("context").notNull().default(""),
+  embedding: text("embedding"),
   isSuperseded: integer("is_superseded", { mode: "boolean" }).notNull().default(false),
   supersededBy: text("superseded_by"),
   createdAt: text("created_at").notNull(),
