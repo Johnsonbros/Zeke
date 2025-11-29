@@ -48,6 +48,13 @@ from .memory_curator import (
     get_memory_curator,
 )
 
+from .comms_pilot import (
+    CommsPilotAgent,
+    SmsResult,
+    CheckInConfig,
+    get_comms_pilot,
+)
+
 __all__ = [
     "BaseAgent",
     "AgentId",
@@ -74,4 +81,8 @@ __all__ = [
     "LifelogEntry",
     "SynthesizedContext",
     "get_memory_curator",
+    "CommsPilotAgent",
+    "SmsResult",
+    "CheckInConfig",
+    "get_comms_pilot",
 ]
