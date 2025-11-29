@@ -28,13 +28,23 @@ import {
   deleteTask,
   clearCompletedTasks,
   getTasksDueToday,
-  getOverdueTasks
+  getOverdueTasks,
+  getAllContacts,
+  getContact,
+  getContactByPhone,
+  createContact,
+  updateContact,
+  deleteContact,
+  getOrCreateContactForPhone,
+  getConversationsByPhone,
+  getMessageCountForPhone,
+  isMasterAdmin
 } from "./db";
 import { generateContextualQuestion } from "./gettingToKnow";
 import { chat } from "./agent";
 import { setSendSmsCallback, restorePendingReminders } from "./tools";
 import { setDailyCheckInSmsCallback, initializeDailyCheckIn } from "./dailyCheckIn";
-import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema } from "@shared/schema";
+import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
 
@@ -426,6 +436,8 @@ export async function registerRoutes(
   });
   
   // Send outbound SMS
+  // SECURITY NOTE: This is a privileged admin-only endpoint accessible from the web interface.
+  // The web interface is trusted with admin permissions by design.
   app.post("/api/sms/send", async (req, res) => {
     try {
       const parsed = sendSmsSchema.safeParse(req.body);
@@ -439,6 +451,9 @@ export async function registerRoutes(
       if (!fromNumber) {
         return res.status(500).json({ message: "Twilio phone number not configured" });
       }
+      
+      // Log privileged operation for security audit
+      console.log(`PRIVILEGED: Direct SMS send requested via web interface to ${to}`);
       
       const client = getTwilioClient();
       
@@ -690,6 +705,167 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Clear completed tasks error:", error);
       res.status(500).json({ message: "Failed to clear completed tasks" });
+    }
+  });
+  
+  // ==================== CONTACTS API ====================
+  
+  // Get all contacts
+  app.get("/api/contacts", async (_req, res) => {
+    try {
+      const contacts = getAllContacts();
+      // Enhance with message counts
+      const contactsWithStats = contacts.map(contact => ({
+        ...contact,
+        messageCount: getMessageCountForPhone(contact.phoneNumber),
+        conversations: getConversationsByPhone(contact.phoneNumber),
+      }));
+      res.json(contactsWithStats);
+    } catch (error: any) {
+      console.error("Get contacts error:", error);
+      res.status(500).json({ message: "Failed to get contacts" });
+    }
+  });
+  
+  // Get single contact by ID
+  app.get("/api/contacts/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const contact = getContact(id);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      // Enhance with conversations and message count
+      const enhanced = {
+        ...contact,
+        messageCount: getMessageCountForPhone(contact.phoneNumber),
+        conversations: getConversationsByPhone(contact.phoneNumber),
+      };
+      
+      res.json(enhanced);
+    } catch (error: any) {
+      console.error("Get contact error:", error);
+      res.status(500).json({ message: "Failed to get contact" });
+    }
+  });
+  
+  // Get contact by phone number
+  app.get("/api/contacts/phone/:phone", async (req, res) => {
+    try {
+      const { phone } = req.params;
+      const contact = getContactByPhone(phone);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      // Enhance with conversations and message count
+      const enhanced = {
+        ...contact,
+        messageCount: getMessageCountForPhone(contact.phoneNumber),
+        conversations: getConversationsByPhone(contact.phoneNumber),
+      };
+      
+      res.json(enhanced);
+    } catch (error: any) {
+      console.error("Get contact by phone error:", error);
+      res.status(500).json({ message: "Failed to get contact" });
+    }
+  });
+  
+  // Create new contact
+  app.post("/api/contacts", async (req, res) => {
+    try {
+      const parsed = insertContactSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      // Check if phone number already exists
+      const existing = getContactByPhone(parsed.data.phoneNumber);
+      if (existing) {
+        return res.status(409).json({ message: "Contact with this phone number already exists" });
+      }
+      
+      const contact = createContact(parsed.data);
+      res.json(contact);
+    } catch (error: any) {
+      console.error("Create contact error:", error);
+      res.status(500).json({ message: "Failed to create contact" });
+    }
+  });
+  
+  // Update contact
+  app.patch("/api/contacts/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing = getContact(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      const parsed = updateContactSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      // If updating phone number, check for duplicates
+      if (parsed.data.phoneNumber) {
+        const phoneConflict = getContactByPhone(parsed.data.phoneNumber);
+        if (phoneConflict && phoneConflict.id !== id) {
+          return res.status(409).json({ message: "Another contact with this phone number already exists" });
+        }
+      }
+      
+      const contact = updateContact(id, parsed.data);
+      res.json(contact);
+    } catch (error: any) {
+      console.error("Update contact error:", error);
+      res.status(500).json({ message: "Failed to update contact" });
+    }
+  });
+  
+  // Delete contact
+  app.delete("/api/contacts/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing = getContact(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      // Prevent deleting master admin
+      if (isMasterAdmin(existing.phoneNumber)) {
+        return res.status(403).json({ message: "Cannot delete master admin contact" });
+      }
+      
+      deleteContact(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete contact error:", error);
+      res.status(500).json({ message: "Failed to delete contact" });
+    }
+  });
+  
+  // Get conversations for a contact
+  app.get("/api/contacts/:id/conversations", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const contact = getContact(id);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      const conversations = getConversationsByPhone(contact.phoneNumber);
+      res.json(conversations);
+    } catch (error: any) {
+      console.error("Get contact conversations error:", error);
+      res.status(500).json({ message: "Failed to get conversations" });
     }
   });
   

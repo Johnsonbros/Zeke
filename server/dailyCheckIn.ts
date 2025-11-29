@@ -1,6 +1,7 @@
 import * as cron from "node-cron";
 import OpenAI from "openai";
-import { getAllMemoryNotes, getPreference, setPreference, createMemoryNote } from "./db";
+import { getAllMemoryNotes, getPreference, setPreference, createMemoryNote, getContactByPhone } from "./db";
+import { isMasterAdmin } from "@shared/schema";
 
 let openai: OpenAI | null = null;
 let sendSms: ((phone: string, message: string) => Promise<void>) | null = null;
@@ -136,9 +137,33 @@ export async function sendDailyCheckIn(): Promise<boolean> {
     console.log("Daily check-in: SMS callback not configured");
     return false;
   }
+  
+  // Access control check: verify the configured phone number is authorized
+  let isAuthorized = false;
+  let authInfo = "unknown";
+  
+  if (isMasterAdmin(phoneNumber)) {
+    isAuthorized = true;
+    authInfo = "master admin";
+  } else {
+    // Check if the phone number belongs to an admin contact
+    const contact = getContactByPhone(phoneNumber);
+    if (contact && contact.accessLevel === 'admin') {
+      isAuthorized = true;
+      authInfo = `admin contact: ${contact.name}`;
+    } else {
+      authInfo = contact ? `${contact.name} (${contact.accessLevel})` : phoneNumber;
+    }
+  }
+  
+  if (!isAuthorized) {
+    console.log(`ACCESS DENIED: Daily check-in blocked - phone ${phoneNumber} is not authorized (${authInfo})`);
+    console.log("Daily check-in is only available for admin users. Configure an admin phone number to enable this feature.");
+    return false;
+  }
 
   try {
-    console.log("Generating daily check-in questions...");
+    console.log(`Generating daily check-in questions for authorized user (${authInfo})...`);
     const questions = await generateDailyQuestions();
     const message = formatQuestionsForSms(questions);
     

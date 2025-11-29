@@ -7,6 +7,8 @@ import {
   searchMemoryNotes,
   updateConversationTitle,
   getConversation,
+  getContactByPhone,
+  getOrCreateContactForPhone,
 } from "./db";
 import { toolDefinitions, executeTool, getActiveReminders } from "./tools";
 import { 
@@ -18,7 +20,106 @@ import {
   createMemoryWithEmbedding,
   getSmartMemoryContext,
 } from "./semanticMemory";
-import type { Message } from "@shared/schema";
+import type { Message, Contact } from "@shared/schema";
+import { isMasterAdmin } from "@shared/schema";
+
+// Permission context passed to the agent for access control
+export interface UserPermissions {
+  isAdmin: boolean;
+  isMasterAdmin: boolean;
+  accessLevel: string;
+  canAccessPersonalInfo: boolean;
+  canAccessCalendar: boolean;
+  canAccessTasks: boolean;
+  canAccessGrocery: boolean;
+  canSetReminders: boolean;
+  contactName?: string;
+  source: 'web' | 'sms';
+}
+
+// Get permissions for a phone number
+export function getPermissionsForPhone(phoneNumber: string): UserPermissions {
+  const normalizedPhone = phoneNumber.replace(/\D/g, "");
+  
+  // Check if master admin
+  if (isMasterAdmin(normalizedPhone)) {
+    return {
+      isAdmin: true,
+      isMasterAdmin: true,
+      accessLevel: 'admin',
+      canAccessPersonalInfo: true,
+      canAccessCalendar: true,
+      canAccessTasks: true,
+      canAccessGrocery: true,
+      canSetReminders: true,
+      contactName: 'Nate Johnson',
+      source: 'sms',
+    };
+  }
+  
+  // Look up contact in database
+  const contact = getContactByPhone(phoneNumber);
+  
+  if (contact) {
+    return {
+      isAdmin: contact.accessLevel === 'admin',
+      isMasterAdmin: false,
+      accessLevel: contact.accessLevel,
+      canAccessPersonalInfo: contact.canAccessPersonalInfo,
+      canAccessCalendar: contact.canAccessCalendar,
+      canAccessTasks: contact.canAccessTasks,
+      canAccessGrocery: contact.canAccessGrocery,
+      canSetReminders: contact.canSetReminders,
+      contactName: contact.name,
+      source: 'sms',
+    };
+  }
+  
+  // Create a new unknown contact and return restricted permissions
+  const newContact = getOrCreateContactForPhone(phoneNumber);
+  return {
+    isAdmin: false,
+    isMasterAdmin: false,
+    accessLevel: newContact.accessLevel,
+    canAccessPersonalInfo: newContact.canAccessPersonalInfo,
+    canAccessCalendar: newContact.canAccessCalendar,
+    canAccessTasks: newContact.canAccessTasks,
+    canAccessGrocery: newContact.canAccessGrocery,
+    canSetReminders: newContact.canSetReminders,
+    contactName: newContact.name,
+    source: 'sms',
+  };
+}
+
+// Web users have the most restricted access
+export function getWebUserPermissions(): UserPermissions {
+  return {
+    isAdmin: false,
+    isMasterAdmin: false,
+    accessLevel: 'web',
+    canAccessPersonalInfo: false,
+    canAccessCalendar: false,
+    canAccessTasks: false,
+    canAccessGrocery: false,
+    canSetReminders: false,
+    source: 'web',
+  };
+}
+
+// Admin permissions for web interface (used when web is in admin mode)
+export function getAdminPermissions(): UserPermissions {
+  return {
+    isAdmin: true,
+    isMasterAdmin: true,
+    accessLevel: 'admin',
+    canAccessPersonalInfo: true,
+    canAccessCalendar: true,
+    canAccessTasks: true,
+    canAccessGrocery: true,
+    canSetReminders: true,
+    source: 'web',
+  };
+}
 
 // Use gpt-4o as the default model
 // Lazily initialize OpenAI client to allow app to start without API key
@@ -122,23 +223,92 @@ async function getMemoryContext(userMessage: string): Promise<string> {
   }
 }
 
+// Build access control section based on permissions
+function buildAccessControlPrompt(permissions: UserPermissions): string {
+  if (permissions.isMasterAdmin) {
+    return `## Access Level: MASTER ADMIN
+You are speaking with Nate Johnson, the master admin. Full access to all features and personal information.`;
+  }
+  
+  if (permissions.isAdmin) {
+    return `## Access Level: ADMIN
+You are speaking with ${permissions.contactName || 'an admin'}. Full access to all features.`;
+  }
+  
+  const restrictions: string[] = [];
+  const allowed: string[] = [];
+  
+  // Build restrictions based on permissions
+  if (!permissions.canAccessPersonalInfo) {
+    restrictions.push("- DO NOT share personal information about Nate or his family (names, relationships, personal details)");
+  } else {
+    allowed.push("- Can access personal info about Nate and family");
+  }
+  
+  if (!permissions.canAccessCalendar) {
+    restrictions.push("- DO NOT share calendar or schedule information");
+  } else {
+    allowed.push("- Can view and create calendar events");
+  }
+  
+  if (!permissions.canAccessTasks) {
+    restrictions.push("- DO NOT share task list or to-do items");
+  } else {
+    allowed.push("- Can view and manage tasks");
+  }
+  
+  if (!permissions.canAccessGrocery) {
+    restrictions.push("- DO NOT share or modify the grocery list");
+  } else {
+    allowed.push("- Can view and modify grocery list");
+  }
+  
+  if (!permissions.canSetReminders) {
+    restrictions.push("- DO NOT set reminders for this user");
+  } else {
+    allowed.push("- Can set reminders");
+  }
+  
+  let accessSection = `## Access Level: ${permissions.accessLevel.toUpperCase()}
+You are speaking with ${permissions.contactName || 'an SMS user'} via ${permissions.source.toUpperCase()}.
+
+### ALLOWED:
+${allowed.length > 0 ? allowed.join("\n") : "- Basic conversation only"}
+
+### STRICT RESTRICTIONS (NEVER VIOLATE):
+${restrictions.length > 0 ? restrictions.join("\n") : "- None"}
+
+If they ask for restricted information, politely decline and explain you cannot share that information with them. Be friendly but firm about access restrictions.`;
+  
+  return accessSection;
+}
+
 // Build the system prompt
-async function buildSystemPrompt(userMessage: string, userPhoneNumber?: string): Promise<string> {
-  const profileContext = loadProfileContext();
-  const memoryContext = await getMemoryContext(userMessage);
+async function buildSystemPrompt(userMessage: string, userPhoneNumber?: string, permissions?: UserPermissions): Promise<string> {
+  // Default to admin permissions for web (maintains current behavior)
+  const userPermissions = permissions || getAdminPermissions();
+  
+  // Only include personal context if user has access
+  const profileContext = userPermissions.canAccessPersonalInfo ? loadProfileContext() : "";
+  const memoryContext = userPermissions.canAccessPersonalInfo ? await getMemoryContext(userMessage) : "";
 
   const activeReminders = getActiveReminders();
   const reminderContext =
-    activeReminders.length > 0
+    activeReminders.length > 0 && userPermissions.canSetReminders
       ? `## Active Reminders\n${activeReminders.map((r) => `- "${r.message}" scheduled for ${r.scheduledFor.toLocaleString("en-US", { timeZone: "America/New_York" })}`).join("\n")}\n\n`
       : "";
   
   // Add phone number context so ZEKE knows where to send SMS reminders
-  const phoneContext = userPhoneNumber 
+  const phoneContext = userPhoneNumber && userPermissions.canSetReminders
     ? `\n## Current User Phone\nThe user's phone number is: ${userPhoneNumber}\nWhen setting reminders, ALWAYS include recipient_phone: "${userPhoneNumber}" to send SMS reminders.\n`
     : "";
+  
+  // Build access control section
+  const accessControlSection = buildAccessControlPrompt(userPermissions);
 
   return `You are ZEKE, Nate Johnson's personal AI assistant. You have a persistent memory and can be accessed via SMS or web.
+
+${accessControlSection}
 
 ${profileContext}
 
@@ -386,24 +556,35 @@ export async function chat(
   userMessage: string,
   isNewConversation: boolean = false,
   userPhoneNumber?: string,
+  permissions?: UserPermissions,
 ): Promise<string> {
   // Get conversation and history
   const conversation = getConversation(conversationId);
   const history = getRecentMessages(conversationId, 20);
   const isGettingToKnowMode = conversation?.mode === "getting_to_know";
+  
+  // Determine user permissions
+  let userPermissions = permissions;
+  if (!userPermissions && userPhoneNumber) {
+    // SMS user - look up their permissions
+    userPermissions = getPermissionsForPhone(userPhoneNumber);
+  } else if (!userPermissions) {
+    // Web user - use admin permissions (maintaining current behavior)
+    userPermissions = getAdminPermissions();
+  }
 
   // Build system prompt with context (including phone number for SMS reminders)
-  let systemPrompt = await buildSystemPrompt(userMessage, userPhoneNumber);
+  let systemPrompt = await buildSystemPrompt(userMessage, userPhoneNumber, userPermissions);
   
-  // Apply Getting To Know You mode enhancements
-  if (isGettingToKnowMode) {
+  // Apply Getting To Know You mode enhancements (only for admin users)
+  if (isGettingToKnowMode && userPermissions.isAdmin) {
     systemPrompt = buildGettingToKnowSystemPrompt(systemPrompt);
   }
   
-  // Check for memory corrections before processing (only in getting_to_know mode or when there are memories)
+  // Check for memory corrections before processing (only for admin users)
   // Also guard against missing OpenAI API key
   const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
-  if (hasOpenAIKey && history.length > 0 && (isGettingToKnowMode || getAllMemoryNotes().length > 0)) {
+  if (hasOpenAIKey && userPermissions.isAdmin && history.length > 0 && (isGettingToKnowMode || getAllMemoryNotes().length > 0)) {
     try {
       const recentContext = history.slice(-4).map(m => `${m.role}: ${m.content}`).join("\n");
       const correctionResult = await detectMemoryCorrection(userMessage, recentContext);
@@ -454,8 +635,10 @@ export async function chat(
           updateConversationTitle(conversationId, title);
         }
 
-        // Extract and store any important memory (async, don't wait)
-        extractMemory(userMessage, assistantMessage).catch(console.error);
+        // Extract and store any important memory (async, don't wait) - only for admin users
+        if (userPermissions.isAdmin) {
+          extractMemory(userMessage, assistantMessage).catch(console.error);
+        }
 
         return assistantMessage;
       }
@@ -481,7 +664,16 @@ export async function chat(
 
           console.log(`Tool call: ${toolName}`, toolArgs);
 
-          const result = await executeTool(toolName, toolArgs, conversationId);
+          // Pass permissions to executeTool for access control
+          const toolPermissions = {
+            isAdmin: userPermissions.isAdmin,
+            canAccessPersonalInfo: userPermissions.canAccessPersonalInfo,
+            canAccessCalendar: userPermissions.canAccessCalendar,
+            canAccessTasks: userPermissions.canAccessTasks,
+            canAccessGrocery: userPermissions.canAccessGrocery,
+            canSetReminders: userPermissions.canSetReminders,
+          };
+          const result = await executeTool(toolName, toolArgs, conversationId, toolPermissions);
 
           console.log(`Tool result: ${result.substring(0, 200)}...`);
 

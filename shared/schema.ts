@@ -277,3 +277,9 @@ export const defaultPermissionsByLevel: Record<AccessLevel, {
 
 // Master admin phone number
 export const MASTER_ADMIN_PHONE = "6176868763";
+
+// Check if a phone number is the master admin
+export function isMasterAdmin(phoneNumber: string): boolean {
+  const normalized = phoneNumber.replace(/\D/g, "");
+  return normalized === MASTER_ADMIN_PHONE || normalized.endsWith(MASTER_ADMIN_PHONE);
+}

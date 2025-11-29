@@ -22,9 +22,60 @@ import {
   clearCompletedTasks,
   getTasksDueToday,
   getOverdueTasks,
-  searchTasks
+  searchTasks,
+  getConversation,
+  getContactByPhone
 } from "./db";
 import type { Reminder, Task } from "@shared/schema";
+import { isMasterAdmin } from "@shared/schema";
+
+// Import UserPermissions type for access control
+export interface ToolPermissions {
+  isAdmin: boolean;
+  canAccessPersonalInfo: boolean;
+  canAccessCalendar: boolean;
+  canAccessTasks: boolean;
+  canAccessGrocery: boolean;
+  canSetReminders: boolean;
+}
+
+// Define which tools require which permissions
+const TOOL_PERMISSIONS: Record<string, (permissions: ToolPermissions) => boolean> = {
+  set_reminder: (p) => p.canSetReminders,
+  list_reminders: (p) => p.canSetReminders,
+  cancel_reminder: (p) => p.canSetReminders,
+  add_grocery_item: (p) => p.canAccessGrocery,
+  list_grocery_items: (p) => p.canAccessGrocery,
+  mark_grocery_purchased: (p) => p.canAccessGrocery,
+  remove_grocery_item: (p) => p.canAccessGrocery,
+  clear_purchased_groceries: (p) => p.canAccessGrocery,
+  clear_all_groceries: (p) => p.canAccessGrocery,
+  add_task: (p) => p.canAccessTasks,
+  list_tasks: (p) => p.canAccessTasks,
+  update_task: (p) => p.canAccessTasks,
+  toggle_task: (p) => p.canAccessTasks,
+  delete_task: (p) => p.canAccessTasks,
+  clear_completed_tasks: (p) => p.canAccessTasks,
+  get_calendar_events: (p) => p.canAccessCalendar,
+  get_today_events: (p) => p.canAccessCalendar,
+  get_upcoming_events: (p) => p.canAccessCalendar,
+  create_calendar_event: (p) => p.canAccessCalendar,
+  update_calendar_event: (p) => p.canAccessCalendar,
+  delete_calendar_event: (p) => p.canAccessCalendar,
+  configure_daily_checkin: (p) => p.isAdmin,
+  get_daily_checkin_status: (p) => p.isAdmin,
+  stop_daily_checkin: (p) => p.isAdmin,
+  send_daily_checkin_now: (p) => p.isAdmin,
+  send_sms: (p) => p.isAdmin,
+  read_file: (p) => p.canAccessPersonalInfo,
+  write_file: (p) => p.canAccessPersonalInfo,
+  list_files: (p) => p.canAccessPersonalInfo,
+  web_search: () => true,
+  perplexity_search: () => true,
+  get_current_time: () => true,
+  get_current_weather: () => true,
+  get_weather_forecast: () => true,
+};
 import { 
   configureDailyCheckIn, 
   getDailyCheckInStatus, 
@@ -742,6 +793,49 @@ async function executeReminder(reminderId: string) {
   
   try {
     if (reminder.recipientPhone && sendSmsCallback) {
+      // Access control check: verify the reminder was created by an authorized user
+      let isAuthorized = false;
+      let creatorInfo = "unknown";
+      
+      if (reminder.conversationId) {
+        // Look up the conversation to determine who created this reminder
+        const conversation = getConversation(reminder.conversationId);
+        if (conversation) {
+          if (conversation.source === "web") {
+            // Web interface has admin permissions
+            isAuthorized = true;
+            creatorInfo = "web interface (admin)";
+          } else if (conversation.phoneNumber) {
+            // SMS conversation - check if the phone number is authorized
+            if (isMasterAdmin(conversation.phoneNumber)) {
+              isAuthorized = true;
+              creatorInfo = `master admin (${conversation.phoneNumber})`;
+            } else {
+              // Check if the contact has admin/reminder permissions
+              const contact = getContactByPhone(conversation.phoneNumber);
+              if (contact && (contact.accessLevel === 'admin' || contact.canSetReminders)) {
+                isAuthorized = true;
+                creatorInfo = `${contact.name} (${contact.accessLevel})`;
+              } else {
+                creatorInfo = conversation.phoneNumber;
+              }
+            }
+          }
+        }
+      } else {
+        // No conversation ID - likely created from web interface which has admin permissions
+        isAuthorized = true;
+        creatorInfo = "system (no conversation context)";
+      }
+      
+      if (!isAuthorized) {
+        console.log(`ACCESS DENIED: Reminder ${reminderId} SMS blocked - created by unauthorized user: ${creatorInfo}`);
+        updateReminderCompleted(reminderId, true); // Mark as completed to prevent retry
+        activeTimeouts.delete(reminderId);
+        return;
+      }
+      
+      console.log(`Authorization verified for reminder SMS - creator: ${creatorInfo}`);
       await sendSmsCallback(reminder.recipientPhone, reminder.message);
       console.log(`Reminder SMS sent to ${reminder.recipientPhone}`);
     } else if (reminder.conversationId && notifyUserCallback) {
@@ -795,9 +889,31 @@ interface ListFilesArgs {
 export async function executeTool(
   toolName: string, 
   args: Record<string, unknown>,
-  conversationId?: string
+  conversationId?: string,
+  permissions?: ToolPermissions
 ): Promise<string> {
   console.log(`Executing tool: ${toolName}`, args);
+  
+  // Default to admin permissions for backwards compatibility (web interface)
+  const effectivePermissions: ToolPermissions = permissions || {
+    isAdmin: true,
+    canAccessPersonalInfo: true,
+    canAccessCalendar: true,
+    canAccessTasks: true,
+    canAccessGrocery: true,
+    canSetReminders: true,
+  };
+  
+  // Check if this tool requires specific permissions
+  const permissionCheck = TOOL_PERMISSIONS[toolName];
+  if (permissionCheck && !permissionCheck(effectivePermissions)) {
+    console.log(`Access denied for tool ${toolName} - insufficient permissions`);
+    return JSON.stringify({
+      success: false,
+      error: `Access denied. You do not have permission to use this feature.`,
+      denied_tool: toolName,
+    });
+  }
   
   switch (toolName) {
     case "set_reminder": {
