@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Plus, 
   Trash2, 
@@ -58,7 +59,7 @@ import {
   FormLabel,
   FormDescription,
 } from "@/components/ui/form";
-import type { Contact, Conversation, AccessLevel } from "@shared/schema";
+import type { Contact, Conversation, AccessLevel, TwilioMessage } from "@shared/schema";
 import { accessLevels, defaultPermissionsByLevel, MASTER_ADMIN_PHONE } from "@shared/schema";
 import { format, parseISO } from "date-fns";
 
@@ -254,6 +255,15 @@ function ContactDetailPanel({
   const config = ACCESS_LEVEL_CONFIG[contact.accessLevel];
   const isMasterAdmin = contact.phoneNumber.replace(/\D/g, "").endsWith(MASTER_ADMIN_PHONE);
   
+  const { data: messages, isLoading: isLoadingMessages } = useQuery<TwilioMessage[]>({
+    queryKey: ['/api/twilio/messages/phone', contact.phoneNumber],
+    queryFn: async () => {
+      const response = await fetch(`/api/twilio/messages/phone/${encodeURIComponent(contact.phoneNumber)}`);
+      if (!response.ok) throw new Error('Failed to fetch messages');
+      return response.json();
+    },
+  });
+  
   const form = useForm<ContactFormValues>({
     resolver: zodResolver(contactFormSchema),
     defaultValues: {
@@ -293,7 +303,10 @@ function ContactDetailPanel({
           <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" onClick={onClose} data-testid="button-close-detail">
             <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </Button>
-          <h2 className="font-semibold text-sm sm:text-base">Contact Details</h2>
+          <div className="min-w-0">
+            <h2 className="font-semibold text-sm sm:text-base truncate">{contact.name}</h2>
+            <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{formatPhoneDisplay(contact.phoneNumber)}</p>
+          </div>
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
           {isEditing ? (
@@ -321,188 +334,256 @@ function ContactDetailPanel({
         </div>
       </div>
       
-      <ScrollArea className="flex-1">
-        <div className="p-3 sm:p-4 space-y-4 sm:space-y-6">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <Avatar className="h-12 w-12 sm:h-16 sm:w-16 shrink-0">
-              <AvatarFallback className={`text-base sm:text-xl ${isMasterAdmin ? "bg-primary text-primary-foreground" : "bg-accent"}`}>
-                {getInitials(contact.name)}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              {isEditing ? (
-                <Input 
-                  {...form.register("name")}
-                  className="font-semibold text-base sm:text-lg mb-1"
-                  data-testid="input-edit-name"
-                />
-              ) : (
-                <h3 className="font-semibold text-base sm:text-lg truncate">{contact.name}</h3>
-              )}
-              <div className="flex items-center gap-1 text-xs sm:text-sm text-muted-foreground">
-                <Phone className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
-                <span className="truncate">{formatPhoneDisplay(contact.phoneNumber)}</span>
-              </div>
-              {isMasterAdmin && (
-                <Badge variant="default" className="mt-1.5 sm:mt-2 gap-0.5 sm:gap-1 text-[10px] sm:text-xs">
-                  <Crown className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                  Master Admin
-                </Badge>
-              )}
-            </div>
-          </div>
-          
-          <div className="space-y-3">
-            <h4 className="text-sm font-medium flex items-center gap-2">
-              <Shield className="h-4 w-4" />
-              Access Level
-            </h4>
-            {isEditing && !isMasterAdmin ? (
-              <Select 
-                value={form.watch("accessLevel")} 
-                onValueChange={(v) => handleAccessLevelChange(v as AccessLevel)}
-              >
-                <SelectTrigger data-testid="select-access-level">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {accessLevels.map((level) => {
-                    const levelConfig = ACCESS_LEVEL_CONFIG[level];
-                    const LevelIcon = levelConfig.icon;
-                    return (
-                      <SelectItem key={level} value={level}>
-                        <div className="flex items-center gap-2">
-                          <LevelIcon className={`h-4 w-4 ${levelConfig.color}`} />
-                          <span>{levelConfig.label}</span>
-                        </div>
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            ) : (
-              <div className={`flex items-center gap-2 p-3 rounded-lg border border-border ${config.color}`}>
-                <config.icon className="h-5 w-5" />
-                <div>
-                  <p className="font-medium">{config.label}</p>
-                  <p className="text-xs text-muted-foreground">{config.description}</p>
+      <Tabs defaultValue="messages" className="flex-1 flex flex-col min-h-0">
+        <div className="p-2 sm:p-3 border-b border-border">
+          <TabsList className="w-full h-8 sm:h-9">
+            <TabsTrigger value="messages" className="flex-1 text-xs sm:text-sm gap-1 sm:gap-1.5" data-testid="tab-messages">
+              <MessageSquare className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+              Messages
+            </TabsTrigger>
+            <TabsTrigger value="details" className="flex-1 text-xs sm:text-sm gap-1 sm:gap-1.5" data-testid="tab-details">
+              <User className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+              Details
+            </TabsTrigger>
+          </TabsList>
+        </div>
+        
+        <TabsContent value="messages" className="flex-1 m-0 min-h-0">
+          <ScrollArea className="h-full">
+            <div className="p-2 sm:p-3">
+              {isLoadingMessages ? (
+                <div className="space-y-2 sm:space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className={`flex ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}>
+                      <Skeleton className="h-12 sm:h-14 w-2/3 rounded-lg" />
+                    </div>
+                  ))}
                 </div>
-              </div>
-            )}
-          </div>
-          
-          {isEditing && (
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium">Relationship</h4>
-              <Input 
-                {...form.register("relationship")}
-                placeholder="e.g., Wife, Brother, Coworker"
-                data-testid="input-relationship"
-              />
-            </div>
-          )}
-          
-          {contact.relationship && !isEditing && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium">Relationship</h4>
-              <p className="text-sm text-muted-foreground">{contact.relationship}</p>
-            </div>
-          )}
-          
-          <div className="space-y-3">
-            <h4 className="text-sm font-medium flex items-center gap-2">
-              <Eye className="h-4 w-4" />
-              Permissions
-            </h4>
-            <div className="space-y-2">
-              <PermissionToggle
-                label="Personal Info"
-                description="Family details, preferences, notes about you"
-                icon={User}
-                checked={isEditing ? form.watch("canAccessPersonalInfo") : contact.canAccessPersonalInfo}
-                onCheckedChange={(v) => form.setValue("canAccessPersonalInfo", v)}
-                disabled={!isEditing || isMasterAdmin}
-              />
-              <PermissionToggle
-                label="Calendar"
-                description="View and create calendar events"
-                icon={Calendar}
-                checked={isEditing ? form.watch("canAccessCalendar") : contact.canAccessCalendar}
-                onCheckedChange={(v) => form.setValue("canAccessCalendar", v)}
-                disabled={!isEditing || isMasterAdmin}
-              />
-              <PermissionToggle
-                label="Tasks"
-                description="View and manage your to-do list"
-                icon={ListTodo}
-                checked={isEditing ? form.watch("canAccessTasks") : contact.canAccessTasks}
-                onCheckedChange={(v) => form.setValue("canAccessTasks", v)}
-                disabled={!isEditing || isMasterAdmin}
-              />
-              <PermissionToggle
-                label="Grocery List"
-                description="View and add to grocery list"
-                icon={ShoppingCart}
-                checked={isEditing ? form.watch("canAccessGrocery") : contact.canAccessGrocery}
-                onCheckedChange={(v) => form.setValue("canAccessGrocery", v)}
-                disabled={!isEditing || isMasterAdmin}
-              />
-              <PermissionToggle
-                label="Reminders"
-                description="Set reminders for you"
-                icon={Bell}
-                checked={isEditing ? form.watch("canSetReminders") : contact.canSetReminders}
-                onCheckedChange={(v) => form.setValue("canSetReminders", v)}
-                disabled={!isEditing || isMasterAdmin}
-              />
-            </div>
-          </div>
-          
-          {contact.conversations.length > 0 && (
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" />
-                Conversation History ({contact.messageCount} messages)
-              </h4>
-              <div className="space-y-2">
-                {contact.conversations.map((conv) => (
-                  <Card key={conv.id} className="p-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium">{conv.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(parseISO(conv.updatedAt), "MMM d, yyyy 'at' h:mm a")}
+              ) : !messages || messages.length === 0 ? (
+                <div className="text-center py-8 sm:py-12">
+                  <MessageSquare className="h-10 w-10 sm:h-12 sm:w-12 mx-auto text-muted-foreground opacity-50 mb-3 sm:mb-4" />
+                  <p className="text-sm sm:text-base text-muted-foreground">No messages yet</p>
+                  <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+                    SMS messages with {contact.name} will appear here
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 sm:space-y-3">
+                  {messages.map((message) => (
+                    <div 
+                      key={message.id}
+                      className={`flex ${message.direction === 'inbound' ? 'justify-start' : 'justify-end'}`}
+                      data-testid={`message-${message.id}`}
+                    >
+                      <div 
+                        className={`max-w-[80%] sm:max-w-[75%] rounded-lg p-2 sm:p-3 ${
+                          message.direction === 'inbound' 
+                            ? 'bg-accent text-accent-foreground rounded-tl-sm' 
+                            : 'bg-primary text-primary-foreground rounded-tr-sm'
+                        }`}
+                      >
+                        <p className="text-xs sm:text-sm break-words">{message.body}</p>
+                        <p className={`text-[9px] sm:text-[10px] mt-1 ${
+                          message.direction === 'inbound' 
+                            ? 'text-muted-foreground' 
+                            : 'text-primary-foreground/70'
+                        }`}>
+                          {format(parseISO(message.createdAt), "MMM d, h:mm a")}
                         </p>
                       </div>
-                      <Badge variant="outline" className="text-xs">
-                        {conv.source.toUpperCase()}
-                      </Badge>
                     </div>
-                  </Card>
-                ))}
+                  ))}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+        
+        <TabsContent value="details" className="flex-1 m-0 min-h-0">
+          <ScrollArea className="h-full">
+            <div className="p-3 sm:p-4 space-y-4 sm:space-y-6">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <Avatar className="h-12 w-12 sm:h-16 sm:w-16 shrink-0">
+                  <AvatarFallback className={`text-base sm:text-xl ${isMasterAdmin ? "bg-primary text-primary-foreground" : "bg-accent"}`}>
+                    {getInitials(contact.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  {isEditing ? (
+                    <Input 
+                      {...form.register("name")}
+                      className="font-semibold text-base sm:text-lg mb-1"
+                      data-testid="input-edit-name"
+                    />
+                  ) : (
+                    <h3 className="font-semibold text-base sm:text-lg truncate">{contact.name}</h3>
+                  )}
+                  <div className="flex items-center gap-1 text-xs sm:text-sm text-muted-foreground">
+                    <Phone className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
+                    <span className="truncate">{formatPhoneDisplay(contact.phoneNumber)}</span>
+                  </div>
+                  {isMasterAdmin && (
+                    <Badge variant="default" className="mt-1.5 sm:mt-2 gap-0.5 sm:gap-1 text-[10px] sm:text-xs">
+                      <Crown className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                      Master Admin
+                    </Badge>
+                  )}
+                </div>
               </div>
+              
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Access Level
+                </h4>
+                {isEditing && !isMasterAdmin ? (
+                  <Select 
+                    value={form.watch("accessLevel")} 
+                    onValueChange={(v) => handleAccessLevelChange(v as AccessLevel)}
+                  >
+                    <SelectTrigger data-testid="select-access-level">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accessLevels.map((level) => {
+                        const levelConfig = ACCESS_LEVEL_CONFIG[level];
+                        const LevelIcon = levelConfig.icon;
+                        return (
+                          <SelectItem key={level} value={level}>
+                            <div className="flex items-center gap-2">
+                              <LevelIcon className={`h-4 w-4 ${levelConfig.color}`} />
+                              <span>{levelConfig.label}</span>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className={`flex items-center gap-2 p-3 rounded-lg border border-border ${config.color}`}>
+                    <config.icon className="h-5 w-5" />
+                    <div>
+                      <p className="font-medium">{config.label}</p>
+                      <p className="text-xs text-muted-foreground">{config.description}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {isEditing && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium">Relationship</h4>
+                  <Input 
+                    {...form.register("relationship")}
+                    placeholder="e.g., Wife, Brother, Coworker"
+                    data-testid="input-relationship"
+                  />
+                </div>
+              )}
+              
+              {contact.relationship && !isEditing && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium">Relationship</h4>
+                  <p className="text-sm text-muted-foreground">{contact.relationship}</p>
+                </div>
+              )}
+              
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <Eye className="h-4 w-4" />
+                  Permissions
+                </h4>
+                <div className="space-y-2">
+                  <PermissionToggle
+                    label="Personal Info"
+                    description="Family details, preferences, notes about you"
+                    icon={User}
+                    checked={isEditing ? form.watch("canAccessPersonalInfo") : contact.canAccessPersonalInfo}
+                    onCheckedChange={(v) => form.setValue("canAccessPersonalInfo", v)}
+                    disabled={!isEditing || isMasterAdmin}
+                  />
+                  <PermissionToggle
+                    label="Calendar"
+                    description="View and create calendar events"
+                    icon={Calendar}
+                    checked={isEditing ? form.watch("canAccessCalendar") : contact.canAccessCalendar}
+                    onCheckedChange={(v) => form.setValue("canAccessCalendar", v)}
+                    disabled={!isEditing || isMasterAdmin}
+                  />
+                  <PermissionToggle
+                    label="Tasks"
+                    description="View and manage your to-do list"
+                    icon={ListTodo}
+                    checked={isEditing ? form.watch("canAccessTasks") : contact.canAccessTasks}
+                    onCheckedChange={(v) => form.setValue("canAccessTasks", v)}
+                    disabled={!isEditing || isMasterAdmin}
+                  />
+                  <PermissionToggle
+                    label="Grocery List"
+                    description="View and add to grocery list"
+                    icon={ShoppingCart}
+                    checked={isEditing ? form.watch("canAccessGrocery") : contact.canAccessGrocery}
+                    onCheckedChange={(v) => form.setValue("canAccessGrocery", v)}
+                    disabled={!isEditing || isMasterAdmin}
+                  />
+                  <PermissionToggle
+                    label="Reminders"
+                    description="Set reminders for you"
+                    icon={Bell}
+                    checked={isEditing ? form.watch("canSetReminders") : contact.canSetReminders}
+                    onCheckedChange={(v) => form.setValue("canSetReminders", v)}
+                    disabled={!isEditing || isMasterAdmin}
+                  />
+                </div>
+              </div>
+              
+              {contact.conversations.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    Conversation History ({contact.messageCount} messages)
+                  </h4>
+                  <div className="space-y-2">
+                    {contact.conversations.map((conv) => (
+                      <Card key={conv.id} className="p-3">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{conv.title}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {format(parseISO(conv.updatedAt), "MMM d, yyyy 'at' h:mm a")}
+                            </p>
+                          </div>
+                          <Badge variant="outline" className="text-xs shrink-0">
+                            {conv.source.toUpperCase()}
+                          </Badge>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {isEditing && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium">Notes</h4>
+                  <Input 
+                    {...form.register("notes")}
+                    placeholder="Additional notes about this contact"
+                    data-testid="input-notes"
+                  />
+                </div>
+              )}
+              
+              {contact.notes && !isEditing && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium">Notes</h4>
+                  <p className="text-sm text-muted-foreground">{contact.notes}</p>
+                </div>
+              )}
             </div>
-          )}
-          
-          {isEditing && (
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium">Notes</h4>
-              <Input 
-                {...form.register("notes")}
-                placeholder="Additional notes about this contact"
-                data-testid="input-notes"
-              />
-            </div>
-          )}
-          
-          {contact.notes && !isEditing && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium">Notes</h4>
-              <p className="text-sm text-muted-foreground">{contact.notes}</p>
-            </div>
-          )}
-        </div>
-      </ScrollArea>
+          </ScrollArea>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
