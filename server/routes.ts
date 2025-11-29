@@ -24,6 +24,7 @@ import {
 import { generateContextualQuestion } from "./gettingToKnow";
 import { chat } from "./agent";
 import { setSendSmsCallback, restorePendingReminders } from "./tools";
+import { setDailyCheckInSmsCallback, initializeDailyCheckIn } from "./dailyCheckIn";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
@@ -91,6 +92,30 @@ export async function registerRoutes(
   
   // Restore pending reminders from database after server startup
   restorePendingReminders();
+  
+  // Set up daily check-in SMS callback and restore scheduled check-ins
+  setDailyCheckInSmsCallback(async (phone: string, message: string) => {
+    const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER;
+    if (!twilioFromNumber) {
+      console.error("TWILIO_PHONE_NUMBER not configured for daily check-in");
+      throw new Error("Twilio not configured");
+    }
+    
+    try {
+      const client = getTwilioClient();
+      const formattedPhone = formatPhoneNumber(phone);
+      await client.messages.create({
+        body: message,
+        from: twilioFromNumber,
+        to: formattedPhone,
+      });
+      console.log(`Daily check-in SMS sent to ${formattedPhone}`);
+    } catch (error) {
+      console.error("Failed to send daily check-in SMS:", error);
+      throw error;
+    }
+  });
+  initializeDailyCheckIn();
   
   // Chat endpoint - sends message and gets AI response
   app.post("/api/chat", async (req, res) => {
