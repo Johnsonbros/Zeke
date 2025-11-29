@@ -100,3 +100,8 @@ waitForPort = 5000
 
 [agent]
 integrations = ["javascript_openai:1.0.0", "google-calendar:1.0.0"]
+
+[userenv]
+
+[userenv.development]
+INTERNAL_BRIDGE_KEY = "zeke-internal-bridge-2025"

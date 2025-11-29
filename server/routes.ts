@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { 
   createConversation, 
@@ -65,7 +65,19 @@ import {
 import type { TwilioMessageSource } from "@shared/schema";
 import { generateContextualQuestion } from "./gettingToKnow";
 import { chat } from "./agent";
-import { setSendSmsCallback, restorePendingReminders } from "./tools";
+import { setSendSmsCallback, restorePendingReminders, executeTool, toolDefinitions, TOOL_PERMISSIONS, type ToolPermissions } from "./tools";
+import { getSmartMemoryContext, semanticSearch } from "./semanticMemory";
+import {
+  communicationToolNames,
+  reminderToolNames,
+  taskToolNames,
+  calendarToolNames,
+  groceryToolNames,
+  searchToolNames,
+  fileToolNames,
+  memoryToolNames,
+  utilityToolNames,
+} from "./capabilities";
 import { setDailyCheckInSmsCallback, initializeDailyCheckIn } from "./dailyCheckIn";
 import { 
   initializeAutomations, 
@@ -1572,6 +1584,265 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Calendar update error:", error);
       res.status(500).json({ error: error.message || "Failed to update calendar event" });
+    }
+  });
+
+  // ============================================
+  // INTERNAL API BRIDGE FOR PYTHON AGENTS
+  // ============================================
+  
+  // Internal API key authentication middleware
+  const requireInternalApiKey = (req: Request, res: Response, next: NextFunction) => {
+    const apiKey = req.headers["x-internal-api-key"] as string;
+    const expectedKey = process.env.INTERNAL_BRIDGE_KEY;
+    
+    if (!expectedKey) {
+      console.warn("INTERNAL_BRIDGE_KEY not configured - internal API endpoints disabled");
+      return res.status(503).json({ 
+        success: false, 
+        error: "Internal API bridge not configured" 
+      });
+    }
+    
+    if (!apiKey || apiKey !== expectedKey) {
+      return res.status(401).json({ 
+        success: false, 
+        error: "Invalid or missing API key" 
+      });
+    }
+    
+    next();
+  };
+
+  // Capability module mapping with descriptions
+  const capabilityModules: Record<string, { tools: string[]; description: string }> = {
+    communication: {
+      tools: communicationToolNames,
+      description: "SMS messaging and daily check-in tools for communication with users"
+    },
+    reminders: {
+      tools: reminderToolNames,
+      description: "Schedule and manage reminders with time-based notifications"
+    },
+    tasks: {
+      tools: taskToolNames,
+      description: "Create, update, and manage to-do items and task lists"
+    },
+    calendar: {
+      tools: calendarToolNames,
+      description: "Google Calendar integration for events and scheduling"
+    },
+    grocery: {
+      tools: groceryToolNames,
+      description: "Manage grocery shopping lists and items"
+    },
+    search: {
+      tools: searchToolNames,
+      description: "Web search and information retrieval capabilities"
+    },
+    files: {
+      tools: fileToolNames,
+      description: "File system operations for notes and documents"
+    },
+    memory: {
+      tools: memoryToolNames,
+      description: "Access to Limitless pendant lifelogs and conversation memory"
+    },
+    utilities: {
+      tools: utilityToolNames,
+      description: "Utility functions like weather, time, and system operations"
+    }
+  };
+
+  // Helper to get capability for a tool name
+  function getToolCapability(toolName: string): string[] {
+    const capabilities: string[] = [];
+    for (const [capability, info] of Object.entries(capabilityModules)) {
+      if (info.tools.includes(toolName)) {
+        capabilities.push(capability);
+      }
+    }
+    return capabilities;
+  }
+
+  // POST /api/tools/execute - Execute a specific tool
+  app.post("/api/tools/execute", requireInternalApiKey, async (req, res) => {
+    try {
+      const { tool_name, arguments: toolArgs, context } = req.body;
+      
+      if (!tool_name || typeof tool_name !== "string") {
+        return res.status(400).json({
+          success: false,
+          error: "tool_name is required and must be a string"
+        });
+      }
+      
+      if (!toolArgs || typeof toolArgs !== "object") {
+        return res.status(400).json({
+          success: false,
+          error: "arguments is required and must be an object"
+        });
+      }
+      
+      // Build permissions from context
+      const permissions: ToolPermissions = context?.permissions || {
+        isAdmin: true,
+        canAccessPersonalInfo: true,
+        canAccessCalendar: true,
+        canAccessTasks: true,
+        canAccessGrocery: true,
+        canSetReminders: true,
+      };
+      
+      // Execute the tool
+      const resultStr = await executeTool(
+        tool_name,
+        toolArgs,
+        undefined, // conversationId - not needed for Python agent calls
+        permissions
+      );
+      
+      // Parse the result
+      let result: unknown;
+      try {
+        result = JSON.parse(resultStr);
+      } catch {
+        result = resultStr;
+      }
+      
+      res.json({
+        success: true,
+        result
+      });
+    } catch (error: any) {
+      console.error("Tool execution error:", error);
+      res.status(500).json({
+        success: false,
+        error: error.message || "Failed to execute tool"
+      });
+    }
+  });
+
+  // GET /api/tools/catalog - Get available tools catalog
+  app.get("/api/tools/catalog", requireInternalApiKey, (req, res) => {
+    try {
+      const tools = toolDefinitions.map((tool) => {
+        const func = tool.function;
+        const toolName = func.name;
+        const capabilities = getToolCapability(toolName);
+        
+        // Get permission info
+        const permissionCheck = TOOL_PERMISSIONS[toolName];
+        const permissionInfo: Record<string, boolean> = {};
+        
+        if (permissionCheck) {
+          // Check which permission flags affect this tool
+          const testPermissions: ToolPermissions = {
+            isAdmin: false,
+            canAccessPersonalInfo: false,
+            canAccessCalendar: false,
+            canAccessTasks: false,
+            canAccessGrocery: false,
+            canSetReminders: false,
+          };
+          
+          // Test each permission flag
+          for (const key of Object.keys(testPermissions) as Array<keyof ToolPermissions>) {
+            const withPermission = { ...testPermissions, [key]: true };
+            permissionInfo[key] = permissionCheck(withPermission);
+          }
+        }
+        
+        return {
+          name: toolName,
+          description: func.description || "",
+          parameters: func.parameters || {},
+          capabilities,
+          permissions: permissionInfo
+        };
+      });
+      
+      res.json({ tools });
+    } catch (error: any) {
+      console.error("Catalog fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch tools catalog" });
+    }
+  });
+
+  // GET /api/tools/capabilities - Get capability groups
+  app.get("/api/tools/capabilities", requireInternalApiKey, (req, res) => {
+    try {
+      res.json({ capabilities: capabilityModules });
+    } catch (error: any) {
+      console.error("Capabilities fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch capabilities" });
+    }
+  });
+
+  // POST /api/memory/context - Get smart memory context
+  app.post("/api/memory/context", requireInternalApiKey, async (req, res) => {
+    try {
+      const { query, limit } = req.body;
+      
+      if (!query || typeof query !== "string") {
+        return res.status(400).json({
+          success: false,
+          error: "query is required and must be a string"
+        });
+      }
+      
+      // Get smart memory context
+      const context = await getSmartMemoryContext(query);
+      
+      // Also get the relevant memories for structured data
+      const relevantMemories = await semanticSearch(query, {
+        limit: limit || 10,
+        minScore: 0.3
+      });
+      
+      const memories = relevantMemories.map(({ item, score, relevanceScore }) => ({
+        id: item.id,
+        type: item.type,
+        content: item.content,
+        context: item.context,
+        score: relevanceScore || score,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt
+      }));
+      
+      res.json({
+        context,
+        memories,
+        total_found: memories.length
+      });
+    } catch (error: any) {
+      console.error("Memory context error:", error);
+      res.status(500).json({
+        success: false,
+        error: error.message || "Failed to get memory context"
+      });
+    }
+  });
+
+  // GET /api/user/profile - Get user profile context for personalization
+  app.get("/api/user/profile", requireInternalApiKey, (req, res) => {
+    try {
+      const profile = getFullProfile();
+      const preferences = getAllPreferences();
+      
+      // Convert preferences array to object
+      const preferencesObj: Record<string, string> = {};
+      for (const pref of preferences) {
+        preferencesObj[pref.key] = pref.value;
+      }
+      
+      res.json({
+        profile,
+        preferences: preferencesObj
+      });
+    } catch (error: any) {
+      console.error("Profile fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch user profile" });
     }
   });
   
