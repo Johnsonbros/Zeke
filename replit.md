@@ -20,9 +20,22 @@ ZEKE is built with a Node.js + TypeScript (Express) backend and a React frontend
 - Dark theme with a coral red accent (hsl(9, 75%, 61%)).
 - Background: hsl(20, 14%, 4%), Text: hsl(45, 25%, 91%).
 - Font: Poppins.
-- ChatGPT-style interface featuring a redesigned sidebar for cleaner UI, ZEKE branding, main actions (Getting To Know You, Grocery List, Memory), a collapsible Chat History section, and a profile at the bottom.
+- **Dashboard-First Interface**: The home page (`/`) is now a dashboard with at-a-glance widgets showing key information (pending tasks, grocery items, memories, conversations) and quick access cards to features.
+- **Global Sidebar Navigation**: Persistent sidebar using Shadcn UI components with ZEKE branding, navigation to all features (Dashboard, Getting To Know You, Grocery List, Tasks, ZEKE's Memory, Contacts, Automations, SMS Log), "New Chat" button, and profile section at bottom.
+- **Chat as Feature Page**: Chat functionality moved to `/chat` as one feature among many rather than the centerpiece. Chat page has its own conversation history sidebar.
 - A dedicated Memory page (`/memory`) allows viewing all of ZEKE's memories with stats, type filters, and supersession tracking.
 - Collaborative grocery list UI at `/grocery`.
+
+### Routes
+- `/` - Dashboard (home page with stats and feature cards)
+- `/chat` - Chat with ZEKE
+- `/grocery` - Grocery list management
+- `/tasks` - Task management
+- `/memory` - ZEKE's Memory browser
+- `/contacts` - Contacts management with access control
+- `/automations` - Reminders and scheduled tasks
+- `/profile` - Profile editor
+- `/sms-log` - SMS activity log
 
 ### Technical Implementations
 - **Memory Model**: Optimized for a single user (Nate) with a persistent profile. Stores all long-term memory in the database and markdown files (`zeke_profile.md`, `zeke_knowledge.md`). Conversation history is summarized into concise notes. The agent automatically extracts facts, preferences, and summaries from conversations.
