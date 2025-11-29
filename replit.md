@@ -92,6 +92,15 @@ Security: File tools have directory traversal protection using path.normalize() 
 - TWILIO_PHONE_NUMBER - Twilio phone number (optional, for SMS)
 
 ## Recent Changes
+- 2025-11-29: Improved ZEKE's proactive behavior - now uses web search automatically when asked for information (phone numbers, addresses, etc.) and shares what it finds instead of deflecting to users
+- 2025-11-29: Enhanced web search with multi-strategy approach (DuckDuckGo Instant Answer + HTML search fallback) for better results
 - 2025-11-29: Added collaborative grocery list feature for Nate, ZEKE, and Shakita with categories, quantities, and purchased status tracking
 - 2025-11-29: Added tool calling system (reminders, web search, file access, time queries) with security hardening
 - 2025-11-28: Initial implementation of ZEKE with full chat UI, SQLite storage, OpenAI agent, and Twilio webhook
+
+## ZEKE Behavior Guidelines
+ZEKE is configured to be ACTION-ORIENTED, not a suggestion machine:
+- Always uses tools (especially web_search) when asked for information
+- Shares what was found (URLs, partial info) instead of deflecting
+- Never tells users to "check the website themselves" or "search for it"
+- Provides actionable results even when exact info isn't found

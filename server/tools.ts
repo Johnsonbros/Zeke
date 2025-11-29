@@ -27,6 +27,20 @@ interface WebSearchResult {
   url: string;
 }
 
+// Helper function to decode HTML entities
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
 const reminders: Map<string, Reminder> = new Map();
 
 export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
@@ -92,13 +106,13 @@ export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "web_search",
-      description: "Search the web for information. Use this to look up current events, facts, or any information the user asks about.",
+      description: "Search the web for ANY information the user needs. ALWAYS use this tool when asked about: phone numbers, addresses, business hours, contact information, current events, facts, news, prices, reviews, or any factual question. Don't tell the user to search themselves - use this tool instead.",
       parameters: {
         type: "object",
         properties: {
           query: {
             type: "string",
-            description: "The search query",
+            description: "The search query - be specific, include location if relevant (e.g., 'Atrius Health Braintree MA phone number')",
           },
         },
         required: ["query"],
@@ -438,30 +452,152 @@ export async function executeTool(
       const { query } = args as WebSearchArgs;
       
       try {
-        const response = await fetch(
-          `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`
-        );
-        const data = await response.json();
-        
         const results: WebSearchResult[] = [];
         
-        if (data.AbstractText) {
-          results.push({
-            title: data.Heading || "Summary",
-            snippet: data.AbstractText,
-            url: data.AbstractURL || "",
-          });
-        }
-        
-        if (data.RelatedTopics) {
-          for (const topic of data.RelatedTopics.slice(0, 5)) {
-            if (topic.Text) {
+        // Strategy 1: Try DuckDuckGo Instant Answer API first (good for facts, definitions)
+        try {
+          const instantResponse = await fetch(
+            `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`
+          );
+          const instantData = await instantResponse.json();
+          
+          if (instantData.AbstractText) {
+            results.push({
+              title: instantData.Heading || "Summary",
+              snippet: instantData.AbstractText,
+              url: instantData.AbstractURL || "",
+            });
+          }
+          
+          // Check for Infobox (contains contact info, addresses, etc.)
+          if (instantData.Infobox?.content) {
+            const infoItems = instantData.Infobox.content
+              .filter((item: any) => item.value)
+              .map((item: any) => `${item.label}: ${item.value}`)
+              .join(", ");
+            if (infoItems) {
               results.push({
-                title: topic.Text.split(" - ")[0] || "Related",
-                snippet: topic.Text,
-                url: topic.FirstURL || "",
+                title: "Contact Information",
+                snippet: infoItems,
+                url: instantData.AbstractURL || "",
               });
             }
+          }
+          
+          // Check Answer field (direct answers like calculations, conversions)
+          if (instantData.Answer) {
+            results.push({
+              title: "Answer",
+              snippet: instantData.Answer,
+              url: "",
+            });
+          }
+          
+          if (instantData.RelatedTopics) {
+            for (const topic of instantData.RelatedTopics.slice(0, 5)) {
+              if (topic.Text) {
+                results.push({
+                  title: topic.Text.split(" - ")[0] || "Related",
+                  snippet: topic.Text,
+                  url: topic.FirstURL || "",
+                });
+              }
+              // Handle nested topics (groups)
+              if (topic.Topics) {
+                for (const subTopic of topic.Topics.slice(0, 2)) {
+                  if (subTopic.Text) {
+                    results.push({
+                      title: subTopic.Text.split(" - ")[0] || "Related",
+                      snippet: subTopic.Text,
+                      url: subTopic.FirstURL || "",
+                    });
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.log("Instant Answer API failed, continuing with HTML search");
+        }
+        
+        // Strategy 2: If we don't have good results, try DuckDuckGo HTML search
+        if (results.length < 3) {
+          try {
+            const htmlResponse = await fetch(
+              `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+              {
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                  "Accept-Language": "en-US,en;q=0.5",
+                },
+              }
+            );
+            
+            if (!htmlResponse.ok) {
+              console.log(`HTML search returned status ${htmlResponse.status}`);
+            } else {
+              const html = await htmlResponse.text();
+              
+              // Parse search results from HTML - using more flexible regex
+              const resultRegex = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"[^>]*>([^<]*)/gi;
+              const snippetRegex = /<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([^<]*)/gi;
+              
+              const resultArray = Array.from(html.matchAll(resultRegex));
+              const snippetArray = Array.from(html.matchAll(snippetRegex));
+              
+              for (let i = 0; i < Math.min(resultArray.length, 5); i++) {
+                try {
+                  const titleMatch = resultArray[i];
+                  const snippetMatch = snippetArray[i];
+                  
+                  if (titleMatch && titleMatch[1] && titleMatch[2]) {
+                    // Clean up the URL (DuckDuckGo uses redirect URLs with uddg parameter)
+                    let url = titleMatch[1];
+                    
+                    // Extract actual URL from DuckDuckGo redirect
+                    const uddgMatch = url.match(/uddg=([^&]+)/);
+                    if (uddgMatch && uddgMatch[1]) {
+                      try {
+                        url = decodeURIComponent(uddgMatch[1]);
+                      } catch {
+                        // If decoding fails, use original
+                      }
+                    }
+                    
+                    // Ensure URL is valid (starts with http)
+                    if (!url.startsWith("http")) {
+                      // Skip invalid URLs
+                      continue;
+                    }
+                    
+                    // Clean up snippet (remove HTML tags)
+                    let snippet = "";
+                    if (snippetMatch && snippetMatch[1]) {
+                      snippet = snippetMatch[1].replace(/<[^>]*>/g, "").trim();
+                      // Decode HTML entities
+                      snippet = decodeHtmlEntities(snippet);
+                    }
+                    
+                    const title = decodeHtmlEntities(titleMatch[2].trim());
+                    
+                    if (title && !results.some(r => r.title === title)) {
+                      results.push({
+                        title,
+                        snippet: snippet || "No description available",
+                        url,
+                      });
+                    }
+                  }
+                } catch (parseErr) {
+                  // Skip this result and continue with others
+                  console.log("Error parsing individual result:", parseErr);
+                }
+              }
+            }
+          } catch (e) {
+            // Don't crash the whole search if HTML fallback fails
+            console.log("HTML search fallback failed:", e);
           }
         }
         
@@ -469,11 +605,15 @@ export async function executeTool(
           return JSON.stringify({
             query,
             results: [],
-            message: "No results found. Try a different search query.",
+            message: "No results found for this search. The query may be too specific or the information may not be publicly indexed.",
           });
         }
         
-        return JSON.stringify({ query, results });
+        return JSON.stringify({ 
+          query, 
+          results: results.slice(0, 8),
+          note: "Search completed. If these results don't contain the exact information needed, try reformulating the query."
+        });
       } catch (error) {
         console.error("Web search error:", error);
         return JSON.stringify({ 
