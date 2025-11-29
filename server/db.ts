@@ -21,7 +21,12 @@ import type {
   UpdateContact,
   AccessLevel,
   Automation,
-  InsertAutomation
+  InsertAutomation,
+  TwilioMessage,
+  InsertTwilioMessage,
+  TwilioMessageDirection,
+  TwilioMessageStatus,
+  TwilioMessageSource
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -297,6 +302,31 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_profile_section ON user_profile(section);
 `);
 
+// Create twilio_messages table if it doesn't exist
+db.exec(`
+  CREATE TABLE IF NOT EXISTS twilio_messages (
+    id TEXT PRIMARY KEY,
+    twilio_sid TEXT,
+    direction TEXT NOT NULL,
+    status TEXT NOT NULL,
+    source TEXT NOT NULL,
+    from_number TEXT NOT NULL,
+    to_number TEXT NOT NULL,
+    body TEXT NOT NULL,
+    contact_id TEXT,
+    contact_name TEXT,
+    conversation_id TEXT,
+    error_code TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_twilio_messages_direction ON twilio_messages(direction);
+  CREATE INDEX IF NOT EXISTS idx_twilio_messages_created ON twilio_messages(created_at);
+  CREATE INDEX IF NOT EXISTS idx_twilio_messages_from ON twilio_messages(from_number);
+  CREATE INDEX IF NOT EXISTS idx_twilio_messages_to ON twilio_messages(to_number);
+  CREATE INDEX IF NOT EXISTS idx_twilio_messages_contact ON twilio_messages(contact_id);
+`);
+
 // Migration: Add mode column to conversations if it doesn't exist
 try {
   const convInfo = db.prepare("PRAGMA table_info(conversations)").all() as Array<{ name: string }>;
@@ -426,6 +456,23 @@ interface AutomationRow {
   settings: string | null;
   last_run: string | null;
   next_run: string | null;
+  created_at: string;
+}
+
+interface TwilioMessageRow {
+  id: string;
+  twilio_sid: string | null;
+  direction: string;
+  status: string;
+  source: string;
+  from_number: string;
+  to_number: string;
+  body: string;
+  contact_id: string | null;
+  contact_name: string | null;
+  conversation_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
   created_at: string;
 }
 
@@ -1737,6 +1784,252 @@ export function getProfileContextForAgent(): string {
     }
     
     return contextParts.length > 1 ? contextParts.join('\n') : "";
+  });
+}
+
+// Helper to map database row to TwilioMessage type
+function mapTwilioMessage(row: TwilioMessageRow): TwilioMessage {
+  return {
+    id: row.id,
+    twilioSid: row.twilio_sid,
+    direction: row.direction as TwilioMessageDirection,
+    status: row.status as TwilioMessageStatus,
+    source: row.source as TwilioMessageSource,
+    fromNumber: row.from_number,
+    toNumber: row.to_number,
+    body: row.body,
+    contactId: row.contact_id,
+    contactName: row.contact_name,
+    conversationId: row.conversation_id,
+    errorCode: row.error_code,
+    errorMessage: row.error_message,
+    createdAt: row.created_at,
+  };
+}
+
+// Twilio message operations
+export function createTwilioMessage(data: InsertTwilioMessage): TwilioMessage {
+  return wrapDbOperation("createTwilioMessage", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO twilio_messages (id, twilio_sid, direction, status, source, from_number, to_number, body, 
+        contact_id, contact_name, conversation_id, error_code, error_message, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.twilioSid || null,
+      data.direction,
+      data.status,
+      data.source,
+      data.fromNumber,
+      data.toNumber,
+      data.body,
+      data.contactId || null,
+      data.contactName || null,
+      data.conversationId || null,
+      data.errorCode || null,
+      data.errorMessage || null,
+      now
+    );
+    
+    return {
+      id,
+      twilioSid: data.twilioSid || null,
+      direction: data.direction as TwilioMessageDirection,
+      status: data.status as TwilioMessageStatus,
+      source: data.source as TwilioMessageSource,
+      fromNumber: data.fromNumber,
+      toNumber: data.toNumber,
+      body: data.body,
+      contactId: data.contactId || null,
+      contactName: data.contactName || null,
+      conversationId: data.conversationId || null,
+      errorCode: data.errorCode || null,
+      errorMessage: data.errorMessage || null,
+      createdAt: now,
+    };
+  });
+}
+
+export function getTwilioMessage(id: string): TwilioMessage | undefined {
+  return wrapDbOperation("getTwilioMessage", () => {
+    const row = db.prepare(`
+      SELECT * FROM twilio_messages WHERE id = ?
+    `).get(id) as TwilioMessageRow | undefined;
+    return row ? mapTwilioMessage(row) : undefined;
+  });
+}
+
+export function getAllTwilioMessages(limit: number = 100): TwilioMessage[] {
+  return wrapDbOperation("getAllTwilioMessages", () => {
+    const rows = db.prepare(`
+      SELECT * FROM twilio_messages ORDER BY created_at DESC LIMIT ?
+    `).all(limit) as TwilioMessageRow[];
+    return rows.map(mapTwilioMessage);
+  });
+}
+
+export function getTwilioMessagesByPhone(phone: string, limit: number = 50): TwilioMessage[] {
+  return wrapDbOperation("getTwilioMessagesByPhone", () => {
+    const normalizedPhone = normalizePhoneNumber(phone);
+    const rows = db.prepare(`
+      SELECT * FROM twilio_messages 
+      WHERE REPLACE(REPLACE(REPLACE(from_number, '+', ''), '-', ''), ' ', '') LIKE ? 
+         OR REPLACE(REPLACE(REPLACE(to_number, '+', ''), '-', ''), ' ', '') LIKE ?
+      ORDER BY created_at DESC 
+      LIMIT ?
+    `).all(`%${normalizedPhone}`, `%${normalizedPhone}`, limit) as TwilioMessageRow[];
+    return rows.map(mapTwilioMessage);
+  });
+}
+
+export function getTwilioMessagesByDirection(direction: TwilioMessageDirection, limit: number = 50): TwilioMessage[] {
+  return wrapDbOperation("getTwilioMessagesByDirection", () => {
+    const rows = db.prepare(`
+      SELECT * FROM twilio_messages WHERE direction = ? ORDER BY created_at DESC LIMIT ?
+    `).all(direction, limit) as TwilioMessageRow[];
+    return rows.map(mapTwilioMessage);
+  });
+}
+
+export function getTwilioMessagesBySource(source: TwilioMessageSource, limit: number = 50): TwilioMessage[] {
+  return wrapDbOperation("getTwilioMessagesBySource", () => {
+    const rows = db.prepare(`
+      SELECT * FROM twilio_messages WHERE source = ? ORDER BY created_at DESC LIMIT ?
+    `).all(source, limit) as TwilioMessageRow[];
+    return rows.map(mapTwilioMessage);
+  });
+}
+
+export function getTwilioMessagesByContact(contactId: string, limit: number = 50): TwilioMessage[] {
+  return wrapDbOperation("getTwilioMessagesByContact", () => {
+    const rows = db.prepare(`
+      SELECT * FROM twilio_messages WHERE contact_id = ? ORDER BY created_at DESC LIMIT ?
+    `).all(contactId, limit) as TwilioMessageRow[];
+    return rows.map(mapTwilioMessage);
+  });
+}
+
+export function updateTwilioMessageStatus(id: string, status: TwilioMessageStatus, twilioSid?: string): TwilioMessage | undefined {
+  return wrapDbOperation("updateTwilioMessageStatus", () => {
+    if (twilioSid) {
+      db.prepare(`
+        UPDATE twilio_messages SET status = ?, twilio_sid = ? WHERE id = ?
+      `).run(status, twilioSid, id);
+    } else {
+      db.prepare(`
+        UPDATE twilio_messages SET status = ? WHERE id = ?
+      `).run(status, id);
+    }
+    return getTwilioMessage(id);
+  });
+}
+
+export function updateTwilioMessageError(id: string, errorCode: string, errorMessage: string): TwilioMessage | undefined {
+  return wrapDbOperation("updateTwilioMessageError", () => {
+    db.prepare(`
+      UPDATE twilio_messages SET status = 'failed', error_code = ?, error_message = ? WHERE id = ?
+    `).run(errorCode, errorMessage, id);
+    return getTwilioMessage(id);
+  });
+}
+
+export function getTwilioMessageStats(): { 
+  total: number; 
+  inbound: number; 
+  outbound: number; 
+  failed: number;
+  bySource: Record<string, number>;
+} {
+  return wrapDbOperation("getTwilioMessageStats", () => {
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM twilio_messages`).get() as { count: number }).count;
+    const inbound = (db.prepare(`SELECT COUNT(*) as count FROM twilio_messages WHERE direction = 'inbound'`).get() as { count: number }).count;
+    const outbound = (db.prepare(`SELECT COUNT(*) as count FROM twilio_messages WHERE direction = 'outbound'`).get() as { count: number }).count;
+    const failed = (db.prepare(`SELECT COUNT(*) as count FROM twilio_messages WHERE status = 'failed'`).get() as { count: number }).count;
+    
+    const sourceRows = db.prepare(`
+      SELECT source, COUNT(*) as count FROM twilio_messages GROUP BY source
+    `).all() as Array<{ source: string; count: number }>;
+    
+    const bySource: Record<string, number> = {};
+    for (const row of sourceRows) {
+      bySource[row.source] = row.count;
+    }
+    
+    return { total, inbound, outbound, failed, bySource };
+  });
+}
+
+// Get unique phone numbers we've communicated with
+export function getTwilioConversationPhones(): Array<{ 
+  phoneNumber: string; 
+  contactId: string | null;
+  contactName: string | null;
+  lastMessage: string;
+  lastMessageAt: string;
+  messageCount: number;
+}> {
+  return wrapDbOperation("getTwilioConversationPhones", () => {
+    const rows = db.prepare(`
+      WITH RankedMessages AS (
+        SELECT 
+          CASE WHEN direction = 'inbound' THEN from_number ELSE to_number END as phone_number,
+          contact_id,
+          contact_name,
+          body as last_message,
+          created_at as last_message_at,
+          ROW_NUMBER() OVER (
+            PARTITION BY CASE WHEN direction = 'inbound' THEN from_number ELSE to_number END 
+            ORDER BY created_at DESC
+          ) as rn
+        FROM twilio_messages
+        WHERE (direction = 'inbound' AND from_number != ?) 
+           OR (direction = 'outbound' AND to_number != ?)
+      ),
+      MessageCounts AS (
+        SELECT 
+          CASE WHEN direction = 'inbound' THEN from_number ELSE to_number END as phone_number,
+          COUNT(*) as message_count
+        FROM twilio_messages
+        WHERE (direction = 'inbound' AND from_number != ?) 
+           OR (direction = 'outbound' AND to_number != ?)
+        GROUP BY CASE WHEN direction = 'inbound' THEN from_number ELSE to_number END
+      )
+      SELECT 
+        rm.phone_number,
+        rm.contact_id,
+        rm.contact_name,
+        rm.last_message,
+        rm.last_message_at,
+        mc.message_count
+      FROM RankedMessages rm
+      JOIN MessageCounts mc ON rm.phone_number = mc.phone_number
+      WHERE rm.rn = 1
+      ORDER BY rm.last_message_at DESC
+    `).all(
+      process.env.TWILIO_PHONE_NUMBER || '',
+      process.env.TWILIO_PHONE_NUMBER || '',
+      process.env.TWILIO_PHONE_NUMBER || '',
+      process.env.TWILIO_PHONE_NUMBER || ''
+    ) as Array<{
+      phone_number: string;
+      contact_id: string | null;
+      contact_name: string | null;
+      last_message: string;
+      last_message_at: string;
+      message_count: number;
+    }>;
+    
+    return rows.map(row => ({
+      phoneNumber: row.phone_number,
+      contactId: row.contact_id,
+      contactName: row.contact_name,
+      lastMessage: row.last_message,
+      lastMessageAt: row.last_message_at,
+      messageCount: row.message_count,
+    }));
   });
 }
 
