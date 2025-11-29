@@ -378,6 +378,8 @@ export async function registerRoutes(
       
       try {
         // Call Python multi-agent service
+        // For web requests without a phone number, this is the trusted admin interface
+        const isWebAdmin = source === 'web' && !conversation.phoneNumber;
         const pythonResponse = await fetch('http://127.0.0.1:5001/api/agents/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -388,6 +390,8 @@ export async function registerRoutes(
             metadata: {
               source,
               permissions: userPermissions,
+              is_admin: isWebAdmin || userPermissions.isAdmin,
+              trusted_single_user_deployment: true,
             }
           }),
           signal: AbortSignal.timeout(30000), // 30 second timeout

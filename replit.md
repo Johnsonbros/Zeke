@@ -20,7 +20,7 @@ ZEKE uses a multi-agent architecture with a Node.js + TypeScript (Express) backe
 Located in `python_agents/`, the multi-agent system uses OpenAI's Agents SDK with specialized agents:
 - **Conductor**: Central orchestrator that classifies user intent and routes to specialists
 - **Memory Curator**: Semantic memory retrieval, Limitless lifelog synthesis
-- **Comms Pilot**: SMS/chat handling with contact permissions
+- **Comms Pilot**: SMS/chat handling with contact permissions, contact management (create/update/list contacts)
 - **Ops Planner**: Tasks, reminders, calendar, grocery list operations
 - **Research Scout**: Perplexity/web search integration
 - **Safety Auditor**: Permission verification and response validation

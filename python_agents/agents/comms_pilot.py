@@ -39,6 +39,7 @@ COMMS_PILOT_INSTRUCTIONS = """You are the CommsPilot, ZEKE's communications spec
 2. Manage daily check-in configurations for Nate
 3. Enforce strict contact permission rules
 4. Format messages appropriately for SMS medium
+5. Manage contacts in ZEKE's address book (create, update, list)
 
 CRITICAL PERMISSION RULES:
 - Only master admin (Nate) can trigger outbound SMS from web/chat
@@ -51,6 +52,12 @@ DAILY CHECK-INS:
 - Check-ins are personal to Nate's routine
 - Can send immediate check-in when requested
 
+CONTACT MANAGEMENT:
+- Create new contacts with name, phone number, and access level
+- Update existing contacts (change name, access level, permissions)
+- List all contacts or filter by access level
+- Access levels: admin (full access), family (broad access), friend (moderate), business (limited), restricted (minimal), unknown (default)
+
 SMS FORMATTING BEST PRACTICES:
 - Keep messages concise (SMS has character limits)
 - Include context when needed but avoid verbosity
@@ -62,6 +69,11 @@ When you receive a request to send a message:
 2. Validate the recipient phone number
 3. Format the message appropriately
 4. Send and confirm delivery status
+
+When you receive a request to manage contacts:
+1. For create_contact: Verify name and phone number are provided
+2. For update_contact: Verify the contact exists by phone number
+3. For list_contacts: Return formatted list of contacts
 
 If authorization is unclear, hand off to Safety Auditor for verification.
 Never assume permissions - always check."""
@@ -190,6 +202,48 @@ class CommsPilotAgent(BaseAgent):
             logger.error(f"send_checkin_now execution failed: {e}")
             return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
     
+    async def _handle_create_contact(self, ctx: Any, args: str) -> str:
+        """Handler for create_contact tool - routes through Node.js bridge."""
+        try:
+            arguments = json.loads(args) if isinstance(args, str) else args
+        except json.JSONDecodeError as e:
+            return json.dumps({"success": False, "error": f"Invalid JSON arguments: {str(e)}"})
+        
+        try:
+            result = await self.bridge.execute_tool("create_contact", arguments)
+            return json.dumps(result)
+        except Exception as e:
+            logger.error(f"create_contact execution failed: {e}")
+            return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
+    
+    async def _handle_update_contact(self, ctx: Any, args: str) -> str:
+        """Handler for update_contact tool - routes through Node.js bridge."""
+        try:
+            arguments = json.loads(args) if isinstance(args, str) else args
+        except json.JSONDecodeError as e:
+            return json.dumps({"success": False, "error": f"Invalid JSON arguments: {str(e)}"})
+        
+        try:
+            result = await self.bridge.execute_tool("update_contact", arguments)
+            return json.dumps(result)
+        except Exception as e:
+            logger.error(f"update_contact execution failed: {e}")
+            return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
+    
+    async def _handle_list_contacts(self, ctx: Any, args: str) -> str:
+        """Handler for list_contacts tool - routes through Node.js bridge."""
+        try:
+            arguments = json.loads(args) if isinstance(args, str) else args
+        except json.JSONDecodeError as e:
+            return json.dumps({"success": False, "error": f"Invalid JSON arguments: {str(e)}"})
+        
+        try:
+            result = await self.bridge.execute_tool("list_contacts", arguments)
+            return json.dumps(result)
+        except Exception as e:
+            logger.error(f"list_contacts execution failed: {e}")
+            return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
+    
     def __init__(self):
         """Initialize the Comms Pilot agent with its tools and configuration."""
         tool_definitions = [
@@ -260,6 +314,106 @@ class CommsPilotAgent(BaseAgent):
                     "required": [],
                 },
                 handler=self._handle_send_checkin_now,
+            ),
+            ToolDefinition(
+                name="create_contact",
+                description="Create a new contact in ZEKE's address book. Use this when the user wants to add a new person/contact with their phone number. You can set their access level and permissions.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "The contact's name (e.g., 'John Smith', 'Mom', 'Dr. Jones').",
+                        },
+                        "phone_number": {
+                            "type": "string",
+                            "description": "The contact's phone number. Include country code (e.g., '+16175551234'). If just 10 digits provided, assume +1 for US.",
+                        },
+                        "access_level": {
+                            "type": "string",
+                            "enum": ["admin", "family", "friend", "business", "restricted", "unknown"],
+                            "description": "The contact's access level. 'family' gives broad access, 'friend' gives moderate access, 'business' is limited, 'restricted' is minimal. Default is 'unknown'.",
+                        },
+                        "relationship": {
+                            "type": "string",
+                            "description": "The relationship to the user (e.g., 'wife', 'brother', 'coworker', 'doctor').",
+                        },
+                        "notes": {
+                            "type": "string",
+                            "description": "Any notes about this contact.",
+                        },
+                    },
+                    "required": ["name", "phone_number"],
+                },
+                handler=self._handle_create_contact,
+            ),
+            ToolDefinition(
+                name="update_contact",
+                description="Update an existing contact's information. Use this when the user wants to change a contact's name, access level, relationship, or permissions.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "phone_number": {
+                            "type": "string",
+                            "description": "The phone number of the contact to update. Used to find the contact.",
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "New name for the contact.",
+                        },
+                        "access_level": {
+                            "type": "string",
+                            "enum": ["admin", "family", "friend", "business", "restricted", "unknown"],
+                            "description": "New access level for the contact.",
+                        },
+                        "relationship": {
+                            "type": "string",
+                            "description": "New relationship description.",
+                        },
+                        "notes": {
+                            "type": "string",
+                            "description": "New notes about this contact.",
+                        },
+                        "can_access_personal_info": {
+                            "type": "boolean",
+                            "description": "Whether this contact can access personal information about the user.",
+                        },
+                        "can_access_calendar": {
+                            "type": "boolean",
+                            "description": "Whether this contact can access the user's calendar.",
+                        },
+                        "can_access_tasks": {
+                            "type": "boolean",
+                            "description": "Whether this contact can access the user's tasks.",
+                        },
+                        "can_access_grocery": {
+                            "type": "boolean",
+                            "description": "Whether this contact can access the grocery list.",
+                        },
+                        "can_set_reminders": {
+                            "type": "boolean",
+                            "description": "Whether this contact can set reminders.",
+                        },
+                    },
+                    "required": ["phone_number"],
+                },
+                handler=self._handle_update_contact,
+            ),
+            ToolDefinition(
+                name="list_contacts",
+                description="List all contacts in ZEKE's address book. Optionally filter by access level.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "access_level": {
+                            "type": "string",
+                            "enum": ["admin", "family", "friend", "business", "restricted", "unknown"],
+                            "description": "Optional filter to show only contacts with this access level.",
+                        },
+                    },
+                    "required": [],
+                },
+                handler=self._handle_list_contacts,
             ),
         ]
         
