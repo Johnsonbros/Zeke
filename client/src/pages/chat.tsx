@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { 
   Send, 
   Plus, 
@@ -21,17 +22,17 @@ import { format } from "date-fns";
 
 function TypingIndicator() {
   return (
-    <div className="flex items-start gap-3 px-4 py-3" data-testid="typing-indicator">
-      <Avatar className="h-8 w-8 shrink-0">
-        <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
+    <div className="flex items-start gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3" data-testid="typing-indicator">
+      <Avatar className="h-7 w-7 md:h-8 md:w-8 shrink-0">
+        <AvatarFallback className="bg-primary text-primary-foreground text-xs md:text-sm font-semibold">
           Z
         </AvatarFallback>
       </Avatar>
-      <div className="bg-accent rounded-lg px-4 py-3">
+      <div className="bg-accent rounded-lg px-3 md:px-4 py-2 md:py-3">
         <div className="flex gap-1">
-          <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-          <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-          <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+          <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+          <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+          <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
         </div>
       </div>
     </div>
@@ -44,12 +45,12 @@ function MessageBubble({ message }: { message: Message }) {
   
   return (
     <div 
-      className={`flex items-start gap-3 px-4 py-2 ${isUser ? "flex-row-reverse" : ""}`}
+      className={`flex items-start gap-2 md:gap-3 px-3 md:px-4 py-1.5 md:py-2 ${isUser ? "flex-row-reverse" : ""}`}
       data-testid={`message-${message.id}`}
     >
-      <Avatar className="h-8 w-8 shrink-0">
+      <Avatar className="h-7 w-7 md:h-8 md:w-8 shrink-0">
         <AvatarFallback 
-          className={`text-sm font-semibold ${
+          className={`text-xs md:text-sm font-semibold ${
             isUser 
               ? "bg-accent text-accent-foreground" 
               : "bg-primary text-primary-foreground"
@@ -59,9 +60,9 @@ function MessageBubble({ message }: { message: Message }) {
         </AvatarFallback>
       </Avatar>
       
-      <div className={`flex flex-col max-w-[70%] ${isUser ? "items-end" : "items-start"}`}>
+      <div className={`flex flex-col max-w-[85%] md:max-w-[70%] ${isUser ? "items-end" : "items-start"}`}>
         <div 
-          className={`rounded-lg px-4 py-3 relative ${
+          className={`rounded-lg px-3 md:px-4 py-2 md:py-3 relative ${
             isUser 
               ? "bg-primary text-primary-foreground" 
               : "bg-accent text-accent-foreground"
@@ -69,16 +70,16 @@ function MessageBubble({ message }: { message: Message }) {
         >
           {isSms && (
             <div 
-              className={`absolute -top-1 ${isUser ? "-left-1" : "-right-1"} flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground text-[10px]`}
+              className={`absolute -top-1 ${isUser ? "-left-1" : "-right-1"} flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground text-[9px] md:text-[10px]`}
               data-testid={`sms-badge-${message.id}`}
             >
-              <Smartphone className="h-2.5 w-2.5" />
+              <Smartphone className="h-2 w-2 md:h-2.5 md:w-2.5" />
               <span>SMS</span>
             </div>
           )}
-          <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
+          <p className="text-[13px] md:text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
         </div>
-        <span className="text-[11px] text-muted-foreground mt-1 px-1">
+        <span className="text-[10px] md:text-[11px] text-muted-foreground mt-1 px-1">
           {format(new Date(message.createdAt), "h:mm a")}
         </span>
       </div>
@@ -133,17 +134,17 @@ function ConversationItem({
 
 function EmptyState({ onNewChat }: { onNewChat: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-6 text-center px-4">
+    <div className="flex flex-col items-center justify-center h-full gap-4 md:gap-6 text-center px-4">
       <div className="flex flex-col items-center gap-2">
-        <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
-          <span className="text-3xl font-bold text-primary">Z</span>
+        <div className="h-14 w-14 md:h-16 md:w-16 rounded-full bg-primary/10 flex items-center justify-center">
+          <span className="text-2xl md:text-3xl font-bold text-primary">Z</span>
         </div>
-        <h1 className="text-4xl font-semibold tracking-tight mt-4" data-testid="empty-state-title">ZEKE</h1>
-        <p className="text-muted-foreground text-lg">Your personal AI assistant</p>
+        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight mt-3 md:mt-4" data-testid="empty-state-title">ZEKE</h1>
+        <p className="text-muted-foreground text-base md:text-lg">Your personal AI assistant</p>
       </div>
       <Button 
         onClick={onNewChat} 
-        className="gap-2"
+        className="gap-2 h-11 md:h-9 px-5 md:px-4"
         data-testid="button-start-conversation"
       >
         <MessageSquare className="h-4 w-4" />
@@ -169,10 +170,18 @@ function ChatSkeleton() {
 export default function ChatPage() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+  
+  // Open sidebar by default on desktop
+  useEffect(() => {
+    if (!isMobile) {
+      setSidebarOpen(true);
+    }
+  }, [isMobile]);
 
   // Fetch conversations
   const { data: conversations, isLoading: conversationsLoading } = useQuery<Conversation[]>({
@@ -274,25 +283,63 @@ export default function ChatPage() {
   };
 
   const messages = messagesData?.messages || [];
+  
+  const handleConversationSelect = (convId: string) => {
+    setActiveConversationId(convId);
+    if (isMobile) {
+      setSidebarOpen(false);
+    }
+  };
+
+  const handleNewChatWithSidebarClose = () => {
+    handleNewChat();
+    if (isMobile) {
+      setSidebarOpen(false);
+    }
+  };
 
   return (
-    <div className="flex h-screen bg-background" data-testid="chat-page">
-      {/* Sidebar */}
+    <div className="flex h-screen h-[100dvh] bg-background" data-testid="chat-page">
+      {/* Mobile sidebar overlay backdrop */}
+      {isMobile && sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={() => setSidebarOpen(false)}
+          data-testid="sidebar-backdrop"
+        />
+      )}
+      
+      {/* Sidebar - Fixed overlay on mobile, inline on desktop */}
       <aside 
-        className={`${
-          sidebarOpen ? "w-[280px]" : "w-0"
-        } transition-all duration-200 bg-sidebar border-r border-sidebar-border flex flex-col overflow-hidden shrink-0`}
+        className={`
+          ${isMobile 
+            ? `fixed inset-y-0 left-0 z-50 w-[280px] transform transition-transform duration-200 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}` 
+            : `${sidebarOpen ? "w-[280px]" : "w-0"} transition-all duration-200 overflow-hidden shrink-0`
+          }
+          bg-sidebar border-r border-sidebar-border flex flex-col
+        `}
         data-testid="sidebar"
       >
-        <div className="p-4">
+        <div className="p-3 md:p-4 flex items-center justify-between gap-2">
           <Button 
-            onClick={handleNewChat} 
-            className="w-full gap-2"
+            onClick={handleNewChatWithSidebarClose} 
+            className="flex-1 gap-2 h-11 md:h-9"
             data-testid="button-new-chat"
           >
             <Plus className="h-4 w-4" />
             New Chat
           </Button>
+          {isMobile && (
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setSidebarOpen(false)}
+              className="h-11 w-11 shrink-0"
+              data-testid="button-close-sidebar"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          )}
         </div>
         
         <ScrollArea className="flex-1 px-2">
@@ -313,7 +360,7 @@ export default function ChatPage() {
                   key={conv.id}
                   conversation={conv}
                   isActive={conv.id === activeConversationId}
-                  onClick={() => setActiveConversationId(conv.id)}
+                  onClick={() => handleConversationSelect(conv.id)}
                   onDelete={() => deleteConversationMutation.mutate(conv.id)}
                 />
               ))
@@ -338,18 +385,19 @@ export default function ChatPage() {
 
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <header className="h-14 border-b border-border flex items-center justify-between px-4 shrink-0">
-          <div className="flex items-center gap-3">
+        {/* Header - More compact on mobile */}
+        <header className="h-12 md:h-14 border-b border-border flex items-center justify-between px-3 md:px-4 shrink-0">
+          <div className="flex items-center gap-2 md:gap-3 min-w-0">
             <Button
               size="icon"
               variant="ghost"
               onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="h-10 w-10 md:h-9 md:w-9 shrink-0"
               data-testid="button-toggle-sidebar"
             >
-              {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              <Menu className="h-5 w-5" />
             </Button>
-            <h1 className="text-lg font-semibold">
+            <h1 className="text-base md:text-lg font-semibold truncate">
               {messagesData?.conversation?.title || "ZEKE"}
             </h1>
           </div>
@@ -361,7 +409,7 @@ export default function ChatPage() {
             <EmptyState onNewChat={() => textareaRef.current?.focus()} />
           ) : (
             <ScrollArea className="h-full">
-              <div className="py-4">
+              <div className="py-2 md:py-4">
                 {messagesLoading ? (
                   <ChatSkeleton />
                 ) : (
@@ -378,9 +426,9 @@ export default function ChatPage() {
           )}
         </div>
 
-        {/* Input area */}
-        <div className="p-4 border-t border-border bg-background/80 backdrop-blur shrink-0">
-          <div className="flex items-end gap-3 max-w-4xl mx-auto">
+        {/* Input area - Optimized for mobile */}
+        <div className="p-2 md:p-4 border-t border-border bg-background/80 backdrop-blur shrink-0 safe-area-inset-bottom">
+          <div className="flex items-end gap-2 md:gap-3 max-w-4xl mx-auto">
             <div className="flex-1 relative">
               <Textarea
                 ref={textareaRef}
@@ -388,7 +436,7 @@ export default function ChatPage() {
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Message ZEKE..."
-                className="min-h-[48px] max-h-[150px] resize-none pr-12 text-base"
+                className="min-h-[44px] md:min-h-[48px] max-h-[120px] md:max-h-[150px] resize-none text-[15px] md:text-base py-3 px-3 md:px-4"
                 rows={1}
                 disabled={sendMessageMutation.isPending}
                 data-testid="input-message"
@@ -398,13 +446,13 @@ export default function ChatPage() {
               size="icon"
               onClick={handleSend}
               disabled={!inputValue.trim() || sendMessageMutation.isPending}
-              className="h-12 w-12 rounded-full shrink-0"
+              className="h-11 w-11 md:h-12 md:w-12 rounded-full shrink-0"
               data-testid="button-send"
             >
               <Send className="h-5 w-5" />
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground text-center mt-2">
+          <p className="text-[10px] md:text-[11px] text-muted-foreground text-center mt-1.5 md:mt-2 hidden md:block">
             ZEKE can make mistakes. Consider checking important info.
           </p>
         </div>

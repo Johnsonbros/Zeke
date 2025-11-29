@@ -170,8 +170,20 @@
     @apply border-border;
   }
 
+  html {
+    /* Prevent iOS zoom on input focus */
+    touch-action: manipulation;
+  }
+
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    /* Prevent overscroll bounce on iOS */
+    overscroll-behavior: none;
+  }
+
+  /* Safe area inset for iOS devices */
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 
