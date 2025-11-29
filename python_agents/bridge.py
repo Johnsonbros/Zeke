@@ -48,7 +48,7 @@ class NodeBridge:
             "Content-Type": "application/json",
         }
         if self.bridge_key:
-            headers["X-Bridge-Key"] = self.bridge_key
+            headers["X-Internal-Api-Key"] = self.bridge_key
         return headers
     
     async def execute_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -67,10 +67,10 @@ class NodeBridge:
         """
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
-                f"{self.base_url}/api/bridge/tools/execute",
+                f"{self.base_url}/api/tools/execute",
                 headers=self._get_headers(),
                 json={
-                    "tool": tool_name,
+                    "tool_name": tool_name,
                     "arguments": arguments
                 }
             )
@@ -89,7 +89,7 @@ class NodeBridge:
         """
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.get(
-                f"{self.base_url}/api/bridge/capabilities",
+                f"{self.base_url}/api/tools/capabilities",
                 headers=self._get_headers()
             )
             response.raise_for_status()
@@ -111,7 +111,7 @@ class NodeBridge:
         """
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
-                f"{self.base_url}/api/bridge/memory/context",
+                f"{self.base_url}/api/memory/context",
                 headers=self._get_headers(),
                 json={
                     "query": query,
@@ -133,7 +133,7 @@ class NodeBridge:
         """
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.get(
-                f"{self.base_url}/api/bridge/profile",
+                f"{self.base_url}/api/user/profile",
                 headers=self._get_headers()
             )
             response.raise_for_status()
