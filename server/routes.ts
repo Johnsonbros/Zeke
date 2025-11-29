@@ -1143,11 +1143,17 @@ export async function registerRoutes(
       const sections = getAllProfileSections();
       const profile: Record<string, unknown> = {};
       
+      // Helper to convert snake_case to camelCase
+      const toCamelCase = (str: string) => str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+      
       for (const section of sections) {
         try {
-          profile[section.section] = JSON.parse(section.data);
+          // Convert section key from snake_case (basic_info) to camelCase (basicInfo)
+          const camelKey = toCamelCase(section.section);
+          profile[camelKey] = JSON.parse(section.data);
         } catch {
-          profile[section.section] = section.data;
+          const camelKey = toCamelCase(section.section);
+          profile[camelKey] = section.data;
         }
       }
       

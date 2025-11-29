@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -145,6 +145,10 @@ function BasicInfoSection({
 }) {
   const [formData, setFormData] = useState<BasicInfoData>(data);
 
+  useEffect(() => {
+    setFormData(data);
+  }, [data]);
+
   const handleChange = (field: keyof BasicInfoData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -240,6 +244,10 @@ function WorkSection({
   isSaving: boolean;
 }) {
   const [formData, setFormData] = useState<WorkData>(data);
+
+  useEffect(() => {
+    setFormData(data);
+  }, [data]);
 
   const handleChange = (field: keyof WorkData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -338,6 +346,10 @@ function FamilySection({
 }) {
   const [formData, setFormData] = useState<FamilyData>(data);
 
+  useEffect(() => {
+    setFormData(data);
+  }, [data]);
+
   const handleChange = (field: keyof FamilyData, value: string | string[]) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -432,6 +444,10 @@ function InterestsSection({
   isSaving: boolean;
 }) {
   const [formData, setFormData] = useState<InterestsData>(data);
+
+  useEffect(() => {
+    setFormData(data);
+  }, [data]);
 
   const handleChange = (field: keyof InterestsData, value: string[]) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -543,6 +559,10 @@ function PreferencesSection({
 }) {
   const [formData, setFormData] = useState<PreferencesData>(data);
 
+  useEffect(() => {
+    setFormData(data);
+  }, [data]);
+
   const handleChange = (field: keyof PreferencesData, value: string | string[]) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -649,6 +669,10 @@ function GoalsSection({
 }) {
   const [formData, setFormData] = useState<GoalsData>(data);
 
+  useEffect(() => {
+    setFormData(data);
+  }, [data]);
+
   const handleChange = (field: keyof GoalsData, value: string | string[]) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -723,6 +747,10 @@ function HealthSection({
   isSaving: boolean;
 }) {
   const [formData, setFormData] = useState<HealthData>(data);
+
+  useEffect(() => {
+    setFormData(data);
+  }, [data]);
 
   const handleChange = (field: keyof HealthData, value: string | string[]) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -811,6 +839,10 @@ function RoutinesSection({
   isSaving: boolean;
 }) {
   const [formData, setFormData] = useState<RoutinesData>(data);
+
+  useEffect(() => {
+    setFormData(data);
+  }, [data]);
 
   const handleChange = (field: keyof RoutinesData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
