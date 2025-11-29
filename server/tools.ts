@@ -291,6 +291,27 @@ export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "send_sms",
+      description: "Send an SMS text message to any phone number. Use this when the user asks you to text someone, send a message to someone, or notify someone via SMS.",
+      parameters: {
+        type: "object",
+        properties: {
+          phone_number: {
+            type: "string",
+            description: "The phone number to send the SMS to. Include country code (e.g., '+16175551234'). If just 10 digits provided, assume +1 for US.",
+          },
+          message: {
+            type: "string",
+            description: "The text message to send.",
+          },
+        },
+        required: ["phone_number", "message"],
+      },
+    },
+  },
 ];
 
 function generateId(): string {
@@ -940,6 +961,40 @@ export async function executeTool(
         });
       } catch (error) {
         return JSON.stringify({ success: false, error: "Failed to clear grocery list" });
+      }
+    }
+    
+    case "send_sms": {
+      const { phone_number, message } = args as { phone_number: string; message: string };
+      
+      // Format phone number - add +1 if just 10 digits
+      let formattedPhone = phone_number.replace(/[^0-9+]/g, "");
+      if (formattedPhone.length === 10) {
+        formattedPhone = "+1" + formattedPhone;
+      } else if (!formattedPhone.startsWith("+")) {
+        formattedPhone = "+" + formattedPhone;
+      }
+      
+      if (!sendSmsCallback) {
+        return JSON.stringify({ 
+          success: false, 
+          error: "SMS sending is not configured. Twilio credentials may be missing." 
+        });
+      }
+      
+      try {
+        await sendSmsCallback(formattedPhone, message);
+        return JSON.stringify({
+          success: true,
+          message: `SMS sent to ${formattedPhone}`,
+          recipient: formattedPhone,
+        });
+      } catch (error: any) {
+        console.error("Failed to send SMS:", error);
+        return JSON.stringify({ 
+          success: false, 
+          error: error.message || "Failed to send SMS" 
+        });
       }
     }
     

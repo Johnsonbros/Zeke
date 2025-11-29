@@ -38,6 +38,7 @@ ZEKE is a single-user personal assistant for Nate Johnson. It is not multi-tenan
 
 ## ZEKE Tools (OpenAI Function Calling)
 ZEKE has access to these tools via OpenAI function calling:
+- **send_sms** - Send SMS text message to any phone number (requires Twilio configuration)
 - **set_reminder** - Schedule reminders with delay_minutes or scheduled_time, can send SMS
 - **list_reminders** - List all pending reminders
 - **cancel_reminder** - Cancel a reminder by ID
