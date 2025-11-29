@@ -394,8 +394,8 @@ function CommunicationsWidget({
           <div className="space-y-2">
             <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">Recent Conversations</p>
             <div className="space-y-1.5">
-              {conversations.slice(0, 3).map((conv) => (
-                <Link key={conv.phone} href={`/contacts`}>
+              {conversations.slice(0, 3).map((conv, index) => (
+                <Link key={`${conv.phone}-${index}`} href={`/contacts`}>
                   <div className="flex items-center gap-2 sm:gap-3 p-2 rounded-lg border hover-elevate cursor-pointer" data-testid={`conversation-preview-${conv.phone}`}>
                     <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-accent flex items-center justify-center shrink-0">
                       <User className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent-foreground" />

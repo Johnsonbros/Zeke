@@ -694,16 +694,41 @@ export async function chat(
         messages,
         tools: toolDefinitions,
         tool_choice: "auto",
-        max_completion_tokens: 1024,
+        max_completion_tokens: 4096,
       });
 
       const choice = response.choices[0];
       const message = choice.message;
+      
+      // Debug logging for issues
+      if (!message.content && (!message.tool_calls || message.tool_calls.length === 0)) {
+        console.log("Empty response from model:", {
+          finish_reason: choice.finish_reason,
+          has_content: !!message.content,
+          has_tool_calls: !!(message.tool_calls && message.tool_calls.length > 0),
+          usage: response.usage,
+          iteration: iterations,
+        });
+      }
 
       // If there are no tool calls, we have our final response
       if (!message.tool_calls || message.tool_calls.length === 0) {
+        // Check if the response was truncated due to length
+        if (choice.finish_reason === "length" && !message.content) {
+          console.log("Response truncated due to length - retrying with more context");
+          // Try to get a response without tool calls
+          const retryResponse = await client.chat.completions.create({
+            model: "gpt-5.1",
+            messages: [...messages, { role: "assistant", content: null, tool_calls: [] } as any],
+            max_completion_tokens: 2048,
+          });
+          if (retryResponse.choices[0]?.message?.content) {
+            return retryResponse.choices[0].message.content;
+          }
+        }
+        
         const assistantMessage =
-          message.content || "I apologize, but I couldn't generate a response.";
+          message.content || "I apologize, but I couldn't generate a response. Please try again.";
 
         // Generate title for new conversations
         if (isNewConversation) {
