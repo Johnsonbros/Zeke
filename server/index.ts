@@ -2,6 +2,10 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { startPythonAgents, waitForPythonAgents } from "./python-agents";
+import { log } from "./logger";
+
+export { log };
 
 const app = express();
 const httpServer = createServer(app);
@@ -21,17 +25,6 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
-
-export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-
-  console.log(`${formattedTime} [${source}] ${message}`);
-}
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -60,6 +53,15 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  startPythonAgents();
+  
+  const pythonReady = await waitForPythonAgents(15000);
+  if (pythonReady) {
+    log("Python agents service ready", "startup");
+  } else {
+    log("Python agents service not available, will use fallback", "startup");
+  }
+  
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

@@ -309,7 +309,7 @@ INTENT_CLASSIFICATION_SCHEMA = {
                 "reminder_text": {"type": "string", "description": "Reminder content"},
                 "location": {"type": "string", "description": "Location mentioned"}
             },
-            "additionalProperties": True
+            "required": []
         },
         "requires_coordination": {
             "type": "boolean",

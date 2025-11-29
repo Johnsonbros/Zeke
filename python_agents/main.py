@@ -20,9 +20,46 @@ from pydantic import BaseModel, Field
 from .config import get_settings
 from .bridge import get_bridge
 from .tracing import create_trace_context, get_tracing_logger
+from .agents import (
+    AgentContext,
+    ConductorAgent,
+    get_conductor,
+    get_memory_curator,
+    get_comms_pilot,
+    get_ops_planner,
+    get_research_scout,
+    get_safety_auditor,
+)
 
 logger = logging.getLogger(__name__)
 trace_logger = get_tracing_logger()
+
+_specialists_registered = False
+
+
+def get_configured_conductor() -> ConductorAgent:
+    """
+    Get the Conductor agent with all specialists registered.
+    
+    Uses lazy initialization to register specialists only once.
+    
+    Returns:
+        ConductorAgent: The conductor with all specialists registered
+    """
+    global _specialists_registered
+    
+    conductor = get_conductor()
+    
+    if not _specialists_registered:
+        conductor.register_specialist(get_memory_curator())
+        conductor.register_specialist(get_comms_pilot())
+        conductor.register_specialist(get_ops_planner())
+        conductor.register_specialist(get_research_scout())
+        conductor.register_specialist(get_safety_auditor())
+        _specialists_registered = True
+        logger.info("All specialist agents registered with conductor")
+    
+    return conductor
 
 
 class ChatRequest(BaseModel):
@@ -149,12 +186,25 @@ async def chat(request: ChatRequest) -> ChatResponse:
     try:
         logger.info(f"Received chat request: {request.message[:100]}... [trace_id={trace_ctx.trace_id}]")
         
-        response = f"Python agents received: {request.message}"
+        context = AgentContext(
+            user_message=request.message,
+            conversation_id=request.conversation_id,
+            phone_number=request.phone_number,
+            metadata=request.metadata,
+            trace_context=trace_ctx,
+        )
+        
+        conductor = get_configured_conductor()
+        
+        response = await conductor.run(request.message, context)
+        
+        completion_status = conductor.get_completion_status()
+        handoff_chain = conductor.get_handoff_chain()
         
         trace_logger.log_request_complete(
             trace_ctx,
             success=True,
-            response_preview=response
+            response_preview=response[:200] if response else ""
         )
         
         return ChatResponse(
@@ -164,7 +214,9 @@ async def chat(request: ChatRequest) -> ChatResponse:
             trace_id=trace_ctx.trace_id,
             metadata={
                 "processed_by": "python_agents",
-                "status": "stub_response",
+                "completion_status": completion_status.value,
+                "completion_message": conductor.last_completion_message,
+                "handoff_chain": handoff_chain,
                 "trace_summary": trace_ctx.to_summary(),
             }
         )

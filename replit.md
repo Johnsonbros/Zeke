@@ -14,7 +14,25 @@ ZEKE is a single-user personal AI assistant designed exclusively for Nate Johnso
 - All conversation titles and memories should always be generated in English.
 
 ## System Architecture
-ZEKE is built with a Node.js + TypeScript (Express) backend and a React frontend with Tailwind CSS and shadcn/ui components. SQLite is used for persistent storage.
+ZEKE uses a multi-agent architecture with a Node.js + TypeScript (Express) backend, Python FastAPI microservice for agent orchestration, and a React frontend with Tailwind CSS and shadcn/ui components. SQLite is used for persistent storage.
+
+### Multi-Agent System (Python)
+Located in `python_agents/`, the multi-agent system uses OpenAI's Agents SDK with specialized agents:
+- **Conductor**: Central orchestrator that classifies user intent and routes to specialists
+- **Memory Curator**: Semantic memory retrieval, Limitless lifelog synthesis
+- **Comms Pilot**: SMS/chat handling with contact permissions
+- **Ops Planner**: Tasks, reminders, calendar, grocery list operations
+- **Research Scout**: Perplexity/web search integration
+- **Safety Auditor**: Permission verification and response validation
+
+The `/api/chat` endpoint delegates to the Python agent service (port 5001) with automatic fallback to the legacy single-agent loop if Python is unavailable. The Python service is automatically started when the TypeScript server starts (via `server/python-agents.ts`).
+
+**To start the Python agent service manually (if needed):**
+```bash
+PYTHONPATH=/home/runner/workspace python -m uvicorn python_agents.main:app --host 127.0.0.1 --port 5001
+```
+
+The TypeScript server communicates with Python agents via an HTTP bridge at `/api/tools/execute`.
 
 ### UI/UX Decisions
 - Dark theme with a coral red accent (hsl(9, 75%, 61%)).

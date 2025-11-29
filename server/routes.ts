@@ -64,7 +64,7 @@ import {
 } from "./db";
 import type { TwilioMessageSource } from "@shared/schema";
 import { generateContextualQuestion } from "./gettingToKnow";
-import { chat } from "./agent";
+import { chat, getPermissionsForPhone, getAdminPermissions } from "./agent";
 import { setSendSmsCallback, restorePendingReminders, executeTool, toolDefinitions, TOOL_PERMISSIONS, type ToolPermissions } from "./tools";
 import { getSmartMemoryContext, semanticSearch } from "./semanticMemory";
 import {
@@ -365,8 +365,47 @@ export async function registerRoutes(
         source,
       });
       
-      // Get AI response (pass phone number if this is an SMS conversation)
-      const aiResponse = await chat(conversation.id, message, isNewConversation, conversation.phoneNumber || undefined);
+      // Get user permissions for the Python agent
+      let userPermissions;
+      if (conversation.phoneNumber) {
+        userPermissions = getPermissionsForPhone(conversation.phoneNumber);
+      } else {
+        userPermissions = getAdminPermissions();
+      }
+      
+      // Get AI response - try Python multi-agent service first, fallback to legacy
+      let aiResponse: string;
+      
+      try {
+        // Call Python multi-agent service
+        const pythonResponse = await fetch('http://127.0.0.1:5001/api/agents/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message,
+            conversation_id: conversation.id,
+            phone_number: conversation.phoneNumber || undefined,
+            metadata: {
+              source,
+              permissions: userPermissions,
+            }
+          }),
+          signal: AbortSignal.timeout(30000), // 30 second timeout
+        });
+        
+        if (pythonResponse.ok) {
+          const result = await pythonResponse.json() as { response: string; trace_id?: string; metadata?: { completion_status?: string } };
+          aiResponse = result.response;
+          // Log trace_id for observability
+          console.log(`[Python Agent] trace_id=${result.trace_id}, status=${result.metadata?.completion_status}`);
+        } else {
+          throw new Error(`Python agent returned ${pythonResponse.status}`);
+        }
+      } catch (pythonError) {
+        // Fallback to legacy chat()
+        console.warn('[Python Agent] Failed, falling back to legacy:', pythonError);
+        aiResponse = await chat(conversation.id, message, isNewConversation, conversation.phoneNumber || undefined);
+      }
       
       // Store assistant message
       const assistantMessage = createMessage({
