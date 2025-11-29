@@ -8,6 +8,7 @@ import {
   createMemoryNote,
   updateConversationTitle
 } from "./db";
+import { toolDefinitions, executeTool, getActiveReminders } from "./tools";
 import type { Message } from "@shared/schema";
 
 // Use gpt-4o as the default model
@@ -105,11 +106,30 @@ function buildSystemPrompt(userMessage: string): string {
   const profileContext = loadProfileContext();
   const memoryContext = getMemoryContext(userMessage);
   
+  const activeReminders = getActiveReminders();
+  const reminderContext = activeReminders.length > 0 
+    ? `## Active Reminders\n${activeReminders.map(r => `- "${r.message}" scheduled for ${r.scheduledFor.toLocaleString("en-US", { timeZone: "America/New_York" })}`).join("\n")}\n\n`
+    : "";
+  
   return `You are ZEKE, Nate Johnson's personal AI assistant. You have a persistent memory and can be accessed via SMS or web.
 
 ${profileContext}
 
 ${memoryContext}
+
+${reminderContext}
+
+## Your Tools
+You have access to the following tools. Use them proactively when helpful:
+
+1. **set_reminder** - Set reminders to send messages at specific times. Use delay_minutes for relative times ("in 5 minutes") or scheduled_time for specific times. Can send SMS to other phone numbers.
+2. **list_reminders** - Show all pending reminders
+3. **cancel_reminder** - Cancel a pending reminder
+4. **web_search** - Search the web for current information, facts, news
+5. **read_file** - Read files from notes/ or data/ directories
+6. **write_file** - Save notes or data to notes/ or data/ directories
+7. **list_files** - List files in a directory
+8. **get_current_time** - Get the exact current time
 
 ## Your Guidelines
 1. Be direct, professional, and conversational. No fluff or excessive pleasantries.
@@ -119,6 +139,7 @@ ${memoryContext}
 5. Value truth and critical thinking. Don't oversell or sugarcoat.
 6. Keep responses concise unless more detail is explicitly requested.
 7. If Nate asks about past conversations or stored information, reference your memory.
+8. **Use tools proactively** - If Nate asks to be reminded, set a reminder. If he asks a factual question, search the web. If he wants to save a note, write a file.
 
 ## Memory Instructions
 When you detect important information to remember (facts about Nate, his preferences, key decisions, etc.), you'll indicate this in your response. The system will automatically store these.
@@ -244,7 +265,7 @@ If nothing important to remember, return: {"memories": []}`
   }
 }
 
-// Main chat function
+// Main chat function with tool calling support
 export async function chat(
   conversationId: string,
   userMessage: string,
@@ -265,24 +286,76 @@ export async function chat(
   
   try {
     const client = getOpenAIClient();
-    const response = await client.chat.completions.create({
-      model: "gpt-4o",
-      messages,
-      max_completion_tokens: 1024,
-    });
     
-    const assistantMessage = response.choices[0]?.message?.content || "I apologize, but I couldn't generate a response.";
+    // Tool calling loop - continue until we get a final response
+    let maxIterations = 10;
+    let iterations = 0;
     
-    // Generate title for new conversations
-    if (isNewConversation) {
-      const title = await generateConversationTitle(userMessage);
-      updateConversationTitle(conversationId, title);
+    while (iterations < maxIterations) {
+      iterations++;
+      
+      const response = await client.chat.completions.create({
+        model: "gpt-4o",
+        messages,
+        tools: toolDefinitions,
+        tool_choice: "auto",
+        max_completion_tokens: 1024,
+      });
+      
+      const choice = response.choices[0];
+      const message = choice.message;
+      
+      // If there are no tool calls, we have our final response
+      if (!message.tool_calls || message.tool_calls.length === 0) {
+        const assistantMessage = message.content || "I apologize, but I couldn't generate a response.";
+        
+        // Generate title for new conversations
+        if (isNewConversation) {
+          const title = await generateConversationTitle(userMessage);
+          updateConversationTitle(conversationId, title);
+        }
+        
+        // Extract and store any important memory (async, don't wait)
+        extractMemory(userMessage, assistantMessage).catch(console.error);
+        
+        return assistantMessage;
+      }
+      
+      // Add the assistant's message with tool calls
+      messages.push({
+        role: "assistant",
+        content: message.content,
+        tool_calls: message.tool_calls,
+      });
+      
+      // Execute each tool call and add results
+      for (const toolCall of message.tool_calls) {
+        const toolName = toolCall.function.name;
+        let toolArgs: Record<string, unknown>;
+        
+        try {
+          toolArgs = JSON.parse(toolCall.function.arguments);
+        } catch {
+          toolArgs = {};
+        }
+        
+        console.log(`Tool call: ${toolName}`, toolArgs);
+        
+        const result = await executeTool(toolName, toolArgs, conversationId);
+        
+        console.log(`Tool result: ${result.substring(0, 200)}...`);
+        
+        messages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: result,
+        });
+      }
     }
     
-    // Extract and store any important memory (async, don't wait)
-    extractMemory(userMessage, assistantMessage).catch(console.error);
+    // If we hit max iterations, return a fallback
+    return "I encountered an issue processing your request. Please try again.";
     
-    return assistantMessage;
   } catch (error: any) {
     console.error("OpenAI API error:", error);
     

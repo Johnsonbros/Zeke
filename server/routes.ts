@@ -15,6 +15,7 @@ import {
   setPreference
 } from "./db";
 import { chat } from "./agent";
+import { setSendSmsCallback } from "./tools";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
@@ -56,6 +57,29 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  
+  // Set up SMS callback for tools (reminders)
+  setSendSmsCallback(async (phone: string, message: string) => {
+    const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER;
+    if (!twilioFromNumber) {
+      console.error("TWILIO_PHONE_NUMBER not configured for reminder SMS");
+      return;
+    }
+    
+    try {
+      const client = getTwilioClient();
+      const formattedPhone = formatPhoneNumber(phone);
+      await client.messages.create({
+        body: message,
+        from: twilioFromNumber,
+        to: formattedPhone,
+      });
+      console.log(`Reminder SMS sent to ${formattedPhone}`);
+    } catch (error) {
+      console.error("Failed to send reminder SMS:", error);
+      throw error;
+    }
+  });
   
   // Chat endpoint - sends message and gets AI response
   app.post("/api/chat", async (req, res) => {
