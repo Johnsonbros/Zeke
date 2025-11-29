@@ -1531,6 +1531,32 @@ export async function registerRoutes(
       res.status(500).json({ error: error.message || "Failed to delete calendar event" });
     }
   });
+
+  // Update a calendar event
+  app.put("/api/calendar/events/:id", async (req, res) => {
+    try {
+      const { summary, startTime, endTime, description, location } = req.body;
+      const updates: {
+        summary?: string;
+        description?: string;
+        location?: string;
+        startTime?: Date;
+        endTime?: Date;
+      } = {};
+      
+      if (summary) updates.summary = summary;
+      if (description !== undefined) updates.description = description;
+      if (location !== undefined) updates.location = location;
+      if (startTime) updates.startTime = new Date(startTime);
+      if (endTime) updates.endTime = new Date(endTime);
+      
+      const event = await updateCalendarEvent(req.params.id, updates);
+      res.json(event);
+    } catch (error: any) {
+      console.error("Calendar update error:", error);
+      res.status(500).json({ error: error.message || "Failed to update calendar event" });
+    }
+  });
   
   return httpServer;
 }
