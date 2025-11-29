@@ -27,11 +27,18 @@ import {
   History,
   ChevronDown,
   Brain,
-  Settings
+  Settings,
+  Bell,
+  Calendar,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  ArrowRight
 } from "lucide-react";
 import { Link } from "wouter";
-import type { Conversation, Message, ChatResponse } from "@shared/schema";
-import { format } from "date-fns";
+import { Card } from "@/components/ui/card";
+import type { Conversation, Message, ChatResponse, Reminder, Task } from "@shared/schema";
+import { format, isToday, isTomorrow, isPast, parseISO } from "date-fns";
 
 function TypingIndicator() {
   return (
@@ -145,25 +152,237 @@ function ConversationItem({
   );
 }
 
-function EmptyState({ onNewChat }: { onNewChat: () => void }) {
+function getTimeGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function formatReminderTime(scheduledFor: string): string {
+  const date = parseISO(scheduledFor);
+  if (isToday(date)) {
+    return `Today at ${format(date, "h:mm a")}`;
+  }
+  if (isTomorrow(date)) {
+    return `Tomorrow at ${format(date, "h:mm a")}`;
+  }
+  return format(date, "MMM d 'at' h:mm a");
+}
+
+function formatTaskDue(dueDate: string | null): string {
+  if (!dueDate) return "";
+  const date = parseISO(dueDate);
+  if (isToday(date)) return "Due today";
+  if (isTomorrow(date)) return "Due tomorrow";
+  if (isPast(date)) return "Overdue";
+  return `Due ${format(date, "MMM d")}`;
+}
+
+function generateSmartPrompts(
+  reminders: Reminder[],
+  tasks: Task[]
+): { text: string; icon: typeof Bell }[] {
+  const prompts: { text: string; icon: typeof Bell }[] = [];
+  const hour = new Date().getHours();
+
+  // Context-based prompts
+  if (hour < 10 && hour >= 6) {
+    prompts.push({ text: "What's on my schedule today?", icon: Calendar });
+  }
+  
+  if (tasks.length > 0) {
+    const overdueCount = tasks.filter(t => t.dueDate && isPast(parseISO(t.dueDate)) && !isToday(parseISO(t.dueDate))).length;
+    if (overdueCount > 0) {
+      prompts.push({ text: `Help me tackle my ${overdueCount} overdue task${overdueCount > 1 ? 's' : ''}`, icon: AlertCircle });
+    } else {
+      prompts.push({ text: "What should I focus on today?", icon: CheckCircle2 });
+    }
+  }
+  
+  if (reminders.length > 0) {
+    prompts.push({ text: "Remind me about something important", icon: Bell });
+  } else {
+    prompts.push({ text: "Set a reminder for later", icon: Clock });
+  }
+
+  // Time-based suggestions
+  if (hour >= 17) {
+    prompts.push({ text: "Help me plan for tomorrow", icon: Calendar });
+  } else if (hour >= 12 && hour < 14) {
+    prompts.push({ text: "What's left on my plate today?", icon: ListTodo });
+  }
+
+  // Limit to 3 prompts
+  return prompts.slice(0, 3);
+}
+
+function EmptyState({ onSendMessage }: { onSendMessage: (message: string) => void }) {
+  // Fetch pending reminders using default fetcher
+  const { 
+    data: reminders = [], 
+    isLoading: remindersLoading,
+    isError: remindersError 
+  } = useQuery<Reminder[]>({
+    queryKey: ["/api/reminders/pending"],
+  });
+
+  // Fetch all incomplete tasks and filter client-side to avoid multiple requests
+  const { 
+    data: allTasks = [], 
+    isLoading: tasksLoading,
+    isError: tasksError 
+  } = useQuery<Task[]>({
+    queryKey: ["/api/tasks"],
+  });
+
+  // Filter tasks client-side for due today and overdue
+  const relevantTasks = allTasks.filter(task => {
+    if (task.completed || !task.dueDate) return false;
+    const dueDate = parseISO(task.dueDate);
+    return isToday(dueDate) || isPast(dueDate);
+  });
+
+  const upcomingReminders = reminders.slice(0, 3);
+  const smartPrompts = generateSmartPrompts(reminders, relevantTasks);
+
+  const isLoading = remindersLoading || tasksLoading;
+  const hasError = remindersError || tasksError;
+  const hasNotifications = upcomingReminders.length > 0 || relevantTasks.length > 0;
+
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-4 md:gap-6 text-center px-4">
-      <div className="flex flex-col items-center gap-2">
-        <div className="h-14 w-14 md:h-16 md:w-16 rounded-full bg-primary/10 flex items-center justify-center">
-          <span className="text-2xl md:text-3xl font-bold text-primary">Z</span>
+    <ScrollArea className="h-full">
+      <div className="flex flex-col items-center py-6 md:py-10 px-4 max-w-2xl mx-auto gap-6 md:gap-8" data-testid="empty-state">
+        {/* Header with greeting */}
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="h-14 w-14 md:h-16 md:w-16 rounded-full bg-primary/10 flex items-center justify-center">
+            <span className="text-2xl md:text-3xl font-bold text-primary">Z</span>
+          </div>
+          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mt-2" data-testid="empty-state-title">
+            {getTimeGreeting()}
+          </h1>
+          <p className="text-muted-foreground text-sm md:text-base">Here's what's happening</p>
         </div>
-        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight mt-3 md:mt-4" data-testid="empty-state-title">ZEKE</h1>
-        <p className="text-muted-foreground text-base md:text-lg">Your personal AI assistant</p>
+
+        {/* Loading State */}
+        {isLoading && (
+          <div className="w-full space-y-3">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-16 w-full rounded-lg" />
+            <Skeleton className="h-16 w-full rounded-lg" />
+          </div>
+        )}
+
+        {/* Error State */}
+        {!isLoading && hasError && (
+          <Card className="w-full p-4 border-destructive/50 bg-destructive/5">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-destructive">Unable to load your activity</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Some notifications may not be displayed</p>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Notification Cards */}
+        {!isLoading && !hasError && hasNotifications && (
+          <div className="w-full space-y-3" data-testid="notification-cards">
+            {/* Upcoming Reminders */}
+            {upcomingReminders.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
+                  Upcoming Reminders
+                </h3>
+                {upcomingReminders.map((reminder) => (
+                  <Card 
+                    key={reminder.id} 
+                    className="p-3 flex items-start gap-3 hover-elevate cursor-pointer"
+                    onClick={() => onSendMessage(`Tell me about my reminder: "${reminder.message}"`)}
+                    data-testid={`reminder-card-${reminder.id}`}
+                  >
+                    <div className="h-8 w-8 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0">
+                      <Bell className="h-4 w-4 text-amber-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{reminder.message}</p>
+                      <p className="text-xs text-muted-foreground">{formatReminderTime(reminder.scheduledFor)}</p>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* Tasks Due Today / Overdue */}
+            {relevantTasks.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
+                  Tasks Needing Attention
+                </h3>
+                {relevantTasks.slice(0, 3).map((task) => {
+                  const isOverdue = task.dueDate && isPast(parseISO(task.dueDate)) && !isToday(parseISO(task.dueDate));
+                  return (
+                    <Card 
+                      key={task.id} 
+                      className="p-3 flex items-start gap-3 hover-elevate cursor-pointer"
+                      onClick={() => onSendMessage(`Help me with my task: "${task.title}"`)}
+                      data-testid={`task-card-${task.id}`}
+                    >
+                      <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${
+                        isOverdue ? "bg-destructive/10" : "bg-blue-500/10"
+                      }`}>
+                        {isOverdue ? (
+                          <AlertCircle className="h-4 w-4 text-destructive" />
+                        ) : (
+                          <CheckCircle2 className="h-4 w-4 text-blue-500" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{task.title}</p>
+                        <p className={`text-xs ${isOverdue ? "text-destructive" : "text-muted-foreground"}`}>
+                          {formatTaskDue(task.dueDate)} • {task.priority} priority
+                        </p>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* No notifications message */}
+        {!isLoading && !hasError && !hasNotifications && (
+          <div className="text-center py-4">
+            <p className="text-sm text-muted-foreground">No upcoming reminders or tasks</p>
+          </div>
+        )}
+
+        {/* Smart Prompts */}
+        <div className="w-full space-y-2" data-testid="smart-prompts">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1 text-center">
+            Try asking
+          </h3>
+          <div className="flex flex-col gap-2">
+            {smartPrompts.map((prompt, index) => (
+              <Button
+                key={index}
+                variant="outline"
+                className="w-full justify-start gap-3 h-11 text-left"
+                onClick={() => onSendMessage(prompt.text)}
+                data-testid={`smart-prompt-${index}`}
+              >
+                <prompt.icon className="h-4 w-4 text-primary shrink-0" />
+                <span className="truncate">{prompt.text}</span>
+              </Button>
+            ))}
+          </div>
+        </div>
       </div>
-      <Button 
-        onClick={onNewChat} 
-        className="gap-2 h-11 md:h-9 px-5 md:px-4"
-        data-testid="button-start-conversation"
-      >
-        <MessageSquare className="h-4 w-4" />
-        Start a conversation
-      </Button>
-    </div>
+    </ScrollArea>
   );
 }
 
@@ -549,7 +768,9 @@ export default function ChatPage() {
         {/* Messages area */}
         <div className="flex-1 overflow-hidden">
           {!activeConversationId && !sendMessageMutation.isPending ? (
-            <EmptyState onNewChat={() => textareaRef.current?.focus()} />
+            <EmptyState onSendMessage={(message) => {
+              sendMessageMutation.mutate({ message });
+            }} />
           ) : (
             <ScrollArea className="h-full">
               <div className="py-2 md:py-4">
