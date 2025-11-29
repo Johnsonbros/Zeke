@@ -29,6 +29,8 @@ ZEKE is a single-user personal assistant for Nate Johnson. It is not multi-tenan
   - `/server/db.ts` - SQLite database operations
   - `/server/agent.ts` - OpenAI agent logic with memory extraction and tool calling
   - `/server/tools.ts` - Tool definitions and execution for OpenAI function calling
+  - `/server/dailyCheckIn.ts` - Daily check-in scheduler with question generation
+  - `/server/gettingToKnow.ts` - Getting To Know You conversation mode logic
 - `/shared` - Shared types and schemas
   - `/shared/schema.ts` - Drizzle schema definitions (includes groceryItems)
 - `/notes` - User notes directory (writable by ZEKE file tools)
@@ -39,6 +41,10 @@ ZEKE is a single-user personal assistant for Nate Johnson. It is not multi-tenan
 ## ZEKE Tools (OpenAI Function Calling)
 ZEKE has access to these tools via OpenAI function calling:
 - **send_sms** - Send SMS text message to any phone number (requires Twilio configuration)
+- **configure_daily_checkin** - Set up daily check-in texts with 3 multiple choice questions to learn about Nate
+- **get_daily_checkin_status** - Check if daily check-in is active and get settings
+- **stop_daily_checkin** - Stop the daily check-in texts
+- **send_checkin_now** - Send a check-in immediately (for testing)
 - **set_reminder** - Schedule reminders with delay_minutes or scheduled_time, can send SMS
 - **list_reminders** - List all pending reminders
 - **cancel_reminder** - Cancel a reminder by ID
@@ -94,6 +100,7 @@ Security: File tools have directory traversal protection using path.normalize() 
 - TWILIO_PHONE_NUMBER - Twilio phone number (optional, for SMS)
 
 ## Recent Changes
+- 2025-11-29: Added Daily Check-In feature - ZEKE texts Nate once per day with 3 multiple choice questions to deeply understand him and his family
 - 2025-11-29: Added "Getting To Know You" feature - ZEKE proactively asks questions to learn about Nate and handles memory corrections (e.g., "My brother's name is Nick, not Kyle")
 - 2025-11-29: Memory supersession system - when correcting information, old memories are marked as superseded rather than deleted, preserving history
 - 2025-11-29: Fixed SMS reminder system - reminders now persist to SQLite database and survive server restarts
