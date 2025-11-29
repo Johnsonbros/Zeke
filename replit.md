@@ -26,11 +26,27 @@ ZEKE is a single-user personal assistant for Nate Johnson. It is not multi-tenan
 - `/server` - Express backend with API routes
   - `/server/routes.ts` - API endpoints for chat, conversations, memory
   - `/server/db.ts` - SQLite database operations
-  - `/server/agent.ts` - OpenAI agent logic with memory extraction
+  - `/server/agent.ts` - OpenAI agent logic with memory extraction and tool calling
+  - `/server/tools.ts` - Tool definitions and execution for OpenAI function calling
 - `/shared` - Shared types and schemas
   - `/shared/schema.ts` - Drizzle schema definitions
+- `/notes` - User notes directory (writable by ZEKE file tools)
+- `/data` - Data storage directory (writable by ZEKE file tools)
 - `zeke_profile.md` - Nate's core profile (loaded as agent context)
 - `zeke_knowledge.md` - Accumulated knowledge base (loaded as agent context)
+
+## ZEKE Tools (OpenAI Function Calling)
+ZEKE has access to these tools via OpenAI function calling:
+- **set_reminder** - Schedule reminders with delay_minutes or scheduled_time, can send SMS
+- **list_reminders** - List all pending reminders
+- **cancel_reminder** - Cancel a reminder by ID
+- **web_search** - Search the web using DuckDuckGo API
+- **read_file** - Read files from notes/, data/, or config files (secure path validation)
+- **write_file** - Write files to notes/ or data/ directories (secure path validation)
+- **list_files** - List files in allowed directories
+- **get_current_time** - Get current date/time in America/New_York timezone
+
+Security: File tools have directory traversal protection using path.normalize() and path.resolve() with strict whitelist validation.
 
 ## Database Schema (SQLite)
 - `conversations` - Chat sessions with title, source (web/sms), phoneNumber
@@ -64,4 +80,5 @@ ZEKE is a single-user personal assistant for Nate Johnson. It is not multi-tenan
 - TWILIO_PHONE_NUMBER - Twilio phone number (optional, for SMS)
 
 ## Recent Changes
+- 2025-11-29: Added tool calling system (reminders, web search, file access, time queries) with security hardening
 - 2025-11-28: Initial implementation of ZEKE with full chat UI, SQLite storage, OpenAI agent, and Twilio webhook
