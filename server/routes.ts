@@ -21,7 +21,7 @@ import {
   deleteGroceryItem,
   clearPurchasedGroceryItems
 } from "./db";
-import { getFirstQuestion } from "./gettingToKnow";
+import { generateContextualQuestion } from "./gettingToKnow";
 import { chat } from "./agent";
 import { setSendSmsCallback, restorePendingReminders } from "./tools";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema } from "@shared/schema";
@@ -168,7 +168,7 @@ export async function registerRoutes(
     }
   });
   
-  // Create a Getting To Know You conversation
+  // Create a Getting To Know You conversation (resets each time, generates contextual questions)
   app.post("/api/conversations/getting-to-know", async (_req, res) => {
     try {
       const conversation = createConversation({ 
@@ -177,7 +177,8 @@ export async function registerRoutes(
         mode: "getting_to_know"
       });
       
-      const firstQuestion = getFirstQuestion();
+      // Generate a contextual question based on existing memories
+      const firstQuestion = await generateContextualQuestion();
       
       const assistantMessage = createMessage({
         conversationId: conversation.id,

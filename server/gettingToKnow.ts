@@ -1,7 +1,8 @@
 import { 
   createMemoryNote, 
   findMemoryNoteByContent, 
-  supersedeMemoryNote 
+  supersedeMemoryNote,
+  getAllMemoryNotes
 } from "./db";
 import OpenAI from "openai";
 
@@ -17,96 +18,123 @@ function getOpenAIClient(): OpenAI {
   return openai;
 }
 
-export interface OnboardingQuestion {
-  id: string;
-  category: string;
-  question: string;
-  followUpPrompt?: string;
-}
-
-export const onboardingQuestions: OnboardingQuestion[] = [
-  {
-    id: "priorities",
-    category: "life",
-    question: "What are the 3 most important things you're working on in your life right now (work, family, health, whatever comes to mind)?",
-    followUpPrompt: "Dig deeper into what success looks like for each"
-  },
-  {
-    id: "work_hours",
-    category: "work",
-    question: "On an average week right now, how many hours are you actually working (including nights/weekends, calls, mental load)? Rough estimate is fine.",
-  },
-  {
-    id: "stress_triggers",
-    category: "work",
-    question: "When do you feel the most stressed or overloaded right now—what specific situations or parts of the business trigger that feeling the most?",
-  },
-  {
-    id: "delegation",
-    category: "work",
-    question: "When you feel like you need more help, who do you wish was stepping up more—employees, partner/co-owner, office/dispatch, spouse, or just people in general?",
-  },
-  {
-    id: "family_dynamics",
-    category: "family",
-    question: "Tell me about your immediate family—who's in your household and what are their ages?",
-  },
-  {
-    id: "partner_details",
-    category: "family",
-    question: "What's your spouse/partner's name and what do they do? How involved are they in the business?",
-  },
-  {
-    id: "communication_style",
-    category: "preferences",
-    question: "How do you prefer to communicate—quick texts, calls, or longer written messages? And what times of day work best for you?",
-  },
-  {
-    id: "goals_6_months",
-    category: "goals",
-    question: "If things went really well over the next 6 months, what would be different about your work or life?",
-  },
-  {
-    id: "biggest_challenge",
-    category: "work",
-    question: "What's the single biggest challenge in your business right now that keeps coming up?",
-  },
-  {
-    id: "support_needed",
-    category: "preferences",
-    question: "What kind of help would be most valuable from me as your assistant? Planning? Reminders? Research? Thinking partner? Something else?",
-  },
+// Topics that help ZEKE be a better personal assistant
+const knowledgeTopics = [
+  { topic: "family", description: "Family members, their names, ages, and relationships" },
+  { topic: "work", description: "Job, business, coworkers, work schedule, responsibilities" },
+  { topic: "goals", description: "Short-term and long-term goals, aspirations" },
+  { topic: "preferences", description: "Communication style, schedule preferences, likes/dislikes" },
+  { topic: "health", description: "Health conditions, medications, doctors, appointments" },
+  { topic: "contacts", description: "Important phone numbers, addresses, people to reach" },
+  { topic: "routines", description: "Daily routines, habits, regular commitments" },
+  { topic: "challenges", description: "Current struggles, pain points, stressors" },
+  { topic: "interests", description: "Hobbies, interests, things that bring joy" },
+  { topic: "finances", description: "Financial goals, budgets, important accounts" },
 ];
 
+// Generate a contextual first question based on existing memories
+export async function generateContextualQuestion(): Promise<string> {
+  try {
+    const memories = getAllMemoryNotes().filter(m => !m.isSuperseded);
+    
+    // If no memories exist, start with a basic getting-to-know question
+    if (memories.length === 0) {
+      return "I don't know much about you yet! Let's start with the basics—tell me a bit about yourself. What's your work situation like, and who are the important people in your life?";
+    }
+    
+    // Build a summary of what we know
+    const memoryContent = memories.map(m => `- ${m.content}`).join("\n");
+    
+    const client = getOpenAIClient();
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are helping generate a single thoughtful question to learn more about the user and be a better personal AI assistant.
+
+You have access to what is currently known about the user. Your job is to:
+1. Identify gaps in knowledge that would help you assist them better
+2. Find information that seems incomplete or needs clarification
+3. Ask about things that would make you more helpful day-to-day
+
+Topics that are valuable to understand:
+${knowledgeTopics.map(t => `- ${t.topic}: ${t.description}`).join("\n")}
+
+Return ONLY a single conversational question (no preamble, no explanation). The question should:
+- Be specific and targeted based on what's missing
+- Feel natural and not like an interrogation
+- Be genuinely useful for being a better assistant
+- If there's something vague or incomplete in memories, ask for clarification
+
+Examples of good questions:
+- "I know Nick is your brother—does he have a family? What's his situation?"
+- "You mentioned Shakita—what's her schedule like? Does she work outside the home?"
+- "I don't have any of your regular appointments or commitments stored. What's a typical week look like for you?"
+- "Are there any health things I should know about—medications, doctor appointments, or conditions I should track for you?"`
+        },
+        {
+          role: "user",
+          content: `Here's what I currently know about the user:\n\n${memoryContent}\n\nGenerate a single question to learn something new or clarify something vague.`
+        }
+      ],
+      max_completion_tokens: 200,
+    });
+
+    const question = response.choices[0]?.message?.content?.trim();
+    if (question) {
+      return question;
+    }
+  } catch (error) {
+    console.error("Error generating contextual question:", error);
+  }
+  
+  // Fallback question if generation fails
+  return "What's something I should know about you that would help me be a better assistant?";
+}
+
+// Simple sync version for backward compatibility (returns static fallback)
 export function getFirstQuestion(): string {
-  return `Let's start simple.\n\n${onboardingQuestions[0].question}`;
+  return "Let me learn more about you so I can be a better assistant. What's something I should know?";
 }
 
 export function buildGettingToKnowSystemPrompt(basePrompt: string): string {
+  // Get current memories to include in prompt
+  const memories = getAllMemoryNotes().filter(m => !m.isSuperseded);
+  const memoryContext = memories.length > 0 
+    ? `\n\nWhat you currently know about them:\n${memories.map(m => `- ${m.content}`).join("\n")}`
+    : "\n\nYou don't know much about them yet - start with the basics.";
+
   return `${basePrompt}
 
 ## Getting To Know You Mode
-You are currently in a "Getting To Know You" session. Your goal is to ask questions one at a time to learn important details about Nate that will help you be a better assistant.
+You are in a "Getting To Know You" session. Your goal is to learn more about the user so you can be a better personal assistant. Each time this session starts, analyze what you already know and ask about gaps or things that need clarification.
+${memoryContext}
 
 Guidelines for this mode:
 1. Ask ONE question at a time - never multiple questions in the same message
-2. Keep your responses concise - acknowledge what they said briefly, then ask the next question
+2. Base your questions on what you DON'T know or what seems incomplete/vague
 3. If they give a short answer, ask a follow-up to get more specifics
-4. If they correct you about something (e.g., "his name is X, not Y"), immediately acknowledge the correction and confirm you'll remember it correctly going forward
-5. Extract and remember key facts: names, relationships, preferences, goals, pain points
-6. Be conversational and natural - this is a getting-to-know-you chat, not an interrogation
-7. After gathering enough information, let them know you've learned a lot and can help them better now
+4. If they correct you about something (e.g., "his name is X, not Y"), immediately acknowledge the correction and update your memory
+5. Be conversational and natural - this is a getting-to-know-you chat, not an interrogation
+6. Focus on information that will genuinely help you assist them better
 
-Question topics to cover (in a natural flow):
-- Their top priorities (work, family, personal)
-- Work/life balance and hours
-- Stress triggers and pain points
-- Key people in their life (family, business partners, employees)
+Topics that are useful to know about:
+- Family members (names, relationships, ages)
+- Work situation (job, business, schedule)
+- Important contacts (phone numbers, addresses)
+- Health info (doctors, medications, conditions)
+- Daily routines and regular commitments
 - Communication preferences
-- Goals for the next 6 months
-- How they want you to help them
+- Current goals and challenges
+- Interests and hobbies
 
-Remember: This is about building a relationship and gathering useful context, not checking boxes.`;
+Think about what would make you more useful as their daily assistant. Ask about things that would help you:
+- Set better reminders
+- Know who they're referring to when they mention names
+- Understand their schedule and routines
+- Track important dates and appointments
+- Help with their specific challenges`;
 }
 
 export interface CorrectionResult {
