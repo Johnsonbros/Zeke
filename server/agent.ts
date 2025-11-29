@@ -9,6 +9,7 @@ import {
   getConversation,
   getContactByPhone,
   getOrCreateContactForPhone,
+  getAllProfileSections,
 } from "./db";
 import { toolDefinitions, executeTool, getActiveReminders } from "./tools";
 import { 
@@ -137,13 +138,14 @@ function getOpenAIClient(): OpenAI {
   return openai;
 }
 
-// Load profile and knowledge files
+// Load profile and knowledge files, plus database profile sections
 function loadProfileContext(): string {
   const profilePath = path.join(process.cwd(), "zeke_profile.md");
   const knowledgePath = path.join(process.cwd(), "zeke_knowledge.md");
 
   let context = "";
 
+  // Load markdown profile files (legacy support)
   try {
     if (fs.existsSync(profilePath)) {
       context += fs.readFileSync(profilePath, "utf-8") + "\n\n";
@@ -160,7 +162,81 @@ function loadProfileContext(): string {
     console.error("Error reading knowledge:", e);
   }
 
+  // Load profile from database (new structured profile system)
+  try {
+    const profileSections = getAllProfileSections();
+    if (profileSections.length > 0) {
+      context += "\n## Nate's Profile (Detailed)\n";
+      
+      const sectionLabels: Record<string, string> = {
+        basic: "Basic Information",
+        work: "Work & Career",
+        family: "Family & Relationships",
+        interests: "Interests & Hobbies",
+        preferences: "Preferences",
+        goals: "Goals",
+        health: "Health & Wellness",
+        routines: "Daily Routines",
+        dates: "Important Dates",
+        custom: "Additional Notes",
+      };
+      
+      for (const section of profileSections) {
+        try {
+          const data = JSON.parse(section.data);
+          if (Object.keys(data).length > 0) {
+            const label = sectionLabels[section.section] || section.section;
+            context += `\n### ${label}\n`;
+            context += formatProfileSection(section.section, data);
+          }
+        } catch {
+          // Skip if can't parse JSON
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error reading profile sections:", e);
+  }
+
   return context;
+}
+
+// Format a profile section for the AI context
+function formatProfileSection(sectionName: string, data: Record<string, unknown>): string {
+  let formatted = "";
+  
+  for (const [key, value] of Object.entries(data)) {
+    if (value === null || value === undefined || value === "") continue;
+    
+    const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim();
+    
+    if (Array.isArray(value)) {
+      if (value.length === 0) continue;
+      
+      // Handle array of objects (like important dates or custom fields)
+      if (typeof value[0] === 'object' && value[0] !== null) {
+        formatted += `- ${label}:\n`;
+        for (const item of value) {
+          const itemStr = Object.entries(item as Record<string, unknown>)
+            .filter(([_, v]) => v !== null && v !== undefined && v !== "")
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(", ");
+          if (itemStr) formatted += `  - ${itemStr}\n`;
+        }
+      } else {
+        // Simple array of strings
+        formatted += `- ${label}: ${value.join(", ")}\n`;
+      }
+    } else if (typeof value === 'object' && value !== null) {
+      // Handle nested objects
+      formatted += `- ${label}: ${JSON.stringify(value)}\n`;
+    } else {
+      // Simple value
+      formatted += `- ${label}: ${value}\n`;
+    }
+  }
+  
+  return formatted;
 }
 
 // Get relevant memory context (sync fallback for when async isn't available)
