@@ -19,13 +19,22 @@ import {
   updateGroceryItem,
   toggleGroceryItemPurchased,
   deleteGroceryItem,
-  clearPurchasedGroceryItems
+  clearPurchasedGroceryItems,
+  createTask,
+  getAllTasks,
+  getTask,
+  updateTask,
+  toggleTaskCompleted,
+  deleteTask,
+  clearCompletedTasks,
+  getTasksDueToday,
+  getOverdueTasks
 } from "./db";
 import { generateContextualQuestion } from "./gettingToKnow";
 import { chat } from "./agent";
 import { setSendSmsCallback, restorePendingReminders } from "./tools";
 import { setDailyCheckInSmsCallback, initializeDailyCheckIn } from "./dailyCheckIn";
-import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema } from "@shared/schema";
+import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
 
@@ -550,6 +559,137 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Clear purchased items error:", error);
       res.status(500).json({ message: "Failed to clear purchased items" });
+    }
+  });
+  
+  // === TASKS API ROUTES ===
+  
+  // Get all tasks
+  app.get("/api/tasks", async (req, res) => {
+    try {
+      const includeCompleted = req.query.includeCompleted === "true";
+      const category = req.query.category as string | undefined;
+      const dueToday = req.query.dueToday === "true";
+      const overdue = req.query.overdue === "true";
+      
+      let tasks;
+      if (dueToday) {
+        tasks = getTasksDueToday();
+      } else if (overdue) {
+        tasks = getOverdueTasks();
+      } else {
+        tasks = getAllTasks(includeCompleted);
+        if (category) {
+          tasks = tasks.filter(t => t.category === category);
+        }
+      }
+      
+      res.json(tasks);
+    } catch (error: any) {
+      console.error("Get tasks error:", error);
+      res.status(500).json({ message: "Failed to get tasks" });
+    }
+  });
+  
+  // Create task
+  app.post("/api/tasks", async (req, res) => {
+    try {
+      const parsed = insertTaskSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      const task = createTask(parsed.data);
+      res.json(task);
+    } catch (error: any) {
+      console.error("Create task error:", error);
+      res.status(500).json({ message: "Failed to create task" });
+    }
+  });
+  
+  // Get single task
+  app.get("/api/tasks/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const task = getTask(id);
+      
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      res.json(task);
+    } catch (error: any) {
+      console.error("Get task error:", error);
+      res.status(500).json({ message: "Failed to get task" });
+    }
+  });
+  
+  // Update task
+  app.patch("/api/tasks/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing = getTask(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      const parsed = updateTaskSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      const task = updateTask(id, parsed.data);
+      res.json(task);
+    } catch (error: any) {
+      console.error("Update task error:", error);
+      res.status(500).json({ message: "Failed to update task" });
+    }
+  });
+  
+  // Toggle task completed status
+  app.post("/api/tasks/:id/toggle", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const task = toggleTaskCompleted(id);
+      
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      res.json(task);
+    } catch (error: any) {
+      console.error("Toggle task error:", error);
+      res.status(500).json({ message: "Failed to toggle task" });
+    }
+  });
+  
+  // Delete task
+  app.delete("/api/tasks/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing = getTask(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      deleteTask(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete task error:", error);
+      res.status(500).json({ message: "Failed to delete task" });
+    }
+  });
+  
+  // Clear all completed tasks
+  app.post("/api/tasks/clear-completed", async (_req, res) => {
+    try {
+      const count = clearCompletedTasks();
+      res.json({ success: true, deleted: count });
+    } catch (error: any) {
+      console.error("Clear completed tasks error:", error);
+      res.status(500).json({ message: "Failed to clear completed tasks" });
     }
   });
   

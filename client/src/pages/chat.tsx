@@ -22,6 +22,7 @@ import {
   X,
   Smartphone,
   ShoppingCart,
+  ListTodo,
   Sparkles,
   History,
   ChevronDown,
@@ -417,6 +418,20 @@ export default function ChatPage() {
               <div className="flex flex-col items-start">
                 <span className="text-sm">Grocery List</span>
                 <span className="text-[10px] text-muted-foreground">Shared family list</span>
+              </div>
+            </Button>
+          </Link>
+          
+          <Link href="/tasks">
+            <Button 
+              variant="ghost" 
+              className="w-full justify-start gap-3 h-11"
+              data-testid="link-tasks"
+            >
+              <ListTodo className="h-4 w-4 text-blue-500" />
+              <div className="flex flex-col items-start">
+                <span className="text-sm">Tasks</span>
+                <span className="text-[10px] text-muted-foreground">Manage your to-dos</span>
               </div>
             </Button>
           </Link>

@@ -146,3 +146,35 @@ export const insertReminderSchema = createInsertSchema(reminders).omit({
 
 export type InsertReminder = z.infer<typeof insertReminderSchema>;
 export type Reminder = typeof reminders.$inferSelect;
+
+// Tasks table for to-do management
+export const tasks = sqliteTable("tasks", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description").default(""),
+  priority: text("priority", { enum: ["low", "medium", "high"] }).notNull().default("medium"),
+  dueDate: text("due_date"),
+  category: text("category", { enum: ["work", "personal", "family"] }).notNull().default("personal"),
+  completed: integer("completed", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertTaskSchema = createInsertSchema(tasks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateTaskSchema = z.object({
+  title: z.string().min(1).optional(),
+  description: z.string().optional(),
+  priority: z.enum(["low", "medium", "high"]).optional(),
+  dueDate: z.string().nullable().optional(),
+  category: z.enum(["work", "personal", "family"]).optional(),
+  completed: z.boolean().optional(),
+});
+
+export type InsertTask = z.infer<typeof insertTaskSchema>;
+export type UpdateTask = z.infer<typeof updateTaskSchema>;
+export type Task = typeof tasks.$inferSelect;

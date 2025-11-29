@@ -12,7 +12,10 @@ import type {
   GroceryItem,
   InsertGroceryItem,
   Reminder,
-  InsertReminder
+  InsertReminder,
+  Task,
+  InsertTask,
+  UpdateTask
 } from "@shared/schema";
 
 // Initialize SQLite database
@@ -216,6 +219,25 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_reminders_completed ON reminders(completed);
 `);
 
+// Create tasks table if it doesn't exist
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    priority TEXT NOT NULL DEFAULT 'medium',
+    due_date TEXT,
+    category TEXT NOT NULL DEFAULT 'personal',
+    completed INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed);
+  CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
+  CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
+  CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category);
+`);
+
 // Migration: Add mode column to conversations if it doesn't exist
 try {
   const convInfo = db.prepare("PRAGMA table_info(conversations)").all() as Array<{ name: string }>;
@@ -304,6 +326,18 @@ interface ReminderRow {
   scheduled_for: string;
   created_at: string;
   completed: number;
+}
+
+interface TaskRow {
+  id: string;
+  title: string;
+  description: string;
+  priority: string;
+  due_date: string | null;
+  category: string;
+  completed: number;
+  created_at: string;
+  updated_at: string;
 }
 
 // Helper to map database row to Conversation type (snake_case -> camelCase)
@@ -952,6 +986,168 @@ export function createMemoryNoteWithSupersession(
     }
     
     return newNote;
+  });
+}
+
+// Helper to map database row to Task type
+function mapTask(row: TaskRow): Task {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    priority: row.priority as "low" | "medium" | "high",
+    dueDate: row.due_date,
+    category: row.category as "work" | "personal" | "family",
+    completed: Boolean(row.completed),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// Task operations
+export function createTask(data: InsertTask): Task {
+  return wrapDbOperation("createTask", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    const description = data.description || "";
+    const priority = data.priority || "medium";
+    const category = data.category || "personal";
+    const completed = data.completed ?? false;
+    
+    db.prepare(`
+      INSERT INTO tasks (id, title, description, priority, due_date, category, completed, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.title, description, priority, data.dueDate || null, category, completed ? 1 : 0, now, now);
+    
+    return {
+      id,
+      title: data.title,
+      description,
+      priority: priority as "low" | "medium" | "high",
+      dueDate: data.dueDate || null,
+      category: category as "work" | "personal" | "family",
+      completed,
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+}
+
+export function getTask(id: string): Task | undefined {
+  return wrapDbOperation("getTask", () => {
+    const row = db.prepare(`
+      SELECT * FROM tasks WHERE id = ?
+    `).get(id) as TaskRow | undefined;
+    return row ? mapTask(row) : undefined;
+  });
+}
+
+export function getAllTasks(includeCompleted: boolean = true): Task[] {
+  return wrapDbOperation("getAllTasks", () => {
+    const query = includeCompleted
+      ? `SELECT * FROM tasks ORDER BY completed ASC, due_date ASC NULLS LAST, priority DESC, created_at DESC`
+      : `SELECT * FROM tasks WHERE completed = 0 ORDER BY due_date ASC NULLS LAST, priority DESC, created_at DESC`;
+    const rows = db.prepare(query).all() as TaskRow[];
+    return rows.map(mapTask);
+  });
+}
+
+export function getTasksByCategory(category: string, includeCompleted: boolean = true): Task[] {
+  return wrapDbOperation("getTasksByCategory", () => {
+    const query = includeCompleted
+      ? `SELECT * FROM tasks WHERE category = ? ORDER BY completed ASC, due_date ASC NULLS LAST, priority DESC`
+      : `SELECT * FROM tasks WHERE category = ? AND completed = 0 ORDER BY due_date ASC NULLS LAST, priority DESC`;
+    const rows = db.prepare(query).all(category) as TaskRow[];
+    return rows.map(mapTask);
+  });
+}
+
+export function getTasksDueToday(): Task[] {
+  return wrapDbOperation("getTasksDueToday", () => {
+    const today = new Date().toISOString().split('T')[0];
+    const rows = db.prepare(`
+      SELECT * FROM tasks 
+      WHERE due_date LIKE ? AND completed = 0
+      ORDER BY priority DESC, created_at ASC
+    `).all(`${today}%`) as TaskRow[];
+    return rows.map(mapTask);
+  });
+}
+
+export function getOverdueTasks(): Task[] {
+  return wrapDbOperation("getOverdueTasks", () => {
+    const now = new Date().toISOString();
+    const rows = db.prepare(`
+      SELECT * FROM tasks 
+      WHERE due_date < ? AND due_date IS NOT NULL AND completed = 0
+      ORDER BY due_date ASC, priority DESC
+    `).all(now) as TaskRow[];
+    return rows.map(mapTask);
+  });
+}
+
+export function updateTask(id: string, data: UpdateTask): Task | undefined {
+  return wrapDbOperation("updateTask", () => {
+    const existing = getTask(id);
+    if (!existing) return undefined;
+    
+    const now = getCurrentTimestamp();
+    const title = data.title ?? existing.title;
+    const description = data.description ?? existing.description;
+    const priority = data.priority ?? existing.priority;
+    const dueDate = data.dueDate !== undefined ? data.dueDate : existing.dueDate;
+    const category = data.category ?? existing.category;
+    const completed = data.completed ?? existing.completed;
+    
+    db.prepare(`
+      UPDATE tasks 
+      SET title = ?, description = ?, priority = ?, due_date = ?, category = ?, completed = ?, updated_at = ?
+      WHERE id = ?
+    `).run(title, description, priority, dueDate, category, completed ? 1 : 0, now, id);
+    
+    return getTask(id);
+  });
+}
+
+export function toggleTaskCompleted(id: string): Task | undefined {
+  return wrapDbOperation("toggleTaskCompleted", () => {
+    const existing = getTask(id);
+    if (!existing) return undefined;
+    
+    const now = getCurrentTimestamp();
+    const newCompleted = !existing.completed;
+    
+    db.prepare(`
+      UPDATE tasks SET completed = ?, updated_at = ? WHERE id = ?
+    `).run(newCompleted ? 1 : 0, now, id);
+    
+    return getTask(id);
+  });
+}
+
+export function deleteTask(id: string): boolean {
+  return wrapDbOperation("deleteTask", () => {
+    const result = db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function clearCompletedTasks(): number {
+  return wrapDbOperation("clearCompletedTasks", () => {
+    const result = db.prepare(`DELETE FROM tasks WHERE completed = 1`).run();
+    return result.changes;
+  });
+}
+
+export function searchTasks(query: string): Task[] {
+  return wrapDbOperation("searchTasks", () => {
+    const searchTerm = `%${query.toLowerCase()}%`;
+    const rows = db.prepare(`
+      SELECT * FROM tasks 
+      WHERE LOWER(title) LIKE ? OR LOWER(description) LIKE ?
+      ORDER BY completed ASC, due_date ASC NULLS LAST, priority DESC
+    `).all(searchTerm, searchTerm) as TaskRow[];
+    return rows.map(mapTask);
   });
 }
 

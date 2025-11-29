@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import ChatPage from "@/pages/chat";
 import GroceryPage from "@/pages/grocery";
 import MemoryPage from "@/pages/memory";
+import TasksPage from "@/pages/tasks";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 
@@ -15,6 +16,7 @@ function Router() {
       <Route path="/" component={ChatPage} />
       <Route path="/grocery" component={GroceryPage} />
       <Route path="/memory" component={MemoryPage} />
+      <Route path="/tasks" component={TasksPage} />
       <Route component={NotFound} />
     </Switch>
   );
