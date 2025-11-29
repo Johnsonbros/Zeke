@@ -1,16 +1,41 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Calendar as CalendarIcon,
   Clock,
   MapPin,
   ChevronLeft,
   ChevronRight,
+  Pencil,
+  Trash2,
+  X,
+  Save,
+  FileText,
 } from "lucide-react";
 import {
   format,
@@ -27,6 +52,8 @@ import {
   startOfMonth,
   endOfMonth,
 } from "date-fns";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface CalendarEvent {
   id: string;
@@ -40,7 +67,351 @@ interface CalendarEvent {
 
 type ViewType = "today" | "week" | "month";
 
-function EventCard({ event }: { event: CalendarEvent }) {
+interface EventEditDialogProps {
+  event: CalendarEvent | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+function EventEditDialog({ event, open, onOpenChange }: EventEditDialogProps) {
+  const { toast } = useToast();
+  const [isEditing, setIsEditing] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [formData, setFormData] = useState({
+    summary: "",
+    description: "",
+    location: "",
+    startTime: "",
+    endTime: "",
+  });
+
+  useEffect(() => {
+    if (event) {
+      const startDate = parseISO(event.start);
+      const endDate = parseISO(event.end);
+      setFormData({
+        summary: event.summary,
+        description: event.description || "",
+        location: event.location || "",
+        startTime: event.allDay ? "" : format(startDate, "yyyy-MM-dd'T'HH:mm"),
+        endTime: event.allDay ? "" : format(endDate, "yyyy-MM-dd'T'HH:mm"),
+      });
+      setIsEditing(false);
+    }
+  }, [event]);
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: typeof formData) => {
+      const response = await apiRequest("PUT", `/api/calendar/events/${event?.id}`, {
+        summary: data.summary,
+        description: data.description || undefined,
+        location: data.location || undefined,
+        startTime: data.startTime ? new Date(data.startTime).toISOString() : undefined,
+        endTime: data.endTime ? new Date(data.endTime).toISOString() : undefined,
+      });
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar/events"] });
+      toast({
+        title: "Event updated",
+        description: "Changes synced to Google Calendar",
+      });
+      setIsEditing(false);
+      onOpenChange(false);
+    },
+    onError: (error: Error) => {
+      let errorMessage = "Please try again later";
+      try {
+        const errorText = error.message;
+        if (errorText.includes("Event type cannot be changed")) {
+          errorMessage = "This event cannot be edited (auto-generated from email)";
+        } else if (errorText.includes(":")) {
+          const jsonPart = errorText.substring(errorText.indexOf(":") + 1).trim();
+          const parsed = JSON.parse(jsonPart);
+          errorMessage = parsed.error || errorMessage;
+        }
+      } catch {
+        errorMessage = error.message || "Please try again later";
+      }
+      toast({
+        title: "Failed to update event",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("DELETE", `/api/calendar/events/${event?.id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar/events"] });
+      toast({
+        title: "Event deleted",
+        description: "Removed from Google Calendar",
+      });
+      onOpenChange(false);
+    },
+    onError: (error: Error) => {
+      let errorMessage = "Please try again later";
+      try {
+        const errorText = error.message;
+        if (errorText.includes(":")) {
+          const jsonPart = errorText.substring(errorText.indexOf(":") + 1).trim();
+          const parsed = JSON.parse(jsonPart);
+          errorMessage = parsed.error || errorMessage;
+        }
+      } catch {
+        errorMessage = error.message || "Please try again later";
+      }
+      toast({
+        title: "Failed to delete event",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSave = () => {
+    if (!formData.summary.trim()) {
+      toast({
+        title: "Title required",
+        description: "Please enter an event title",
+        variant: "destructive",
+      });
+      return;
+    }
+    updateMutation.mutate(formData);
+  };
+
+  const handleDelete = () => {
+    setShowDeleteConfirm(false);
+    deleteMutation.mutate();
+  };
+
+  if (!event) return null;
+
+  const startDate = parseISO(event.start);
+  const endDate = parseISO(event.end);
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-[95vw] sm:max-w-md p-4 sm:p-6 gap-3 sm:gap-4">
+          <DialogHeader className="space-y-1.5 sm:space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <DialogTitle className="text-base sm:text-lg pr-8">
+                {isEditing ? "Edit Event" : event.summary}
+              </DialogTitle>
+            </div>
+            {!isEditing && (
+              <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                {event.allDay ? (
+                  <Badge variant="secondary" className="text-[10px] sm:text-xs">
+                    All day
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px] sm:text-xs">
+                    <Clock className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-1" />
+                    {format(startDate, "h:mm a")} - {format(endDate, "h:mm a")}
+                  </Badge>
+                )}
+                <Badge variant="outline" className="text-[10px] sm:text-xs">
+                  <CalendarIcon className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-1" />
+                  {format(startDate, "MMM d, yyyy")}
+                </Badge>
+              </div>
+            )}
+          </DialogHeader>
+
+          {isEditing ? (
+            <div className="space-y-3 sm:space-y-4">
+              <div className="space-y-1.5 sm:space-y-2">
+                <Label htmlFor="summary" className="text-xs sm:text-sm">
+                  Title
+                </Label>
+                <Input
+                  id="summary"
+                  value={formData.summary}
+                  onChange={(e) =>
+                    setFormData({ ...formData, summary: e.target.value })
+                  }
+                  placeholder="Event title"
+                  className="h-9 sm:h-10 text-sm"
+                  data-testid="input-event-title"
+                />
+              </div>
+
+              {!event.allDay && (
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <Label htmlFor="startTime" className="text-xs sm:text-sm">
+                      Start
+                    </Label>
+                    <Input
+                      id="startTime"
+                      type="datetime-local"
+                      value={formData.startTime}
+                      onChange={(e) =>
+                        setFormData({ ...formData, startTime: e.target.value })
+                      }
+                      className="h-9 sm:h-10 text-sm"
+                      data-testid="input-event-start"
+                    />
+                  </div>
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <Label htmlFor="endTime" className="text-xs sm:text-sm">
+                      End
+                    </Label>
+                    <Input
+                      id="endTime"
+                      type="datetime-local"
+                      value={formData.endTime}
+                      onChange={(e) =>
+                        setFormData({ ...formData, endTime: e.target.value })
+                      }
+                      className="h-9 sm:h-10 text-sm"
+                      data-testid="input-event-end"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1.5 sm:space-y-2">
+                <Label htmlFor="location" className="text-xs sm:text-sm">
+                  Location
+                </Label>
+                <Input
+                  id="location"
+                  value={formData.location}
+                  onChange={(e) =>
+                    setFormData({ ...formData, location: e.target.value })
+                  }
+                  placeholder="Add location"
+                  className="h-9 sm:h-10 text-sm"
+                  data-testid="input-event-location"
+                />
+              </div>
+
+              <div className="space-y-1.5 sm:space-y-2">
+                <Label htmlFor="description" className="text-xs sm:text-sm">
+                  Description
+                </Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
+                  placeholder="Add description"
+                  className="min-h-[80px] sm:min-h-[100px] text-sm resize-none"
+                  data-testid="input-event-description"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2 sm:space-y-3">
+              {event.location && (
+                <div className="flex items-start gap-2 text-xs sm:text-sm">
+                  <MapPin className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground shrink-0 mt-0.5" />
+                  <span>{event.location}</span>
+                </div>
+              )}
+              {event.description && (
+                <div className="flex items-start gap-2 text-xs sm:text-sm">
+                  <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground shrink-0 mt-0.5" />
+                  <span className="whitespace-pre-wrap">{event.description}</span>
+                </div>
+              )}
+              {!event.location && !event.description && (
+                <p className="text-xs sm:text-sm text-muted-foreground">
+                  No additional details
+                </p>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="flex-row gap-2 sm:gap-3 pt-2">
+            {isEditing ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditing(false)}
+                  className="flex-1 sm:flex-none"
+                  data-testid="button-cancel-edit"
+                >
+                  <X className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5" />
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={updateMutation.isPending}
+                  className="flex-1 sm:flex-none"
+                  data-testid="button-save-event"
+                >
+                  <Save className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5" />
+                  {updateMutation.isPending ? "Saving..." : "Save"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="text-destructive hover:text-destructive"
+                  data-testid="button-delete-event"
+                >
+                  <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5" />
+                  Delete
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setIsEditing(true)}
+                  className="flex-1 sm:flex-none"
+                  data-testid="button-edit-event"
+                >
+                  <Pencil className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5" />
+                  Edit
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent className="max-w-[90vw] sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base sm:text-lg">Delete Event?</AlertDialogTitle>
+            <AlertDialogDescription className="text-xs sm:text-sm">
+              This will permanently delete "{event.summary}" from your Google
+              Calendar. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row gap-2 sm:gap-3">
+            <AlertDialogCancel className="flex-1 sm:flex-none" data-testid="button-cancel-delete">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="flex-1 sm:flex-none bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete"
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+function EventCard({ event, onClick }: { event: CalendarEvent; onClick?: () => void }) {
   const startDate = parseISO(event.start);
   const endDate = parseISO(event.end);
 
@@ -48,6 +419,7 @@ function EventCard({ event }: { event: CalendarEvent }) {
     <Card
       className="p-2 sm:p-3 hover-elevate cursor-pointer border-l-2 border-l-primary"
       data-testid={`event-card-${event.id}`}
+      onClick={onClick}
     >
       <div className="flex flex-col gap-0.5 sm:gap-1">
         <span className="text-xs sm:text-sm font-medium line-clamp-2">{event.summary}</span>
@@ -79,10 +451,12 @@ function DayColumn({
   date,
   events,
   isCurrentDay,
+  onEventClick,
 }: {
   date: Date;
   events: CalendarEvent[];
   isCurrentDay: boolean;
+  onEventClick: (event: CalendarEvent) => void;
 }) {
   const dayEvents = events.filter((event) => {
     const eventStart = parseISO(event.start);
@@ -114,7 +488,13 @@ function DayColumn({
               No events
             </div>
           ) : (
-            dayEvents.map((event) => <EventCard key={event.id} event={event} />)
+            dayEvents.map((event) => (
+              <EventCard 
+                key={event.id} 
+                event={event} 
+                onClick={() => onEventClick(event)}
+              />
+            ))
           )}
         </div>
       </ScrollArea>
@@ -145,6 +525,13 @@ function CalendarSkeleton() {
 export default function CalendarPage() {
   const [view, setView] = useState<ViewType>("week");
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [eventDialogOpen, setEventDialogOpen] = useState(false);
+
+  const handleEventClick = (event: CalendarEvent) => {
+    setSelectedEvent(event);
+    setEventDialogOpen(true);
+  };
 
   const getDateRange = () => {
     if (view === "today") {
@@ -327,7 +714,11 @@ export default function CalendarPage() {
               </div>
               {events && events.length > 0 ? (
                 events.map((event) => (
-                  <EventCard key={event.id} event={event} />
+                  <EventCard 
+                    key={event.id} 
+                    event={event} 
+                    onClick={() => handleEventClick(event)}
+                  />
                 ))
               ) : (
                 <div className="flex flex-col items-center justify-center py-8 sm:py-12 gap-2 sm:gap-3">
@@ -345,11 +736,18 @@ export default function CalendarPage() {
                 date={date}
                 events={events || []}
                 isCurrentDay={isToday(date)}
+                onEventClick={handleEventClick}
               />
             ))}
           </div>
         )}
       </div>
+
+      <EventEditDialog
+        event={selectedEvent}
+        open={eventDialogOpen}
+        onOpenChange={setEventDialogOpen}
+      />
     </div>
   );
 }
