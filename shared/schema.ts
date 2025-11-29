@@ -446,3 +446,48 @@ export interface FullProfile {
   importantDates?: ImportantDateData[];
   custom?: CustomFieldData[];
 }
+
+// Twilio message directions and statuses
+export const twilioMessageDirections = ["inbound", "outbound"] as const;
+export type TwilioMessageDirection = typeof twilioMessageDirections[number];
+
+export const twilioMessageStatuses = ["queued", "sending", "sent", "delivered", "failed", "received"] as const;
+export type TwilioMessageStatus = typeof twilioMessageStatuses[number];
+
+// Sources that can trigger outbound SMS
+export const twilioMessageSources = [
+  "webhook",           // Inbound message from Twilio webhook
+  "send_sms_tool",     // AI agent's send_sms tool  
+  "reminder",          // Reminder system
+  "automation",        // Scheduled automations
+  "daily_checkin",     // Daily check-in system
+  "web_ui",            // Direct send from web UI
+  "reply"              // Reply to incoming SMS
+] as const;
+export type TwilioMessageSource = typeof twilioMessageSources[number];
+
+// Twilio messages table for logging all SMS activity
+export const twilioMessages = sqliteTable("twilio_messages", {
+  id: text("id").primaryKey(),
+  twilioSid: text("twilio_sid"),
+  direction: text("direction", { enum: twilioMessageDirections }).notNull(),
+  status: text("status", { enum: twilioMessageStatuses }).notNull(),
+  source: text("source", { enum: twilioMessageSources }).notNull(),
+  fromNumber: text("from_number").notNull(),
+  toNumber: text("to_number").notNull(),
+  body: text("body").notNull(),
+  contactId: text("contact_id"),
+  contactName: text("contact_name"),
+  conversationId: text("conversation_id"),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertTwilioMessageSchema = createInsertSchema(twilioMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTwilioMessage = z.infer<typeof insertTwilioMessageSchema>;
+export type TwilioMessage = typeof twilioMessages.$inferSelect;
