@@ -7,6 +7,8 @@ architecture. It includes:
 - BaseAgent: Abstract base class for all agents
 - ConductorAgent: Central orchestration agent
 - MemoryCuratorAgent: Memory and context specialist
+- CommsPilotAgent: SMS and messaging specialist
+- OpsPlannerAgent: Scheduling, task management, and grocery specialist
 - Handoff protocols for inter-agent communication
 
 The architecture follows a conductor-specialist pattern where a central
@@ -55,6 +57,15 @@ from .comms_pilot import (
     get_comms_pilot,
 )
 
+from .ops_planner import (
+    OpsPlannerAgent,
+    TaskResult,
+    ReminderResult,
+    CalendarResult,
+    GroceryResult,
+    get_ops_planner,
+)
+
 __all__ = [
     "BaseAgent",
     "AgentId",
@@ -85,4 +96,10 @@ __all__ = [
     "SmsResult",
     "CheckInConfig",
     "get_comms_pilot",
+    "OpsPlannerAgent",
+    "TaskResult",
+    "ReminderResult",
+    "CalendarResult",
+    "GroceryResult",
+    "get_ops_planner",
 ]
