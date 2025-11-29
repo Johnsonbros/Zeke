@@ -13,7 +13,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { 
   Plus, 
   Trash2, 
-  ArrowLeft,
   Users,
   Phone,
   Shield,
@@ -48,7 +47,6 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -616,16 +614,9 @@ export default function ContactsPage() {
     <div className="flex h-screen bg-background">
       <div className={`${selectedContact ? "hidden md:flex" : "flex"} flex-col flex-1 border-r border-border`}>
         <header className="flex items-center justify-between p-4 border-b border-border shrink-0">
-          <div className="flex items-center gap-3">
-            <Link href="/">
-              <Button variant="ghost" size="icon" data-testid="button-back-home">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary" />
-              <h1 className="font-semibold text-lg">Contacts</h1>
-            </div>
+          <div className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
+            <h1 className="font-semibold text-lg">Contacts</h1>
           </div>
           <Button size="sm" onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-contact">
             <Plus className="h-4 w-4 mr-1" />

@@ -13,7 +13,6 @@ import {
   Plus, 
   Trash2, 
   ListTodo,
-  ArrowLeft,
   Check,
   Calendar,
   AlertCircle,
@@ -42,7 +41,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -556,16 +554,9 @@ export default function TasksPage() {
   return (
     <div className="flex flex-col h-screen h-[100dvh] bg-background" data-testid="tasks-page">
       <header className="h-14 md:h-16 border-b border-border flex items-center justify-between gap-3 px-3 md:px-6 shrink-0">
-        <div className="flex items-center gap-3">
-          <Link href="/">
-            <Button size="icon" variant="ghost" data-testid="button-back-to-chat">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
-          <div className="flex items-center gap-2">
-            <ListTodo className="h-5 w-5 text-primary" />
-            <h1 className="text-lg md:text-xl font-semibold" data-testid="text-page-title">Tasks</h1>
-          </div>
+        <div className="flex items-center gap-2">
+          <ListTodo className="h-5 w-5 text-primary" />
+          <h1 className="text-lg md:text-xl font-semibold" data-testid="text-page-title">Tasks</h1>
         </div>
         
         {completedTasks.length > 0 && (

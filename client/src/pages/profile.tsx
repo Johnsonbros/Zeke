@@ -16,7 +16,6 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import {
-  ArrowLeft,
   User,
   Briefcase,
   Users,
@@ -39,7 +38,6 @@ import {
   Dumbbell,
   X,
 } from "lucide-react";
-import { Link } from "wouter";
 import type {
   FullProfile,
   BasicInfoData,
@@ -1198,11 +1196,6 @@ export default function ProfilePage() {
     return (
       <div className="min-h-screen bg-background" data-testid="profile-page">
         <header className="sticky top-0 z-10 h-14 border-b border-border bg-background/80 backdrop-blur flex items-center gap-3 px-4">
-          <Link href="/">
-            <Button size="icon" variant="ghost" data-testid="link-back-home">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
           <div className="flex items-center gap-2">
             <User className="h-5 w-5 text-primary" />
             <h1 className="text-lg font-semibold">My Profile</h1>
@@ -1222,11 +1215,6 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-background" data-testid="profile-page">
       <header className="sticky top-0 z-10 h-14 border-b border-border bg-background/80 backdrop-blur flex items-center gap-3 px-4">
-        <Link href="/">
-          <Button size="icon" variant="ghost" data-testid="link-back-home">
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-        </Link>
         <div className="flex items-center gap-2">
           <User className="h-5 w-5 text-primary" />
           <h1 className="text-lg font-semibold">My Profile</h1>

@@ -6,10 +6,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  ArrowLeft, 
   Brain, 
   Trash2, 
-  User, 
   Heart, 
   Lightbulb,
   FileText,
@@ -145,11 +143,6 @@ export default function MemoryPage() {
   return (
     <div className="min-h-screen bg-background" data-testid="memory-page">
       <header className="sticky top-0 z-10 h-14 border-b border-border bg-background/80 backdrop-blur flex items-center gap-3 px-4">
-        <Link href="/">
-          <Button size="icon" variant="ghost" data-testid="button-back">
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-        </Link>
         <div className="flex items-center gap-2">
           <Brain className="h-5 w-5 text-primary" />
           <h1 className="text-lg font-semibold">ZEKE's Memory</h1>
