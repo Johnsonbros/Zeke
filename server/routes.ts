@@ -77,7 +77,7 @@ import {
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertAutomationSchema, type Automation, type InsertAutomation } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
-import { listCalendarEvents, getTodaysEvents, getUpcomingEvents, createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, type CalendarEvent } from "./googleCalendar";
+import { listCalendarEvents, getTodaysEvents, getUpcomingEvents, createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, listCalendars, type CalendarEvent, type CalendarInfo } from "./googleCalendar";
 
 // Initialize Twilio client for outbound SMS
 function getTwilioClient() {
@@ -1470,14 +1470,29 @@ export async function registerRoutes(
   
   // ==================== CALENDAR API ====================
   
-  // Get calendar events with optional date range
+  // Get list of all calendars (for toggle UI)
+  app.get("/api/calendar/list", async (_req, res) => {
+    try {
+      const calendars = await listCalendars();
+      res.json(calendars);
+    } catch (error: any) {
+      console.error("Calendar list error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch calendars" });
+    }
+  });
+  
+  // Get calendar events with optional date range and calendar filtering
   app.get("/api/calendar/events", async (req, res) => {
     try {
-      const { start, end, days } = req.query;
+      const { start, end, days, calendars } = req.query;
       let events: CalendarEvent[];
       
+      const calendarIds = calendars 
+        ? (calendars as string).split(',').filter(Boolean) 
+        : undefined;
+      
       if (start && end) {
-        events = await listCalendarEvents(new Date(start as string), new Date(end as string), 100);
+        events = await listCalendarEvents(new Date(start as string), new Date(end as string), 100, calendarIds);
       } else if (days) {
         events = await getUpcomingEvents(parseInt(days as string));
       } else {

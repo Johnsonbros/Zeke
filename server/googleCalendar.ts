@@ -47,6 +47,15 @@ export async function getGoogleCalendarClient() {
   return google.calendar({ version: 'v3', auth: oauth2Client });
 }
 
+export interface CalendarInfo {
+  id: string;
+  summary: string;
+  backgroundColor: string;
+  foregroundColor: string;
+  primary?: boolean;
+  selected?: boolean;
+}
+
 export interface CalendarEvent {
   id: string;
   summary: string;
@@ -55,39 +64,82 @@ export interface CalendarEvent {
   start: string;
   end: string;
   allDay: boolean;
+  calendarId?: string;
+  calendarName?: string;
+  backgroundColor?: string;
+}
+
+export async function listCalendars(): Promise<CalendarInfo[]> {
+  const calendar = await getGoogleCalendarClient();
+  
+  const response = await calendar.calendarList.list();
+  const calendars = response.data.items || [];
+  
+  return calendars.map(cal => ({
+    id: cal.id || '',
+    summary: cal.summary || 'Untitled Calendar',
+    backgroundColor: cal.backgroundColor || '#4285f4',
+    foregroundColor: cal.foregroundColor || '#ffffff',
+    primary: cal.primary || false,
+    selected: cal.selected || false,
+  }));
 }
 
 export async function listCalendarEvents(
   timeMin?: Date, 
   timeMax?: Date, 
-  maxResults: number = 10
+  maxResults: number = 10,
+  calendarIds?: string[]
 ): Promise<CalendarEvent[]> {
   const calendar = await getGoogleCalendarClient();
   
   const now = new Date();
   const defaultTimeMin = timeMin || now;
-  const defaultTimeMax = timeMax || new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+  const defaultTimeMax = timeMax || new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   
-  const response = await calendar.events.list({
-    calendarId: 'primary',
-    timeMin: defaultTimeMin.toISOString(),
-    timeMax: defaultTimeMax.toISOString(),
-    maxResults,
-    singleEvents: true,
-    orderBy: 'startTime',
-  });
+  const targetCalendarIds = calendarIds && calendarIds.length > 0 ? calendarIds : ['primary'];
+  
+  const calendarsInfo = await listCalendars();
+  const calendarMap = new Map(calendarsInfo.map(c => [c.id, c]));
+  
+  const allEvents: CalendarEvent[] = [];
+  
+  for (const calendarId of targetCalendarIds) {
+    try {
+      const response = await calendar.events.list({
+        calendarId,
+        timeMin: defaultTimeMin.toISOString(),
+        timeMax: defaultTimeMax.toISOString(),
+        maxResults,
+        singleEvents: true,
+        orderBy: 'startTime',
+      });
 
-  const events = response.data.items || [];
+      const events = response.data.items || [];
+      const calInfo = calendarMap.get(calendarId);
+      
+      const mappedEvents = events.map(event => ({
+        id: event.id || '',
+        summary: event.summary || 'Untitled Event',
+        description: event.description || undefined,
+        location: event.location || undefined,
+        start: event.start?.dateTime || event.start?.date || '',
+        end: event.end?.dateTime || event.end?.date || '',
+        allDay: !event.start?.dateTime,
+        calendarId,
+        calendarName: calInfo?.summary || calendarId,
+        backgroundColor: calInfo?.backgroundColor || '#4285f4',
+      }));
+      
+      allEvents.push(...mappedEvents);
+    } catch (error) {
+      console.error(`Error fetching events from calendar ${calendarId}:`, error);
+    }
+  }
   
-  return events.map(event => ({
-    id: event.id || '',
-    summary: event.summary || 'Untitled Event',
-    description: event.description || undefined,
-    location: event.location || undefined,
-    start: event.start?.dateTime || event.start?.date || '',
-    end: event.end?.dateTime || event.end?.date || '',
-    allDay: !event.start?.dateTime,
-  }));
+  allEvents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+  
+  return allEvents;
 }
 
 export async function getTodaysEvents(): Promise<CalendarEvent[]> {
