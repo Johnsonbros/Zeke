@@ -6,6 +6,13 @@ import {
   stopDailyCheckIn, 
   sendDailyCheckIn,
 } from "../dailyCheckIn";
+import {
+  createContact,
+  updateContact,
+  getAllContacts,
+  getContactByPhone,
+} from "../db";
+import type { AccessLevel } from "@shared/schema";
 
 export const communicationToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
@@ -86,6 +93,112 @@ export const communicationToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "create_contact",
+      description: "Create a new contact in ZEKE's address book. Use this when the user wants to add a new person/contact with their phone number. You can set their access level and permissions.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "The contact's name (e.g., 'John Smith', 'Mom', 'Dr. Jones').",
+          },
+          phone_number: {
+            type: "string",
+            description: "The contact's phone number. Include country code (e.g., '+16175551234'). If just 10 digits provided, assume +1 for US.",
+          },
+          access_level: {
+            type: "string",
+            enum: ["admin", "family", "friend", "business", "restricted", "unknown"],
+            description: "The contact's access level. 'family' gives broad access, 'friend' gives moderate access, 'business' is limited, 'restricted' is minimal. Default is 'unknown'.",
+          },
+          relationship: {
+            type: "string",
+            description: "The relationship to the user (e.g., 'wife', 'brother', 'coworker', 'doctor').",
+          },
+          notes: {
+            type: "string",
+            description: "Any notes about this contact.",
+          },
+        },
+        required: ["name", "phone_number"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_contact",
+      description: "Update an existing contact's information. Use this when the user wants to change a contact's name, access level, relationship, or permissions.",
+      parameters: {
+        type: "object",
+        properties: {
+          phone_number: {
+            type: "string",
+            description: "The phone number of the contact to update. Used to find the contact.",
+          },
+          name: {
+            type: "string",
+            description: "New name for the contact.",
+          },
+          access_level: {
+            type: "string",
+            enum: ["admin", "family", "friend", "business", "restricted", "unknown"],
+            description: "New access level for the contact.",
+          },
+          relationship: {
+            type: "string",
+            description: "New relationship description.",
+          },
+          notes: {
+            type: "string",
+            description: "New notes about this contact.",
+          },
+          can_access_personal_info: {
+            type: "boolean",
+            description: "Whether this contact can access personal information about the user.",
+          },
+          can_access_calendar: {
+            type: "boolean",
+            description: "Whether this contact can access the user's calendar.",
+          },
+          can_access_tasks: {
+            type: "boolean",
+            description: "Whether this contact can access the user's tasks.",
+          },
+          can_access_grocery: {
+            type: "boolean",
+            description: "Whether this contact can access the grocery list.",
+          },
+          can_set_reminders: {
+            type: "boolean",
+            description: "Whether this contact can set reminders.",
+          },
+        },
+        required: ["phone_number"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_contacts",
+      description: "List all contacts in ZEKE's address book. Optionally filter by access level.",
+      parameters: {
+        type: "object",
+        properties: {
+          access_level: {
+            type: "string",
+            enum: ["admin", "family", "friend", "business", "restricted", "unknown"],
+            description: "Optional filter to show only contacts with this access level.",
+          },
+        },
+        required: [],
+      },
+    },
+  },
 ];
 
 export const communicationToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
@@ -94,6 +207,9 @@ export const communicationToolPermissions: Record<string, (permissions: ToolPerm
   get_daily_checkin_status: (p) => p.isAdmin,
   stop_daily_checkin: (p) => p.isAdmin,
   send_daily_checkin_now: (p) => p.isAdmin,
+  create_contact: (p) => p.isAdmin,
+  update_contact: (p) => p.isAdmin,
+  list_contacts: (p) => p.isAdmin,
 };
 
 interface ExecuteOptions {
@@ -246,6 +362,199 @@ export async function executeCommunicationTool(
       }
     }
     
+    case "create_contact": {
+      const { name, phone_number, access_level, relationship, notes } = args as {
+        name: string;
+        phone_number: string;
+        access_level?: AccessLevel;
+        relationship?: string;
+        notes?: string;
+      };
+      
+      let formattedPhone = phone_number.replace(/[^0-9+]/g, "");
+      if (formattedPhone.length === 10) {
+        formattedPhone = "+1" + formattedPhone;
+      } else if (!formattedPhone.startsWith("+")) {
+        formattedPhone = "+" + formattedPhone;
+      }
+      
+      try {
+        const existingContact = getContactByPhone(formattedPhone);
+        if (existingContact) {
+          return JSON.stringify({
+            success: false,
+            error: `A contact already exists for ${formattedPhone}: ${existingContact.name}. Use update_contact to modify it.`,
+            existing_contact: {
+              id: existingContact.id,
+              name: existingContact.name,
+              phoneNumber: existingContact.phoneNumber,
+              accessLevel: existingContact.accessLevel,
+            },
+          });
+        }
+        
+        const contact = createContact({
+          name,
+          phoneNumber: formattedPhone,
+          accessLevel: access_level || "unknown",
+          relationship: relationship || "",
+          notes: notes || "",
+        });
+        
+        return JSON.stringify({
+          success: true,
+          message: `Contact "${name}" created successfully with access level "${contact.accessLevel}".`,
+          contact: {
+            id: contact.id,
+            name: contact.name,
+            phoneNumber: contact.phoneNumber,
+            accessLevel: contact.accessLevel,
+            relationship: contact.relationship,
+            canAccessPersonalInfo: contact.canAccessPersonalInfo,
+            canAccessCalendar: contact.canAccessCalendar,
+            canAccessTasks: contact.canAccessTasks,
+            canAccessGrocery: contact.canAccessGrocery,
+            canSetReminders: contact.canSetReminders,
+          },
+        });
+      } catch (error: any) {
+        console.error("Failed to create contact:", error);
+        return JSON.stringify({
+          success: false,
+          error: error.message || "Failed to create contact",
+        });
+      }
+    }
+    
+    case "update_contact": {
+      const { 
+        phone_number, 
+        name, 
+        access_level, 
+        relationship, 
+        notes,
+        can_access_personal_info,
+        can_access_calendar,
+        can_access_tasks,
+        can_access_grocery,
+        can_set_reminders,
+      } = args as {
+        phone_number: string;
+        name?: string;
+        access_level?: AccessLevel;
+        relationship?: string;
+        notes?: string;
+        can_access_personal_info?: boolean;
+        can_access_calendar?: boolean;
+        can_access_tasks?: boolean;
+        can_access_grocery?: boolean;
+        can_set_reminders?: boolean;
+      };
+      
+      let formattedPhone = phone_number.replace(/[^0-9+]/g, "");
+      if (formattedPhone.length === 10) {
+        formattedPhone = "+1" + formattedPhone;
+      } else if (!formattedPhone.startsWith("+")) {
+        formattedPhone = "+" + formattedPhone;
+      }
+      
+      try {
+        const existingContact = getContactByPhone(formattedPhone);
+        if (!existingContact) {
+          return JSON.stringify({
+            success: false,
+            error: `No contact found for phone number ${formattedPhone}. Use create_contact to add a new contact.`,
+          });
+        }
+        
+        const updateData: Record<string, unknown> = {};
+        if (name !== undefined) updateData.name = name;
+        if (access_level !== undefined) updateData.accessLevel = access_level;
+        if (relationship !== undefined) updateData.relationship = relationship;
+        if (notes !== undefined) updateData.notes = notes;
+        if (can_access_personal_info !== undefined) updateData.canAccessPersonalInfo = can_access_personal_info;
+        if (can_access_calendar !== undefined) updateData.canAccessCalendar = can_access_calendar;
+        if (can_access_tasks !== undefined) updateData.canAccessTasks = can_access_tasks;
+        if (can_access_grocery !== undefined) updateData.canAccessGrocery = can_access_grocery;
+        if (can_set_reminders !== undefined) updateData.canSetReminders = can_set_reminders;
+        
+        const updated = updateContact(existingContact.id, updateData);
+        if (!updated) {
+          return JSON.stringify({
+            success: false,
+            error: "Failed to update contact.",
+          });
+        }
+        
+        return JSON.stringify({
+          success: true,
+          message: `Contact "${updated.name}" updated successfully.`,
+          contact: {
+            id: updated.id,
+            name: updated.name,
+            phoneNumber: updated.phoneNumber,
+            accessLevel: updated.accessLevel,
+            relationship: updated.relationship,
+            canAccessPersonalInfo: updated.canAccessPersonalInfo,
+            canAccessCalendar: updated.canAccessCalendar,
+            canAccessTasks: updated.canAccessTasks,
+            canAccessGrocery: updated.canAccessGrocery,
+            canSetReminders: updated.canSetReminders,
+          },
+        });
+      } catch (error: any) {
+        console.error("Failed to update contact:", error);
+        return JSON.stringify({
+          success: false,
+          error: error.message || "Failed to update contact",
+        });
+      }
+    }
+    
+    case "list_contacts": {
+      const { access_level } = args as { access_level?: AccessLevel };
+      
+      try {
+        let contacts = getAllContacts();
+        
+        if (access_level) {
+          contacts = contacts.filter(c => c.accessLevel === access_level);
+        }
+        
+        if (contacts.length === 0) {
+          const filterMsg = access_level ? ` with access level "${access_level}"` : "";
+          return JSON.stringify({
+            success: true,
+            message: `No contacts found${filterMsg}.`,
+            contacts: [],
+            count: 0,
+          });
+        }
+        
+        const contactList = contacts.map(c => ({
+          id: c.id,
+          name: c.name,
+          phoneNumber: c.phoneNumber,
+          accessLevel: c.accessLevel,
+          relationship: c.relationship,
+        }));
+        
+        const filterMsg = access_level ? ` with access level "${access_level}"` : "";
+        return JSON.stringify({
+          success: true,
+          message: `Found ${contacts.length} contact(s)${filterMsg}.`,
+          contacts: contactList,
+          count: contacts.length,
+        });
+      } catch (error: any) {
+        console.error("Failed to list contacts:", error);
+        return JSON.stringify({
+          success: false,
+          error: error.message || "Failed to list contacts",
+        });
+      }
+    }
+    
     default:
       return null;
   }
@@ -257,4 +566,7 @@ export const communicationToolNames = [
   "get_daily_checkin_status",
   "stop_daily_checkin",
   "send_checkin_now",
+  "create_contact",
+  "update_contact",
+  "list_contacts",
 ];
