@@ -10,6 +10,7 @@ architecture. It includes:
 - CommsPilotAgent: SMS and messaging specialist
 - OpsPlannerAgent: Scheduling, task management, and grocery specialist
 - ResearchScoutAgent: Information retrieval and search specialist
+- SafetyAuditorAgent: Security validation and user guidance specialist
 - Handoff protocols for inter-agent communication
 
 The architecture follows a conductor-specialist pattern where a central
@@ -73,6 +74,13 @@ from .research_scout import (
     get_research_scout,
 )
 
+from .safety_auditor import (
+    SafetyAuditorAgent,
+    PermissionCheckResult,
+    ValidationResult,
+    get_safety_auditor,
+)
+
 __all__ = [
     "BaseAgent",
     "AgentId",
@@ -112,4 +120,8 @@ __all__ = [
     "ResearchScoutAgent",
     "SearchResult",
     "get_research_scout",
+    "SafetyAuditorAgent",
+    "PermissionCheckResult",
+    "ValidationResult",
+    "get_safety_auditor",
 ]
