@@ -25,6 +25,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -36,6 +42,7 @@ import {
   X,
   Save,
   FileText,
+  Filter,
 } from "lucide-react";
 import {
   format,
@@ -55,6 +62,15 @@ import {
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+interface CalendarInfo {
+  id: string;
+  summary: string;
+  backgroundColor: string;
+  foregroundColor: string;
+  primary?: boolean;
+  selected?: boolean;
+}
+
 interface CalendarEvent {
   id: string;
   summary: string;
@@ -63,6 +79,9 @@ interface CalendarEvent {
   start: string;
   end: string;
   allDay: boolean;
+  calendarId?: string;
+  calendarName?: string;
+  backgroundColor?: string;
 }
 
 type ViewType = "today" | "week" | "month";
@@ -414,15 +433,24 @@ function EventEditDialog({ event, open, onOpenChange }: EventEditDialogProps) {
 function EventCard({ event, onClick }: { event: CalendarEvent; onClick?: () => void }) {
   const startDate = parseISO(event.start);
   const endDate = parseISO(event.end);
+  const borderColor = event.backgroundColor || undefined;
 
   return (
     <Card
-      className="p-2 sm:p-3 hover-elevate cursor-pointer border-l-2 border-l-primary"
+      className="p-2 sm:p-3 hover-elevate cursor-pointer border-l-4"
+      style={{ borderLeftColor: borderColor }}
       data-testid={`event-card-${event.id}`}
       onClick={onClick}
     >
       <div className="flex flex-col gap-0.5 sm:gap-1">
-        <span className="text-xs sm:text-sm font-medium line-clamp-2">{event.summary}</span>
+        <div className="flex items-start justify-between gap-1">
+          <span className="text-xs sm:text-sm font-medium line-clamp-2">{event.summary}</span>
+        </div>
+        {event.calendarName && event.calendarName !== 'primary' && (
+          <span className="text-[9px] sm:text-[10px] text-muted-foreground truncate">
+            {event.calendarName}
+          </span>
+        )}
         {!event.allDay && (
           <div className="flex items-center gap-1 text-[10px] sm:text-xs text-muted-foreground">
             <Clock className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" />
@@ -527,10 +555,40 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [eventDialogOpen, setEventDialogOpen] = useState(false);
+  const [selectedCalendars, setSelectedCalendars] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem('zeke-selected-calendars');
+    return saved ? new Set(JSON.parse(saved)) : new Set<string>();
+  });
 
   const handleEventClick = (event: CalendarEvent) => {
     setSelectedEvent(event);
     setEventDialogOpen(true);
+  };
+
+  const { data: calendars } = useQuery<CalendarInfo[]>({
+    queryKey: ["/api/calendar/list"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (calendars && selectedCalendars.size === 0) {
+      const allIds = new Set(calendars.map(c => c.id));
+      setSelectedCalendars(allIds);
+      localStorage.setItem('zeke-selected-calendars', JSON.stringify([...allIds]));
+    }
+  }, [calendars]);
+
+  const toggleCalendar = (calendarId: string) => {
+    setSelectedCalendars(prev => {
+      const next = new Set(prev);
+      if (next.has(calendarId)) {
+        next.delete(calendarId);
+      } else {
+        next.add(calendarId);
+      }
+      localStorage.setItem('zeke-selected-calendars', JSON.stringify([...next]));
+      return next;
+    });
   };
 
   const getDateRange = () => {
@@ -553,18 +611,23 @@ export default function CalendarPage() {
   };
 
   const dateRange = getDateRange();
+  const calendarIdsParam = selectedCalendars.size > 0 ? [...selectedCalendars].join(',') : '';
 
   const { data: events, isLoading, error } = useQuery<CalendarEvent[]>({
     queryKey: [
       "/api/calendar/events",
       dateRange.start.toISOString(),
       dateRange.end.toISOString(),
+      calendarIdsParam,
     ],
     queryFn: async () => {
       const params = new URLSearchParams({
         start: dateRange.start.toISOString(),
         end: dateRange.end.toISOString(),
       });
+      if (calendarIdsParam) {
+        params.set('calendars', calendarIdsParam);
+      }
       const res = await fetch(`/api/calendar/events?${params}`);
       if (!res.ok) {
         const error = await res.json();
@@ -572,6 +635,7 @@ export default function CalendarPage() {
       }
       return res.json();
     },
+    enabled: selectedCalendars.size > 0,
   });
 
   const navigatePrev = () => {
@@ -619,6 +683,67 @@ export default function CalendarPage() {
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm gap-1.5"
+                  data-testid="button-calendar-filter"
+                >
+                  <Filter className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                  <span className="hidden sm:inline">Calendars</span>
+                  {calendars && selectedCalendars.size < calendars.length && (
+                    <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                      {selectedCalendars.size}
+                    </Badge>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-3" align="end">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium">Calendars</h4>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => {
+                        if (calendars) {
+                          const allIds = new Set(calendars.map(c => c.id));
+                          setSelectedCalendars(allIds);
+                          localStorage.setItem('zeke-selected-calendars', JSON.stringify([...allIds]));
+                        }
+                      }}
+                    >
+                      Select All
+                    </Button>
+                  </div>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {calendars?.map(calendar => (
+                      <label
+                        key={calendar.id}
+                        className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 p-1.5 rounded-md"
+                        data-testid={`calendar-toggle-${calendar.id}`}
+                      >
+                        <Checkbox
+                          checked={selectedCalendars.has(calendar.id)}
+                          onCheckedChange={() => toggleCalendar(calendar.id)}
+                        />
+                        <div
+                          className="h-3 w-3 rounded-sm shrink-0"
+                          style={{ backgroundColor: calendar.backgroundColor }}
+                        />
+                        <span className="text-sm truncate flex-1">
+                          {calendar.primary ? 'My Calendar' : calendar.summary}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+
             <div className="flex items-center rounded-lg border p-0.5 sm:p-1">
               <Button
                 variant={view === "today" ? "default" : "ghost"}
