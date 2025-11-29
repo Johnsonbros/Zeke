@@ -34,6 +34,9 @@ PYTHONPATH=/home/runner/workspace python -m uvicorn python_agents.main:app --hos
 
 The TypeScript server communicates with Python agents via an HTTP bridge at `/api/tools/execute`.
 
+**Legacy Single-Agent Loop (Deprecated)**
+The original single-agent implementation in `server/agent.ts` (`chat()` function) is deprecated but retained as a fallback. When the Python multi-agent service is unavailable, requests automatically fall back to this legacy loop. Fallback usage is logged with `[Python Agent] FALLBACK_TO_LEGACY` for monitoring. The legacy code will be removed once the multi-agent system has proven stable in production.
+
 ### UI/UX Decisions
 - Dark theme with a coral red accent (hsl(9, 75%, 61%)).
 - Background: hsl(20, 14%, 4%), Text: hsl(45, 25%, 91%).

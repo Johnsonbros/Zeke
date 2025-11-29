@@ -641,7 +641,23 @@ If nothing important to remember, return: {"memories": []}`,
   }
 }
 
-// Main chat function with tool calling support
+/**
+ * Legacy single-agent chat function with tool calling support.
+ * 
+ * @deprecated This function is deprecated and serves as a fallback when the
+ * Python multi-agent service is unavailable. The primary chat path now uses
+ * the Python ConductorAgent via /api/agents/chat which provides:
+ * - Multi-agent orchestration with specialized agents
+ * - Intent classification and intelligent routing
+ * - Better tracing and observability
+ * 
+ * This legacy function is retained for resilience during service transitions
+ * and will be removed in a future release once the Python multi-agent system
+ * has proven stable in production.
+ * 
+ * @see python_agents/main.py - Primary chat endpoint
+ * @see python_agents/agents/conductor.py - ConductorAgent implementation
+ */
 export async function chat(
   conversationId: string,
   userMessage: string,

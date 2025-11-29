@@ -402,8 +402,9 @@ export async function registerRoutes(
           throw new Error(`Python agent returned ${pythonResponse.status}`);
         }
       } catch (pythonError) {
-        // Fallback to legacy chat()
-        console.warn('[Python Agent] Failed, falling back to legacy:', pythonError);
+        // Fallback to legacy single-agent chat (deprecated)
+        console.warn('[Python Agent] FALLBACK_TO_LEGACY - Python agent unavailable, using deprecated single-agent loop');
+        console.warn('[Python Agent] Error details:', pythonError);
         aiResponse = await chat(conversation.id, message, isNewConversation, conversation.phoneNumber || undefined);
       }
       
