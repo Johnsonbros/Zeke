@@ -53,6 +53,13 @@ import { generateContextualQuestion } from "./gettingToKnow";
 import { chat } from "./agent";
 import { setSendSmsCallback, restorePendingReminders } from "./tools";
 import { setDailyCheckInSmsCallback, initializeDailyCheckIn } from "./dailyCheckIn";
+import { 
+  initializeAutomations, 
+  setAutomationSmsCallback, 
+  scheduleAutomation, 
+  stopAutomation,
+  runAutomationNow 
+} from "./automations";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertAutomationSchema, type Automation, type InsertAutomation } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
@@ -162,6 +169,30 @@ export async function registerRoutes(
     }
   });
   initializeDailyCheckIn();
+  
+  // Set up automation SMS callback and initialize scheduled automations
+  setAutomationSmsCallback(async (phone: string, message: string) => {
+    const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER;
+    if (!twilioFromNumber) {
+      console.error("TWILIO_PHONE_NUMBER not configured for automation SMS");
+      throw new Error("Twilio not configured");
+    }
+    
+    try {
+      const client = getTwilioClient();
+      const formattedPhone = formatPhoneNumber(phone);
+      await client.messages.create({
+        body: message,
+        from: twilioFromNumber,
+        to: formattedPhone,
+      });
+      console.log(`Automation SMS sent to ${formattedPhone}`);
+    } catch (error) {
+      console.error("Failed to send automation SMS:", error);
+      throw error;
+    }
+  });
+  initializeAutomations();
   
   // Chat endpoint - sends message and gets AI response
   app.post("/api/chat", async (req, res) => {
@@ -951,11 +982,14 @@ export async function registerRoutes(
   });
   
   // ==================== AUTOMATIONS API ====================
+  // SECURITY NOTE: Web UI automation endpoints are trusted with admin permissions by design.
+  // All operations are logged for security audit trail.
   
   // Get all automations
   app.get("/api/automations", async (_req, res) => {
     try {
       const automations = getAllAutomations();
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Listed ${automations.length} automations`);
       res.json(automations);
     } catch (error: any) {
       console.error("Get automations error:", error);
@@ -968,10 +1002,18 @@ export async function registerRoutes(
     try {
       const parsed = insertAutomationSchema.safeParse(req.body);
       if (!parsed.success) {
+        console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Failed to create automation - invalid request body`);
         return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
       }
       
       const automation = createAutomation(parsed.data);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Created automation "${automation.name}" (${automation.id}) - Type: ${automation.type}, Enabled: ${automation.enabled}, Recipient: ${automation.recipientPhone || "N/A"}`);
+      
+      // Schedule the new automation if enabled
+      if (automation.enabled) {
+        scheduleAutomation(automation);
+      }
+      
       res.json(automation);
     } catch (error: any) {
       console.error("Create automation error:", error);
@@ -986,15 +1028,24 @@ export async function registerRoutes(
       const existing = getAutomation(id);
       
       if (!existing) {
+        console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Failed to update automation ${id} - not found`);
         return res.status(404).json({ message: "Automation not found" });
       }
       
       const parsed = updateAutomationSchema.safeParse(req.body);
       if (!parsed.success) {
+        console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Failed to update automation ${id} - invalid request body`);
         return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
       }
       
       const automation = updateAutomation(id, parsed.data);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Updated automation "${existing.name}" (${id}) - Changes: ${JSON.stringify(parsed.data)}`);
+      
+      // Reschedule the automation (handles enable/disable and cron changes)
+      if (automation) {
+        scheduleAutomation(automation);
+      }
+      
       res.json(automation);
     } catch (error: any) {
       console.error("Update automation error:", error);
@@ -1009,10 +1060,17 @@ export async function registerRoutes(
       const existing = getAutomation(id);
       
       if (!existing) {
+        console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Failed to delete automation ${id} - not found`);
         return res.status(404).json({ message: "Automation not found" });
       }
       
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Deleting automation "${existing.name}" (${id}) - Type: ${existing.type}, Recipient: ${existing.recipientPhone || "N/A"}`);
+      
+      // Stop the scheduled task before deleting
+      stopAutomation(id);
+      
       deleteAutomation(id);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Automation ${id} deleted successfully`);
       res.json({ success: true });
     } catch (error: any) {
       console.error("Delete automation error:", error);
@@ -1027,10 +1085,21 @@ export async function registerRoutes(
       const existing = getAutomation(id);
       
       if (!existing) {
+        console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Failed to toggle automation ${id} - not found`);
         return res.status(404).json({ message: "Automation not found" });
       }
       
-      const automation = updateAutomation(id, { enabled: !existing.enabled });
+      const newState = !existing.enabled;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Toggling automation "${existing.name}" (${id}) - ${existing.enabled ? "DISABLING" : "ENABLING"}`);
+      
+      const automation = updateAutomation(id, { enabled: newState });
+      
+      // Update the schedule based on new enabled state
+      if (automation) {
+        scheduleAutomation(automation);
+        console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Automation ${id} is now ${newState ? "ENABLED" : "DISABLED"}`);
+      }
+      
       res.json(automation);
     } catch (error: any) {
       console.error("Toggle automation error:", error);
@@ -1042,20 +1111,17 @@ export async function registerRoutes(
   app.post("/api/automations/:id/run", async (req, res) => {
     try {
       const { id } = req.params;
-      const existing = getAutomation(id);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Manual trigger requested for automation ${id}`);
       
-      if (!existing) {
+      const result = await runAutomationNow(id);
+      
+      if (!result.automation) {
+        console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Manual trigger failed - automation ${id} not found`);
         return res.status(404).json({ message: "Automation not found" });
       }
       
-      // Log the manual trigger (actual execution will be implemented in task 6)
-      console.log(`Manual trigger requested for automation: ${existing.name} (${existing.id}) - Type: ${existing.type}`);
-      
-      res.json({ 
-        success: true, 
-        message: `Automation "${existing.name}" triggered manually`,
-        automation: existing
-      });
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Manual trigger completed for "${result.automation.name}" (${id}) - Success: ${result.success}, Message: ${result.message}`);
+      res.json(result);
     } catch (error: any) {
       console.error("Run automation error:", error);
       res.status(500).json({ message: "Failed to run automation" });
