@@ -825,18 +825,20 @@ export default function ChatPage() {
 
         { /* Profile Section */ }
         <div className="p-3 border-t border-sidebar-border">
-          <div className="flex items-center gap-3 px-2 py-2 rounded-lg hover-elevate cursor-pointer">
-            <Avatar className="h-9 w-9">
-              <AvatarFallback className="bg-accent text-accent-foreground text-sm font-medium">
-                NJ
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">Nate Johnson</p>
-              <p className="text-[10px] text-muted-foreground">CEO, Johnson Bros.</p>
+          <Link href="/profile" data-testid="link-profile">
+            <div className="flex items-center gap-3 px-2 py-2 rounded-lg hover-elevate cursor-pointer">
+              <Avatar className="h-9 w-9">
+                <AvatarFallback className="bg-accent text-accent-foreground text-sm font-medium">
+                  NJ
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">Nate Johnson</p>
+                <p className="text-[10px] text-muted-foreground">CEO, Johnson Bros.</p>
+              </div>
+              <Settings className="h-4 w-4 text-muted-foreground" />
             </div>
-            <Settings className="h-4 w-4 text-muted-foreground" />
-          </div>
+          </Link>
         </div>
       </aside>
 
