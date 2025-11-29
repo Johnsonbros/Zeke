@@ -7,8 +7,14 @@ import {
   searchMemoryNotes,
   createMemoryNote,
   updateConversationTitle,
+  getConversation,
 } from "./db";
 import { toolDefinitions, executeTool, getActiveReminders } from "./tools";
+import { 
+  buildGettingToKnowSystemPrompt, 
+  detectMemoryCorrection, 
+  handleMemoryCorrection 
+} from "./gettingToKnow";
 import type { Message } from "@shared/schema";
 
 // Use gpt-4o as the default model
@@ -365,11 +371,33 @@ export async function chat(
   isNewConversation: boolean = false,
   userPhoneNumber?: string,
 ): Promise<string> {
-  // Get conversation history
+  // Get conversation and history
+  const conversation = getConversation(conversationId);
   const history = getRecentMessages(conversationId, 20);
+  const isGettingToKnowMode = conversation?.mode === "getting_to_know";
 
   // Build system prompt with context (including phone number for SMS reminders)
-  const systemPrompt = buildSystemPrompt(userMessage, userPhoneNumber);
+  let systemPrompt = buildSystemPrompt(userMessage, userPhoneNumber);
+  
+  // Apply Getting To Know You mode enhancements
+  if (isGettingToKnowMode) {
+    systemPrompt = buildGettingToKnowSystemPrompt(systemPrompt);
+  }
+  
+  // Check for memory corrections before processing (only in getting_to_know mode or when there are memories)
+  // Also guard against missing OpenAI API key
+  const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
+  if (hasOpenAIKey && history.length > 0 && (isGettingToKnowMode || getAllMemoryNotes().length > 0)) {
+    try {
+      const recentContext = history.slice(-4).map(m => `${m.role}: ${m.content}`).join("\n");
+      const correctionResult = await detectMemoryCorrection(userMessage, recentContext);
+      if (correctionResult.isCorrection) {
+        await handleMemoryCorrection(correctionResult);
+      }
+    } catch (error) {
+      console.error("Memory correction detection error (non-fatal):", error);
+    }
+  }
 
   // Format messages for OpenAI
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [

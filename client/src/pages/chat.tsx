@@ -16,7 +16,8 @@ import {
   Menu,
   X,
   Smartphone,
-  ShoppingCart
+  ShoppingCart,
+  Sparkles
 } from "lucide-react";
 import { Link } from "wouter";
 import type { Conversation, Message, ChatResponse } from "@shared/schema";
@@ -246,6 +247,32 @@ export default function ChatPage() {
     },
   });
 
+  // Getting To Know You conversation mutation
+  const gettingToKnowMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/conversations/getting-to-know");
+      const result: ChatResponse = await response.json();
+      return result;
+    },
+    onSuccess: (data) => {
+      if (data?.conversation?.id) {
+        setActiveConversationId(data.conversation.id);
+        queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/conversations", data.conversation.id] });
+        if (isMobile) {
+          setSidebarOpen(false);
+        }
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to start Getting To Know You",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -371,6 +398,16 @@ export default function ChatPage() {
         </ScrollArea>
 
         <div className="p-3 border-t border-sidebar-border space-y-2">
+          <Button 
+            variant="ghost" 
+            className="w-full justify-start gap-2 h-10"
+            onClick={() => gettingToKnowMutation.mutate()}
+            disabled={gettingToKnowMutation.isPending}
+            data-testid="button-getting-to-know"
+          >
+            <Sparkles className="h-4 w-4" />
+            Getting To Know You
+          </Button>
           <Link href="/grocery">
             <Button 
               variant="ghost" 
@@ -412,6 +449,15 @@ export default function ChatPage() {
             <h1 className="text-base md:text-lg font-semibold truncate">
               {messagesData?.conversation?.title || "ZEKE"}
             </h1>
+            {messagesData?.conversation?.mode === "getting_to_know" && (
+              <span 
+                className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium"
+                data-testid="badge-getting-to-know"
+              >
+                <Sparkles className="h-3 w-3" />
+                Learning
+              </span>
+            )}
           </div>
         </header>
 

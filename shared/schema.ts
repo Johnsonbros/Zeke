@@ -8,6 +8,7 @@ export const conversations = sqliteTable("conversations", {
   title: text("title").notNull().default("New Conversation"),
   phoneNumber: text("phone_number"),
   source: text("source", { enum: ["web", "sms"] }).notNull().default("web"),
+  mode: text("mode", { enum: ["chat", "getting_to_know"] }).notNull().default("chat"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -45,6 +46,8 @@ export const memoryNotes = sqliteTable("memory_notes", {
   type: text("type", { enum: ["summary", "note", "preference", "fact"] }).notNull(),
   content: text("content").notNull(),
   context: text("context").notNull().default(""),
+  isSuperseded: integer("is_superseded", { mode: "boolean" }).notNull().default(false),
+  supersededBy: text("superseded_by"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

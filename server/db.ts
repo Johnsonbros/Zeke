@@ -216,12 +216,39 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_reminders_completed ON reminders(completed);
 `);
 
+// Migration: Add mode column to conversations if it doesn't exist
+try {
+  const convInfo = db.prepare("PRAGMA table_info(conversations)").all() as Array<{ name: string }>;
+  if (!convInfo.some(col => col.name === "mode")) {
+    console.log("Adding 'mode' column to conversations table...");
+    db.exec(`ALTER TABLE conversations ADD COLUMN mode TEXT NOT NULL DEFAULT 'chat'`);
+  }
+} catch (e) {
+  console.error("Migration error for conversations.mode:", e);
+}
+
+// Migration: Add supersession columns to memory_notes if they don't exist
+try {
+  const memInfo = db.prepare("PRAGMA table_info(memory_notes)").all() as Array<{ name: string }>;
+  if (!memInfo.some(col => col.name === "is_superseded")) {
+    console.log("Adding 'is_superseded' column to memory_notes table...");
+    db.exec(`ALTER TABLE memory_notes ADD COLUMN is_superseded INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!memInfo.some(col => col.name === "superseded_by")) {
+    console.log("Adding 'superseded_by' column to memory_notes table...");
+    db.exec(`ALTER TABLE memory_notes ADD COLUMN superseded_by TEXT`);
+  }
+} catch (e) {
+  console.error("Migration error for memory_notes supersession:", e);
+}
+
 // Database row types (snake_case from SQLite)
 interface ConversationRow {
   id: string;
   title: string;
   phone_number: string | null;
   source: string;
+  mode: string;
   created_at: string;
   updated_at: string;
 }
@@ -240,6 +267,8 @@ interface MemoryNoteRow {
   type: string;
   content: string;
   context: string;
+  is_superseded: number;
+  superseded_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -279,6 +308,7 @@ function mapConversation(row: ConversationRow): Conversation {
     title: row.title,
     phoneNumber: row.phone_number,
     source: row.source as "web" | "sms",
+    mode: row.mode as "chat" | "getting_to_know",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -303,6 +333,8 @@ function mapMemoryNote(row: MemoryNoteRow): MemoryNote {
     type: row.type as "summary" | "note" | "preference" | "fact",
     content: row.content,
     context: row.context,
+    isSuperseded: Boolean(row.is_superseded),
+    supersededBy: row.superseded_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -344,17 +376,19 @@ export function createConversation(data: InsertConversation): Conversation {
     const title = data.title || "New Conversation";
     const source = data.source || "web";
     const phoneNumber = data.phoneNumber || null;
+    const mode = data.mode || "chat";
     
     db.prepare(`
-      INSERT INTO conversations (id, title, phone_number, source, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, title, phoneNumber, source, now, now);
+      INSERT INTO conversations (id, title, phone_number, source, mode, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, title, phoneNumber, source, mode, now, now);
     
     return { 
       id, 
       title, 
       phoneNumber, 
-      source: source as "web" | "sms", 
+      source: source as "web" | "sms",
+      mode: mode as "chat" | "getting_to_know",
       createdAt: now, 
       updatedAt: now 
     };
@@ -492,20 +526,22 @@ export function getMemoryNote(id: string): MemoryNote | undefined {
   });
 }
 
-export function getAllMemoryNotes(): MemoryNote[] {
+export function getAllMemoryNotes(includeSuperseded: boolean = false): MemoryNote[] {
   return wrapDbOperation("getAllMemoryNotes", () => {
-    const rows = db.prepare(`
-      SELECT * FROM memory_notes ORDER BY updated_at DESC
-    `).all() as MemoryNoteRow[];
+    const query = includeSuperseded
+      ? `SELECT * FROM memory_notes ORDER BY updated_at DESC`
+      : `SELECT * FROM memory_notes WHERE is_superseded = 0 ORDER BY updated_at DESC`;
+    const rows = db.prepare(query).all() as MemoryNoteRow[];
     return rows.map(mapMemoryNote);
   });
 }
 
-export function getMemoryNotesByType(type: string): MemoryNote[] {
+export function getMemoryNotesByType(type: string, includeSuperseded: boolean = false): MemoryNote[] {
   return wrapDbOperation("getMemoryNotesByType", () => {
-    const rows = db.prepare(`
-      SELECT * FROM memory_notes WHERE type = ? ORDER BY updated_at DESC
-    `).all(type) as MemoryNoteRow[];
+    const query = includeSuperseded
+      ? `SELECT * FROM memory_notes WHERE type = ? ORDER BY updated_at DESC`
+      : `SELECT * FROM memory_notes WHERE type = ? AND is_superseded = 0 ORDER BY updated_at DESC`;
+    const rows = db.prepare(query).all(type) as MemoryNoteRow[];
     return rows.map(mapMemoryNote);
   });
 }
@@ -828,6 +864,49 @@ export function deleteReminder(id: string): boolean {
   return wrapDbOperation("deleteReminder", () => {
     const result = db.prepare(`DELETE FROM reminders WHERE id = ?`).run(id);
     return result.changes > 0;
+  });
+}
+
+// Memory supersession operations
+export function supersedeMemoryNote(oldNoteId: string, newNoteId: string): boolean {
+  return wrapDbOperation("supersedeMemoryNote", () => {
+    const now = getCurrentTimestamp();
+    const result = db.prepare(`
+      UPDATE memory_notes SET is_superseded = 1, superseded_by = ?, updated_at = ? WHERE id = ?
+    `).run(newNoteId, now, oldNoteId);
+    return result.changes > 0;
+  });
+}
+
+export function findMemoryNoteByContent(searchContent: string): MemoryNote | undefined {
+  return wrapDbOperation("findMemoryNoteByContent", () => {
+    const searchTerm = `%${searchContent.toLowerCase()}%`;
+    const row = db.prepare(`
+      SELECT * FROM memory_notes 
+      WHERE LOWER(content) LIKE ? AND is_superseded = 0
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `).get(searchTerm) as MemoryNoteRow | undefined;
+    return row ? mapMemoryNote(row) : undefined;
+  });
+}
+
+export function createMemoryNoteWithSupersession(
+  data: InsertMemoryNote, 
+  supersedesContentLike?: string
+): MemoryNote {
+  return wrapDbOperation("createMemoryNoteWithSupersession", () => {
+    const newNote = createMemoryNote(data);
+    
+    if (supersedesContentLike) {
+      const oldNote = findMemoryNoteByContent(supersedesContentLike);
+      if (oldNote && oldNote.id !== newNote.id) {
+        supersedeMemoryNote(oldNote.id, newNote.id);
+        console.log(`Memory superseded: "${oldNote.content}" -> "${newNote.content}"`);
+      }
+    }
+    
+    return newNote;
   });
 }
 

@@ -21,6 +21,7 @@ import {
   deleteGroceryItem,
   clearPurchasedGroceryItems
 } from "./db";
+import { getFirstQuestion } from "./gettingToKnow";
 import { chat } from "./agent";
 import { setSendSmsCallback, restorePendingReminders } from "./tools";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema } from "@shared/schema";
@@ -164,6 +165,34 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Chat error:", error);
       res.status(500).json({ message: error.message || "Failed to process chat" });
+    }
+  });
+  
+  // Create a Getting To Know You conversation
+  app.post("/api/conversations/getting-to-know", async (_req, res) => {
+    try {
+      const conversation = createConversation({ 
+        source: "web",
+        title: "Getting To Know You",
+        mode: "getting_to_know"
+      });
+      
+      const firstQuestion = getFirstQuestion();
+      
+      const assistantMessage = createMessage({
+        conversationId: conversation.id,
+        role: "assistant",
+        content: firstQuestion,
+        source: "web",
+      });
+      
+      res.json({
+        conversation,
+        message: assistantMessage,
+      });
+    } catch (error: any) {
+      console.error("Create getting to know conversation error:", error);
+      res.status(500).json({ message: "Failed to create conversation" });
     }
   });
   
