@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,7 +20,8 @@ import {
   Briefcase,
   User,
   Users,
-  ChevronDown
+  ChevronDown,
+  Pencil
 } from "lucide-react";
 import { 
   Select,
@@ -28,6 +30,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   Collapsible,
   CollapsibleContent,
@@ -42,6 +51,7 @@ import {
   FormControl,
   FormField,
   FormItem,
+  FormLabel,
 } from "@/components/ui/form";
 import type { Task } from "@shared/schema";
 import { format, isPast, isToday, parseISO } from "date-fns";
@@ -57,6 +67,16 @@ const taskFormSchema = z.object({
 });
 
 type TaskFormValues = z.infer<typeof taskFormSchema>;
+
+const editTaskFormSchema = z.object({
+  title: z.string().min(1, "Task title is required"),
+  description: z.string().optional(),
+  priority: z.enum(PRIORITIES),
+  category: z.enum(CATEGORIES),
+  dueDate: z.string().optional(),
+});
+
+type EditTaskFormValues = z.infer<typeof editTaskFormSchema>;
 
 function getPriorityColor(priority: string) {
   switch (priority) {
@@ -80,11 +100,13 @@ function TaskItemRow({
   task, 
   onToggle,
   onDelete,
+  onEdit,
   isDeleting
 }: { 
   task: Task; 
   onToggle: () => void;
   onDelete: () => void;
+  onEdit: () => void;
   isDeleting: boolean;
 }) {
   const isOverdue = task.dueDate && !task.completed && isPast(parseISO(task.dueDate)) && !isToday(parseISO(task.dueDate));
@@ -92,17 +114,28 @@ function TaskItemRow({
   
   return (
     <div 
-      className={`group flex items-center gap-3 px-3 md:px-4 py-3 rounded-lg border border-border hover-elevate transition-all ${
+      className={`group flex items-center gap-3 px-3 md:px-4 py-3 rounded-lg border border-border hover-elevate transition-all cursor-pointer ${
         task.completed ? "opacity-60" : ""
       } ${isOverdue ? "border-red-500/50" : ""}`}
       data-testid={`task-item-${task.id}`}
+      onClick={onEdit}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onEdit();
+        }
+      }}
     >
-      <Checkbox
-        checked={task.completed}
-        onCheckedChange={onToggle}
-        className="h-5 w-5"
-        data-testid={`checkbox-task-${task.id}`}
-      />
+      <div onClick={(e) => e.stopPropagation()}>
+        <Checkbox
+          checked={task.completed}
+          onCheckedChange={onToggle}
+          className="h-5 w-5"
+          data-testid={`checkbox-task-${task.id}`}
+        />
+      </div>
       
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
@@ -123,6 +156,9 @@ function TaskItemRow({
             {task.category}
           </Badge>
         </div>
+        {task.description && (
+          <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{task.description}</p>
+        )}
         {task.dueDate && (
           <div className={`flex items-center gap-1 mt-1 text-xs ${
             isOverdue ? "text-red-500" : isDueToday ? "text-yellow-500" : "text-muted-foreground"
@@ -137,16 +173,27 @@ function TaskItemRow({
         )}
       </div>
       
-      <Button
-        size="icon"
-        variant="ghost"
-        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-        onClick={onDelete}
-        disabled={isDeleting}
-        data-testid={`button-delete-task-${task.id}`}
-      >
-        <Trash2 className="h-4 w-4 text-muted-foreground" />
-      </Button>
+      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={onEdit}
+          data-testid={`button-edit-task-${task.id}`}
+        >
+          <Pencil className="h-4 w-4 text-muted-foreground" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={onDelete}
+          disabled={isDeleting}
+          data-testid={`button-delete-task-${task.id}`}
+        >
+          <Trash2 className="h-4 w-4 text-muted-foreground" />
+        </Button>
+      </div>
     </div>
   );
 }
@@ -163,10 +210,191 @@ function TaskListSkeleton() {
 
 type FilterType = "all" | "work" | "personal" | "family" | "overdue" | "today";
 
+function TaskEditDialog({
+  task,
+  open,
+  onOpenChange,
+  onSave,
+  isPending
+}: {
+  task: Task | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (data: EditTaskFormValues) => void;
+  isPending: boolean;
+}) {
+  const editForm = useForm<EditTaskFormValues>({
+    resolver: zodResolver(editTaskFormSchema),
+    defaultValues: {
+      title: "",
+      description: "",
+      priority: "medium",
+      category: "personal",
+      dueDate: "",
+    },
+  });
+
+  useEffect(() => {
+    if (open && task) {
+      editForm.reset({
+        title: task.title,
+        description: task.description || "",
+        priority: task.priority as "low" | "medium" | "high",
+        category: task.category as "work" | "personal" | "family",
+        dueDate: task.dueDate || "",
+      });
+    }
+  }, [open, task, editForm]);
+
+  const handleSubmit = (data: EditTaskFormValues) => {
+    onSave(data);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" data-testid="dialog-edit-task">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Pencil className="h-5 w-5" />
+            Edit Task
+          </DialogTitle>
+        </DialogHeader>
+        
+        <Form {...editForm}>
+          <form onSubmit={editForm.handleSubmit(handleSubmit)} className="space-y-4">
+            <FormField
+              control={editForm.control}
+              name="title"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Title</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="Task title"
+                      disabled={isPending}
+                      data-testid="input-edit-title"
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={editForm.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description (optional)</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      placeholder="Add more details..."
+                      className="resize-none"
+                      rows={3}
+                      disabled={isPending}
+                      data-testid="input-edit-description"
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={editForm.control}
+                name="priority"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Priority</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange} disabled={isPending}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-priority">
+                          <SelectValue placeholder="Priority" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {PRIORITIES.map((p) => (
+                          <SelectItem key={p} value={p} className="capitalize">{p}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={editForm.control}
+                name="category"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Category</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange} disabled={isPending}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-category">
+                          <SelectValue placeholder="Category" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {CATEGORIES.map((c) => (
+                          <SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+              />
+            </div>
+            
+            <FormField
+              control={editForm.control}
+              name="dueDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Due Date (optional)</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="date"
+                      disabled={isPending}
+                      data-testid="input-edit-due-date"
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={isPending}
+                data-testid="button-cancel-edit"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isPending}
+                data-testid="button-save-edit"
+              >
+                {isPending ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function TasksPage() {
   const { toast } = useToast();
   const [filter, setFilter] = useState<FilterType>("all");
   const [showCompleted, setShowCompleted] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   
   const form = useForm<TaskFormValues>({
     resolver: zodResolver(taskFormSchema),
@@ -262,6 +490,35 @@ export default function TasksPage() {
     },
   });
 
+  const updateTaskMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: EditTaskFormValues }) => {
+      const response = await apiRequest("PATCH", `/api/tasks/${id}`, {
+        title: data.title,
+        description: data.description || "",
+        priority: data.priority,
+        category: data.category,
+        dueDate: data.dueDate || null,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      setIsEditDialogOpen(false);
+      setSelectedTask(null);
+      toast({
+        title: "Task updated",
+        description: "Your changes have been saved",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to update task",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const clearCompletedMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("POST", "/api/tasks/clear-completed");
@@ -285,6 +542,11 @@ export default function TasksPage() {
 
   const onSubmit = (data: TaskFormValues) => {
     addTaskMutation.mutate(data);
+  };
+
+  const handleEditTask = (task: Task) => {
+    setSelectedTask(task);
+    setIsEditDialogOpen(true);
   };
 
   const pendingTasks = tasks?.filter(t => !t.completed) || [];
@@ -460,6 +722,7 @@ export default function TasksPage() {
                         task={task}
                         onToggle={() => toggleTaskMutation.mutate(task.id)}
                         onDelete={() => deleteTaskMutation.mutate(task.id)}
+                        onEdit={() => handleEditTask(task)}
                         isDeleting={deleteTaskMutation.isPending}
                       />
                     ))}
@@ -479,6 +742,7 @@ export default function TasksPage() {
                           task={task}
                           onToggle={() => toggleTaskMutation.mutate(task.id)}
                           onDelete={() => deleteTaskMutation.mutate(task.id)}
+                          onEdit={() => handleEditTask(task)}
                           isDeleting={deleteTaskMutation.isPending}
                         />
                       ))}
@@ -496,6 +760,21 @@ export default function TasksPage() {
           </p>
         </div>
       </div>
+
+      <TaskEditDialog
+        task={selectedTask}
+        open={isEditDialogOpen}
+        onOpenChange={(open) => {
+          setIsEditDialogOpen(open);
+          if (!open) setSelectedTask(null);
+        }}
+        onSave={(data) => {
+          if (selectedTask) {
+            updateTaskMutation.mutate({ id: selectedTask.id, data });
+          }
+        }}
+        isPending={updateTaskMutation.isPending}
+      />
     </div>
   );
 }
