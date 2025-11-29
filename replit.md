@@ -21,8 +21,9 @@ ZEKE is a single-user personal assistant for Nate Johnson. It is not multi-tenan
 
 ## Project Structure
 - `/client` - React frontend with chat UI
-  - `/client/src/pages/chat.tsx` - Main chat interface
+  - `/client/src/pages/chat.tsx` - Main chat interface with redesigned sidebar
   - `/client/src/pages/grocery.tsx` - Collaborative grocery list
+  - `/client/src/pages/memory.tsx` - View ZEKE's memories and knowledge
   - `/client/src/App.tsx` - App root with routing
 - `/server` - Express backend with API routes
   - `/server/routes.ts` - API endpoints for chat, conversations, memory, grocery
@@ -100,6 +101,8 @@ Security: File tools have directory traversal protection using path.normalize() 
 - TWILIO_PHONE_NUMBER - Twilio phone number (optional, for SMS)
 
 ## Recent Changes
+- 2025-11-29: Redesigned chat sidebar - cleaner UI with ZEKE branding, main actions (Getting To Know You, Grocery List, Memory), collapsible Chat History section, and profile at bottom
+- 2025-11-29: Added Memory page (/memory) - view all of ZEKE's memories with stats, type filters, and supersession tracking
 - 2025-11-29: Added Daily Check-In feature - ZEKE texts Nate once per day with 3 multiple choice questions to deeply understand him and his family
 - 2025-11-29: Added "Getting To Know You" feature - ZEKE proactively asks questions to learn about Nate and handles memory corrections (e.g., "My brother's name is Nick, not Kyle")
 - 2025-11-29: Memory supersession system - when correcting information, old memories are marked as superseded rather than deleted, preserving history
