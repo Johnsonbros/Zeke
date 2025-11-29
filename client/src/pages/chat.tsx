@@ -758,6 +758,20 @@ export default function ChatPage() {
               </div>
             </Button>
           </Link>
+          
+          <Link href="/automations">
+            <Button 
+              variant="ghost" 
+              className="w-full justify-start gap-3 h-11"
+              data-testid="link-automations"
+            >
+              <Clock className="h-4 w-4 text-cyan-500" />
+              <div className="flex flex-col items-start">
+                <span className="text-sm">Automations</span>
+                <span className="text-[10px] text-muted-foreground">Reminders & scheduled tasks</span>
+              </div>
+            </Button>
+          </Link>
 
           { /* Collapsible History Section */ }
           <Collapsible open={historyOpen} onOpenChange={setHistoryOpen} className="mt-4">
