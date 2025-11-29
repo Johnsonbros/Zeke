@@ -47,7 +47,12 @@ import {
   getAutomation,
   createAutomation,
   updateAutomation,
-  deleteAutomation
+  deleteAutomation,
+  getAllProfileSections,
+  getProfileSection,
+  upsertProfileSection,
+  deleteProfileSection,
+  getFullProfile
 } from "./db";
 import { generateContextualQuestion } from "./gettingToKnow";
 import { chat } from "./agent";
@@ -1125,6 +1130,93 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Run automation error:", error);
       res.status(500).json({ message: "Failed to run automation" });
+    }
+  });
+  
+  // ============================================
+  // Profile Endpoints
+  // ============================================
+  
+  // Get all profile sections
+  app.get("/api/profile", async (req, res) => {
+    try {
+      const sections = getAllProfileSections();
+      const profile: Record<string, unknown> = {};
+      
+      for (const section of sections) {
+        try {
+          profile[section.section] = JSON.parse(section.data);
+        } catch {
+          profile[section.section] = section.data;
+        }
+      }
+      
+      res.json(profile);
+    } catch (error: any) {
+      console.error("Get profile error:", error);
+      res.status(500).json({ message: "Failed to get profile" });
+    }
+  });
+  
+  // Get a specific profile section
+  app.get("/api/profile/:section", async (req, res) => {
+    try {
+      const { section } = req.params;
+      const profileSection = getProfileSection(section);
+      
+      if (!profileSection) {
+        return res.json({ section, data: {} });
+      }
+      
+      try {
+        res.json({ section, data: JSON.parse(profileSection.data), updatedAt: profileSection.updatedAt });
+      } catch {
+        res.json({ section, data: profileSection.data, updatedAt: profileSection.updatedAt });
+      }
+    } catch (error: any) {
+      console.error("Get profile section error:", error);
+      res.status(500).json({ message: "Failed to get profile section" });
+    }
+  });
+  
+  // Update a profile section
+  app.put("/api/profile/:section", async (req, res) => {
+    try {
+      const { section } = req.params;
+      const { data } = req.body;
+      
+      if (data === undefined) {
+        return res.status(400).json({ message: "Data is required" });
+      }
+      
+      const dataStr = typeof data === 'string' ? data : JSON.stringify(data);
+      const result = upsertProfileSection(section, dataStr);
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Updated profile section "${section}"`);
+      
+      res.json({ 
+        section: result.section, 
+        data: typeof data === 'string' ? data : data,
+        updatedAt: result.updatedAt 
+      });
+    } catch (error: any) {
+      console.error("Update profile section error:", error);
+      res.status(500).json({ message: "Failed to update profile section" });
+    }
+  });
+  
+  // Delete a profile section
+  app.delete("/api/profile/:section", async (req, res) => {
+    try {
+      const { section } = req.params;
+      const success = deleteProfileSection(section);
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Deleted profile section "${section}" - Success: ${success}`);
+      
+      res.json({ success });
+    } catch (error: any) {
+      console.error("Delete profile section error:", error);
+      res.status(500).json({ message: "Failed to delete profile section" });
     }
   });
   
