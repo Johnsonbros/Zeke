@@ -286,6 +286,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_automations_next_run ON automations(next_run);
 `);
 
+// Create user_profile table if it doesn't exist
+db.exec(`
+  CREATE TABLE IF NOT EXISTS user_profile (
+    id TEXT PRIMARY KEY,
+    section TEXT NOT NULL UNIQUE,
+    data TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_profile_section ON user_profile(section);
+`);
+
 // Migration: Add mode column to conversations if it doesn't exist
 try {
   const convInfo = db.prepare("PRAGMA table_info(conversations)").all() as Array<{ name: string }>;
@@ -1590,6 +1601,142 @@ export function getEnabledAutomations(): Automation[] {
       SELECT * FROM automations WHERE enabled = 1 ORDER BY created_at DESC
     `).all() as AutomationRow[];
     return rows.map(mapAutomation);
+  });
+}
+
+// ============================================
+// User Profile Operations
+// ============================================
+
+interface ProfileRow {
+  id: string;
+  section: string;
+  data: string;
+  updated_at: string;
+}
+
+function mapProfile(row: ProfileRow): { id: string; section: string; data: string; updatedAt: string } {
+  return {
+    id: row.id,
+    section: row.section,
+    data: row.data,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function getProfileSection(section: string): { id: string; section: string; data: string; updatedAt: string } | undefined {
+  return wrapDbOperation("getProfileSection", () => {
+    const row = db.prepare(`
+      SELECT * FROM user_profile WHERE section = ?
+    `).get(section) as ProfileRow | undefined;
+    return row ? mapProfile(row) : undefined;
+  });
+}
+
+export function getAllProfileSections(): Array<{ id: string; section: string; data: string; updatedAt: string }> {
+  return wrapDbOperation("getAllProfileSections", () => {
+    const rows = db.prepare(`
+      SELECT * FROM user_profile ORDER BY section
+    `).all() as ProfileRow[];
+    return rows.map(mapProfile);
+  });
+}
+
+export function upsertProfileSection(section: string, data: string): { id: string; section: string; data: string; updatedAt: string } {
+  return wrapDbOperation("upsertProfileSection", () => {
+    const now = getCurrentTimestamp();
+    const existing = getProfileSection(section);
+    
+    if (existing) {
+      db.prepare(`
+        UPDATE user_profile SET data = ?, updated_at = ? WHERE section = ?
+      `).run(data, now, section);
+      return { id: existing.id, section, data, updatedAt: now };
+    } else {
+      const id = uuidv4();
+      db.prepare(`
+        INSERT INTO user_profile (id, section, data, updated_at)
+        VALUES (?, ?, ?, ?)
+      `).run(id, section, data, now);
+      return { id, section, data, updatedAt: now };
+    }
+  });
+}
+
+export function deleteProfileSection(section: string): boolean {
+  return wrapDbOperation("deleteProfileSection", () => {
+    const result = db.prepare(`DELETE FROM user_profile WHERE section = ?`).run(section);
+    return result.changes > 0;
+  });
+}
+
+// Get full profile as a structured object
+export function getFullProfile(): Record<string, unknown> {
+  return wrapDbOperation("getFullProfile", () => {
+    const sections = getAllProfileSections();
+    const profile: Record<string, unknown> = {};
+    
+    for (const section of sections) {
+      try {
+        profile[section.section] = JSON.parse(section.data);
+      } catch {
+        profile[section.section] = section.data;
+      }
+    }
+    
+    return profile;
+  });
+}
+
+// Get profile context as a formatted string for the AI agent
+export function getProfileContextForAgent(): string {
+  return wrapDbOperation("getProfileContextForAgent", () => {
+    const sections = getAllProfileSections();
+    if (sections.length === 0) {
+      return "";
+    }
+    
+    const contextParts: string[] = ["=== NATE'S PROFILE ==="];
+    
+    const sectionLabels: Record<string, string> = {
+      basic_info: "Basic Information",
+      work: "Work & Career",
+      family: "Family & Relationships",
+      interests: "Interests & Hobbies",
+      preferences: "Preferences",
+      goals: "Goals",
+      health: "Health & Wellness",
+      routines: "Daily Routines",
+      important_dates: "Important Dates",
+      custom: "Additional Information"
+    };
+    
+    for (const section of sections) {
+      const label = sectionLabels[section.section] || section.section;
+      try {
+        const data = JSON.parse(section.data);
+        if (Object.keys(data).length > 0) {
+          contextParts.push(`\n[${label}]`);
+          for (const [key, value] of Object.entries(data)) {
+            if (value && (typeof value !== 'object' || (Array.isArray(value) && value.length > 0))) {
+              const formattedKey = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+              if (Array.isArray(value)) {
+                contextParts.push(`- ${formattedKey}: ${value.join(', ')}`);
+              } else {
+                contextParts.push(`- ${formattedKey}: ${value}`);
+              }
+            }
+          }
+        }
+      } catch {
+        if (section.data) {
+          contextParts.push(`\n[${label}]`);
+          contextParts.push(section.data);
+        }
+      }
+    }
+    
+    return contextParts.length > 1 ? contextParts.join('\n') : "";
   });
 }
 
