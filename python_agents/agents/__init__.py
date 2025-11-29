@@ -6,6 +6,7 @@ architecture. It includes:
 
 - BaseAgent: Abstract base class for all agents
 - ConductorAgent: Central orchestration agent
+- MemoryCuratorAgent: Memory and context specialist
 - Handoff protocols for inter-agent communication
 
 The architecture follows a conductor-specialist pattern where a central
@@ -39,6 +40,14 @@ from .conductor import (
     INTENT_TO_AGENT,
 )
 
+from .memory_curator import (
+    MemoryCuratorAgent,
+    MemoryResult,
+    LifelogEntry,
+    SynthesizedContext,
+    get_memory_curator,
+)
+
 __all__ = [
     "BaseAgent",
     "AgentId",
@@ -60,4 +69,9 @@ __all__ = [
     "INTENT_TO_CATEGORY",
     "CAPABILITY_TO_AGENT",
     "INTENT_TO_AGENT",
+    "MemoryCuratorAgent",
+    "MemoryResult",
+    "LifelogEntry",
+    "SynthesizedContext",
+    "get_memory_curator",
 ]
