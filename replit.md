@@ -92,6 +92,8 @@ Security: File tools have directory traversal protection using path.normalize() 
 - TWILIO_PHONE_NUMBER - Twilio phone number (optional, for SMS)
 
 ## Recent Changes
+- 2025-11-29: Fixed SMS reminder system - reminders now persist to SQLite database and survive server restarts
+- 2025-11-29: ZEKE now automatically includes phone number when setting reminders via SMS, ensuring reminders are delivered as text messages
 - 2025-11-29: Improved ZEKE's proactive behavior - now uses web search automatically when asked for information (phone numbers, addresses, etc.) and shares what it finds instead of deflecting to users
 - 2025-11-29: Enhanced web search with multi-strategy approach (DuckDuckGo Instant Answer + HTML search fallback) for better results
 - 2025-11-29: Added collaborative grocery list feature for Nate, ZEKE, and Shakita with categories, quantities, and purchased status tracking
