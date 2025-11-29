@@ -83,6 +83,27 @@ export async function registerRoutes(
         source,
       });
       
+      // If this is an SMS conversation, also send the AI response via SMS
+      if (conversation.source === "sms" && conversation.phoneNumber) {
+        const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER;
+        if (twilioFromNumber) {
+          try {
+            const client = getTwilioClient();
+            await client.messages.create({
+              body: aiResponse,
+              from: twilioFromNumber,
+              to: conversation.phoneNumber,
+            });
+            console.log(`SMS reply sent to ${conversation.phoneNumber} from web chat`);
+          } catch (smsError: any) {
+            console.error("Failed to send SMS reply:", smsError);
+            // Don't fail the request, just log the error
+          }
+        } else {
+          console.warn("TWILIO_PHONE_NUMBER not configured - SMS reply not sent");
+        }
+      }
+      
       // Get updated conversation (for new title if generated)
       const updatedConversation = getConversation(conversation.id);
       
