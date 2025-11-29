@@ -283,3 +283,32 @@ export function isMasterAdmin(phoneNumber: string): boolean {
   const normalized = phoneNumber.replace(/\D/g, "");
   return normalized === MASTER_ADMIN_PHONE || normalized.endsWith(MASTER_ADMIN_PHONE);
 }
+
+// Automation types for recurring scheduled jobs
+export const automationTypes = ["morning_briefing", "scheduled_sms", "daily_checkin"] as const;
+export type AutomationType = typeof automationTypes[number];
+
+// Automations table for recurring scheduled jobs
+export const automations = sqliteTable("automations", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  type: text("type", { enum: automationTypes }).notNull(),
+  cronExpression: text("cron_expression").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  recipientPhone: text("recipient_phone"),
+  message: text("message"),
+  settings: text("settings"),
+  lastRun: text("last_run"),
+  nextRun: text("next_run"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertAutomationSchema = createInsertSchema(automations).omit({
+  id: true,
+  lastRun: true,
+  nextRun: true,
+  createdAt: true,
+});
+
+export type InsertAutomation = z.infer<typeof insertAutomationSchema>;
+export type Automation = typeof automations.$inferSelect;

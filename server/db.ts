@@ -19,7 +19,9 @@ import type {
   Contact,
   InsertContact,
   UpdateContact,
-  AccessLevel
+  AccessLevel,
+  Automation,
+  InsertAutomation
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -264,6 +266,26 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_contacts_access_level ON contacts(access_level);
 `);
 
+// Create automations table if it doesn't exist
+db.exec(`
+  CREATE TABLE IF NOT EXISTS automations (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    cron_expression TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    recipient_phone TEXT,
+    message TEXT,
+    settings TEXT,
+    last_run TEXT,
+    next_run TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_automations_enabled ON automations(enabled);
+  CREATE INDEX IF NOT EXISTS idx_automations_type ON automations(type);
+  CREATE INDEX IF NOT EXISTS idx_automations_next_run ON automations(next_run);
+`);
+
 // Migration: Add mode column to conversations if it doesn't exist
 try {
   const convInfo = db.prepare("PRAGMA table_info(conversations)").all() as Array<{ name: string }>;
@@ -382,6 +404,20 @@ interface ContactRow {
   updated_at: string;
 }
 
+interface AutomationRow {
+  id: string;
+  name: string;
+  type: string;
+  cron_expression: string;
+  enabled: number;
+  recipient_phone: string | null;
+  message: string | null;
+  settings: string | null;
+  last_run: string | null;
+  next_run: string | null;
+  created_at: string;
+}
+
 // Helper to map database row to Conversation type (snake_case -> camelCase)
 function mapConversation(row: ConversationRow): Conversation {
   return {
@@ -452,6 +488,23 @@ function mapReminder(row: ReminderRow): Reminder {
     scheduledFor: row.scheduled_for,
     createdAt: row.created_at,
     completed: Boolean(row.completed),
+  };
+}
+
+// Helper to map database row to Automation type
+function mapAutomation(row: AutomationRow): Automation {
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.type as "morning_briefing" | "scheduled_sms" | "daily_checkin",
+    cronExpression: row.cron_expression,
+    enabled: Boolean(row.enabled),
+    recipientPhone: row.recipient_phone,
+    message: row.message,
+    settings: row.settings,
+    lastRun: row.last_run,
+    nextRun: row.next_run,
+    createdAt: row.created_at,
   };
 }
 
@@ -1411,6 +1464,132 @@ export function getMessageCountForPhone(phone: string): number {
       WHERE c.phone_number = ?
     `).get(normalizedPhone) as { count: number };
     return result.count;
+  });
+}
+
+// Update reminder
+export function updateReminder(id: string, data: Partial<{message: string, scheduledFor: string, recipientPhone: string}>): Reminder | undefined {
+  return wrapDbOperation("updateReminder", () => {
+    const existing = getReminder(id);
+    if (!existing) return undefined;
+    
+    const message = data.message ?? existing.message;
+    const scheduledFor = data.scheduledFor ?? existing.scheduledFor;
+    const recipientPhone = data.recipientPhone !== undefined ? data.recipientPhone : existing.recipientPhone;
+    
+    db.prepare(`
+      UPDATE reminders 
+      SET message = ?, scheduled_for = ?, recipient_phone = ?
+      WHERE id = ?
+    `).run(message, scheduledFor, recipientPhone, id);
+    
+    return getReminder(id);
+  });
+}
+
+// Automation operations
+export function createAutomation(data: InsertAutomation): Automation {
+  return wrapDbOperation("createAutomation", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    const enabled = data.enabled ?? true;
+    
+    db.prepare(`
+      INSERT INTO automations (id, name, type, cron_expression, enabled, recipient_phone, message, settings, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, 
+      data.name, 
+      data.type, 
+      data.cronExpression, 
+      enabled ? 1 : 0, 
+      data.recipientPhone || null, 
+      data.message || null, 
+      data.settings || null, 
+      now
+    );
+    
+    return {
+      id,
+      name: data.name,
+      type: data.type as "morning_briefing" | "scheduled_sms" | "daily_checkin",
+      cronExpression: data.cronExpression,
+      enabled,
+      recipientPhone: data.recipientPhone || null,
+      message: data.message || null,
+      settings: data.settings || null,
+      lastRun: null,
+      nextRun: null,
+      createdAt: now,
+    };
+  });
+}
+
+export function getAutomation(id: string): Automation | undefined {
+  return wrapDbOperation("getAutomation", () => {
+    const row = db.prepare(`
+      SELECT * FROM automations WHERE id = ?
+    `).get(id) as AutomationRow | undefined;
+    return row ? mapAutomation(row) : undefined;
+  });
+}
+
+export function getAllAutomations(): Automation[] {
+  return wrapDbOperation("getAllAutomations", () => {
+    const rows = db.prepare(`
+      SELECT * FROM automations ORDER BY created_at DESC
+    `).all() as AutomationRow[];
+    return rows.map(mapAutomation);
+  });
+}
+
+export function updateAutomation(id: string, data: Partial<InsertAutomation>): Automation | undefined {
+  return wrapDbOperation("updateAutomation", () => {
+    const existing = getAutomation(id);
+    if (!existing) return undefined;
+    
+    const name = data.name ?? existing.name;
+    const type = data.type ?? existing.type;
+    const cronExpression = data.cronExpression ?? existing.cronExpression;
+    const enabled = data.enabled ?? existing.enabled;
+    const recipientPhone = data.recipientPhone !== undefined ? data.recipientPhone : existing.recipientPhone;
+    const message = data.message !== undefined ? data.message : existing.message;
+    const settings = data.settings !== undefined ? data.settings : existing.settings;
+    
+    db.prepare(`
+      UPDATE automations 
+      SET name = ?, type = ?, cron_expression = ?, enabled = ?, recipient_phone = ?, message = ?, settings = ?
+      WHERE id = ?
+    `).run(name, type, cronExpression, enabled ? 1 : 0, recipientPhone, message, settings, id);
+    
+    return getAutomation(id);
+  });
+}
+
+export function deleteAutomation(id: string): boolean {
+  return wrapDbOperation("deleteAutomation", () => {
+    const result = db.prepare(`DELETE FROM automations WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// Update automation run timestamps
+export function updateAutomationRunTimestamps(id: string, lastRun: string, nextRun: string | null): Automation | undefined {
+  return wrapDbOperation("updateAutomationRunTimestamps", () => {
+    db.prepare(`
+      UPDATE automations SET last_run = ?, next_run = ? WHERE id = ?
+    `).run(lastRun, nextRun, id);
+    return getAutomation(id);
+  });
+}
+
+// Get enabled automations
+export function getEnabledAutomations(): Automation[] {
+  return wrapDbOperation("getEnabledAutomations", () => {
+    const rows = db.prepare(`
+      SELECT * FROM automations WHERE enabled = 1 ORDER BY created_at DESC
+    `).all() as AutomationRow[];
+    return rows.map(mapAutomation);
   });
 }
 
