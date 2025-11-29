@@ -330,6 +330,11 @@ export async function registerRoutes(
   });
   initializeAutomations();
   
+  // Health check endpoint for Python agents bridge
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "healthy", service: "zeke-node" });
+  });
+  
   // Chat endpoint - sends message and gets AI response
   app.post("/api/chat", async (req, res) => {
     try {
