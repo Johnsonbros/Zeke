@@ -238,7 +238,7 @@ async function generateConversationTitle(userMessage: string): Promise<string> {
         {
           role: "system",
           content:
-            "Generate a very short (3-5 words max) title for a conversation that starts with this message. Return only the title, no quotes or punctuation.",
+            "Generate a very short (3-5 words max) title in English for a conversation that starts with this message. Always use English regardless of the input language. Return only the title, no quotes or punctuation.",
         },
         {
           role: "user",
@@ -274,10 +274,12 @@ Extract any of these types of information if present:
 - Preferences: How Nate likes things done, communication preferences, habits
 - Notes: Ideas, tasks, things Nate wants to track or remember
 
+IMPORTANT: Always write memories in English regardless of the conversation language.
+
 Return a JSON object with this structure (include only if relevant info found):
 {
   "memories": [
-    {"type": "fact" | "preference" | "note", "content": "brief statement", "context": "when/why mentioned"}
+    {"type": "fact" | "preference" | "note", "content": "brief statement in English", "context": "when/why mentioned"}
   ]
 }
 
