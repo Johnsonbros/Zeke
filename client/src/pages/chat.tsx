@@ -154,9 +154,50 @@ function ConversationItem({
 
 function getTimeGreeting(): string {
   const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
+  if (hour < 12) return "Good morning, Nate";
+  if (hour < 17) return "Good afternoon, Nate";
+  return "Good evening, Nate";
+}
+
+function getPersonalizedSubtitle(tasks: Task[], reminders: Reminder[]): string {
+  const hour = new Date().getHours();
+  const hasFamilyTasks = tasks.some(t => t.category === "family" && !t.completed);
+  const hasWorkTasks = tasks.some(t => t.category === "work" && !t.completed);
+  const overdueCount = tasks.filter(t => 
+    t.dueDate && !t.completed && isPast(parseISO(t.dueDate)) && !isToday(parseISO(t.dueDate))
+  ).length;
+  
+  // Early morning
+  if (hour >= 5 && hour < 9) {
+    return "Let's get your day started";
+  }
+  
+  // If there are overdue items
+  if (overdueCount > 0) {
+    return overdueCount === 1 
+      ? "You have 1 item that needs attention" 
+      : `You have ${overdueCount} items that need attention`;
+  }
+  
+  // Mid-morning work time
+  if (hour >= 9 && hour < 12) {
+    if (hasWorkTasks) return "Here's what's on your plate today";
+    return "Ready when you are";
+  }
+  
+  // Afternoon
+  if (hour >= 12 && hour < 17) {
+    if (hasFamilyTasks) return "Don't forget about the family items";
+    return "How's the day going?";
+  }
+  
+  // Evening
+  if (hour >= 17 && hour < 21) {
+    return "Time to wind down";
+  }
+  
+  // Late night
+  return "Still working? I'm here if you need me";
 }
 
 function formatReminderTime(scheduledFor: string): string {
@@ -185,35 +226,65 @@ function generateSmartPrompts(
 ): { text: string; icon: typeof Bell }[] {
   const prompts: { text: string; icon: typeof Bell }[] = [];
   const hour = new Date().getHours();
-
-  // Context-based prompts
-  if (hour < 10 && hour >= 6) {
-    prompts.push({ text: "What's on my schedule today?", icon: Calendar });
-  }
   
-  if (tasks.length > 0) {
-    const overdueCount = tasks.filter(t => t.dueDate && isPast(parseISO(t.dueDate)) && !isToday(parseISO(t.dueDate))).length;
-    if (overdueCount > 0) {
-      prompts.push({ text: `Help me tackle my ${overdueCount} overdue task${overdueCount > 1 ? 's' : ''}`, icon: AlertCircle });
+  // Categorize tasks
+  const familyTasks = tasks.filter(t => t.category === "family" && !t.completed);
+  const workTasks = tasks.filter(t => t.category === "work" && !t.completed);
+  const overdueCount = tasks.filter(t => 
+    t.dueDate && !t.completed && isPast(parseISO(t.dueDate)) && !isToday(parseISO(t.dueDate))
+  ).length;
+
+  // Morning briefing - a key ZEKE feature
+  if (hour >= 5 && hour < 11) {
+    prompts.push({ text: "Give me my morning briefing", icon: Calendar });
+  }
+
+  // Overdue items take priority
+  if (overdueCount > 0) {
+    prompts.push({ 
+      text: `I have ${overdueCount} overdue item${overdueCount > 1 ? 's' : ''} to deal with`, 
+      icon: AlertCircle 
+    });
+  }
+
+  // Family-specific prompts when there are family tasks
+  if (familyTasks.length > 0) {
+    const familyTaskNames = familyTasks.slice(0, 2).map(t => t.title);
+    if (familyTasks.some(t => t.title.toLowerCase().includes('aurora') || t.title.toLowerCase().includes('carolina'))) {
+      prompts.push({ text: "What do I need to do for the girls?", icon: ListTodo });
     } else {
-      prompts.push({ text: "What should I focus on today?", icon: CheckCircle2 });
+      prompts.push({ text: "Show me my family to-dos", icon: ListTodo });
     }
   }
-  
-  if (reminders.length > 0) {
-    prompts.push({ text: "Remind me about something important", icon: Bell });
-  } else {
-    prompts.push({ text: "Set a reminder for later", icon: Clock });
+
+  // Work/business prompts
+  if (workTasks.length > 0 && hour >= 8 && hour < 18) {
+    prompts.push({ text: "What's the priority for Johnson Bros today?", icon: CheckCircle2 });
   }
 
-  // Time-based suggestions
-  if (hour >= 17) {
-    prompts.push({ text: "Help me plan for tomorrow", icon: Calendar });
-  } else if (hour >= 12 && hour < 14) {
-    prompts.push({ text: "What's left on my plate today?", icon: ListTodo });
+  // Time-based contextual prompts
+  if (hour >= 17 && hour < 21) {
+    prompts.push({ text: "Help me plan tomorrow", icon: Calendar });
+  } else if (hour >= 11 && hour < 14) {
+    prompts.push({ text: "What should I focus on this afternoon?", icon: CheckCircle2 });
   }
 
-  // Limit to 3 prompts
+  // Reminder prompts
+  if (reminders.length === 0 && prompts.length < 3) {
+    prompts.push({ text: "Remind me about something", icon: Bell });
+  }
+
+  // Grocery/family life prompt if afternoon/evening
+  if (hour >= 15 && hour < 20 && prompts.length < 3) {
+    prompts.push({ text: "Check the grocery list", icon: ListTodo });
+  }
+
+  // Late night
+  if (hour >= 21 || hour < 5) {
+    prompts.push({ text: "Add something to my notes", icon: Clock });
+  }
+
+  // Limit to 3 prompts and ensure no duplicates
   return prompts.slice(0, 3);
 }
 
@@ -244,7 +315,10 @@ function EmptyState({ onSendMessage }: { onSendMessage: (message: string) => voi
   });
 
   const upcomingReminders = reminders.slice(0, 3);
-  const smartPrompts = generateSmartPrompts(reminders, relevantTasks);
+  // Use all incomplete tasks for smart prompts (not just due/overdue)
+  const incompleteTasks = allTasks.filter(t => !t.completed);
+  const smartPrompts = generateSmartPrompts(reminders, incompleteTasks);
+  const personalizedSubtitle = getPersonalizedSubtitle(allTasks, reminders);
 
   const isLoading = remindersLoading || tasksLoading;
   const hasError = remindersError || tasksError;
@@ -261,7 +335,9 @@ function EmptyState({ onSendMessage }: { onSendMessage: (message: string) => voi
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mt-2" data-testid="empty-state-title">
             {getTimeGreeting()}
           </h1>
-          <p className="text-muted-foreground text-sm md:text-base">Here's what's happening</p>
+          <p className="text-muted-foreground text-sm md:text-base" data-testid="empty-state-subtitle">
+            {personalizedSubtitle}
+          </p>
         </div>
 
         {/* Loading State */}
@@ -279,8 +355,8 @@ function EmptyState({ onSendMessage }: { onSendMessage: (message: string) => voi
             <div className="flex items-center gap-3">
               <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-destructive">Unable to load your activity</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Some notifications may not be displayed</p>
+                <p className="text-sm font-medium text-destructive">Couldn't load everything</p>
+                <p className="text-xs text-muted-foreground mt-0.5">I'm still here to help — just ask</p>
               </div>
             </div>
           </Card>
@@ -293,7 +369,7 @@ function EmptyState({ onSendMessage }: { onSendMessage: (message: string) => voi
             {upcomingReminders.length > 0 && (
               <div className="space-y-2">
                 <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
-                  Upcoming Reminders
+                  Coming Up
                 </h3>
                 {upcomingReminders.map((reminder) => (
                   <Card 
@@ -319,7 +395,7 @@ function EmptyState({ onSendMessage }: { onSendMessage: (message: string) => voi
             {relevantTasks.length > 0 && (
               <div className="space-y-2">
                 <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
-                  Tasks Needing Attention
+                  On Your Radar
                 </h3>
                 {relevantTasks.slice(0, 3).map((task) => {
                   const isOverdue = task.dueDate && isPast(parseISO(task.dueDate)) && !isToday(parseISO(task.dueDate));
@@ -357,14 +433,14 @@ function EmptyState({ onSendMessage }: { onSendMessage: (message: string) => voi
         {/* No notifications message */}
         {!isLoading && !hasError && !hasNotifications && (
           <div className="text-center py-4">
-            <p className="text-sm text-muted-foreground">No upcoming reminders or tasks</p>
+            <p className="text-sm text-muted-foreground">All clear — nothing urgent right now</p>
           </div>
         )}
 
         {/* Smart Prompts */}
         <div className="w-full space-y-2" data-testid="smart-prompts">
           <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1 text-center">
-            Try asking
+            Quick Actions
           </h3>
           <div className="flex flex-col gap-2">
             {smartPrompts.map((prompt, index) => (
