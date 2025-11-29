@@ -279,9 +279,15 @@ export async function getLifelogContext(
   const { maxResults = 5, hoursBack = 72 } = options;
   
   try {
-    // Search for relevant lifelogs
+    // Calculate time range based on hoursBack
+    const now = new Date();
+    const startTime = new Date(now.getTime() - hoursBack * 60 * 60 * 1000);
+    
+    // Search for relevant lifelogs within the time range
     const lifelogs = await searchLifelogs(query, {
       limit: maxResults,
+      start: startTime.toISOString().slice(0, 19),
+      end: now.toISOString().slice(0, 19),
     });
     
     if (lifelogs.length === 0) {
