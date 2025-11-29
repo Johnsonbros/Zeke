@@ -38,13 +38,22 @@ import {
   getOrCreateContactForPhone,
   getConversationsByPhone,
   getMessageCountForPhone,
-  isMasterAdmin
+  isMasterAdmin,
+  getAllReminders,
+  getReminder,
+  updateReminder,
+  deleteReminder,
+  getAllAutomations,
+  getAutomation,
+  createAutomation,
+  updateAutomation,
+  deleteAutomation
 } from "./db";
 import { generateContextualQuestion } from "./gettingToKnow";
 import { chat } from "./agent";
 import { setSendSmsCallback, restorePendingReminders } from "./tools";
 import { setDailyCheckInSmsCallback, initializeDailyCheckIn } from "./dailyCheckIn";
-import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema } from "@shared/schema";
+import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertAutomationSchema, type Automation, type InsertAutomation } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
 
@@ -79,6 +88,24 @@ function formatPhoneNumber(phone: string): string {
 const sendSmsSchema = z.object({
   to: z.string().min(10, "Phone number required"),
   message: z.string().min(1, "Message required"),
+});
+
+// Schema for updating reminders
+const updateReminderSchema = z.object({
+  message: z.string().min(1).optional(),
+  scheduledFor: z.string().optional(),
+  recipientPhone: z.string().optional(),
+});
+
+// Schema for updating automations
+const updateAutomationSchema = z.object({
+  name: z.string().min(1).optional(),
+  type: z.enum(["morning_briefing", "scheduled_sms", "daily_checkin"]).optional(),
+  cronExpression: z.string().optional(),
+  enabled: z.boolean().optional(),
+  recipientPhone: z.string().nullable().optional(),
+  message: z.string().nullable().optional(),
+  settings: z.string().nullable().optional(),
 });
 
 export async function registerRoutes(
@@ -866,6 +893,172 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Get contact conversations error:", error);
       res.status(500).json({ message: "Failed to get conversations" });
+    }
+  });
+  
+  // ==================== REMINDERS API ====================
+  
+  // Get all reminders (both pending and completed)
+  app.get("/api/reminders", async (_req, res) => {
+    try {
+      const reminders = getAllReminders();
+      res.json(reminders);
+    } catch (error: any) {
+      console.error("Get reminders error:", error);
+      res.status(500).json({ message: "Failed to get reminders" });
+    }
+  });
+  
+  // Update reminder
+  app.patch("/api/reminders/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing = getReminder(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Reminder not found" });
+      }
+      
+      const parsed = updateReminderSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      const reminder = updateReminder(id, parsed.data);
+      res.json(reminder);
+    } catch (error: any) {
+      console.error("Update reminder error:", error);
+      res.status(500).json({ message: "Failed to update reminder" });
+    }
+  });
+  
+  // Delete reminder
+  app.delete("/api/reminders/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing = getReminder(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Reminder not found" });
+      }
+      
+      deleteReminder(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete reminder error:", error);
+      res.status(500).json({ message: "Failed to delete reminder" });
+    }
+  });
+  
+  // ==================== AUTOMATIONS API ====================
+  
+  // Get all automations
+  app.get("/api/automations", async (_req, res) => {
+    try {
+      const automations = getAllAutomations();
+      res.json(automations);
+    } catch (error: any) {
+      console.error("Get automations error:", error);
+      res.status(500).json({ message: "Failed to get automations" });
+    }
+  });
+  
+  // Create automation
+  app.post("/api/automations", async (req, res) => {
+    try {
+      const parsed = insertAutomationSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      const automation = createAutomation(parsed.data);
+      res.json(automation);
+    } catch (error: any) {
+      console.error("Create automation error:", error);
+      res.status(500).json({ message: "Failed to create automation" });
+    }
+  });
+  
+  // Update automation
+  app.patch("/api/automations/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing = getAutomation(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Automation not found" });
+      }
+      
+      const parsed = updateAutomationSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      const automation = updateAutomation(id, parsed.data);
+      res.json(automation);
+    } catch (error: any) {
+      console.error("Update automation error:", error);
+      res.status(500).json({ message: "Failed to update automation" });
+    }
+  });
+  
+  // Delete automation
+  app.delete("/api/automations/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing = getAutomation(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Automation not found" });
+      }
+      
+      deleteAutomation(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete automation error:", error);
+      res.status(500).json({ message: "Failed to delete automation" });
+    }
+  });
+  
+  // Toggle automation enabled/disabled status
+  app.post("/api/automations/:id/toggle", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing = getAutomation(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Automation not found" });
+      }
+      
+      const automation = updateAutomation(id, { enabled: !existing.enabled });
+      res.json(automation);
+    } catch (error: any) {
+      console.error("Toggle automation error:", error);
+      res.status(500).json({ message: "Failed to toggle automation" });
+    }
+  });
+  
+  // Manually trigger an automation (for testing)
+  app.post("/api/automations/:id/run", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing = getAutomation(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Automation not found" });
+      }
+      
+      // Log the manual trigger (actual execution will be implemented in task 6)
+      console.log(`Manual trigger requested for automation: ${existing.name} (${existing.id}) - Type: ${existing.type}`);
+      
+      res.json({ 
+        success: true, 
+        message: `Automation "${existing.name}" triggered manually`,
+        automation: existing
+      });
+    } catch (error: any) {
+      console.error("Run automation error:", error);
+      res.status(500).json({ message: "Failed to run automation" });
     }
   });
   
