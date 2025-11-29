@@ -8,6 +8,7 @@ import GroceryPage from "@/pages/grocery";
 import MemoryPage from "@/pages/memory";
 import TasksPage from "@/pages/tasks";
 import ContactsPage from "@/pages/contacts";
+import AutomationsPage from "@/pages/automations";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 
@@ -19,6 +20,7 @@ function Router() {
       <Route path="/memory" component={MemoryPage} />
       <Route path="/tasks" component={TasksPage} />
       <Route path="/contacts" component={ContactsPage} />
+      <Route path="/automations" component={AutomationsPage} />
       <Route component={NotFound} />
     </Switch>
   );
