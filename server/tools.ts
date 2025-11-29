@@ -764,10 +764,10 @@ function generateId(): string {
   return Math.random().toString(36).substring(2, 10);
 }
 
-let sendSmsCallback: ((phone: string, message: string) => Promise<void>) | null = null;
+let sendSmsCallback: ((phone: string, message: string, source?: string) => Promise<void>) | null = null;
 let notifyUserCallback: ((conversationId: string, message: string) => Promise<void>) | null = null;
 
-export function setSendSmsCallback(callback: (phone: string, message: string) => Promise<void>) {
+export function setSendSmsCallback(callback: (phone: string, message: string, source?: string) => Promise<void>) {
   sendSmsCallback = callback;
 }
 
@@ -1576,7 +1576,7 @@ export async function executeTool(
       }
       
       try {
-        await sendSmsCallback(formattedPhone, message);
+        await sendSmsCallback(formattedPhone, message, "send_sms_tool");
         return JSON.stringify({
           success: true,
           message: `SMS sent to ${formattedPhone}`,

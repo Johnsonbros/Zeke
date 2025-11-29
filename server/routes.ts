@@ -52,8 +52,17 @@ import {
   getProfileSection,
   upsertProfileSection,
   deleteProfileSection,
-  getFullProfile
+  getFullProfile,
+  createTwilioMessage,
+  getAllTwilioMessages,
+  getTwilioMessagesByPhone,
+  getTwilioMessageStats,
+  getTwilioConversationPhones,
+  updateTwilioMessageStatus,
+  updateTwilioMessageError,
+  normalizePhoneNumber
 } from "./db";
+import type { TwilioMessageSource } from "@shared/schema";
 import { generateContextualQuestion } from "./gettingToKnow";
 import { chat } from "./agent";
 import { setSendSmsCallback, restorePendingReminders } from "./tools";
@@ -96,6 +105,45 @@ function formatPhoneNumber(phone: string): string {
   }
 }
 
+// Helper to log Twilio SMS messages
+function logTwilioMessage(params: {
+  direction: "inbound" | "outbound";
+  source: TwilioMessageSource;
+  fromNumber: string;
+  toNumber: string;
+  body: string;
+  twilioSid?: string;
+  status?: "queued" | "sending" | "sent" | "delivered" | "failed" | "received";
+  conversationId?: string;
+  errorCode?: string;
+  errorMessage?: string;
+}) {
+  try {
+    const contact = getContactByPhone(
+      params.direction === "inbound" ? params.fromNumber : params.toNumber
+    );
+    
+    createTwilioMessage({
+      twilioSid: params.twilioSid || null,
+      direction: params.direction,
+      status: params.status || (params.direction === "inbound" ? "received" : "sent"),
+      source: params.source,
+      fromNumber: params.fromNumber,
+      toNumber: params.toNumber,
+      body: params.body,
+      contactId: contact?.id || null,
+      contactName: contact?.name || null,
+      conversationId: params.conversationId || null,
+      errorCode: params.errorCode || null,
+      errorMessage: params.errorMessage || null,
+    });
+    
+    console.log(`[TWILIO LOG] ${params.direction} ${params.source}: ${params.direction === "inbound" ? params.fromNumber : params.toNumber} - ${params.body.substring(0, 50)}...`);
+  } catch (error) {
+    console.error("[TWILIO LOG] Failed to log message:", error);
+  }
+}
+
 // Schema for outbound SMS
 const sendSmsSchema = z.object({
   to: z.string().min(10, "Phone number required"),
@@ -125,24 +173,48 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
-  // Set up SMS callback for tools (reminders)
-  setSendSmsCallback(async (phone: string, message: string) => {
+  // Set up SMS callback for tools (reminders and send_sms tool)
+  setSendSmsCallback(async (phone: string, message: string, source?: string) => {
     const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER;
     if (!twilioFromNumber) {
       console.error("TWILIO_PHONE_NUMBER not configured for reminder SMS");
       return;
     }
     
+    const formattedPhone = formatPhoneNumber(phone);
+    const smsSource = (source || "reminder") as TwilioMessageSource;
+    
     try {
       const client = getTwilioClient();
-      const formattedPhone = formatPhoneNumber(phone);
-      await client.messages.create({
+      const result = await client.messages.create({
         body: message,
         from: twilioFromNumber,
         to: formattedPhone,
       });
+      
+      logTwilioMessage({
+        direction: "outbound",
+        source: smsSource,
+        fromNumber: twilioFromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        twilioSid: result.sid,
+        status: "sent",
+      });
+      
       console.log(`Reminder SMS sent to ${formattedPhone}`);
-    } catch (error) {
+    } catch (error: any) {
+      logTwilioMessage({
+        direction: "outbound",
+        source: smsSource,
+        fromNumber: twilioFromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        status: "failed",
+        errorCode: error.code?.toString() || "UNKNOWN",
+        errorMessage: error.message || "Unknown error",
+      });
+      
       console.error("Failed to send reminder SMS:", error);
       throw error;
     }
@@ -159,16 +231,39 @@ export async function registerRoutes(
       throw new Error("Twilio not configured");
     }
     
+    const formattedPhone = formatPhoneNumber(phone);
+    
     try {
       const client = getTwilioClient();
-      const formattedPhone = formatPhoneNumber(phone);
-      await client.messages.create({
+      const result = await client.messages.create({
         body: message,
         from: twilioFromNumber,
         to: formattedPhone,
       });
+      
+      logTwilioMessage({
+        direction: "outbound",
+        source: "daily_checkin",
+        fromNumber: twilioFromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        twilioSid: result.sid,
+        status: "sent",
+      });
+      
       console.log(`Daily check-in SMS sent to ${formattedPhone}`);
-    } catch (error) {
+    } catch (error: any) {
+      logTwilioMessage({
+        direction: "outbound",
+        source: "daily_checkin",
+        fromNumber: twilioFromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        status: "failed",
+        errorCode: error.code?.toString() || "UNKNOWN",
+        errorMessage: error.message || "Unknown error",
+      });
+      
       console.error("Failed to send daily check-in SMS:", error);
       throw error;
     }
@@ -183,16 +278,39 @@ export async function registerRoutes(
       throw new Error("Twilio not configured");
     }
     
+    const formattedPhone = formatPhoneNumber(phone);
+    
     try {
       const client = getTwilioClient();
-      const formattedPhone = formatPhoneNumber(phone);
-      await client.messages.create({
+      const result = await client.messages.create({
         body: message,
         from: twilioFromNumber,
         to: formattedPhone,
       });
+      
+      logTwilioMessage({
+        direction: "outbound",
+        source: "automation",
+        fromNumber: twilioFromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        twilioSid: result.sid,
+        status: "sent",
+      });
+      
       console.log(`Automation SMS sent to ${formattedPhone}`);
-    } catch (error) {
+    } catch (error: any) {
+      logTwilioMessage({
+        direction: "outbound",
+        source: "automation",
+        fromNumber: twilioFromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        status: "failed",
+        errorCode: error.code?.toString() || "UNKNOWN",
+        errorMessage: error.message || "Unknown error",
+      });
+      
       console.error("Failed to send automation SMS:", error);
       throw error;
     }
@@ -358,7 +476,7 @@ export async function registerRoutes(
       // Log full request for debugging
       console.log("Twilio webhook received:", JSON.stringify(req.body));
       
-      const { Body: message, From: rawFromNumber } = req.body;
+      const { Body: message, From: rawFromNumber, MessageSid: messageSid } = req.body;
       
       if (!message || !rawFromNumber) {
         console.log("Missing message or phone number in webhook");
@@ -367,7 +485,19 @@ export async function registerRoutes(
       
       // Format phone number consistently
       const fromNumber = formatPhoneNumber(rawFromNumber);
+      const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER || "";
       console.log(`SMS received from ${fromNumber}: ${message}`);
+      
+      // Log inbound message
+      logTwilioMessage({
+        direction: "inbound",
+        source: "webhook",
+        fromNumber: fromNumber,
+        toNumber: twilioFromNumber,
+        body: message,
+        twilioSid: messageSid,
+        status: "received",
+      });
       
       // Immediately acknowledge receipt to Twilio (prevents timeout issues)
       res.status(200).send("OK");
@@ -397,15 +527,42 @@ export async function registerRoutes(
         });
         
         // Send SMS reply via Twilio API
-        const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER;
         if (twilioFromNumber) {
-          const client = getTwilioClient();
-          await client.messages.create({
-            body: aiResponse,
-            from: twilioFromNumber,
-            to: fromNumber,
-          });
-          console.log(`SMS reply sent to ${fromNumber}`);
+          try {
+            const client = getTwilioClient();
+            const result = await client.messages.create({
+              body: aiResponse,
+              from: twilioFromNumber,
+              to: fromNumber,
+            });
+            
+            // Log outbound reply
+            logTwilioMessage({
+              direction: "outbound",
+              source: "reply",
+              fromNumber: twilioFromNumber,
+              toNumber: fromNumber,
+              body: aiResponse,
+              twilioSid: result.sid,
+              status: "sent",
+              conversationId: conversation.id,
+            });
+            
+            console.log(`SMS reply sent to ${fromNumber}`);
+          } catch (sendError: any) {
+            logTwilioMessage({
+              direction: "outbound",
+              source: "reply",
+              fromNumber: twilioFromNumber,
+              toNumber: fromNumber,
+              body: aiResponse,
+              status: "failed",
+              conversationId: conversation.id,
+              errorCode: sendError.code?.toString() || "UNKNOWN",
+              errorMessage: sendError.message || "Unknown error",
+            });
+            throw sendError;
+          }
         } else {
           console.error("TWILIO_PHONE_NUMBER not configured for reply");
         }
@@ -413,16 +570,26 @@ export async function registerRoutes(
         console.error("Error processing SMS:", processError);
         // Try to send error message
         try {
-          const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER;
           if (twilioFromNumber) {
             const client = getTwilioClient();
-            await client.messages.create({
-              body: "Sorry, I encountered an error. Please try again.",
+            const errorMsg = "Sorry, I encountered an error. Please try again.";
+            const result = await client.messages.create({
+              body: errorMsg,
               from: twilioFromNumber,
               to: fromNumber,
             });
+            
+            logTwilioMessage({
+              direction: "outbound",
+              source: "reply",
+              fromNumber: twilioFromNumber,
+              toNumber: fromNumber,
+              body: errorMsg,
+              twilioSid: result.sid,
+              status: "sent",
+            });
           }
-        } catch (sendError) {
+        } catch (sendError: any) {
           console.error("Failed to send error SMS:", sendError);
         }
       }
@@ -523,19 +690,44 @@ export async function registerRoutes(
       // Format phone number
       const formattedTo = formatPhoneNumber(to);
       
-      const result = await client.messages.create({
-        body: message,
-        from: fromNumber,
-        to: formattedTo,
-      });
-      
-      console.log(`SMS sent to ${formattedTo}: ${result.sid}`);
-      
-      res.json({ 
-        success: true, 
-        sid: result.sid,
-        to: formattedTo,
-      });
+      try {
+        const result = await client.messages.create({
+          body: message,
+          from: fromNumber,
+          to: formattedTo,
+        });
+        
+        logTwilioMessage({
+          direction: "outbound",
+          source: "web_ui",
+          fromNumber: fromNumber,
+          toNumber: formattedTo,
+          body: message,
+          twilioSid: result.sid,
+          status: "sent",
+        });
+        
+        console.log(`SMS sent to ${formattedTo}: ${result.sid}`);
+        
+        res.json({ 
+          success: true, 
+          sid: result.sid,
+          to: formattedTo,
+        });
+      } catch (sendError: any) {
+        logTwilioMessage({
+          direction: "outbound",
+          source: "web_ui",
+          fromNumber: fromNumber,
+          toNumber: formattedTo,
+          body: message,
+          status: "failed",
+          errorCode: sendError.code?.toString() || "UNKNOWN",
+          errorMessage: sendError.message || "Unknown error",
+        });
+        
+        throw sendError;
+      }
     } catch (error: any) {
       console.error("Send SMS error:", error);
       res.status(500).json({ message: error.message || "Failed to send SMS" });
@@ -1223,6 +1415,55 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Delete profile section error:", error);
       res.status(500).json({ message: "Failed to delete profile section" });
+    }
+  });
+  
+  // === TWILIO MESSAGE LOG API ROUTES ===
+  
+  // Get all Twilio messages (with optional limit)
+  app.get("/api/twilio/messages", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const messages = getAllTwilioMessages(limit);
+      res.json(messages);
+    } catch (error: any) {
+      console.error("Get twilio messages error:", error);
+      res.status(500).json({ message: "Failed to get Twilio messages" });
+    }
+  });
+  
+  // Get Twilio messages by phone number
+  app.get("/api/twilio/messages/phone/:phone", async (req, res) => {
+    try {
+      const { phone } = req.params;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const messages = getTwilioMessagesByPhone(phone, limit);
+      res.json(messages);
+    } catch (error: any) {
+      console.error("Get twilio messages by phone error:", error);
+      res.status(500).json({ message: "Failed to get Twilio messages" });
+    }
+  });
+  
+  // Get Twilio message stats
+  app.get("/api/twilio/stats", async (_req, res) => {
+    try {
+      const stats = getTwilioMessageStats();
+      res.json(stats);
+    } catch (error: any) {
+      console.error("Get twilio stats error:", error);
+      res.status(500).json({ message: "Failed to get Twilio stats" });
+    }
+  });
+  
+  // Get unique conversation phone numbers (for sidebar)
+  app.get("/api/twilio/conversations", async (_req, res) => {
+    try {
+      const conversations = getTwilioConversationPhones();
+      res.json(conversations);
+    } catch (error: any) {
+      console.error("Get twilio conversations error:", error);
+      res.status(500).json({ message: "Failed to get Twilio conversations" });
     }
   });
   

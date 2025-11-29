@@ -10,6 +10,7 @@ import TasksPage from "@/pages/tasks";
 import ContactsPage from "@/pages/contacts";
 import AutomationsPage from "@/pages/automations";
 import ProfilePage from "@/pages/profile";
+import TwilioLogPage from "@/pages/twilio-log";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 
@@ -23,6 +24,7 @@ function Router() {
       <Route path="/contacts" component={ContactsPage} />
       <Route path="/automations" component={AutomationsPage} />
       <Route path="/profile" component={ProfilePage} />
+      <Route path="/sms-log" component={TwilioLogPage} />
       <Route component={NotFound} />
     </Switch>
   );

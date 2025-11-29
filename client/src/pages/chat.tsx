@@ -772,6 +772,20 @@ export default function ChatPage() {
               </div>
             </Button>
           </Link>
+          
+          <Link href="/sms-log">
+            <Button 
+              variant="ghost" 
+              className="w-full justify-start gap-3 h-11"
+              data-testid="link-sms-log"
+            >
+              <MessageSquare className="h-4 w-4 text-green-500" />
+              <div className="flex flex-col items-start">
+                <span className="text-sm">SMS Log</span>
+                <span className="text-[10px] text-muted-foreground">View all SMS activity</span>
+              </div>
+            </Button>
+          </Link>
 
           { /* Collapsible History Section */ }
           <Collapsible open={historyOpen} onOpenChange={setHistoryOpen} className="mt-4">
