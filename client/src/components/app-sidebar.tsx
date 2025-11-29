@@ -29,6 +29,7 @@ import {
   Sparkles,
   ShoppingCart,
   ListTodo,
+  Calendar,
   Brain,
   Users,
   Zap,
@@ -65,6 +66,12 @@ const mainNavItems = [
     icon: ListTodo,
     href: "/tasks",
     description: "Manage your to-dos",
+  },
+  {
+    title: "Calendar",
+    icon: Calendar,
+    href: "/calendar",
+    description: "View your schedule",
   },
   {
     title: "ZEKE's Memory",

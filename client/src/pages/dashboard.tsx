@@ -20,9 +20,21 @@ import {
   Clock,
   AlertCircle,
   Sparkles,
+  Calendar,
+  MapPin,
 } from "lucide-react";
 import type { Task, GroceryItem, MemoryNote, Conversation } from "@shared/schema";
-import { format, isPast, isToday, parseISO } from "date-fns";
+import { format, isPast, isToday, parseISO, isWithinInterval, startOfDay, endOfDay } from "date-fns";
+
+interface CalendarEvent {
+  id: string;
+  summary: string;
+  description?: string;
+  location?: string;
+  start: string;
+  end: string;
+  allDay: boolean;
+}
 
 type DashboardStats = {
   tasks: {
@@ -236,6 +248,55 @@ function GroceryPreview({ items }: { items: GroceryItem[] }) {
   );
 }
 
+function CalendarPreview({ events }: { events: CalendarEvent[] }) {
+  if (events.length === 0) {
+    return (
+      <div className="text-center py-6 text-muted-foreground text-sm">
+        <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
+        <p>No events today</p>
+      </div>
+    );
+  }
+
+  const sortedEvents = [...events].sort((a, b) => {
+    if (a.allDay && !b.allDay) return -1;
+    if (!a.allDay && b.allDay) return 1;
+    return new Date(a.start).getTime() - new Date(b.start).getTime();
+  });
+
+  return (
+    <div className="space-y-2">
+      {sortedEvents.slice(0, 4).map((event) => (
+        <div
+          key={event.id}
+          className="flex items-start gap-3 p-2 rounded-lg border hover-elevate"
+          data-testid={`calendar-preview-${event.id}`}
+        >
+          <div className="p-1.5 rounded bg-primary/10 mt-0.5">
+            <Clock className="h-3 w-3 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{event.summary}</p>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+              {event.allDay ? (
+                <span>All day</span>
+              ) : (
+                <span>{format(parseISO(event.start), "h:mm a")}</span>
+              )}
+              {event.location && (
+                <>
+                  <span>·</span>
+                  <span className="truncate">{event.location}</span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function getTimeGreeting(): string {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
@@ -258,6 +319,10 @@ export default function DashboardPage() {
 
   const { data: conversations, isLoading: conversationsLoading } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations"],
+  });
+
+  const { data: todayEvents, isLoading: calendarLoading } = useQuery<CalendarEvent[]>({
+    queryKey: ["/api/calendar/today"],
   });
 
   const stats: DashboardStats = {
@@ -291,7 +356,7 @@ export default function DashboardPage() {
     automations: { total: 0, enabled: 0 },
   };
 
-  const isLoading = tasksLoading || groceryLoading || memoriesLoading || conversationsLoading;
+  const isLoading = tasksLoading || groceryLoading || memoriesLoading || conversationsLoading || calendarLoading;
 
   return (
     <div className="h-full overflow-auto">
@@ -306,13 +371,20 @@ export default function DashboardPage() {
         </div>
 
         {isLoading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            {[...Array(5)].map((_, i) => (
               <Skeleton key={i} className="h-[100px]" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <StatCard
+              title="Today's Events"
+              value={todayEvents?.length || 0}
+              subtitle={todayEvents && todayEvents.length > 0 ? `Next: ${todayEvents[0]?.summary?.substring(0, 15)}...` : "No events"}
+              icon={Calendar}
+              href="/calendar"
+            />
             <StatCard
               title="Pending Tasks"
               value={stats.tasks.pending}
@@ -345,7 +417,30 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid md:grid-cols-3 gap-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
+              <CardTitle className="text-base font-medium">Today's Schedule</CardTitle>
+              <Link href="/calendar">
+                <Button size="sm" variant="ghost" data-testid="button-view-all-calendar">
+                  View all
+                  <ArrowRight className="h-3 w-3 ml-1" />
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent>
+              {calendarLoading ? (
+                <div className="space-y-2">
+                  {[...Array(3)].map((_, i) => (
+                    <Skeleton key={i} className="h-10" />
+                  ))}
+                </div>
+              ) : (
+                <CalendarPreview events={todayEvents || []} />
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
               <CardTitle className="text-base font-medium">Tasks</CardTitle>
@@ -395,13 +490,20 @@ export default function DashboardPage() {
 
         <div>
           <h2 className="text-lg font-medium mb-4">Quick Access</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <FeatureCard
               title="Chat with ZEKE"
               description="Ask questions, get help, or just chat"
               icon={MessageSquare}
               href="/chat"
               action="Start chatting"
+            />
+            <FeatureCard
+              title="Calendar"
+              description="View and manage your schedule"
+              icon={Calendar}
+              href="/calendar"
+              action="View calendar"
             />
             <FeatureCard
               title="Getting To Know You"

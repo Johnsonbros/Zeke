@@ -10,6 +10,7 @@ import ChatPage from "@/pages/chat";
 import GroceryPage from "@/pages/grocery";
 import MemoryPage from "@/pages/memory";
 import TasksPage from "@/pages/tasks";
+import CalendarPage from "@/pages/calendar";
 import ContactsPage from "@/pages/contacts";
 import AutomationsPage from "@/pages/automations";
 import ProfilePage from "@/pages/profile";
@@ -25,6 +26,7 @@ function Router() {
       <Route path="/grocery" component={GroceryPage} />
       <Route path="/memory" component={MemoryPage} />
       <Route path="/tasks" component={TasksPage} />
+      <Route path="/calendar" component={CalendarPage} />
       <Route path="/contacts" component={ContactsPage} />
       <Route path="/automations" component={AutomationsPage} />
       <Route path="/profile" component={ProfilePage} />

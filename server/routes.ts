@@ -77,6 +77,7 @@ import {
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertAutomationSchema, type Automation, type InsertAutomation } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
+import { listCalendarEvents, getTodaysEvents, getUpcomingEvents, createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, type CalendarEvent } from "./googleCalendar";
 
 // Initialize Twilio client for outbound SMS
 function getTwilioClient() {
@@ -1464,6 +1465,70 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Get twilio conversations error:", error);
       res.status(500).json({ message: "Failed to get Twilio conversations" });
+    }
+  });
+  
+  // ==================== CALENDAR API ====================
+  
+  // Get calendar events with optional date range
+  app.get("/api/calendar/events", async (req, res) => {
+    try {
+      const { start, end, days } = req.query;
+      let events: CalendarEvent[];
+      
+      if (start && end) {
+        events = await listCalendarEvents(new Date(start as string), new Date(end as string), 100);
+      } else if (days) {
+        events = await getUpcomingEvents(parseInt(days as string));
+      } else {
+        events = await getUpcomingEvents(7);
+      }
+      
+      res.json(events);
+    } catch (error: any) {
+      console.error("Calendar fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch calendar events" });
+    }
+  });
+  
+  // Get today's events
+  app.get("/api/calendar/today", async (req, res) => {
+    try {
+      const events = await getTodaysEvents();
+      res.json(events);
+    } catch (error: any) {
+      console.error("Calendar today fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch today's events" });
+    }
+  });
+  
+  // Create a new calendar event
+  app.post("/api/calendar/events", async (req, res) => {
+    try {
+      const { summary, startTime, endTime, description, location, allDay } = req.body;
+      const event = await createCalendarEvent(
+        summary,
+        new Date(startTime),
+        new Date(endTime),
+        description,
+        location,
+        allDay
+      );
+      res.json(event);
+    } catch (error: any) {
+      console.error("Calendar create error:", error);
+      res.status(500).json({ error: error.message || "Failed to create calendar event" });
+    }
+  });
+  
+  // Delete a calendar event
+  app.delete("/api/calendar/events/:id", async (req, res) => {
+    try {
+      await deleteCalendarEvent(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Calendar delete error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete calendar event" });
     }
   });
   
