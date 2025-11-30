@@ -595,6 +595,7 @@ function SettingsSheet({
                 <SelectItem value="14">14 days</SelectItem>
                 <SelectItem value="30">30 days</SelectItem>
                 <SelectItem value="90">90 days</SelectItem>
+                <SelectItem value="0">Forever</SelectItem>
               </SelectContent>
             </Select>
           </div>

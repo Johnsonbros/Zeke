@@ -2375,6 +2375,9 @@ export function getLatestLocation(): LocationHistory | undefined {
 
 export function deleteOldLocationHistory(retentionDays: number): number {
   return wrapDbOperation("deleteOldLocationHistory", () => {
+    if (retentionDays === 0) {
+      return 0;
+    }
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
     const result = db.prepare(`
