@@ -15,6 +15,7 @@ import ContactsPage from "@/pages/contacts";
 import AutomationsPage from "@/pages/automations";
 import ProfilePage from "@/pages/profile";
 import TwilioLogPage from "@/pages/twilio-log";
+import LocationPage from "@/pages/location";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 
@@ -31,6 +32,7 @@ function Router() {
       <Route path="/automations" component={AutomationsPage} />
       <Route path="/profile" component={ProfilePage} />
       <Route path="/sms-log" component={TwilioLogPage} />
+      <Route path="/location" component={LocationPage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -40,6 +40,7 @@ import {
   Plus,
   Settings,
   User,
+  MapPin,
 } from "lucide-react";
 import type { Conversation } from "@shared/schema";
 import { format } from "date-fns";
@@ -91,6 +92,12 @@ const mainNavItems = [
     icon: Zap,
     href: "/automations",
     description: "Reminders & scheduled tasks",
+  },
+  {
+    title: "Locations",
+    icon: MapPin,
+    href: "/location",
+    description: "Saved places & proximity alerts",
   },
   {
     title: "SMS Log",
