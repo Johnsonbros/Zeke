@@ -50,7 +50,25 @@ import type {
   UpdateCustomListItem,
   CustomListWithItems,
   CustomListType,
-  CustomListItemPriority
+  CustomListItemPriority,
+  FamilyMember,
+  InsertFamilyMember,
+  UpdateFamilyMember,
+  FoodPreference,
+  InsertFoodPreference,
+  FoodItemType,
+  FoodPreferenceLevel,
+  DietaryRestriction,
+  InsertDietaryRestriction,
+  DietaryRestrictionType,
+  DietaryRestrictionSeverity,
+  MealHistory,
+  InsertMealHistory,
+  MealType,
+  SavedRecipe,
+  InsertSavedRecipe,
+  UpdateSavedRecipe,
+  RecipeMealType
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -579,6 +597,112 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_custom_list_items_checked ON custom_list_items(checked);
 `);
 
+// ============================================
+// FOOD PREFERENCE SYSTEM TABLES
+// ============================================
+
+// Create family_members table for tracking who has food preferences
+db.exec(`
+  CREATE TABLE IF NOT EXISTS family_members (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_family_members_name ON family_members(name);
+  CREATE INDEX IF NOT EXISTS idx_family_members_active ON family_members(is_active);
+`);
+
+// Create food_preferences table for tracking likes/dislikes
+db.exec(`
+  CREATE TABLE IF NOT EXISTS food_preferences (
+    id TEXT PRIMARY KEY,
+    member_id TEXT NOT NULL,
+    item_type TEXT NOT NULL,
+    item_name TEXT NOT NULL,
+    preference TEXT NOT NULL,
+    strength INTEGER DEFAULT 1,
+    notes TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_food_preferences_member ON food_preferences(member_id);
+  CREATE INDEX IF NOT EXISTS idx_food_preferences_type ON food_preferences(item_type);
+  CREATE INDEX IF NOT EXISTS idx_food_preferences_preference ON food_preferences(preference);
+`);
+
+// Create dietary_restrictions table for allergies, religious, health restrictions
+db.exec(`
+  CREATE TABLE IF NOT EXISTS dietary_restrictions (
+    id TEXT PRIMARY KEY,
+    member_id TEXT NOT NULL,
+    restriction_type TEXT NOT NULL,
+    restriction_name TEXT NOT NULL,
+    severity TEXT DEFAULT 'strict',
+    notes TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_dietary_restrictions_member ON dietary_restrictions(member_id);
+  CREATE INDEX IF NOT EXISTS idx_dietary_restrictions_type ON dietary_restrictions(restriction_type);
+`);
+
+// Create meal_history table for tracking meals cooked/eaten
+db.exec(`
+  CREATE TABLE IF NOT EXISTS meal_history (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    meal_type TEXT NOT NULL,
+    cuisine TEXT,
+    rating INTEGER,
+    notes TEXT,
+    recipe_id TEXT,
+    cooked_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_meal_history_meal_type ON meal_history(meal_type);
+  CREATE INDEX IF NOT EXISTS idx_meal_history_cooked_at ON meal_history(cooked_at);
+  CREATE INDEX IF NOT EXISTS idx_meal_history_rating ON meal_history(rating);
+`);
+
+// Create saved_recipes table for family recipes
+db.exec(`
+  CREATE TABLE IF NOT EXISTS saved_recipes (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    cuisine TEXT,
+    meal_type TEXT,
+    prep_time INTEGER,
+    cook_time INTEGER,
+    servings INTEGER,
+    ingredients TEXT NOT NULL,
+    instructions TEXT NOT NULL,
+    source TEXT,
+    family_rating INTEGER,
+    times_cooked INTEGER DEFAULT 0,
+    is_favorite INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_saved_recipes_cuisine ON saved_recipes(cuisine);
+  CREATE INDEX IF NOT EXISTS idx_saved_recipes_meal_type ON saved_recipes(meal_type);
+  CREATE INDEX IF NOT EXISTS idx_saved_recipes_favorite ON saved_recipes(is_favorite);
+  CREATE INDEX IF NOT EXISTS idx_saved_recipes_rating ON saved_recipes(family_rating);
+`);
+
+// Seed initial family members if table is empty
+try {
+  const existingMembers = db.prepare(`SELECT COUNT(*) as count FROM family_members`).get() as { count: number };
+  if (existingMembers.count === 0) {
+    const now = new Date().toISOString();
+    db.prepare(`INSERT INTO family_members (id, name, is_active, created_at) VALUES (?, ?, 1, ?)`).run(uuidv4(), "Nate", now);
+    db.prepare(`INSERT INTO family_members (id, name, is_active, created_at) VALUES (?, ?, 1, ?)`).run(uuidv4(), "Shakita", now);
+    console.log("Seeded initial family members: Nate, Shakita");
+  }
+} catch (e) {
+  console.error("Error seeding family members:", e);
+}
+
 // Initialize default location settings if not exists
 try {
   const existingSettings = db.prepare(`SELECT id FROM location_settings LIMIT 1`).get();
@@ -846,6 +970,67 @@ interface CustomListItemRow {
   added_by: string | null;
   priority: string;
   notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Food preference system row types
+interface FamilyMemberRow {
+  id: string;
+  name: string;
+  is_active: number;
+  created_at: string;
+}
+
+interface FoodPreferenceRow {
+  id: string;
+  member_id: string;
+  item_type: string;
+  item_name: string;
+  preference: string;
+  strength: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface DietaryRestrictionRow {
+  id: string;
+  member_id: string;
+  restriction_type: string;
+  restriction_name: string;
+  severity: string;
+  notes: string | null;
+  created_at: string;
+}
+
+interface MealHistoryRow {
+  id: string;
+  name: string;
+  meal_type: string;
+  cuisine: string | null;
+  rating: number | null;
+  notes: string | null;
+  recipe_id: string | null;
+  cooked_at: string;
+  created_at: string;
+}
+
+interface SavedRecipeRow {
+  id: string;
+  name: string;
+  description: string | null;
+  cuisine: string | null;
+  meal_type: string | null;
+  prep_time: number | null;
+  cook_time: number | null;
+  servings: number | null;
+  ingredients: string;
+  instructions: string;
+  source: string | null;
+  family_rating: number | null;
+  times_cooked: number;
+  is_favorite: number;
   created_at: string;
   updated_at: string;
 }
@@ -3691,6 +3876,77 @@ function mapCustomListItem(row: CustomListItemRow): CustomListItem {
   };
 }
 
+// Food preference system mapper functions
+function mapFamilyMember(row: FamilyMemberRow): FamilyMember {
+  return {
+    id: row.id,
+    name: row.name,
+    isActive: Boolean(row.is_active),
+    createdAt: row.created_at,
+  };
+}
+
+function mapFoodPreference(row: FoodPreferenceRow): FoodPreference {
+  return {
+    id: row.id,
+    memberId: row.member_id,
+    itemType: row.item_type as FoodItemType,
+    itemName: row.item_name,
+    preference: row.preference as FoodPreferenceLevel,
+    strength: row.strength,
+    notes: row.notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapDietaryRestriction(row: DietaryRestrictionRow): DietaryRestriction {
+  return {
+    id: row.id,
+    memberId: row.member_id,
+    restrictionType: row.restriction_type as DietaryRestrictionType,
+    restrictionName: row.restriction_name,
+    severity: row.severity as DietaryRestrictionSeverity,
+    notes: row.notes,
+    createdAt: row.created_at,
+  };
+}
+
+function mapMealHistory(row: MealHistoryRow): MealHistory {
+  return {
+    id: row.id,
+    name: row.name,
+    mealType: row.meal_type as MealType,
+    cuisine: row.cuisine,
+    rating: row.rating,
+    notes: row.notes,
+    recipeId: row.recipe_id,
+    cookedAt: row.cooked_at,
+    createdAt: row.created_at,
+  };
+}
+
+function mapSavedRecipe(row: SavedRecipeRow): SavedRecipe {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    cuisine: row.cuisine,
+    mealType: row.meal_type as RecipeMealType | null,
+    prepTime: row.prep_time,
+    cookTime: row.cook_time,
+    servings: row.servings,
+    ingredients: row.ingredients,
+    instructions: row.instructions,
+    source: row.source,
+    familyRating: row.family_rating,
+    timesCooked: row.times_cooked,
+    isFavorite: Boolean(row.is_favorite),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 // Custom List CRUD
 
 export function createCustomList(data: InsertCustomList): CustomList {
@@ -3902,6 +4158,526 @@ export function clearCheckedCustomListItems(listId: string): number {
   return wrapDbOperation("clearCheckedCustomListItems", () => {
     const result = db.prepare(`DELETE FROM custom_list_items WHERE list_id = ? AND checked = 1`).run(listId);
     return result.changes;
+  });
+}
+
+// ============================================
+// FOOD PREFERENCE SYSTEM CRUD OPERATIONS
+// ============================================
+
+// Family Members CRUD
+
+export function getFamilyMembers(): FamilyMember[] {
+  return wrapDbOperation("getFamilyMembers", () => {
+    const rows = db.prepare(`
+      SELECT * FROM family_members ORDER BY name ASC
+    `).all() as FamilyMemberRow[];
+    return rows.map(mapFamilyMember);
+  });
+}
+
+export function getActiveFamilyMembers(): FamilyMember[] {
+  return wrapDbOperation("getActiveFamilyMembers", () => {
+    const rows = db.prepare(`
+      SELECT * FROM family_members WHERE is_active = 1 ORDER BY name ASC
+    `).all() as FamilyMemberRow[];
+    return rows.map(mapFamilyMember);
+  });
+}
+
+export function getFamilyMember(id: string): FamilyMember | undefined {
+  return wrapDbOperation("getFamilyMember", () => {
+    const row = db.prepare(`
+      SELECT * FROM family_members WHERE id = ?
+    `).get(id) as FamilyMemberRow | undefined;
+    return row ? mapFamilyMember(row) : undefined;
+  });
+}
+
+export function getFamilyMemberByName(name: string): FamilyMember | undefined {
+  return wrapDbOperation("getFamilyMemberByName", () => {
+    const row = db.prepare(`
+      SELECT * FROM family_members WHERE LOWER(name) = LOWER(?)
+    `).get(name) as FamilyMemberRow | undefined;
+    return row ? mapFamilyMember(row) : undefined;
+  });
+}
+
+export function createFamilyMember(name: string): FamilyMember {
+  return wrapDbOperation("createFamilyMember", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO family_members (id, name, is_active, created_at)
+      VALUES (?, ?, 1, ?)
+    `).run(id, name, now);
+    
+    return {
+      id,
+      name,
+      isActive: true,
+      createdAt: now,
+    };
+  });
+}
+
+export function updateFamilyMember(id: string, updates: { name?: string; isActive?: boolean }): FamilyMember | undefined {
+  return wrapDbOperation("updateFamilyMember", () => {
+    const existing = getFamilyMember(id);
+    if (!existing) return undefined;
+    
+    const name = updates.name ?? existing.name;
+    const isActive = updates.isActive ?? existing.isActive;
+    
+    db.prepare(`
+      UPDATE family_members SET name = ?, is_active = ? WHERE id = ?
+    `).run(name, isActive ? 1 : 0, id);
+    
+    return getFamilyMember(id);
+  });
+}
+
+// Food Preferences CRUD
+
+export function getFoodPreferences(memberId?: string): FoodPreference[] {
+  return wrapDbOperation("getFoodPreferences", () => {
+    if (memberId) {
+      const rows = db.prepare(`
+        SELECT * FROM food_preferences WHERE member_id = ? ORDER BY preference, item_name ASC
+      `).all(memberId) as FoodPreferenceRow[];
+      return rows.map(mapFoodPreference);
+    }
+    const rows = db.prepare(`
+      SELECT * FROM food_preferences ORDER BY member_id, preference, item_name ASC
+    `).all() as FoodPreferenceRow[];
+    return rows.map(mapFoodPreference);
+  });
+}
+
+export function getFoodPreferencesByType(itemType: FoodItemType, memberId?: string): FoodPreference[] {
+  return wrapDbOperation("getFoodPreferencesByType", () => {
+    if (memberId) {
+      const rows = db.prepare(`
+        SELECT * FROM food_preferences WHERE item_type = ? AND member_id = ? ORDER BY preference, item_name ASC
+      `).all(itemType, memberId) as FoodPreferenceRow[];
+      return rows.map(mapFoodPreference);
+    }
+    const rows = db.prepare(`
+      SELECT * FROM food_preferences WHERE item_type = ? ORDER BY member_id, preference, item_name ASC
+    `).all(itemType) as FoodPreferenceRow[];
+    return rows.map(mapFoodPreference);
+  });
+}
+
+export function getFoodPreference(id: string): FoodPreference | undefined {
+  return wrapDbOperation("getFoodPreference", () => {
+    const row = db.prepare(`
+      SELECT * FROM food_preferences WHERE id = ?
+    `).get(id) as FoodPreferenceRow | undefined;
+    return row ? mapFoodPreference(row) : undefined;
+  });
+}
+
+export function upsertFoodPreference(data: InsertFoodPreference): FoodPreference {
+  return wrapDbOperation("upsertFoodPreference", () => {
+    const existing = db.prepare(`
+      SELECT * FROM food_preferences 
+      WHERE member_id = ? AND LOWER(item_name) = LOWER(?) AND item_type = ?
+    `).get(data.memberId, data.itemName, data.itemType) as FoodPreferenceRow | undefined;
+    
+    const now = getCurrentTimestamp();
+    
+    if (existing) {
+      const newStrength = Math.min((existing.strength || 1) + 1, 10);
+      const newPreference = data.preference ?? existing.preference;
+      const newNotes = data.notes !== undefined ? data.notes : existing.notes;
+      
+      db.prepare(`
+        UPDATE food_preferences 
+        SET preference = ?, strength = ?, notes = ?, updated_at = ?
+        WHERE id = ?
+      `).run(newPreference, newStrength, newNotes, now, existing.id);
+      
+      return getFoodPreference(existing.id)!;
+    }
+    
+    const id = uuidv4();
+    const strength = data.strength ?? 1;
+    
+    db.prepare(`
+      INSERT INTO food_preferences (id, member_id, item_type, item_name, preference, strength, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.memberId, data.itemType, data.itemName, data.preference, strength, data.notes || null, now, now);
+    
+    return {
+      id,
+      memberId: data.memberId,
+      itemType: data.itemType as FoodItemType,
+      itemName: data.itemName,
+      preference: data.preference as FoodPreferenceLevel,
+      strength,
+      notes: data.notes || null,
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+}
+
+export function deleteFoodPreference(id: string): boolean {
+  return wrapDbOperation("deleteFoodPreference", () => {
+    const result = db.prepare(`DELETE FROM food_preferences WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function getLikedIngredients(memberId?: string): FoodPreference[] {
+  return wrapDbOperation("getLikedIngredients", () => {
+    if (memberId) {
+      const rows = db.prepare(`
+        SELECT * FROM food_preferences 
+        WHERE item_type = 'ingredient' AND preference IN ('love', 'like') AND member_id = ?
+        ORDER BY preference DESC, strength DESC, item_name ASC
+      `).all(memberId) as FoodPreferenceRow[];
+      return rows.map(mapFoodPreference);
+    }
+    const rows = db.prepare(`
+      SELECT * FROM food_preferences 
+      WHERE item_type = 'ingredient' AND preference IN ('love', 'like')
+      ORDER BY member_id, preference DESC, strength DESC, item_name ASC
+    `).all() as FoodPreferenceRow[];
+    return rows.map(mapFoodPreference);
+  });
+}
+
+export function getDislikedIngredients(memberId?: string): FoodPreference[] {
+  return wrapDbOperation("getDislikedIngredients", () => {
+    if (memberId) {
+      const rows = db.prepare(`
+        SELECT * FROM food_preferences 
+        WHERE item_type = 'ingredient' AND preference IN ('dislike', 'allergic') AND member_id = ?
+        ORDER BY preference ASC, strength DESC, item_name ASC
+      `).all(memberId) as FoodPreferenceRow[];
+      return rows.map(mapFoodPreference);
+    }
+    const rows = db.prepare(`
+      SELECT * FROM food_preferences 
+      WHERE item_type = 'ingredient' AND preference IN ('dislike', 'allergic')
+      ORDER BY member_id, preference ASC, strength DESC, item_name ASC
+    `).all() as FoodPreferenceRow[];
+    return rows.map(mapFoodPreference);
+  });
+}
+
+// Dietary Restrictions CRUD
+
+export function getDietaryRestrictions(memberId?: string): DietaryRestriction[] {
+  return wrapDbOperation("getDietaryRestrictions", () => {
+    if (memberId) {
+      const rows = db.prepare(`
+        SELECT * FROM dietary_restrictions WHERE member_id = ? ORDER BY severity, restriction_name ASC
+      `).all(memberId) as DietaryRestrictionRow[];
+      return rows.map(mapDietaryRestriction);
+    }
+    const rows = db.prepare(`
+      SELECT * FROM dietary_restrictions ORDER BY member_id, severity, restriction_name ASC
+    `).all() as DietaryRestrictionRow[];
+    return rows.map(mapDietaryRestriction);
+  });
+}
+
+export function getDietaryRestriction(id: string): DietaryRestriction | undefined {
+  return wrapDbOperation("getDietaryRestriction", () => {
+    const row = db.prepare(`
+      SELECT * FROM dietary_restrictions WHERE id = ?
+    `).get(id) as DietaryRestrictionRow | undefined;
+    return row ? mapDietaryRestriction(row) : undefined;
+  });
+}
+
+export function createDietaryRestriction(data: InsertDietaryRestriction): DietaryRestriction {
+  return wrapDbOperation("createDietaryRestriction", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    const severity = data.severity || "strict";
+    
+    db.prepare(`
+      INSERT INTO dietary_restrictions (id, member_id, restriction_type, restriction_name, severity, notes, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.memberId, data.restrictionType, data.restrictionName, severity, data.notes || null, now);
+    
+    return {
+      id,
+      memberId: data.memberId,
+      restrictionType: data.restrictionType as DietaryRestrictionType,
+      restrictionName: data.restrictionName,
+      severity: severity as DietaryRestrictionSeverity,
+      notes: data.notes || null,
+      createdAt: now,
+    };
+  });
+}
+
+export function deleteDietaryRestriction(id: string): boolean {
+  return wrapDbOperation("deleteDietaryRestriction", () => {
+    const result = db.prepare(`DELETE FROM dietary_restrictions WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// Meal History CRUD
+
+export function getMealHistory(limit?: number): MealHistory[] {
+  return wrapDbOperation("getMealHistory", () => {
+    const query = limit
+      ? `SELECT * FROM meal_history ORDER BY cooked_at DESC LIMIT ?`
+      : `SELECT * FROM meal_history ORDER BY cooked_at DESC`;
+    const rows = limit
+      ? (db.prepare(query).all(limit) as MealHistoryRow[])
+      : (db.prepare(query).all() as MealHistoryRow[]);
+    return rows.map(mapMealHistory);
+  });
+}
+
+export function getMealHistoryEntry(id: string): MealHistory | undefined {
+  return wrapDbOperation("getMealHistoryEntry", () => {
+    const row = db.prepare(`
+      SELECT * FROM meal_history WHERE id = ?
+    `).get(id) as MealHistoryRow | undefined;
+    return row ? mapMealHistory(row) : undefined;
+  });
+}
+
+export function createMealHistoryEntry(data: InsertMealHistory): MealHistory {
+  return wrapDbOperation("createMealHistoryEntry", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO meal_history (id, name, meal_type, cuisine, rating, notes, recipe_id, cooked_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.name, data.mealType, data.cuisine || null, data.rating || null, data.notes || null, data.recipeId || null, data.cookedAt, now);
+    
+    return {
+      id,
+      name: data.name,
+      mealType: data.mealType as MealType,
+      cuisine: data.cuisine || null,
+      rating: data.rating || null,
+      notes: data.notes || null,
+      recipeId: data.recipeId || null,
+      cookedAt: data.cookedAt,
+      createdAt: now,
+    };
+  });
+}
+
+export function updateMealRating(id: string, rating: number): MealHistory | undefined {
+  return wrapDbOperation("updateMealRating", () => {
+    const existing = getMealHistoryEntry(id);
+    if (!existing) return undefined;
+    
+    db.prepare(`
+      UPDATE meal_history SET rating = ? WHERE id = ?
+    `).run(rating, id);
+    
+    return getMealHistoryEntry(id);
+  });
+}
+
+export function getMostCookedMeals(limit?: number): { name: string; count: number }[] {
+  return wrapDbOperation("getMostCookedMeals", () => {
+    const query = limit
+      ? `SELECT name, COUNT(*) as count FROM meal_history GROUP BY LOWER(name) ORDER BY count DESC LIMIT ?`
+      : `SELECT name, COUNT(*) as count FROM meal_history GROUP BY LOWER(name) ORDER BY count DESC`;
+    const rows = limit
+      ? (db.prepare(query).all(limit) as { name: string; count: number }[])
+      : (db.prepare(query).all() as { name: string; count: number }[]);
+    return rows;
+  });
+}
+
+// Saved Recipes CRUD
+
+export function getSavedRecipes(filters?: { cuisine?: string; mealType?: RecipeMealType; isFavorite?: boolean }): SavedRecipe[] {
+  return wrapDbOperation("getSavedRecipes", () => {
+    let query = `SELECT * FROM saved_recipes WHERE 1=1`;
+    const params: (string | number)[] = [];
+    
+    if (filters?.cuisine) {
+      query += ` AND LOWER(cuisine) = LOWER(?)`;
+      params.push(filters.cuisine);
+    }
+    if (filters?.mealType) {
+      query += ` AND meal_type = ?`;
+      params.push(filters.mealType);
+    }
+    if (filters?.isFavorite !== undefined) {
+      query += ` AND is_favorite = ?`;
+      params.push(filters.isFavorite ? 1 : 0);
+    }
+    
+    query += ` ORDER BY is_favorite DESC, family_rating DESC, name ASC`;
+    
+    const rows = db.prepare(query).all(...params) as SavedRecipeRow[];
+    return rows.map(mapSavedRecipe);
+  });
+}
+
+export function getRecipeById(id: string): SavedRecipe | undefined {
+  return wrapDbOperation("getRecipeById", () => {
+    const row = db.prepare(`
+      SELECT * FROM saved_recipes WHERE id = ?
+    `).get(id) as SavedRecipeRow | undefined;
+    return row ? mapSavedRecipe(row) : undefined;
+  });
+}
+
+export function createRecipe(data: InsertSavedRecipe): SavedRecipe {
+  return wrapDbOperation("createRecipe", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    const timesCooked = data.timesCooked ?? 0;
+    const isFavorite = data.isFavorite ?? false;
+    
+    db.prepare(`
+      INSERT INTO saved_recipes (id, name, description, cuisine, meal_type, prep_time, cook_time, servings, ingredients, instructions, source, family_rating, times_cooked, is_favorite, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, 
+      data.name, 
+      data.description || null, 
+      data.cuisine || null, 
+      data.mealType || null, 
+      data.prepTime || null, 
+      data.cookTime || null, 
+      data.servings || null, 
+      data.ingredients, 
+      data.instructions, 
+      data.source || null, 
+      data.familyRating || null, 
+      timesCooked, 
+      isFavorite ? 1 : 0, 
+      now, 
+      now
+    );
+    
+    return {
+      id,
+      name: data.name,
+      description: data.description || null,
+      cuisine: data.cuisine || null,
+      mealType: (data.mealType as RecipeMealType) || null,
+      prepTime: data.prepTime || null,
+      cookTime: data.cookTime || null,
+      servings: data.servings || null,
+      ingredients: data.ingredients,
+      instructions: data.instructions,
+      source: data.source || null,
+      familyRating: data.familyRating || null,
+      timesCooked,
+      isFavorite,
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+}
+
+export function updateRecipe(id: string, updates: UpdateSavedRecipe): SavedRecipe | undefined {
+  return wrapDbOperation("updateRecipe", () => {
+    const existing = getRecipeById(id);
+    if (!existing) return undefined;
+    
+    const now = getCurrentTimestamp();
+    const name = updates.name ?? existing.name;
+    const description = updates.description !== undefined ? updates.description : existing.description;
+    const cuisine = updates.cuisine !== undefined ? updates.cuisine : existing.cuisine;
+    const mealType = updates.mealType !== undefined ? updates.mealType : existing.mealType;
+    const prepTime = updates.prepTime !== undefined ? updates.prepTime : existing.prepTime;
+    const cookTime = updates.cookTime !== undefined ? updates.cookTime : existing.cookTime;
+    const servings = updates.servings !== undefined ? updates.servings : existing.servings;
+    const ingredients = updates.ingredients ?? existing.ingredients;
+    const instructions = updates.instructions ?? existing.instructions;
+    const source = updates.source !== undefined ? updates.source : existing.source;
+    const familyRating = updates.familyRating !== undefined ? updates.familyRating : existing.familyRating;
+    const timesCooked = updates.timesCooked ?? existing.timesCooked;
+    const isFavorite = updates.isFavorite ?? existing.isFavorite;
+    
+    db.prepare(`
+      UPDATE saved_recipes 
+      SET name = ?, description = ?, cuisine = ?, meal_type = ?, prep_time = ?, cook_time = ?, servings = ?, 
+          ingredients = ?, instructions = ?, source = ?, family_rating = ?, times_cooked = ?, is_favorite = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      name, description, cuisine, mealType, prepTime, cookTime, servings, 
+      ingredients, instructions, source, familyRating, timesCooked, isFavorite ? 1 : 0, now, id
+    );
+    
+    return getRecipeById(id);
+  });
+}
+
+export function deleteRecipe(id: string): boolean {
+  return wrapDbOperation("deleteRecipe", () => {
+    const result = db.prepare(`DELETE FROM saved_recipes WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function toggleRecipeFavorite(id: string): SavedRecipe | undefined {
+  return wrapDbOperation("toggleRecipeFavorite", () => {
+    const existing = getRecipeById(id);
+    if (!existing) return undefined;
+    
+    const now = getCurrentTimestamp();
+    const newFavorite = !existing.isFavorite;
+    
+    db.prepare(`
+      UPDATE saved_recipes SET is_favorite = ?, updated_at = ? WHERE id = ?
+    `).run(newFavorite ? 1 : 0, now, id);
+    
+    return getRecipeById(id);
+  });
+}
+
+export function incrementRecipeCooked(id: string): SavedRecipe | undefined {
+  return wrapDbOperation("incrementRecipeCooked", () => {
+    const existing = getRecipeById(id);
+    if (!existing) return undefined;
+    
+    const now = getCurrentTimestamp();
+    const newCount = (existing.timesCooked || 0) + 1;
+    
+    db.prepare(`
+      UPDATE saved_recipes SET times_cooked = ?, updated_at = ? WHERE id = ?
+    `).run(newCount, now, id);
+    
+    return getRecipeById(id);
+  });
+}
+
+export function getFavoriteRecipes(): SavedRecipe[] {
+  return wrapDbOperation("getFavoriteRecipes", () => {
+    const rows = db.prepare(`
+      SELECT * FROM saved_recipes WHERE is_favorite = 1 ORDER BY family_rating DESC, name ASC
+    `).all() as SavedRecipeRow[];
+    return rows.map(mapSavedRecipe);
+  });
+}
+
+export function searchRecipes(query: string): SavedRecipe[] {
+  return wrapDbOperation("searchRecipes", () => {
+    const searchTerm = `%${query.toLowerCase()}%`;
+    const rows = db.prepare(`
+      SELECT * FROM saved_recipes 
+      WHERE LOWER(name) LIKE ? 
+         OR LOWER(description) LIKE ? 
+         OR LOWER(cuisine) LIKE ?
+         OR LOWER(ingredients) LIKE ?
+      ORDER BY is_favorite DESC, family_rating DESC, name ASC
+      LIMIT 50
+    `).all(searchTerm, searchTerm, searchTerm, searchTerm) as SavedRecipeRow[];
+    return rows.map(mapSavedRecipe);
   });
 }
 

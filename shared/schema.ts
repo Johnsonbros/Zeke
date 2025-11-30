@@ -843,3 +843,161 @@ export type CustomListItem = typeof customListItems.$inferSelect;
 export interface CustomListWithItems extends CustomList {
   items: CustomListItem[];
 }
+
+// ============================================
+// FOOD PREFERENCE SYSTEM
+// ============================================
+
+// Family members table for tracking who has food preferences
+export const familyMembers = sqliteTable("family_members", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  isActive: integer("is_active", { mode: "boolean" }).default(true),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertFamilyMemberSchema = createInsertSchema(familyMembers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const updateFamilyMemberSchema = z.object({
+  name: z.string().min(1).optional(),
+  isActive: z.boolean().optional(),
+});
+
+export type InsertFamilyMember = z.infer<typeof insertFamilyMemberSchema>;
+export type UpdateFamilyMember = z.infer<typeof updateFamilyMemberSchema>;
+export type FamilyMember = typeof familyMembers.$inferSelect;
+
+// Food preference item types
+export const foodItemTypes = ["ingredient", "dish", "cuisine"] as const;
+export type FoodItemType = typeof foodItemTypes[number];
+
+// Food preference levels
+export const foodPreferenceLevels = ["love", "like", "neutral", "dislike", "allergic"] as const;
+export type FoodPreferenceLevel = typeof foodPreferenceLevels[number];
+
+// Food preferences table for tracking likes/dislikes
+export const foodPreferences = sqliteTable("food_preferences", {
+  id: text("id").primaryKey(),
+  memberId: text("member_id").notNull(),
+  itemType: text("item_type", { enum: foodItemTypes }).notNull(),
+  itemName: text("item_name").notNull(),
+  preference: text("preference", { enum: foodPreferenceLevels }).notNull(),
+  strength: integer("strength").default(1),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertFoodPreferenceSchema = createInsertSchema(foodPreferences).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertFoodPreference = z.infer<typeof insertFoodPreferenceSchema>;
+export type FoodPreference = typeof foodPreferences.$inferSelect;
+
+// Dietary restriction types
+export const dietaryRestrictionTypes = ["allergy", "intolerance", "religious", "health", "preference"] as const;
+export type DietaryRestrictionType = typeof dietaryRestrictionTypes[number];
+
+// Dietary restriction severity
+export const dietaryRestrictionSeverities = ["strict", "moderate", "mild"] as const;
+export type DietaryRestrictionSeverity = typeof dietaryRestrictionSeverities[number];
+
+// Dietary restrictions table for allergies, religious, health restrictions
+export const dietaryRestrictions = sqliteTable("dietary_restrictions", {
+  id: text("id").primaryKey(),
+  memberId: text("member_id").notNull(),
+  restrictionType: text("restriction_type", { enum: dietaryRestrictionTypes }).notNull(),
+  restrictionName: text("restriction_name").notNull(),
+  severity: text("severity", { enum: dietaryRestrictionSeverities }).default("strict"),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertDietaryRestrictionSchema = createInsertSchema(dietaryRestrictions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertDietaryRestriction = z.infer<typeof insertDietaryRestrictionSchema>;
+export type DietaryRestriction = typeof dietaryRestrictions.$inferSelect;
+
+// Meal types
+export const mealTypes = ["breakfast", "lunch", "dinner", "snack"] as const;
+export type MealType = typeof mealTypes[number];
+
+// Meal history table for tracking meals cooked/eaten
+export const mealHistory = sqliteTable("meal_history", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  mealType: text("meal_type", { enum: mealTypes }).notNull(),
+  cuisine: text("cuisine"),
+  rating: integer("rating"),
+  notes: text("notes"),
+  recipeId: text("recipe_id"),
+  cookedAt: text("cooked_at").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertMealHistorySchema = createInsertSchema(mealHistory).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertMealHistory = z.infer<typeof insertMealHistorySchema>;
+export type MealHistory = typeof mealHistory.$inferSelect;
+
+// Recipe meal types (includes dessert)
+export const recipeMealTypes = ["breakfast", "lunch", "dinner", "snack", "dessert"] as const;
+export type RecipeMealType = typeof recipeMealTypes[number];
+
+// Saved recipes table
+export const savedRecipes = sqliteTable("saved_recipes", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  cuisine: text("cuisine"),
+  mealType: text("meal_type", { enum: recipeMealTypes }),
+  prepTime: integer("prep_time"),
+  cookTime: integer("cook_time"),
+  servings: integer("servings"),
+  ingredients: text("ingredients").notNull(),
+  instructions: text("instructions").notNull(),
+  source: text("source"),
+  familyRating: integer("family_rating"),
+  timesCooked: integer("times_cooked").default(0),
+  isFavorite: integer("is_favorite", { mode: "boolean" }).default(false),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertSavedRecipeSchema = createInsertSchema(savedRecipes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateSavedRecipeSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().nullable().optional(),
+  cuisine: z.string().nullable().optional(),
+  mealType: z.enum(recipeMealTypes).nullable().optional(),
+  prepTime: z.number().nullable().optional(),
+  cookTime: z.number().nullable().optional(),
+  servings: z.number().nullable().optional(),
+  ingredients: z.string().optional(),
+  instructions: z.string().optional(),
+  source: z.string().nullable().optional(),
+  familyRating: z.number().min(1).max(5).nullable().optional(),
+  timesCooked: z.number().optional(),
+  isFavorite: z.boolean().optional(),
+});
+
+export type InsertSavedRecipe = z.infer<typeof insertSavedRecipeSchema>;
+export type UpdateSavedRecipe = z.infer<typeof updateSavedRecipeSchema>;
+export type SavedRecipe = typeof savedRecipes.$inferSelect;
