@@ -2421,6 +2421,101 @@ export async function registerRoutes(
       res.status(500).json({ error: error.message || "Failed to get lists for place" });
     }
   });
+
+  // === Overland GPS Tracking Webhook ===
+  // POST /api/location/overland - Receive location data from Overland iOS/Android app
+  // Overland sends GeoJSON format: https://overland.p3k.app/
+  app.post("/api/location/overland", (req, res) => {
+    try {
+      // Verify access token (sent in Authorization header)
+      const authHeader = req.headers.authorization;
+      const expectedToken = process.env.OVERLAND_ACCESS_TOKEN;
+      
+      if (!expectedToken) {
+        console.error("[Overland] OVERLAND_ACCESS_TOKEN not configured");
+        return res.status(500).json({ error: "Server not configured for Overland" });
+      }
+      
+      // Overland sends token as "Bearer <token>" or just "<token>"
+      const providedToken = authHeader?.replace(/^Bearer\s+/i, "").trim();
+      
+      if (!providedToken || providedToken !== expectedToken) {
+        console.warn("[Overland] Invalid or missing access token");
+        return res.status(401).json({ error: "Invalid access token" });
+      }
+      
+      // Parse Overland's GeoJSON format
+      const { locations } = req.body;
+      
+      if (!locations || !Array.isArray(locations)) {
+        return res.status(400).json({ error: "Invalid payload: expected { locations: [...] }" });
+      }
+      
+      let savedCount = 0;
+      
+      for (const location of locations) {
+        try {
+          // Overland sends GeoJSON Feature format
+          if (location.type !== "Feature" || !location.geometry || location.geometry.type !== "Point") {
+            console.warn("[Overland] Skipping non-Point location:", location.type);
+            continue;
+          }
+          
+          const [longitude, latitude] = location.geometry.coordinates;
+          const props = location.properties || {};
+          
+          // Extract properties from Overland payload
+          const accuracy = props.horizontal_accuracy;
+          const altitude = props.altitude;
+          const speed = props.speed;
+          const heading = props.course;
+          
+          // Save to location history
+          createLocationHistory({
+            latitude: String(latitude),
+            longitude: String(longitude),
+            accuracy: accuracy !== undefined ? String(accuracy) : undefined,
+            altitude: altitude !== undefined ? String(altitude) : undefined,
+            speed: speed !== undefined ? String(speed) : undefined,
+            heading: heading !== undefined ? String(heading) : undefined,
+            source: "gps"
+          });
+          
+          savedCount++;
+        } catch (locError) {
+          console.error("[Overland] Error processing location:", locError);
+        }
+      }
+      
+      console.log(`[Overland] Saved ${savedCount}/${locations.length} locations`);
+      
+      // Overland expects a specific response format
+      res.json({ 
+        result: "ok",
+        saved: savedCount
+      });
+    } catch (error: any) {
+      console.error("[Overland] Webhook error:", error);
+      res.status(500).json({ error: error.message || "Failed to process location data" });
+    }
+  });
+
+  // GET /api/location/overland/status - Check Overland integration status
+  app.get("/api/location/overland/status", (req, res) => {
+    try {
+      const hasToken = !!process.env.OVERLAND_ACCESS_TOKEN;
+      const latestLocation = getLatestLocation();
+      
+      res.json({
+        configured: hasToken,
+        lastLocationAt: latestLocation?.createdAt || null,
+        locationCount: getLocationHistory(1).length > 0 ? "has_data" : "no_data"
+      });
+    } catch (error: any) {
+      console.error("[Overland] Status check error:", error);
+      res.status(500).json({ error: error.message || "Failed to check status" });
+    }
+  });
   
   return httpServer;
 }
