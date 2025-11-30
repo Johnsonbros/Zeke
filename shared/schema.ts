@@ -110,6 +110,7 @@ export const groceryItems = sqliteTable("grocery_items", {
   category: text("category").default("Other"),
   addedBy: text("added_by").notNull(),
   purchased: integer("purchased", { mode: "boolean" }).notNull().default(false),
+  purchasedAt: text("purchased_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

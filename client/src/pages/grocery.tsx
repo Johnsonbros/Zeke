@@ -12,7 +12,8 @@ import {
   Trash2, 
   ShoppingCart,
   Check,
-  Package
+  Package,
+  Clock
 } from "lucide-react";
 import { 
   Select,
@@ -54,6 +55,15 @@ const groceryFormSchema = z.object({
 });
 
 type GroceryFormValues = z.infer<typeof groceryFormSchema>;
+
+const AUTO_CLEAR_OPTIONS = [
+  { value: "0", label: "Never" },
+  { value: "6", label: "After 6 hours" },
+  { value: "12", label: "After 12 hours" },
+  { value: "24", label: "After 24 hours" },
+  { value: "48", label: "After 2 days" },
+  { value: "168", label: "After 7 days" },
+];
 
 function GroceryItemRow({ 
   item, 
@@ -143,6 +153,10 @@ export default function GroceryPage() {
     queryKey: ["/api/grocery"],
   });
 
+  const { data: settings } = useQuery<{ autoClearHours: number }>({
+    queryKey: ["/api/grocery/settings"],
+  });
+
   const unpurchasedItems = items?.filter(item => !item.purchased) || [];
   const purchasedItems = items?.filter(item => item.purchased) || [];
   const totalItems = items?.length || 0;
@@ -227,8 +241,33 @@ export default function GroceryPage() {
     },
   });
 
+  const updateSettingsMutation = useMutation({
+    mutationFn: async (autoClearHours: number) => {
+      const response = await apiRequest("POST", "/api/grocery/settings", { autoClearHours });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/grocery/settings"] });
+      toast({
+        title: "Settings updated",
+        description: "Auto-clear setting saved",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to update settings",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const onSubmit = (data: GroceryFormValues) => {
     addItemMutation.mutate(data);
+  };
+
+  const handleAutoClearChange = (value: string) => {
+    updateSettingsMutation.mutate(parseInt(value, 10));
   };
 
   return (
@@ -385,9 +424,22 @@ export default function GroceryPage() {
                 
                 {purchasedItems.length > 0 && (
                   <div className="space-y-1.5 sm:space-y-2 mt-4 sm:mt-6">
-                    <h2 className="text-xs sm:text-sm font-medium text-muted-foreground px-1">
-                      Purchased ({purchasedItems.length})
-                    </h2>
+                    <div className="flex items-center justify-between gap-2 px-1">
+                      <h2 className="text-xs sm:text-sm font-medium text-muted-foreground">
+                        Purchased ({purchasedItems.length})
+                      </h2>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => clearPurchasedMutation.mutate()}
+                        disabled={clearPurchasedMutation.isPending}
+                        className="gap-1 sm:gap-1.5 text-xs"
+                        data-testid="button-clear-all-purchased"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Clear All
+                      </Button>
+                    </div>
                     {purchasedItems.map((item) => (
                       <GroceryItemRow
                         key={item.id}
@@ -404,10 +456,37 @@ export default function GroceryPage() {
           </div>
         </ScrollArea>
 
-        <div className="p-2 sm:p-3 md:p-4 border-t border-border text-center shrink-0">
-          <p className="text-[10px] sm:text-xs text-muted-foreground">
-            Shared list for Nate, ZEKE, and Shakita
-          </p>
+        <div className="p-2 sm:p-3 md:p-4 border-t border-border shrink-0">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-[10px] sm:text-xs text-muted-foreground">
+              Shared list for Nate, ZEKE, and Shakita
+            </p>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <Clock className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-muted-foreground" />
+              <span className="text-[10px] sm:text-xs text-muted-foreground" data-testid="text-auto-clear-setting">
+                Auto-clear:
+              </span>
+              <Select 
+                value={String(settings?.autoClearHours ?? 0)} 
+                onValueChange={handleAutoClearChange}
+                disabled={updateSettingsMutation.isPending}
+              >
+                <SelectTrigger 
+                  className="h-6 sm:h-7 w-[100px] sm:w-[130px] text-[10px] sm:text-xs" 
+                  data-testid="select-auto-clear"
+                >
+                  <SelectValue placeholder="Never" />
+                </SelectTrigger>
+                <SelectContent>
+                  {AUTO_CLEAR_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </div>
       </div>
     </div>

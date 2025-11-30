@@ -233,12 +233,24 @@ db.exec(`
     category TEXT DEFAULT 'Other',
     added_by TEXT NOT NULL,
     purchased INTEGER NOT NULL DEFAULT 0,
+    purchased_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_grocery_purchased ON grocery_items(purchased);
   CREATE INDEX IF NOT EXISTS idx_grocery_category ON grocery_items(category);
 `);
+
+// Migration: Add purchased_at column to grocery_items if it doesn't exist
+try {
+  const groceryInfo = db.prepare("PRAGMA table_info(grocery_items)").all() as Array<{ name: string }>;
+  if (!groceryInfo.some(col => col.name === "purchased_at")) {
+    console.log("Adding 'purchased_at' column to grocery_items table...");
+    db.exec(`ALTER TABLE grocery_items ADD COLUMN purchased_at TEXT`);
+  }
+} catch (e) {
+  console.error("Migration error for grocery_items.purchased_at:", e);
+}
 
 // Create reminders table if it doesn't exist
 db.exec(`
@@ -662,6 +674,7 @@ interface GroceryItemRow {
   category: string;
   added_by: string;
   purchased: number;
+  purchased_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1369,6 +1382,7 @@ function mapGroceryItem(row: GroceryItemRow): GroceryItem {
     category: row.category,
     addedBy: row.added_by,
     purchased: Boolean(row.purchased),
+    purchasedAt: row.purchased_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1382,11 +1396,12 @@ export function createGroceryItem(data: InsertGroceryItem): GroceryItem {
     const quantity = data.quantity || "1";
     const category = data.category || "Other";
     const purchased = data.purchased ?? false;
+    const purchasedAt = purchased ? now : null;
     
     db.prepare(`
-      INSERT INTO grocery_items (id, name, quantity, category, added_by, purchased, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, data.name, quantity, category, data.addedBy, purchased ? 1 : 0, now, now);
+      INSERT INTO grocery_items (id, name, quantity, category, added_by, purchased, purchased_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.name, quantity, category, data.addedBy, purchased ? 1 : 0, purchasedAt, now, now);
     
     return {
       id,
@@ -1395,6 +1410,7 @@ export function createGroceryItem(data: InsertGroceryItem): GroceryItem {
       category,
       addedBy: data.addedBy,
       purchased,
+      purchasedAt,
       createdAt: now,
       updatedAt: now,
     };
@@ -1448,10 +1464,11 @@ export function toggleGroceryItemPurchased(id: string): GroceryItem | undefined 
     
     const now = getCurrentTimestamp();
     const newPurchased = !existing.purchased;
+    const purchasedAt = newPurchased ? now : null;
     
     db.prepare(`
-      UPDATE grocery_items SET purchased = ?, updated_at = ? WHERE id = ?
-    `).run(newPurchased ? 1 : 0, now, id);
+      UPDATE grocery_items SET purchased = ?, purchased_at = ?, updated_at = ? WHERE id = ?
+    `).run(newPurchased ? 1 : 0, purchasedAt, now, id);
     
     return getGroceryItem(id);
   });
@@ -1474,6 +1491,48 @@ export function clearPurchasedGroceryItems(): number {
 export function clearAllGroceryItems(): number {
   return wrapDbOperation("clearAllGroceryItems", () => {
     const result = db.prepare(`DELETE FROM grocery_items`).run();
+    return result.changes;
+  });
+}
+
+export function getGroceryAutoClearHours(): number {
+  return wrapDbOperation("getGroceryAutoClearHours", () => {
+    const row = db.prepare(`
+      SELECT value FROM preferences WHERE key = ?
+    `).get("grocery_auto_clear_hours") as { value: string } | undefined;
+    return row ? parseInt(row.value, 10) : 0;
+  });
+}
+
+export function setGroceryAutoClearHours(hours: number): void {
+  wrapDbOperation("setGroceryAutoClearHours", () => {
+    const now = getCurrentTimestamp();
+    const existing = db.prepare(`SELECT id FROM preferences WHERE key = ?`).get("grocery_auto_clear_hours");
+    
+    if (existing) {
+      db.prepare(`UPDATE preferences SET value = ?, updated_at = ? WHERE key = ?`).run(
+        hours.toString(),
+        now,
+        "grocery_auto_clear_hours"
+      );
+    } else {
+      db.prepare(`INSERT INTO preferences (id, key, value, updated_at) VALUES (?, ?, ?, ?)`).run(
+        uuidv4(),
+        "grocery_auto_clear_hours",
+        hours.toString(),
+        now
+      );
+    }
+  });
+}
+
+export function clearOldPurchasedGroceryItems(olderThanHours: number): number {
+  return wrapDbOperation("clearOldPurchasedGroceryItems", () => {
+    const cutoffTime = new Date(Date.now() - olderThanHours * 60 * 60 * 1000).toISOString();
+    const result = db.prepare(`
+      DELETE FROM grocery_items 
+      WHERE purchased = 1 AND purchased_at IS NOT NULL AND purchased_at < ?
+    `).run(cutoffTime);
     return result.changes;
   });
 }

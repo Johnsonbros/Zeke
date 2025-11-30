@@ -20,6 +20,8 @@ import {
   toggleGroceryItemPurchased,
   deleteGroceryItem,
   clearPurchasedGroceryItems,
+  getGroceryAutoClearHours,
+  setGroceryAutoClearHours,
   createTask,
   getAllTasks,
   getTask,
@@ -1100,6 +1102,32 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Clear purchased items error:", error);
       res.status(500).json({ message: "Failed to clear purchased items" });
+    }
+  });
+  
+  // Get grocery auto-clear settings
+  app.get("/api/grocery/settings", async (_req, res) => {
+    try {
+      const autoClearHours = getGroceryAutoClearHours();
+      res.json({ autoClearHours });
+    } catch (error: any) {
+      console.error("Get grocery settings error:", error);
+      res.status(500).json({ message: "Failed to get grocery settings" });
+    }
+  });
+  
+  // Update grocery auto-clear settings
+  app.post("/api/grocery/settings", async (req, res) => {
+    try {
+      const { autoClearHours } = req.body;
+      if (typeof autoClearHours !== "number" || autoClearHours < 0) {
+        return res.status(400).json({ message: "Invalid autoClearHours value" });
+      }
+      setGroceryAutoClearHours(autoClearHours);
+      res.json({ success: true, autoClearHours });
+    } catch (error: any) {
+      console.error("Update grocery settings error:", error);
+      res.status(500).json({ message: "Failed to update grocery settings" });
     }
   });
   
