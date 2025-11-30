@@ -618,6 +618,25 @@ function LocationWidget({
           </MapContainer>
         </div>
 
+        {currentLocation && (
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 border">
+            <div className="p-1.5 rounded-full bg-green-500/20">
+              <Navigation className="h-3.5 w-3.5 text-green-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium" data-testid="text-current-coords">
+                {parseFloat(currentLocation.latitude).toFixed(6)}, {parseFloat(currentLocation.longitude).toFixed(6)}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                {new Date(currentLocation.createdAt).toLocaleString()}
+              </p>
+            </div>
+            <div className={`text-[10px] font-medium ${locationStatus.color}`}>
+              {locationStatus.status}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-2 sm:gap-3">
           <div className="text-center p-2 sm:p-3 rounded-lg bg-muted/50">
             <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
