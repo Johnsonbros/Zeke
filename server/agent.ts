@@ -10,6 +10,11 @@ import {
   getContactByPhone,
   getOrCreateContactForPhone,
   getAllProfileSections,
+  getLatestLocation,
+  getStarredPlaces,
+  findNearbyPlaces,
+  checkGroceryProximity,
+  getLocationSettings,
 } from "./db";
 import { toolDefinitions, executeTool, getActiveReminders } from "./tools";
 import { 
@@ -359,6 +364,75 @@ If they ask for restricted information, politely decline and explain you cannot 
   return accessSection;
 }
 
+// Get location context for the agent
+function getLocationContext(): string {
+  try {
+    const settings = getLocationSettings();
+    if (!settings || !settings.trackingEnabled) {
+      return "";
+    }
+
+    const latestLocation = getLatestLocation();
+    const starredPlaces = getStarredPlaces();
+    
+    let context = "## Location Context\n";
+    
+    if (latestLocation) {
+      const lat = parseFloat(latestLocation.latitude);
+      const lng = parseFloat(latestLocation.longitude);
+      const timestamp = new Date(latestLocation.createdAt).toLocaleString("en-US", { timeZone: "America/New_York" });
+      
+      context += `### Current Location\n`;
+      context += `- Coordinates: ${lat.toFixed(4)}, ${lng.toFixed(4)}\n`;
+      context += `- Last updated: ${timestamp}\n\n`;
+      
+      const nearbyPlaces = findNearbyPlaces(lat, lng, 1000);
+      if (nearbyPlaces.length > 0) {
+        context += `### Nearby Saved Places (within 1km)\n`;
+        nearbyPlaces.slice(0, 5).forEach(place => {
+          const distanceStr = place.distance < 1000 
+            ? `${Math.round(place.distance)}m` 
+            : `${(place.distance / 1000).toFixed(1)}km`;
+          context += `- ${place.name} (${place.category}) - ${distanceStr} away`;
+          if (place.proximityAlertEnabled) {
+            context += ` [ALERT ENABLED]`;
+          }
+          context += `\n`;
+        });
+        context += "\n";
+      }
+      
+      const nearbyGroceryStores = checkGroceryProximity(lat, lng);
+      if (nearbyGroceryStores.length > 0) {
+        context += `### ALERT: Near Grocery Stores!\n`;
+        context += `User is near the following grocery-linked stores. Consider checking if they have grocery items to buy:\n`;
+        nearbyGroceryStores.forEach(({ place, list, distance }) => {
+          const distanceStr = distance < 1000 
+            ? `${Math.round(distance)}m` 
+            : `${(distance / 1000).toFixed(1)}km`;
+          context += `- ${place.name} (${list.name} list) - ${distanceStr} away\n`;
+        });
+        context += "\n";
+      }
+    }
+    
+    if (starredPlaces.length > 0) {
+      context += `### Starred Places\n`;
+      starredPlaces.slice(0, 5).forEach(place => {
+        context += `- ${place.name} (${place.category})`;
+        if (place.label) context += ` - "${place.label}"`;
+        context += `\n`;
+      });
+      context += "\n";
+    }
+    
+    return context;
+  } catch (error) {
+    console.error("Error getting location context:", error);
+    return "";
+  }
+}
+
 // Build the system prompt
 async function buildSystemPrompt(userMessage: string, userPhoneNumber?: string, permissions?: UserPermissions): Promise<string> {
   // Default to admin permissions for web (maintains current behavior)
@@ -367,6 +441,7 @@ async function buildSystemPrompt(userMessage: string, userPhoneNumber?: string, 
   // Only include personal context if user has access
   const profileContext = userPermissions.canAccessPersonalInfo ? loadProfileContext() : "";
   const memoryContext = userPermissions.canAccessPersonalInfo ? await getMemoryContext(userMessage) : "";
+  const locationContext = userPermissions.canAccessPersonalInfo ? getLocationContext() : "";
 
   const activeReminders = getActiveReminders();
   const reminderContext =
@@ -392,7 +467,7 @@ ${memoryContext}
 
 ${reminderContext}
 ${phoneContext}
-
+${locationContext}
 ## Your Tools
 You have access to the following tools. **USE THEM - DON'T DEFLECT:**
 
