@@ -521,20 +521,24 @@ function MapCenterController({ center }: { center: [number, number] }) {
 function LocationWidget({
   places,
   currentLocation,
+  browserLocation,
   isLoading,
 }: {
   places: SavedPlace[] | undefined;
   currentLocation: LocationHistory | undefined;
+  browserLocation: { lat: number; lng: number } | null;
   isLoading: boolean;
 }) {
   const starredPlaces = places?.filter(p => p.isStarred) || [];
   const recentPlaces = places?.slice(0, 5) || [];
   
-  const mapCenter: [number, number] = currentLocation 
-    ? [parseFloat(currentLocation.latitude), parseFloat(currentLocation.longitude)]
-    : places && places.length > 0 
-      ? [parseFloat(places[0].latitude), parseFloat(places[0].longitude)]
-      : [42.3601, -71.0589];
+  const mapCenter: [number, number] = browserLocation 
+    ? [browserLocation.lat, browserLocation.lng]
+    : currentLocation 
+      ? [parseFloat(currentLocation.latitude), parseFloat(currentLocation.longitude)]
+      : places && places.length > 0 
+        ? [parseFloat(places[0].latitude), parseFloat(places[0].longitude)]
+        : [42.3601, -71.0589];
 
   if (isLoading) {
     return (
@@ -584,9 +588,9 @@ function LocationWidget({
             <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
             <MapCenterController center={mapCenter} />
             
-            {currentLocation && (
+            {browserLocation && (
               <Marker
-                position={[parseFloat(currentLocation.latitude), parseFloat(currentLocation.longitude)]}
+                position={[browserLocation.lat, browserLocation.lng]}
                 icon={currentLocationIcon}
               />
             )}
@@ -622,7 +626,7 @@ function LocationWidget({
               <span className="text-[10px] sm:text-xs">Status</span>
             </div>
             <p className="text-[10px] sm:text-xs font-medium text-green-500" data-testid="stat-location-status">
-              {currentLocation ? "Active" : "Idle"}
+              {browserLocation ? "Live" : currentLocation ? "Stored" : "Idle"}
             </p>
           </div>
         </div>
@@ -929,6 +933,25 @@ function DashboardChatWidget() {
 }
 
 export default function DashboardPage() {
+  const [browserLocation, setBrowserLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setBrowserLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          });
+        },
+        (error) => {
+          console.log("Geolocation error:", error.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      );
+    }
+  }, []);
+
   const { data: tasks, isLoading: tasksLoading } = useQuery<Task[]>({
     queryKey: ["/api/tasks"],
   });
@@ -1182,6 +1205,7 @@ export default function DashboardPage() {
           <LocationWidget
             places={savedPlaces}
             currentLocation={currentLocation}
+            browserLocation={browserLocation}
             isLoading={isLocationLoading}
           />
           <FeatureCard
