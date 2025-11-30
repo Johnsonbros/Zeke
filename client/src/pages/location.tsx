@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { parse, isValid } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, CircleMarker, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
@@ -76,7 +78,7 @@ interface LocationHistory {
   speed?: string;
   heading?: string;
   source: string;
-  recordedAt: string;
+  createdAt: string;
 }
 
 interface SavedPlace {
@@ -907,6 +909,20 @@ export default function LocationPage() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
 
+  const searchString = useSearch();
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    const dateParam = params.get('date');
+    if (dateParam) {
+      const parsedDate = parse(dateParam, 'yyyy-MM-dd', new Date());
+      if (isValid(parsedDate)) {
+        setSelectedDate(parsedDate);
+        setShowHistory(true);
+      }
+    }
+  }, [searchString]);
+
   const { startDate, endDate } = useMemo(() => {
     if (selectedDate) {
       return {
@@ -1254,7 +1270,7 @@ export default function LocationPage() {
                     <div className="text-sm">
                       <div className="font-medium">Location Point</div>
                       <div className="text-muted-foreground text-xs mt-1">
-                        {format(new Date(location.recordedAt), "MMM d, yyyy 'at' h:mm a")}
+                        {format(new Date(location.createdAt), "MMM d, yyyy 'at' h:mm a")}
                       </div>
                       {location.accuracy && (
                         <div className="text-muted-foreground text-xs mt-0.5">

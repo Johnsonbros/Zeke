@@ -31,6 +31,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useLocation } from "wouter";
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -493,10 +494,17 @@ function DayColumn({
   isCurrentDay: boolean;
   onEventClick: (event: CalendarEvent) => void;
 }) {
+  const [, navigate] = useLocation();
   const dayEvents = events.filter((event) => {
     const eventStart = parseISO(event.start);
     return isSameDay(eventStart, date);
   });
+
+  const handleViewLocationHistory = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const dateStr = format(date, "yyyy-MM-dd");
+    navigate(`/location?date=${dateStr}`);
+  };
 
   return (
     <div className="flex-1 min-w-[100px] sm:min-w-[120px] md:min-w-[140px] flex flex-col border-r last:border-r-0">
@@ -505,8 +513,20 @@ function DayColumn({
           isCurrentDay ? "bg-primary/10" : ""
         }`}
       >
-        <div className="text-[10px] sm:text-xs text-muted-foreground uppercase">
-          {format(date, "EEE")}
+        <div className="flex items-center justify-center gap-1">
+          <div className="text-[10px] sm:text-xs text-muted-foreground uppercase">
+            {format(date, "EEE")}
+          </div>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-5 w-5 sm:h-6 sm:w-6"
+            onClick={handleViewLocationHistory}
+            title="View location history"
+            data-testid={`button-location-history-${format(date, "yyyy-MM-dd")}`}
+          >
+            <MapPin className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-muted-foreground" />
+          </Button>
         </div>
         <div
           className={`text-base sm:text-lg font-semibold ${
