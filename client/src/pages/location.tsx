@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, CircleMarker, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
+import { format, subHours, startOfDay, endOfDay } from "date-fns";
 import {
   MapPin,
   Star,
@@ -36,7 +39,8 @@ import {
   Pencil,
   Check,
   Search,
-  Loader2
+  Loader2,
+  CalendarDays
 } from "lucide-react";
 import {
   Sheet,
@@ -900,13 +904,38 @@ export default function LocationPage() {
   const [isLocating, setIsLocating] = useState(false);
   const [showAddressSearch, setShowAddressSearch] = useState(false);
   const [searchedAddress, setSearchedAddress] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+
+  const { startDate, endDate } = useMemo(() => {
+    if (selectedDate) {
+      return {
+        startDate: startOfDay(selectedDate).toISOString(),
+        endDate: endOfDay(selectedDate).toISOString()
+      };
+    }
+    const now = new Date();
+    return {
+      startDate: subHours(now, 24).toISOString(),
+      endDate: now.toISOString()
+    };
+  }, [selectedDate]);
 
   const { data: places, isLoading: placesLoading } = useQuery<SavedPlace[]>({
     queryKey: ["/api/location/places"],
   });
 
   const { data: locationHistory } = useQuery<LocationHistory[]>({
-    queryKey: ["/api/location/history"],
+    queryKey: ["/api/location/history", startDate, endDate],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        startDate,
+        endDate
+      });
+      const response = await fetch(`/api/location/history?${params}`);
+      if (!response.ok) throw new Error("Failed to fetch location history");
+      return response.json();
+    },
     enabled: showHistory,
   });
 
@@ -1105,6 +1134,48 @@ export default function LocationPage() {
           >
             {showHistory ? <EyeOff className="h-4 w-4" /> : <History className="h-4 w-4" />}
           </Button>
+          {showHistory && (
+            <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+              <PopoverTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  className="gap-2 text-xs sm:text-sm"
+                  data-testid="button-date-picker"
+                >
+                  <CalendarDays className="h-4 w-4" />
+                  <span className="hidden sm:inline">
+                    {selectedDate ? format(selectedDate, "MMM d, yyyy") : "Last 24 hours"}
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <div className="p-3 border-b border-border">
+                  <Button
+                    variant={selectedDate === null ? "default" : "ghost"}
+                    size="sm"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      setSelectedDate(null);
+                      setDatePickerOpen(false);
+                    }}
+                    data-testid="button-last-24-hours"
+                  >
+                    Last 24 hours
+                  </Button>
+                </div>
+                <Calendar
+                  mode="single"
+                  selected={selectedDate ?? undefined}
+                  onSelect={(date) => {
+                    setSelectedDate(date ?? null);
+                    setDatePickerOpen(false);
+                  }}
+                  disabled={(date) => date > new Date()}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+          )}
           <Button
             size="icon"
             variant="outline"
@@ -1161,6 +1232,43 @@ export default function LocationPage() {
                 dashArray="5, 10"
               />
             )}
+
+            {showHistory && locationHistory?.map((location, index) => {
+              const totalPoints = locationHistory.length;
+              const normalizedIndex = index / Math.max(totalPoints - 1, 1);
+              const opacity = 0.3 + (normalizedIndex * 0.7);
+              const radius = 4 + (normalizedIndex * 4);
+              
+              return (
+                <CircleMarker
+                  key={location.id}
+                  center={[parseFloat(location.latitude), parseFloat(location.longitude)]}
+                  radius={radius}
+                  fillColor="#3b82f6"
+                  fillOpacity={opacity}
+                  color="#1d4ed8"
+                  weight={1}
+                  opacity={opacity}
+                >
+                  <Popup>
+                    <div className="text-sm">
+                      <div className="font-medium">Location Point</div>
+                      <div className="text-muted-foreground text-xs mt-1">
+                        {format(new Date(location.recordedAt), "MMM d, yyyy 'at' h:mm a")}
+                      </div>
+                      {location.accuracy && (
+                        <div className="text-muted-foreground text-xs mt-0.5">
+                          Accuracy: {parseFloat(location.accuracy).toFixed(0)}m
+                        </div>
+                      )}
+                      <div className="text-muted-foreground text-xs mt-0.5">
+                        Source: {location.source}
+                      </div>
+                    </div>
+                  </Popup>
+                </CircleMarker>
+              );
+            })}
 
             {places?.map((place) => (
               <Marker
