@@ -22,6 +22,7 @@ import {
   List,
   X,
   ChevronRight,
+  ChevronLeft,
   Home,
   Briefcase,
   ShoppingCart,
@@ -31,7 +32,9 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
-  History
+  History,
+  Pencil,
+  Check
 } from "lucide-react";
 import {
   Sheet,
@@ -601,6 +604,120 @@ function SettingsSheet({
   );
 }
 
+function CreateListDialog({
+  open,
+  onOpenChange,
+  onSave,
+  isPending
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (data: { name: string; description?: string; linkedToGrocery: boolean }) => void;
+  isPending: boolean;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [linkedToGrocery, setLinkedToGrocery] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setName("");
+      setDescription("");
+      setLinkedToGrocery(false);
+    }
+  }, [open]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    
+    onSave({
+      name: name.trim(),
+      description: description.trim() || undefined,
+      linkedToGrocery
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" data-testid="dialog-create-list">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <List className="h-5 w-5 text-primary" />
+            Create Place List
+          </DialogTitle>
+        </DialogHeader>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="list-name">Name *</Label>
+            <Input
+              id="list-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g., Grocery Stores, Coffee Shops"
+              disabled={isPending}
+              data-testid="input-list-name"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="list-description">Description</Label>
+            <Textarea
+              id="list-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optional description for this list..."
+              className="resize-none"
+              rows={2}
+              disabled={isPending}
+              data-testid="input-list-description"
+            />
+          </div>
+
+          <div className="flex items-center justify-between py-2 border-t">
+            <div className="flex items-center gap-2">
+              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <Label htmlFor="linked-grocery" className="text-sm cursor-pointer">Link to grocery</Label>
+                <p className="text-xs text-muted-foreground">
+                  Alert when near these stores if groceries are due
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="linked-grocery"
+              checked={linkedToGrocery}
+              onCheckedChange={setLinkedToGrocery}
+              disabled={isPending}
+              data-testid="switch-linked-grocery"
+            />
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isPending}
+              data-testid="button-cancel-list"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isPending || !name.trim()}
+              data-testid="button-save-list"
+            >
+              {isPending ? "Creating..." : "Create List"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function LocationPage() {
   const { toast } = useToast();
   const [mapCenter, setMapCenter] = useState<[number, number]>([42.3601, -71.0589]);
@@ -608,6 +725,7 @@ export default function LocationPage() {
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isAddingPlace, setIsAddingPlace] = useState(false);
+  const [isCreatingList, setIsCreatingList] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedTab, setSelectedTab] = useState("places");
   const [isLocating, setIsLocating] = useState(false);
@@ -689,6 +807,34 @@ export default function LocationPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/location/history"] });
+    },
+  });
+
+  const createListMutation = useMutation({
+    mutationFn: async (data: { name: string; description?: string; linkedToGrocery: boolean }) => {
+      const response = await apiRequest("POST", "/api/location/lists", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/location/lists"] });
+      setIsCreatingList(false);
+      toast({ title: "List created", description: "New place list has been created" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to create list", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteListMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/location/lists/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/location/lists"] });
+      toast({ title: "List removed" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to remove list", description: error.message, variant: "destructive" });
     },
   });
 
@@ -956,9 +1102,19 @@ export default function LocationPage() {
               </ScrollArea>
             </TabsContent>
 
-            <TabsContent value="lists" className="flex-1 m-0 overflow-hidden">
-              <ScrollArea className="h-full">
-                <div className="p-4 space-y-4">
+            <TabsContent value="lists" className="flex-1 m-0 overflow-hidden flex flex-col">
+              <div className="p-4 pb-2 shrink-0">
+                <Button
+                  onClick={() => setIsCreatingList(true)}
+                  className="w-full gap-2"
+                  data-testid="button-create-list"
+                >
+                  <Plus className="h-4 w-4" />
+                  Create New List
+                </Button>
+              </div>
+              <ScrollArea className="flex-1">
+                <div className="p-4 pt-2 space-y-4">
                   {listsLoading ? (
                     <div className="space-y-3">
                       {[1, 2, 3].map((i) => (
@@ -978,7 +1134,7 @@ export default function LocationPage() {
                       {lists?.map((list) => (
                         <div
                           key={list.id}
-                          className="flex items-center gap-3 p-3 rounded-lg border border-border hover-elevate cursor-pointer"
+                          className="group flex items-center gap-3 p-3 rounded-lg border border-border hover-elevate cursor-pointer"
                           data-testid={`list-card-${list.id}`}
                         >
                           <div className="shrink-0 w-10 h-10 rounded-lg bg-accent flex items-center justify-center">
@@ -997,6 +1153,18 @@ export default function LocationPage() {
                             {list.description && (
                               <p className="text-xs text-muted-foreground truncate">{list.description}</p>
                             )}
+                          </div>
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => deleteListMutation.mutate(list.id)}
+                              disabled={deleteListMutation.isPending}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity"
+                              data-testid={`button-delete-list-${list.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            </Button>
                           </div>
                           <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         </div>
@@ -1019,6 +1187,13 @@ export default function LocationPage() {
         initialLocation={selectedLocation}
         onSave={(data) => addPlaceMutation.mutate(data)}
         isPending={addPlaceMutation.isPending}
+      />
+
+      <CreateListDialog
+        open={isCreatingList}
+        onOpenChange={setIsCreatingList}
+        onSave={(data) => createListMutation.mutate(data)}
+        isPending={createListMutation.isPending}
       />
     </div>
   );
