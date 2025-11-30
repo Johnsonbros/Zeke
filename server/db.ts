@@ -465,6 +465,61 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_proximity_alerts_acknowledged ON proximity_alerts(acknowledged);
 `);
 
+// Create wake_word_commands table for ZEKE context agent
+db.exec(`
+  CREATE TABLE IF NOT EXISTS wake_word_commands (
+    id TEXT PRIMARY KEY,
+    lifelog_id TEXT NOT NULL,
+    lifelog_title TEXT NOT NULL,
+    wake_word TEXT NOT NULL,
+    raw_command TEXT NOT NULL,
+    speaker_name TEXT,
+    timestamp TEXT NOT NULL,
+    context TEXT,
+    action_type TEXT,
+    action_details TEXT,
+    target_contact_id TEXT,
+    status TEXT NOT NULL DEFAULT 'detected',
+    execution_result TEXT,
+    confidence TEXT,
+    created_at TEXT NOT NULL,
+    executed_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_wake_word_commands_lifelog ON wake_word_commands(lifelog_id);
+  CREATE INDEX IF NOT EXISTS idx_wake_word_commands_status ON wake_word_commands(status);
+  CREATE INDEX IF NOT EXISTS idx_wake_word_commands_created ON wake_word_commands(created_at);
+`);
+
+// Create context_agent_settings table for ZEKE context agent configuration
+db.exec(`
+  CREATE TABLE IF NOT EXISTS context_agent_settings (
+    id TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    scan_interval_minutes INTEGER NOT NULL DEFAULT 5,
+    lookback_hours INTEGER NOT NULL DEFAULT 4,
+    auto_execute INTEGER NOT NULL DEFAULT 1,
+    require_approval_for_sms INTEGER NOT NULL DEFAULT 0,
+    notify_on_execution INTEGER NOT NULL DEFAULT 1,
+    last_scan_at TEXT,
+    updated_at TEXT NOT NULL
+  );
+`);
+
+// Initialize default context agent settings if not exists
+try {
+  const existingAgentSettings = db.prepare(`SELECT id FROM context_agent_settings LIMIT 1`).get();
+  if (!existingAgentSettings) {
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO context_agent_settings (id, enabled, scan_interval_minutes, lookback_hours, auto_execute, require_approval_for_sms, notify_on_execution, updated_at)
+      VALUES (?, 1, 5, 4, 1, 0, 1, ?)
+    `).run(uuidv4(), now);
+    console.log("Initialized default context agent settings");
+  }
+} catch (e) {
+  console.error("Error initializing context agent settings:", e);
+}
+
 // Initialize default location settings if not exists
 try {
   const existingSettings = db.prepare(`SELECT id FROM location_settings LIMIT 1`).get();
@@ -3170,6 +3225,306 @@ export function checkGroceryProximity(lat: number, lon: number): Array<{ place: 
     }
     
     return nearbyGroceryPlaces.sort((a, b) => a.distance - b.distance);
+  });
+}
+
+// ============================================
+// ZEKE WAKE WORD CONTEXT AGENT DATABASE FUNCTIONS
+// ============================================
+
+import type {
+  WakeWordCommand,
+  InsertWakeWordCommand,
+  WakeWordCommandStatus,
+  WakeWordActionType,
+  ContextAgentSettings,
+} from "@shared/schema";
+
+interface WakeWordCommandRow {
+  id: string;
+  lifelog_id: string;
+  lifelog_title: string;
+  wake_word: string;
+  raw_command: string;
+  speaker_name: string | null;
+  timestamp: string;
+  context: string | null;
+  action_type: string | null;
+  action_details: string | null;
+  target_contact_id: string | null;
+  status: string;
+  execution_result: string | null;
+  confidence: string | null;
+  created_at: string;
+  executed_at: string | null;
+}
+
+interface ContextAgentSettingsRow {
+  id: string;
+  enabled: number;
+  scan_interval_minutes: number;
+  lookback_hours: number;
+  auto_execute: number;
+  require_approval_for_sms: number;
+  notify_on_execution: number;
+  last_scan_at: string | null;
+  updated_at: string;
+}
+
+function mapWakeWordCommand(row: WakeWordCommandRow): WakeWordCommand {
+  return {
+    id: row.id,
+    lifelogId: row.lifelog_id,
+    lifelogTitle: row.lifelog_title,
+    wakeWord: row.wake_word,
+    rawCommand: row.raw_command,
+    speakerName: row.speaker_name,
+    timestamp: row.timestamp,
+    context: row.context,
+    actionType: row.action_type as WakeWordActionType | null,
+    actionDetails: row.action_details,
+    targetContactId: row.target_contact_id,
+    status: row.status as WakeWordCommandStatus,
+    executionResult: row.execution_result,
+    confidence: row.confidence,
+    createdAt: row.created_at,
+    executedAt: row.executed_at,
+  };
+}
+
+function mapContextAgentSettings(row: ContextAgentSettingsRow): ContextAgentSettings {
+  return {
+    id: row.id,
+    enabled: Boolean(row.enabled),
+    scanIntervalMinutes: row.scan_interval_minutes,
+    lookbackHours: row.lookback_hours,
+    autoExecute: Boolean(row.auto_execute),
+    requireApprovalForSms: Boolean(row.require_approval_for_sms),
+    notifyOnExecution: Boolean(row.notify_on_execution),
+    lastScanAt: row.last_scan_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// Wake Word Commands CRUD
+
+export function createWakeWordCommand(data: InsertWakeWordCommand): WakeWordCommand {
+  return wrapDbOperation("createWakeWordCommand", () => {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    
+    db.prepare(`
+      INSERT INTO wake_word_commands (
+        id, lifelog_id, lifelog_title, wake_word, raw_command, speaker_name,
+        timestamp, context, action_type, action_details, target_contact_id,
+        status, execution_result, confidence, created_at, executed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.lifelogId,
+      data.lifelogTitle,
+      data.wakeWord,
+      data.rawCommand,
+      data.speakerName || null,
+      data.timestamp,
+      data.context || null,
+      data.actionType || null,
+      data.actionDetails || null,
+      data.targetContactId || null,
+      data.status || "detected",
+      data.executionResult || null,
+      data.confidence || null,
+      now,
+      null
+    );
+    
+    return {
+      id,
+      lifelogId: data.lifelogId,
+      lifelogTitle: data.lifelogTitle,
+      wakeWord: data.wakeWord,
+      rawCommand: data.rawCommand,
+      speakerName: data.speakerName || null,
+      timestamp: data.timestamp,
+      context: data.context || null,
+      actionType: data.actionType || null,
+      actionDetails: data.actionDetails || null,
+      targetContactId: data.targetContactId || null,
+      status: (data.status || "detected") as WakeWordCommandStatus,
+      executionResult: data.executionResult || null,
+      confidence: data.confidence || null,
+      createdAt: now,
+      executedAt: null,
+    };
+  });
+}
+
+export function getWakeWordCommand(id: string): WakeWordCommand | null {
+  return wrapDbOperation("getWakeWordCommand", () => {
+    const row = db.prepare(`SELECT * FROM wake_word_commands WHERE id = ?`).get(id) as WakeWordCommandRow | undefined;
+    return row ? mapWakeWordCommand(row) : null;
+  });
+}
+
+export function getWakeWordCommandsByLifelog(lifelogId: string): WakeWordCommand[] {
+  return wrapDbOperation("getWakeWordCommandsByLifelog", () => {
+    const rows = db.prepare(`
+      SELECT * FROM wake_word_commands WHERE lifelog_id = ? ORDER BY created_at DESC
+    `).all(lifelogId) as WakeWordCommandRow[];
+    return rows.map(mapWakeWordCommand);
+  });
+}
+
+export function getWakeWordCommandsByStatus(status: WakeWordCommandStatus): WakeWordCommand[] {
+  return wrapDbOperation("getWakeWordCommandsByStatus", () => {
+    const rows = db.prepare(`
+      SELECT * FROM wake_word_commands WHERE status = ? ORDER BY created_at DESC
+    `).all(status) as WakeWordCommandRow[];
+    return rows.map(mapWakeWordCommand);
+  });
+}
+
+export function getRecentWakeWordCommands(limit: number = 50): WakeWordCommand[] {
+  return wrapDbOperation("getRecentWakeWordCommands", () => {
+    const rows = db.prepare(`
+      SELECT * FROM wake_word_commands ORDER BY created_at DESC LIMIT ?
+    `).all(limit) as WakeWordCommandRow[];
+    return rows.map(mapWakeWordCommand);
+  });
+}
+
+export function getPendingWakeWordCommands(): WakeWordCommand[] {
+  return wrapDbOperation("getPendingWakeWordCommands", () => {
+    const rows = db.prepare(`
+      SELECT * FROM wake_word_commands 
+      WHERE status IN ('detected', 'parsed', 'pending_approval')
+      ORDER BY created_at ASC
+    `).all() as WakeWordCommandRow[];
+    return rows.map(mapWakeWordCommand);
+  });
+}
+
+export function updateWakeWordCommandStatus(
+  id: string,
+  status: WakeWordCommandStatus,
+  executionResult?: string
+): boolean {
+  return wrapDbOperation("updateWakeWordCommandStatus", () => {
+    const now = new Date().toISOString();
+    const executedAt = status === "completed" || status === "failed" ? now : null;
+    
+    const result = db.prepare(`
+      UPDATE wake_word_commands 
+      SET status = ?, execution_result = COALESCE(?, execution_result), executed_at = COALESCE(?, executed_at)
+      WHERE id = ?
+    `).run(status, executionResult || null, executedAt, id);
+    
+    return result.changes > 0;
+  });
+}
+
+export function updateWakeWordCommandAction(
+  id: string,
+  actionType: WakeWordActionType,
+  actionDetails: string,
+  targetContactId?: string,
+  confidence?: number
+): boolean {
+  return wrapDbOperation("updateWakeWordCommandAction", () => {
+    const result = db.prepare(`
+      UPDATE wake_word_commands 
+      SET action_type = ?, action_details = ?, target_contact_id = ?, confidence = ?, status = 'parsed'
+      WHERE id = ?
+    `).run(actionType, actionDetails, targetContactId || null, confidence?.toString() || null, id);
+    
+    return result.changes > 0;
+  });
+}
+
+export function wakeWordCommandExists(lifelogId: string, rawCommand: string): boolean {
+  return wrapDbOperation("wakeWordCommandExists", () => {
+    const row = db.prepare(`
+      SELECT id FROM wake_word_commands 
+      WHERE lifelog_id = ? AND LOWER(raw_command) = LOWER(?)
+      LIMIT 1
+    `).get(lifelogId, rawCommand);
+    return !!row;
+  });
+}
+
+export function deleteWakeWordCommand(id: string): boolean {
+  return wrapDbOperation("deleteWakeWordCommand", () => {
+    const result = db.prepare(`DELETE FROM wake_word_commands WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// Context Agent Settings
+
+export function getContextAgentSettings(): ContextAgentSettings | null {
+  return wrapDbOperation("getContextAgentSettings", () => {
+    const row = db.prepare(`SELECT * FROM context_agent_settings LIMIT 1`).get() as ContextAgentSettingsRow | undefined;
+    return row ? mapContextAgentSettings(row) : null;
+  });
+}
+
+export function updateContextAgentSettings(data: Partial<ContextAgentSettings>): ContextAgentSettings | null {
+  return wrapDbOperation("updateContextAgentSettings", () => {
+    const now = new Date().toISOString();
+    const current = getContextAgentSettings();
+    
+    if (!current) {
+      return null;
+    }
+    
+    const updates: string[] = [];
+    const values: unknown[] = [];
+    
+    if (data.enabled !== undefined) {
+      updates.push("enabled = ?");
+      values.push(data.enabled ? 1 : 0);
+    }
+    if (data.scanIntervalMinutes !== undefined) {
+      updates.push("scan_interval_minutes = ?");
+      values.push(data.scanIntervalMinutes);
+    }
+    if (data.lookbackHours !== undefined) {
+      updates.push("lookback_hours = ?");
+      values.push(data.lookbackHours);
+    }
+    if (data.autoExecute !== undefined) {
+      updates.push("auto_execute = ?");
+      values.push(data.autoExecute ? 1 : 0);
+    }
+    if (data.requireApprovalForSms !== undefined) {
+      updates.push("require_approval_for_sms = ?");
+      values.push(data.requireApprovalForSms ? 1 : 0);
+    }
+    if (data.notifyOnExecution !== undefined) {
+      updates.push("notify_on_execution = ?");
+      values.push(data.notifyOnExecution ? 1 : 0);
+    }
+    if (data.lastScanAt !== undefined) {
+      updates.push("last_scan_at = ?");
+      values.push(data.lastScanAt);
+    }
+    
+    updates.push("updated_at = ?");
+    values.push(now);
+    values.push(current.id);
+    
+    db.prepare(`
+      UPDATE context_agent_settings SET ${updates.join(", ")} WHERE id = ?
+    `).run(...values);
+    
+    return getContextAgentSettings();
+  });
+}
+
+export function updateLastScanTime(): void {
+  wrapDbOperation("updateLastScanTime", () => {
+    const now = new Date().toISOString();
+    db.prepare(`UPDATE context_agent_settings SET last_scan_at = ?, updated_at = ?`).run(now, now);
   });
 }
 

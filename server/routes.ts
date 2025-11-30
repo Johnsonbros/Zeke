@@ -124,6 +124,23 @@ import {
 import { setDailyCheckInSmsCallback, initializeDailyCheckIn } from "./dailyCheckIn";
 import { startPeopleProcessor } from "./peopleProcessor";
 import { 
+  startContextAgent, 
+  stopContextAgent, 
+  setContextAgentSmsCallback, 
+  getContextAgentStatus,
+  toggleContextAgent,
+  processContextCommands,
+  approveAndExecuteCommand
+} from "./zekeContextAgent";
+import {
+  getRecentWakeWordCommands,
+  getPendingWakeWordCommands,
+  getContextAgentSettings,
+  updateContextAgentSettings,
+  updateWakeWordCommandStatus,
+  deleteWakeWordCommand
+} from "./db";
+import { 
   initializeAutomations, 
   setAutomationSmsCallback, 
   scheduleAutomation, 
@@ -376,6 +393,51 @@ export async function registerRoutes(
   
   // Start background people extraction from lifelogs
   startPeopleProcessor();
+  
+  // Start ZEKE Context Agent for wake word detection
+  setContextAgentSmsCallback(async (phone: string, message: string, source?: string) => {
+    if (!twilioClient) {
+      console.log("[ContextAgent] Twilio not configured, cannot send SMS");
+      throw new Error("Twilio not configured");
+    }
+    
+    const formattedPhone = phone.startsWith('+') ? phone : `+1${phone}`;
+    
+    try {
+      const result = await twilioClient.messages.create({
+        body: message,
+        from: twilioFromNumber,
+        to: formattedPhone,
+      });
+      
+      logTwilioMessage({
+        direction: "outbound",
+        source: (source || "context_agent") as TwilioMessageSource,
+        fromNumber: twilioFromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        twilioSid: result.sid,
+        status: "sent",
+      });
+      
+      console.log(`[ContextAgent] SMS sent to ${formattedPhone}`);
+    } catch (error: any) {
+      logTwilioMessage({
+        direction: "outbound",
+        source: (source || "context_agent") as TwilioMessageSource,
+        fromNumber: twilioFromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        status: "failed",
+        errorCode: error.code?.toString() || "UNKNOWN",
+        errorMessage: error.message || "Unknown error",
+      });
+      
+      console.error("[ContextAgent] Failed to send SMS:", error);
+      throw error;
+    }
+  });
+  startContextAgent();
   
   // Health check endpoint for Python agents bridge
   app.get("/api/health", (_req, res) => {
@@ -2676,6 +2738,127 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("[Overland] Status check error:", error);
       res.status(500).json({ error: error.message || "Failed to check status" });
+    }
+  });
+
+  // === ZEKE Context Agent Routes ===
+  
+  // GET /api/context-agent/status - Get current context agent status
+  app.get("/api/context-agent/status", (req, res) => {
+    try {
+      const status = getContextAgentStatus();
+      res.json(status);
+    } catch (error: any) {
+      console.error("Get context agent status error:", error);
+      res.status(500).json({ error: error.message || "Failed to get status" });
+    }
+  });
+
+  // GET /api/context-agent/settings - Get context agent settings
+  app.get("/api/context-agent/settings", (req, res) => {
+    try {
+      const settings = getContextAgentSettings();
+      res.json(settings);
+    } catch (error: any) {
+      console.error("Get context agent settings error:", error);
+      res.status(500).json({ error: error.message || "Failed to get settings" });
+    }
+  });
+
+  // PATCH /api/context-agent/settings - Update context agent settings
+  app.patch("/api/context-agent/settings", (req, res) => {
+    try {
+      const settings = updateContextAgentSettings(req.body);
+      
+      // Restart the agent if enabled status changed
+      if (req.body.enabled !== undefined) {
+        toggleContextAgent(req.body.enabled);
+      }
+      
+      res.json(settings);
+    } catch (error: any) {
+      console.error("Update context agent settings error:", error);
+      res.status(500).json({ error: error.message || "Failed to update settings" });
+    }
+  });
+
+  // POST /api/context-agent/toggle - Toggle context agent on/off
+  app.post("/api/context-agent/toggle", (req, res) => {
+    try {
+      const { enabled } = req.body;
+      const settings = toggleContextAgent(enabled);
+      res.json({ success: true, settings });
+    } catch (error: any) {
+      console.error("Toggle context agent error:", error);
+      res.status(500).json({ error: error.message || "Failed to toggle agent" });
+    }
+  });
+
+  // POST /api/context-agent/scan - Trigger a manual scan
+  app.post("/api/context-agent/scan", async (req, res) => {
+    try {
+      const { hours } = req.body;
+      const result = await processContextCommands(hours);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Manual scan error:", error);
+      res.status(500).json({ error: error.message || "Failed to run scan" });
+    }
+  });
+
+  // GET /api/context-agent/commands - Get recent wake word commands
+  app.get("/api/context-agent/commands", (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const commands = getRecentWakeWordCommands(limit);
+      res.json(commands);
+    } catch (error: any) {
+      console.error("Get commands error:", error);
+      res.status(500).json({ error: error.message || "Failed to get commands" });
+    }
+  });
+
+  // GET /api/context-agent/commands/pending - Get pending commands
+  app.get("/api/context-agent/commands/pending", (req, res) => {
+    try {
+      const commands = getPendingWakeWordCommands();
+      res.json(commands);
+    } catch (error: any) {
+      console.error("Get pending commands error:", error);
+      res.status(500).json({ error: error.message || "Failed to get pending commands" });
+    }
+  });
+
+  // POST /api/context-agent/commands/:id/approve - Approve and execute a pending command
+  app.post("/api/context-agent/commands/:id/approve", async (req, res) => {
+    try {
+      const result = await approveAndExecuteCommand(req.params.id);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Approve command error:", error);
+      res.status(500).json({ error: error.message || "Failed to approve command" });
+    }
+  });
+
+  // POST /api/context-agent/commands/:id/reject - Reject a pending command
+  app.post("/api/context-agent/commands/:id/reject", (req, res) => {
+    try {
+      const success = updateWakeWordCommandStatus(req.params.id, "skipped", "Manually rejected");
+      res.json({ success });
+    } catch (error: any) {
+      console.error("Reject command error:", error);
+      res.status(500).json({ error: error.message || "Failed to reject command" });
+    }
+  });
+
+  // DELETE /api/context-agent/commands/:id - Delete a command
+  app.delete("/api/context-agent/commands/:id", (req, res) => {
+    try {
+      const success = deleteWakeWordCommand(req.params.id);
+      res.json({ success });
+    } catch (error: any) {
+      console.error("Delete command error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete command" });
     }
   });
   

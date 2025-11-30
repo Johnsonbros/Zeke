@@ -685,3 +685,82 @@ export type ProximityAlert = typeof proximityAlerts.$inferSelect;
 // Grocery item priority levels for smart reminders
 export const groceryPriorities = ["low", "medium", "high", "urgent"] as const;
 export type GroceryPriority = typeof groceryPriorities[number];
+
+// ============================================
+// ZEKE WAKE WORD CONTEXT AGENT
+// ============================================
+
+// Action types for wake word commands
+export const wakeWordActionTypes = [
+  "send_message",
+  "set_reminder", 
+  "add_task",
+  "add_grocery_item",
+  "schedule_event",
+  "search_info",
+  "unknown"
+] as const;
+export type WakeWordActionType = typeof wakeWordActionTypes[number];
+
+// Execution status for wake word commands
+export const wakeWordCommandStatuses = [
+  "detected",      // Command detected, not yet parsed
+  "parsed",        // Command parsed, ready for execution
+  "executing",     // Currently executing
+  "completed",     // Successfully executed
+  "failed",        // Execution failed
+  "skipped",       // Skipped (duplicate, invalid, etc.)
+  "pending_approval" // Waiting for user approval (for sensitive actions)
+] as const;
+export type WakeWordCommandStatus = typeof wakeWordCommandStatuses[number];
+
+// Wake word commands table for tracking detected and processed commands
+export const wakeWordCommands = sqliteTable("wake_word_commands", {
+  id: text("id").primaryKey(),
+  lifelogId: text("lifelog_id").notNull(),
+  lifelogTitle: text("lifelog_title").notNull(),
+  wakeWord: text("wake_word").notNull(),
+  rawCommand: text("raw_command").notNull(),
+  speakerName: text("speaker_name"),
+  timestamp: text("timestamp").notNull(),
+  context: text("context"),
+  actionType: text("action_type", { enum: wakeWordActionTypes }),
+  actionDetails: text("action_details"),
+  targetContactId: text("target_contact_id"),
+  status: text("status", { enum: wakeWordCommandStatuses }).notNull().default("detected"),
+  executionResult: text("execution_result"),
+  confidence: text("confidence"),
+  createdAt: text("created_at").notNull(),
+  executedAt: text("executed_at"),
+});
+
+export const insertWakeWordCommandSchema = createInsertSchema(wakeWordCommands).omit({
+  id: true,
+  createdAt: true,
+  executedAt: true,
+});
+
+export type InsertWakeWordCommand = z.infer<typeof insertWakeWordCommandSchema>;
+export type WakeWordCommand = typeof wakeWordCommands.$inferSelect;
+
+// Settings for the wake word context agent
+export const contextAgentSettings = sqliteTable("context_agent_settings", {
+  id: text("id").primaryKey(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  scanIntervalMinutes: integer("scan_interval_minutes").notNull().default(5),
+  lookbackHours: integer("lookback_hours").notNull().default(4),
+  autoExecute: integer("auto_execute", { mode: "boolean" }).notNull().default(true),
+  requireApprovalForSms: integer("require_approval_for_sms", { mode: "boolean" }).notNull().default(false),
+  notifyOnExecution: integer("notify_on_execution", { mode: "boolean" }).notNull().default(true),
+  lastScanAt: text("last_scan_at"),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertContextAgentSettingsSchema = createInsertSchema(contextAgentSettings).omit({
+  id: true,
+  lastScanAt: true,
+  updatedAt: true,
+});
+
+export type InsertContextAgentSettings = z.infer<typeof insertContextAgentSettingsSchema>;
+export type ContextAgentSettings = typeof contextAgentSettings.$inferSelect;

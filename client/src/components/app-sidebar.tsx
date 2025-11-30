@@ -41,6 +41,7 @@ import {
   Settings,
   User,
   MapPin,
+  Bot,
 } from "lucide-react";
 import type { Conversation } from "@shared/schema";
 import { format } from "date-fns";
@@ -104,6 +105,12 @@ const mainNavItems = [
     icon: Phone,
     href: "/sms-log",
     description: "View all SMS activity",
+  },
+  {
+    title: "Context Agent",
+    icon: Bot,
+    href: "/context-agent",
+    description: "Wake word detection",
   },
 ];
 
