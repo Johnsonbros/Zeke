@@ -77,8 +77,13 @@ The original single-agent implementation in `server/agent.ts` (`chat()` function
   - **Place Lists**: Group saved places into lists (e.g., "All Grocery Stores") with optional grocery list linking for smart shopping reminders.
   - **Proximity Detection**: `checkGroceryProximity` function detects when user is near grocery-linked stores. ZEKE's context includes nearby store alerts so it can remind about grocery items.
   - **Agent Location Context**: `getLocationContext()` in agent.ts provides ZEKE with current position, nearby places, and grocery proximity alerts for contextually-aware suggestions.
-  - **Location Tools**: 8 AI tools for ZEKE: `get_nearby_places`, `get_starred_places`, `get_all_saved_places`, `save_location_as_place`, `get_place_lists`, `check_nearby_grocery_stores`, `get_user_location`, `get_recent_location_history`.
-  - **Database Tables**: `location_history` (GPS tracking), `saved_places` (starred locations), `place_lists` (groupings with grocery linking), `place_list_items` (junction table), `location_settings` (user preferences).
+  - **Location Tools**: 17 AI tools for ZEKE organized by capability:
+    - *Query*: `get_nearby_places`, `get_starred_places`, `get_all_saved_places`, `get_place_lists`, `check_nearby_grocery_stores`, `get_user_location`, `get_recent_location_history`
+    - *Create*: `save_location_as_place`, `create_place_list`
+    - *Manage*: `update_place` (label, star, categorize, add notes), `delete_place`, `add_place_to_list`, `remove_place_from_list`
+    - *Link*: `link_task_to_location`, `link_reminder_to_location`, `link_memory_to_location`, `get_items_at_location`
+  - **Automated Location Management**: ZEKE can autonomously label, star, categorize places, create lists, add notes, and tie reminders/tasks/memories to locations. This enables proactive location-aware assistance based on Nate's patterns and preferences.
+  - **Database Tables**: `location_history` (GPS tracking), `saved_places` (starred locations with place_id linking), `place_lists` (groupings with grocery linking), `place_list_items` (junction table), `location_settings` (user preferences). Tasks, reminders, and memory_notes tables include `place_id` for location linking.
 
 ### Feature Specifications
 - **Communication & Reminders**: Send SMS, configure/manage daily check-ins, set/list/cancel reminders.
