@@ -10,6 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import {
   MessageSquare,
   ListTodo,
@@ -31,6 +34,13 @@ import {
   Inbox,
   MessagesSquare,
   Maximize2,
+  Navigation,
+  Star,
+  Home,
+  Briefcase,
+  Coffee,
+  Heart,
+  MapPinned,
 } from "lucide-react";
 import type { Task, GroceryItem, MemoryNote, Conversation, Message, ChatResponse } from "@shared/schema";
 import { format, isPast, isToday, parseISO, isWithinInterval, startOfDay, endOfDay } from "date-fns";
@@ -59,6 +69,30 @@ interface SmsConversation {
   lastMessage?: string;
   lastMessageTime?: string;
   messageCount: number;
+}
+
+interface SavedPlace {
+  id: string;
+  name: string;
+  latitude: string;
+  longitude: string;
+  label?: string;
+  address?: string;
+  category: string;
+  notes?: string;
+  isStarred: boolean;
+  proximityAlertEnabled: boolean;
+  proximityRadiusMeters: number;
+  createdAt: string;
+}
+
+interface LocationHistory {
+  id: string;
+  latitude: string;
+  longitude: string;
+  accuracy?: string;
+  source: string;
+  recordedAt: string;
 }
 
 type DashboardStats = {
@@ -429,6 +463,246 @@ function CommunicationsWidget({
   );
 }
 
+function getCategoryIcon(category: string) {
+  switch (category) {
+    case "home": return Home;
+    case "work": return Briefcase;
+    case "grocery": return ShoppingCart;
+    case "restaurant": return Coffee;
+    case "healthcare": return Heart;
+    default: return MapPinned;
+  }
+}
+
+function getCategoryColor(category: string): string {
+  switch (category) {
+    case "home": return "#22c55e";
+    case "work": return "#3b82f6";
+    case "grocery": return "#f97316";
+    case "restaurant": return "#ec4899";
+    case "healthcare": return "#ef4444";
+    default: return "#8b5cf6";
+  }
+}
+
+const createCustomIcon = (category: string, isStarred: boolean = false) => {
+  const color = getCategoryColor(category);
+  const starIndicator = isStarred ? '<span style="position:absolute;top:-3px;right:-3px;font-size:8px;">★</span>' : '';
+  
+  return L.divIcon({
+    className: 'custom-marker',
+    html: `<div style="position:relative;background:${color};width:20px;height:20px;border-radius:50%;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+      ${starIndicator}
+    </div>`,
+    iconSize: [20, 20],
+    iconAnchor: [10, 20],
+    popupAnchor: [0, -20]
+  });
+};
+
+const currentLocationIcon = L.divIcon({
+  className: 'current-location-marker',
+  html: `<div style="background:#3b82f6;width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow:0 0 0 2px #3b82f6,0 1px 4px rgba(0,0,0,0.3);"></div>`,
+  iconSize: [12, 12],
+  iconAnchor: [6, 6]
+});
+
+function MapCenterController({ center }: { center: [number, number] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (center[0] !== 0 && center[1] !== 0) {
+      map.setView(center, 13);
+    }
+  }, [center, map]);
+  return null;
+}
+
+function LocationWidget({
+  places,
+  currentLocation,
+  isLoading,
+}: {
+  places: SavedPlace[] | undefined;
+  currentLocation: LocationHistory | undefined;
+  isLoading: boolean;
+}) {
+  const starredPlaces = places?.filter(p => p.isStarred) || [];
+  const recentPlaces = places?.slice(0, 5) || [];
+  
+  const mapCenter: [number, number] = currentLocation 
+    ? [parseFloat(currentLocation.latitude), parseFloat(currentLocation.longitude)]
+    : places && places.length > 0 
+      ? [parseFloat(places[0].latitude), parseFloat(places[0].longitude)]
+      : [42.3601, -71.0589];
+
+  if (isLoading) {
+    return (
+      <Card className="col-span-1 sm:col-span-2" data-testid="widget-location">
+        <CardHeader className="pb-2 sm:pb-3">
+          <Skeleton className="h-5 w-32" />
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Skeleton className="h-[150px] rounded-lg" />
+          <Skeleton className="h-12" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="col-span-1 sm:col-span-2" data-testid="widget-location">
+      <CardHeader className="pb-2 sm:pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-primary/10">
+              <Navigation className="h-4 w-4 text-primary" />
+            </div>
+            <CardTitle className="text-sm sm:text-base">Location</CardTitle>
+          </div>
+          <Link href="/location">
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" data-testid="button-view-location">
+              <MapPin className="h-3 w-3" />
+              <span className="hidden sm:inline">View Map</span>
+            </Button>
+          </Link>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3 sm:space-y-4">
+        <div className="h-[150px] rounded-lg overflow-hidden border">
+          <MapContainer
+            center={mapCenter}
+            zoom={13}
+            style={{ height: "100%", width: "100%" }}
+            zoomControl={false}
+            attributionControl={false}
+            dragging={false}
+            scrollWheelZoom={false}
+            doubleClickZoom={false}
+            touchZoom={false}
+          >
+            <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
+            <MapCenterController center={mapCenter} />
+            
+            {currentLocation && (
+              <Marker
+                position={[parseFloat(currentLocation.latitude), parseFloat(currentLocation.longitude)]}
+                icon={currentLocationIcon}
+              />
+            )}
+            
+            {places?.slice(0, 10).map((place) => (
+              <Marker
+                key={place.id}
+                position={[parseFloat(place.latitude), parseFloat(place.longitude)]}
+                icon={createCustomIcon(place.category, place.isStarred)}
+              />
+            ))}
+          </MapContainer>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <div className="text-center p-2 sm:p-3 rounded-lg bg-muted/50">
+            <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+              <MapPin className="h-3 w-3" />
+              <span className="text-[10px] sm:text-xs">Places</span>
+            </div>
+            <p className="text-base sm:text-lg font-semibold" data-testid="stat-places-total">{places?.length || 0}</p>
+          </div>
+          <div className="text-center p-2 sm:p-3 rounded-lg bg-muted/50">
+            <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+              <Star className="h-3 w-3" />
+              <span className="text-[10px] sm:text-xs">Starred</span>
+            </div>
+            <p className="text-base sm:text-lg font-semibold" data-testid="stat-places-starred">{starredPlaces.length}</p>
+          </div>
+          <div className="text-center p-2 sm:p-3 rounded-lg bg-muted/50">
+            <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+              <Navigation className="h-3 w-3" />
+              <span className="text-[10px] sm:text-xs">Status</span>
+            </div>
+            <p className="text-[10px] sm:text-xs font-medium text-green-500" data-testid="stat-location-status">
+              {currentLocation ? "Active" : "Idle"}
+            </p>
+          </div>
+        </div>
+
+        {starredPlaces.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">Starred Places</p>
+            <div className="space-y-1.5">
+              {starredPlaces.slice(0, 3).map((place) => {
+                const CategoryIcon = getCategoryIcon(place.category);
+                return (
+                  <Link key={place.id} href="/location">
+                    <div 
+                      className="flex items-center gap-2 sm:gap-3 p-2 rounded-lg border hover-elevate cursor-pointer" 
+                      data-testid={`place-preview-${place.id}`}
+                    >
+                      <div 
+                        className="h-7 w-7 sm:h-8 sm:w-8 rounded-full flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: getCategoryColor(place.category) + "20" }}
+                      >
+                        <CategoryIcon 
+                          className="h-3.5 w-3.5 sm:h-4 sm:w-4" 
+                          style={{ color: getCategoryColor(place.category) }}
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs sm:text-sm font-medium truncate">{place.name}</p>
+                        {place.address && (
+                          <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{place.address}</p>
+                        )}
+                      </div>
+                      <Star className="h-3 w-3 text-yellow-500 fill-yellow-500 shrink-0" />
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ) : recentPlaces.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">Saved Places</p>
+            <div className="space-y-1.5">
+              {recentPlaces.slice(0, 3).map((place) => {
+                const CategoryIcon = getCategoryIcon(place.category);
+                return (
+                  <Link key={place.id} href="/location">
+                    <div 
+                      className="flex items-center gap-2 sm:gap-3 p-2 rounded-lg border hover-elevate cursor-pointer" 
+                      data-testid={`place-preview-${place.id}`}
+                    >
+                      <div 
+                        className="h-7 w-7 sm:h-8 sm:w-8 rounded-full flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: getCategoryColor(place.category) + "20" }}
+                      >
+                        <CategoryIcon 
+                          className="h-3.5 w-3.5 sm:h-4 sm:w-4" 
+                          style={{ color: getCategoryColor(place.category) }}
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs sm:text-sm font-medium truncate">{place.name}</p>
+                        <p className="text-[10px] sm:text-xs text-muted-foreground truncate capitalize">{place.category}</p>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-4 text-muted-foreground">
+            <MapPin className="h-6 w-6 mx-auto mb-1.5 opacity-50" />
+            <p className="text-xs sm:text-sm">No saved places yet</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function getTimeGreeting(): string {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
@@ -683,6 +957,16 @@ export default function DashboardPage() {
     queryKey: ["/api/twilio/conversations"],
   });
 
+  const { data: savedPlaces, isLoading: placesLoading } = useQuery<SavedPlace[]>({
+    queryKey: ["/api/location/places"],
+  });
+
+  const { data: locationHistory, isLoading: locationHistoryLoading } = useQuery<LocationHistory[]>({
+    queryKey: ["/api/location/history"],
+  });
+
+  const currentLocation = locationHistory?.[0];
+
   const stats: DashboardStats = {
     tasks: {
       total: tasks?.length || 0,
@@ -716,6 +1000,7 @@ export default function DashboardPage() {
 
   const isLoading = tasksLoading || groceryLoading || memoriesLoading || conversationsLoading || calendarLoading;
   const isSmsLoading = smsStatsLoading || smsConversationsLoading;
+  const isLocationLoading = placesLoading || locationHistoryLoading;
 
   return (
     <div className="h-full overflow-auto">
@@ -890,6 +1175,22 @@ export default function DashboardPage() {
             href="/memory"
             badge={{ text: `${stats.memories.total} memories` }}
             action="View memories"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
+          <LocationWidget
+            places={savedPlaces}
+            currentLocation={currentLocation}
+            isLoading={isLocationLoading}
+          />
+          <FeatureCard
+            title="Location Intelligence"
+            description="Track places and get location-aware assistance"
+            icon={MapPin}
+            href="/location"
+            badge={{ text: `${savedPlaces?.length || 0} places` }}
+            action="View map"
           />
         </div>
       </div>
