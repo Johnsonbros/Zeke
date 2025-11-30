@@ -57,6 +57,7 @@ The original single-agent implementation in `server/agent.ts` (`chat()` function
 - `/automations` - Reminders and scheduled tasks
 - `/profile` - Profile editor
 - `/sms-log` - SMS activity log
+- `/location` - Location Intelligence System with interactive map
 
 ### Technical Implementations
 - **Memory Model**: Optimized for a single user (Nate) with a persistent profile. Stores all long-term memory in the database and markdown files (`zeke_profile.md`, `zeke_knowledge.md`). Conversation history is summarized into concise notes. The agent automatically extracts facts, preferences, and summaries from conversations.
@@ -69,6 +70,15 @@ The original single-agent implementation in `server/agent.ts` (`chat()` function
 - **Admin Profile System**: Comprehensive profile management at `/profile` with 10 sections (Basic Info, Work, Family, Interests, Preferences, Goals, Health, Routines, Important Dates, Custom Fields). Profile data is stored in a flexible JSON format in the `profile_sections` table and automatically integrated into ZEKE's context for personalized assistance. The sidebar profile section links directly to the profile editor.
 - **Database Schema (SQLite)**: Includes tables for `conversations`, `messages`, `memory_notes` (with embedding column and supersession), `preferences`, `grocery_items`, `tasks`, `contacts` (with access control details), `profile_sections` (for structured personal context), and `twilio_messages` (for SMS logging).
 - **Twilio SMS Logging**: Comprehensive logging system that captures all SMS activity. Every inbound and outbound SMS is logged to the `twilio_messages` table with direction, phone numbers, message body, status, Twilio SID, and source. Sources include: webhook (incoming), reply (AI response), send_sms_tool (AI-initiated), reminder, automation, daily_checkin, and web_ui. The SMS Log page at `/sms-log` displays all SMS activity with conversation threading by phone number, stats panel (total/inbound/outbound/failed counts), and the ability to compose and send new messages.
+- **Location Intelligence System**: A comprehensive GPS/location system providing location-aware assistance. Key components:
+  - **Interactive Map UI**: Built with Leaflet.js (react-leaflet) showing current location, saved places with category-based custom markers, location history trails, and proximity circles.
+  - **Location Tracking**: Frontend `LocationContext` provider with configurable GPS tracking (opt-in toggle, adjustable interval). Uses `useLocationTracking` hook for background position updates when enabled.
+  - **Saved Places**: Users can save locations with names, categories (home, work, grocery, restaurant, shopping, etc.), notes, and star favorites. Custom marker colors by category.
+  - **Place Lists**: Group saved places into lists (e.g., "All Grocery Stores") with optional grocery list linking for smart shopping reminders.
+  - **Proximity Detection**: `checkGroceryProximity` function detects when user is near grocery-linked stores. ZEKE's context includes nearby store alerts so it can remind about grocery items.
+  - **Agent Location Context**: `getLocationContext()` in agent.ts provides ZEKE with current position, nearby places, and grocery proximity alerts for contextually-aware suggestions.
+  - **Location Tools**: 8 AI tools for ZEKE: `get_nearby_places`, `get_starred_places`, `get_all_saved_places`, `save_location_as_place`, `get_place_lists`, `check_nearby_grocery_stores`, `get_user_location`, `get_recent_location_history`.
+  - **Database Tables**: `location_history` (GPS tracking), `saved_places` (starred locations), `place_lists` (groupings with grocery linking), `place_list_items` (junction table), `location_settings` (user preferences).
 
 ### Feature Specifications
 - **Communication & Reminders**: Send SMS, configure/manage daily check-ins, set/list/cancel reminders.

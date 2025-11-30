@@ -1,5 +1,6 @@
 import type OpenAI from "openai";
 import type { ToolPermissions } from "../tools";
+import type { PlaceCategory } from "@shared/schema";
 import {
   findNearbyPlaces,
   getStarredPlaces,
@@ -167,7 +168,16 @@ export const locationToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   },
 ];
 
-export const locationToolNames = locationToolDefinitions.map(t => t.function.name);
+export const locationToolNames = [
+  "get_nearby_places",
+  "get_starred_places",
+  "get_all_saved_places",
+  "save_location_as_place",
+  "get_place_lists",
+  "check_nearby_grocery_stores",
+  "get_user_location",
+  "get_recent_location_history",
+];
 
 export const locationToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
   get_nearby_places: () => true,
@@ -310,13 +320,18 @@ export async function executeLocationTool(
         }
       }
 
+      const validCategories = ["home", "work", "grocery", "restaurant", "shopping", "entertainment", "travel", "gym", "healthcare", "services", "personal", "other"] as const;
+      const safeCategory = (category && validCategories.includes(category as PlaceCategory)) 
+        ? category as PlaceCategory 
+        : "other";
+
       try {
         const place = createSavedPlace({
           name,
           latitude: latitude.toString(),
           longitude: longitude.toString(),
           address: address || "",
-          category: category || "other",
+          category: safeCategory,
           notes: notes || "",
           isStarred: is_starred || false,
           proximityRadiusMeters: 100,
@@ -362,8 +377,7 @@ export async function executeLocationTool(
           id: l.id,
           name: l.name,
           description: l.description,
-          grocery_list_linked: l.groceryListLinked,
-          place_count: l.placeIds ? l.placeIds.length : 0,
+          grocery_list_linked: l.linkedToGrocery,
         })),
       });
     }
@@ -429,8 +443,8 @@ export async function executeLocationTool(
         location: {
           latitude: parseFloat(latest.latitude),
           longitude: parseFloat(latest.longitude),
-          timestamp: latest.timestamp,
-          accuracy_meters: latest.accuracyMeters,
+          timestamp: latest.createdAt,
+          accuracy_meters: latest.accuracy ? parseFloat(latest.accuracy) : null,
           source: latest.source,
         },
       });
@@ -456,7 +470,7 @@ export async function executeLocationTool(
         history: history.map(h => ({
           latitude: parseFloat(h.latitude),
           longitude: parseFloat(h.longitude),
-          timestamp: h.timestamp,
+          timestamp: h.createdAt,
           source: h.source,
         })),
       });
