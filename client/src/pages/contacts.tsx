@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -31,7 +32,8 @@ import {
   Pencil,
   Check,
   ChevronRight,
-  Eye
+  Eye,
+  Send
 } from "lucide-react";
 import { 
   Select,
@@ -252,6 +254,8 @@ function ContactDetailPanel({
   onDelete: () => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
+  const [messageText, setMessageText] = useState("");
+  const { toast } = useToast();
   const config = ACCESS_LEVEL_CONFIG[contact.accessLevel];
   const isMasterAdmin = contact.phoneNumber.replace(/\D/g, "").endsWith(MASTER_ADMIN_PHONE);
   
@@ -263,6 +267,31 @@ function ContactDetailPanel({
       return response.json();
     },
   });
+  
+  const sendMessageMutation = useMutation({
+    mutationFn: async ({ to, message }: { to: string; message: string }) => {
+      return apiRequest("POST", "/api/sms/send", { to, message });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/twilio/messages/phone', contact.phoneNumber] });
+      queryClient.invalidateQueries({ queryKey: ["/api/twilio/messages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/twilio/conversations"] });
+      toast({ title: "Message sent", description: `SMS sent to ${contact.name}` });
+      setMessageText("");
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to send SMS",
+        variant: "destructive"
+      });
+    },
+  });
+  
+  const handleSendMessage = () => {
+    if (!messageText.trim()) return;
+    sendMessageMutation.mutate({ to: contact.phoneNumber, message: messageText.trim() });
+  };
   
   const form = useForm<ContactFormValues>({
     resolver: zodResolver(contactFormSchema),
@@ -348,8 +377,8 @@ function ContactDetailPanel({
           </TabsList>
         </div>
         
-        <TabsContent value="messages" className="flex-1 m-0 min-h-0">
-          <ScrollArea className="h-full">
+        <TabsContent value="messages" className="flex-1 m-0 min-h-0 flex flex-col">
+          <ScrollArea className="flex-1">
             <div className="p-2 sm:p-3">
               {isLoadingMessages ? (
                 <div className="space-y-2 sm:space-y-3">
@@ -397,6 +426,31 @@ function ContactDetailPanel({
               )}
             </div>
           </ScrollArea>
+          <div className="p-2 sm:p-3 border-t border-border">
+            <div className="flex gap-2 items-end">
+              <Textarea
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                placeholder={`Send a message to ${contact.name}...`}
+                className="min-h-[60px] max-h-[120px] resize-none text-xs sm:text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                data-testid="input-send-message"
+              />
+              <Button 
+                size="icon" 
+                onClick={handleSendMessage}
+                disabled={!messageText.trim() || sendMessageMutation.isPending}
+                data-testid="button-send-message"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </TabsContent>
         
         <TabsContent value="details" className="flex-1 m-0 min-h-0">
