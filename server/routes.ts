@@ -1635,7 +1635,8 @@ export async function registerRoutes(
   // Delete a calendar event
   app.delete("/api/calendar/events/:id", async (req, res) => {
     try {
-      await deleteCalendarEvent(req.params.id);
+      const calendarId = req.query.calendarId as string || 'primary';
+      await deleteCalendarEvent(req.params.id, calendarId);
       res.json({ success: true });
     } catch (error: any) {
       console.error("Calendar delete error:", error);
@@ -1646,7 +1647,7 @@ export async function registerRoutes(
   // Update a calendar event
   app.put("/api/calendar/events/:id", async (req, res) => {
     try {
-      const { summary, startTime, endTime, description, location } = req.body;
+      const { summary, startTime, endTime, description, location, calendarId } = req.body;
       const updates: {
         summary?: string;
         description?: string;
@@ -1661,7 +1662,7 @@ export async function registerRoutes(
       if (startTime) updates.startTime = new Date(startTime);
       if (endTime) updates.endTime = new Date(endTime);
       
-      const event = await updateCalendarEvent(req.params.id, updates);
+      const event = await updateCalendarEvent(req.params.id, updates, calendarId || 'primary');
       res.json(event);
     } catch (error: any) {
       console.error("Calendar update error:", error);

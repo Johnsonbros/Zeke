@@ -132,6 +132,7 @@ function EventEditDialog({ event, open, onOpenChange }: EventEditDialogProps) {
         location: data.location || undefined,
         startTime: data.startTime ? new Date(data.startTime).toISOString() : undefined,
         endTime: data.endTime ? new Date(data.endTime).toISOString() : undefined,
+        calendarId: event?.calendarId || 'primary',
       });
       return response;
     },
@@ -168,7 +169,8 @@ function EventEditDialog({ event, open, onOpenChange }: EventEditDialogProps) {
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest("DELETE", `/api/calendar/events/${event?.id}`);
+      const calendarId = event?.calendarId || 'primary';
+      return await apiRequest("DELETE", `/api/calendar/events/${event?.id}?calendarId=${encodeURIComponent(calendarId)}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/calendar/events"] });

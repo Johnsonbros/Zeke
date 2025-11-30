@@ -213,11 +213,11 @@ export async function createCalendarEvent(
   };
 }
 
-export async function deleteCalendarEvent(eventId: string): Promise<boolean> {
+export async function deleteCalendarEvent(eventId: string, calendarId: string = 'primary'): Promise<boolean> {
   const calendar = await getGoogleCalendarClient();
   
   await calendar.events.delete({
-    calendarId: 'primary',
+    calendarId,
     eventId,
   });
   
@@ -232,12 +232,13 @@ export async function updateCalendarEvent(
     location?: string;
     startTime?: Date;
     endTime?: Date;
-  }
+  },
+  calendarId: string = 'primary'
 ): Promise<CalendarEvent> {
   const calendar = await getGoogleCalendarClient();
   
   const existing = await calendar.events.get({
-    calendarId: 'primary',
+    calendarId,
     eventId,
   });
   
@@ -260,7 +261,7 @@ export async function updateCalendarEvent(
   }
   
   const response = await calendar.events.update({
-    calendarId: 'primary',
+    calendarId,
     eventId,
     requestBody: event,
   });
