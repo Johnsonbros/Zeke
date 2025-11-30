@@ -491,3 +491,174 @@ export const insertTwilioMessageSchema = createInsertSchema(twilioMessages).omit
 
 export type InsertTwilioMessage = z.infer<typeof insertTwilioMessageSchema>;
 export type TwilioMessage = typeof twilioMessages.$inferSelect;
+
+// ============================================
+// LOCATION INTELLIGENCE SYSTEM
+// ============================================
+
+// Location history table for GPS tracking
+export const locationHistory = sqliteTable("location_history", {
+  id: text("id").primaryKey(),
+  latitude: text("latitude").notNull(),
+  longitude: text("longitude").notNull(),
+  accuracy: text("accuracy"),
+  altitude: text("altitude"),
+  speed: text("speed"),
+  heading: text("heading"),
+  source: text("source", { enum: ["gps", "network", "manual"] }).notNull().default("gps"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertLocationHistorySchema = createInsertSchema(locationHistory).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertLocationHistory = z.infer<typeof insertLocationHistorySchema>;
+export type LocationHistory = typeof locationHistory.$inferSelect;
+
+// Place categories for organization
+export const placeCategories = [
+  "home",
+  "work", 
+  "grocery",
+  "restaurant",
+  "gym",
+  "healthcare",
+  "entertainment",
+  "shopping",
+  "services",
+  "travel",
+  "personal",
+  "other"
+] as const;
+export type PlaceCategory = typeof placeCategories[number];
+
+// Saved places table for starred/favorite locations
+export const savedPlaces = sqliteTable("saved_places", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  label: text("label"),
+  latitude: text("latitude").notNull(),
+  longitude: text("longitude").notNull(),
+  address: text("address"),
+  category: text("category", { enum: placeCategories }).notNull().default("other"),
+  notes: text("notes"),
+  isStarred: integer("is_starred", { mode: "boolean" }).notNull().default(false),
+  proximityAlertEnabled: integer("proximity_alert_enabled", { mode: "boolean" }).notNull().default(false),
+  proximityRadiusMeters: integer("proximity_radius_meters").notNull().default(200),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertSavedPlaceSchema = createInsertSchema(savedPlaces).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateSavedPlaceSchema = z.object({
+  name: z.string().min(1).optional(),
+  label: z.string().nullable().optional(),
+  latitude: z.string().optional(),
+  longitude: z.string().optional(),
+  address: z.string().nullable().optional(),
+  category: z.enum(placeCategories).optional(),
+  notes: z.string().nullable().optional(),
+  isStarred: z.boolean().optional(),
+  proximityAlertEnabled: z.boolean().optional(),
+  proximityRadiusMeters: z.number().optional(),
+});
+
+export type InsertSavedPlace = z.infer<typeof insertSavedPlaceSchema>;
+export type UpdateSavedPlace = z.infer<typeof updateSavedPlaceSchema>;
+export type SavedPlace = typeof savedPlaces.$inferSelect;
+
+// Place lists table for grouping locations (e.g., "All Stop & Shop locations")
+export const placeLists = sqliteTable("place_lists", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  icon: text("icon"),
+  color: text("color"),
+  linkedToGrocery: integer("linked_to_grocery", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertPlaceListSchema = createInsertSchema(placeLists).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updatePlaceListSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().nullable().optional(),
+  icon: z.string().nullable().optional(),
+  color: z.string().nullable().optional(),
+  linkedToGrocery: z.boolean().optional(),
+});
+
+export type InsertPlaceList = z.infer<typeof insertPlaceListSchema>;
+export type UpdatePlaceList = z.infer<typeof updatePlaceListSchema>;
+export type PlaceList = typeof placeLists.$inferSelect;
+
+// Junction table linking places to lists
+export const placeListItems = sqliteTable("place_list_items", {
+  id: text("id").primaryKey(),
+  placeListId: text("place_list_id").notNull().references(() => placeLists.id),
+  savedPlaceId: text("saved_place_id").notNull().references(() => savedPlaces.id),
+  addedAt: text("added_at").notNull(),
+});
+
+export const insertPlaceListItemSchema = createInsertSchema(placeListItems).omit({
+  id: true,
+  addedAt: true,
+});
+
+export type InsertPlaceListItem = z.infer<typeof insertPlaceListItemSchema>;
+export type PlaceListItem = typeof placeListItems.$inferSelect;
+
+// Location settings for user preferences
+export const locationSettings = sqliteTable("location_settings", {
+  id: text("id").primaryKey(),
+  trackingEnabled: integer("tracking_enabled", { mode: "boolean" }).notNull().default(false),
+  trackingIntervalMinutes: integer("tracking_interval_minutes").notNull().default(15),
+  proximityAlertsEnabled: integer("proximity_alerts_enabled", { mode: "boolean" }).notNull().default(true),
+  defaultProximityRadiusMeters: integer("default_proximity_radius_meters").notNull().default(200),
+  retentionDays: integer("retention_days").notNull().default(30),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertLocationSettingsSchema = createInsertSchema(locationSettings).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertLocationSettings = z.infer<typeof insertLocationSettingsSchema>;
+export type LocationSettings = typeof locationSettings.$inferSelect;
+
+// Proximity alerts log for tracking when alerts are triggered
+export const proximityAlerts = sqliteTable("proximity_alerts", {
+  id: text("id").primaryKey(),
+  savedPlaceId: text("saved_place_id").notNull().references(() => savedPlaces.id),
+  placeListId: text("place_list_id"),
+  distanceMeters: text("distance_meters").notNull(),
+  alertType: text("alert_type", { enum: ["grocery", "reminder", "general"] }).notNull(),
+  alertMessage: text("alert_message").notNull(),
+  acknowledged: integer("acknowledged", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertProximityAlertSchema = createInsertSchema(proximityAlerts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertProximityAlert = z.infer<typeof insertProximityAlertSchema>;
+export type ProximityAlert = typeof proximityAlerts.$inferSelect;
+
+// Grocery item priority levels for smart reminders
+export const groceryPriorities = ["low", "medium", "high", "urgent"] as const;
+export type GroceryPriority = typeof groceryPriorities[number];

@@ -26,7 +26,22 @@ import type {
   InsertTwilioMessage,
   TwilioMessageDirection,
   TwilioMessageStatus,
-  TwilioMessageSource
+  TwilioMessageSource,
+  LocationHistory,
+  InsertLocationHistory,
+  SavedPlace,
+  InsertSavedPlace,
+  UpdateSavedPlace,
+  PlaceList,
+  InsertPlaceList,
+  UpdatePlaceList,
+  PlaceListItem,
+  InsertPlaceListItem,
+  LocationSettings,
+  InsertLocationSettings,
+  ProximityAlert,
+  InsertProximityAlert,
+  PlaceCategory
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -327,6 +342,123 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_twilio_messages_contact ON twilio_messages(contact_id);
 `);
 
+// ============================================
+// LOCATION INTELLIGENCE SYSTEM TABLES
+// ============================================
+
+// Create location_history table for GPS tracking
+db.exec(`
+  CREATE TABLE IF NOT EXISTS location_history (
+    id TEXT PRIMARY KEY,
+    latitude TEXT NOT NULL,
+    longitude TEXT NOT NULL,
+    accuracy TEXT,
+    altitude TEXT,
+    speed TEXT,
+    heading TEXT,
+    source TEXT NOT NULL DEFAULT 'gps',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_location_history_created ON location_history(created_at);
+`);
+
+// Create saved_places table for starred/favorite locations
+db.exec(`
+  CREATE TABLE IF NOT EXISTS saved_places (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    label TEXT,
+    latitude TEXT NOT NULL,
+    longitude TEXT NOT NULL,
+    address TEXT,
+    category TEXT NOT NULL DEFAULT 'other',
+    notes TEXT,
+    is_starred INTEGER NOT NULL DEFAULT 0,
+    proximity_alert_enabled INTEGER NOT NULL DEFAULT 0,
+    proximity_radius_meters INTEGER NOT NULL DEFAULT 200,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_saved_places_category ON saved_places(category);
+  CREATE INDEX IF NOT EXISTS idx_saved_places_starred ON saved_places(is_starred);
+  CREATE INDEX IF NOT EXISTS idx_saved_places_proximity ON saved_places(proximity_alert_enabled);
+`);
+
+// Create place_lists table for grouping locations
+db.exec(`
+  CREATE TABLE IF NOT EXISTS place_lists (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    icon TEXT,
+    color TEXT,
+    linked_to_grocery INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_place_lists_grocery ON place_lists(linked_to_grocery);
+`);
+
+// Create place_list_items junction table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS place_list_items (
+    id TEXT PRIMARY KEY,
+    place_list_id TEXT NOT NULL,
+    saved_place_id TEXT NOT NULL,
+    added_at TEXT NOT NULL,
+    FOREIGN KEY (place_list_id) REFERENCES place_lists(id) ON DELETE CASCADE,
+    FOREIGN KEY (saved_place_id) REFERENCES saved_places(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_place_list_items_list ON place_list_items(place_list_id);
+  CREATE INDEX IF NOT EXISTS idx_place_list_items_place ON place_list_items(saved_place_id);
+`);
+
+// Create location_settings table for user preferences
+db.exec(`
+  CREATE TABLE IF NOT EXISTS location_settings (
+    id TEXT PRIMARY KEY,
+    tracking_enabled INTEGER NOT NULL DEFAULT 0,
+    tracking_interval_minutes INTEGER NOT NULL DEFAULT 15,
+    proximity_alerts_enabled INTEGER NOT NULL DEFAULT 1,
+    default_proximity_radius_meters INTEGER NOT NULL DEFAULT 200,
+    retention_days INTEGER NOT NULL DEFAULT 30,
+    updated_at TEXT NOT NULL
+  );
+`);
+
+// Create proximity_alerts table for logging triggered alerts
+db.exec(`
+  CREATE TABLE IF NOT EXISTS proximity_alerts (
+    id TEXT PRIMARY KEY,
+    saved_place_id TEXT NOT NULL,
+    place_list_id TEXT,
+    distance_meters TEXT NOT NULL,
+    alert_type TEXT NOT NULL,
+    alert_message TEXT NOT NULL,
+    acknowledged INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (saved_place_id) REFERENCES saved_places(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_proximity_alerts_place ON proximity_alerts(saved_place_id);
+  CREATE INDEX IF NOT EXISTS idx_proximity_alerts_created ON proximity_alerts(created_at);
+  CREATE INDEX IF NOT EXISTS idx_proximity_alerts_acknowledged ON proximity_alerts(acknowledged);
+`);
+
+// Initialize default location settings if not exists
+try {
+  const existingSettings = db.prepare(`SELECT id FROM location_settings LIMIT 1`).get();
+  if (!existingSettings) {
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO location_settings (id, tracking_enabled, tracking_interval_minutes, proximity_alerts_enabled, default_proximity_radius_meters, retention_days, updated_at)
+      VALUES (?, 0, 15, 1, 200, 30, ?)
+    `).run(uuidv4(), now);
+    console.log("Initialized default location settings");
+  }
+} catch (e) {
+  console.error("Error initializing location settings:", e);
+}
+
 // Migration: Add mode column to conversations if it doesn't exist
 try {
   const convInfo = db.prepare("PRAGMA table_info(conversations)").all() as Array<{ name: string }>;
@@ -476,6 +608,74 @@ interface TwilioMessageRow {
   created_at: string;
 }
 
+// Location system row types
+interface LocationHistoryRow {
+  id: string;
+  latitude: string;
+  longitude: string;
+  accuracy: string | null;
+  altitude: string | null;
+  speed: string | null;
+  heading: string | null;
+  source: string;
+  created_at: string;
+}
+
+interface SavedPlaceRow {
+  id: string;
+  name: string;
+  label: string | null;
+  latitude: string;
+  longitude: string;
+  address: string | null;
+  category: string;
+  notes: string | null;
+  is_starred: number;
+  proximity_alert_enabled: number;
+  proximity_radius_meters: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface PlaceListRow {
+  id: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  color: string | null;
+  linked_to_grocery: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface PlaceListItemRow {
+  id: string;
+  place_list_id: string;
+  saved_place_id: string;
+  added_at: string;
+}
+
+interface LocationSettingsRow {
+  id: string;
+  tracking_enabled: number;
+  tracking_interval_minutes: number;
+  proximity_alerts_enabled: number;
+  default_proximity_radius_meters: number;
+  retention_days: number;
+  updated_at: string;
+}
+
+interface ProximityAlertRow {
+  id: string;
+  saved_place_id: string;
+  place_list_id: string | null;
+  distance_meters: string;
+  alert_type: string;
+  alert_message: string;
+  acknowledged: number;
+  created_at: string;
+}
+
 // Helper to map database row to Conversation type (snake_case -> camelCase)
 function mapConversation(row: ConversationRow): Conversation {
   return {
@@ -562,6 +762,86 @@ function mapAutomation(row: AutomationRow): Automation {
     settings: row.settings,
     lastRun: row.last_run,
     nextRun: row.next_run,
+    createdAt: row.created_at,
+  };
+}
+
+// Location system mapper functions
+function mapLocationHistory(row: LocationHistoryRow): LocationHistory {
+  return {
+    id: row.id,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    accuracy: row.accuracy,
+    altitude: row.altitude,
+    speed: row.speed,
+    heading: row.heading,
+    source: row.source as "gps" | "network" | "manual",
+    createdAt: row.created_at,
+  };
+}
+
+function mapSavedPlace(row: SavedPlaceRow): SavedPlace {
+  return {
+    id: row.id,
+    name: row.name,
+    label: row.label,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    address: row.address,
+    category: row.category as PlaceCategory,
+    notes: row.notes,
+    isStarred: Boolean(row.is_starred),
+    proximityAlertEnabled: Boolean(row.proximity_alert_enabled),
+    proximityRadiusMeters: row.proximity_radius_meters,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapPlaceList(row: PlaceListRow): PlaceList {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    icon: row.icon,
+    color: row.color,
+    linkedToGrocery: Boolean(row.linked_to_grocery),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapPlaceListItem(row: PlaceListItemRow): PlaceListItem {
+  return {
+    id: row.id,
+    placeListId: row.place_list_id,
+    savedPlaceId: row.saved_place_id,
+    addedAt: row.added_at,
+  };
+}
+
+function mapLocationSettings(row: LocationSettingsRow): LocationSettings {
+  return {
+    id: row.id,
+    trackingEnabled: Boolean(row.tracking_enabled),
+    trackingIntervalMinutes: row.tracking_interval_minutes,
+    proximityAlertsEnabled: Boolean(row.proximity_alerts_enabled),
+    defaultProximityRadiusMeters: row.default_proximity_radius_meters,
+    retentionDays: row.retention_days,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapProximityAlert(row: ProximityAlertRow): ProximityAlert {
+  return {
+    id: row.id,
+    savedPlaceId: row.saved_place_id,
+    placeListId: row.place_list_id,
+    distanceMeters: row.distance_meters,
+    alertType: row.alert_type as "grocery" | "reminder" | "general",
+    alertMessage: row.alert_message,
+    acknowledged: Boolean(row.acknowledged),
     createdAt: row.created_at,
   };
 }
@@ -2030,6 +2310,461 @@ export function getTwilioConversationPhones(): Array<{
       lastMessageAt: row.last_message_at,
       messageCount: row.message_count,
     }));
+  });
+}
+
+// ============================================
+// LOCATION INTELLIGENCE SYSTEM OPERATIONS
+// ============================================
+
+// Location History Operations
+export function createLocationHistory(data: InsertLocationHistory): LocationHistory {
+  return wrapDbOperation("createLocationHistory", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    const source = data.source || "gps";
+    
+    db.prepare(`
+      INSERT INTO location_history (id, latitude, longitude, accuracy, altitude, speed, heading, source, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.latitude, data.longitude, data.accuracy || null, data.altitude || null, 
+           data.speed || null, data.heading || null, source, now);
+    
+    return {
+      id,
+      latitude: data.latitude,
+      longitude: data.longitude,
+      accuracy: data.accuracy || null,
+      altitude: data.altitude || null,
+      speed: data.speed || null,
+      heading: data.heading || null,
+      source: source as "gps" | "network" | "manual",
+      createdAt: now,
+    };
+  });
+}
+
+export function getLocationHistory(limit: number = 100): LocationHistory[] {
+  return wrapDbOperation("getLocationHistory", () => {
+    const rows = db.prepare(`
+      SELECT * FROM location_history ORDER BY created_at DESC LIMIT ?
+    `).all(limit) as LocationHistoryRow[];
+    return rows.map(mapLocationHistory);
+  });
+}
+
+export function getLocationHistoryInRange(startDate: string, endDate: string): LocationHistory[] {
+  return wrapDbOperation("getLocationHistoryInRange", () => {
+    const rows = db.prepare(`
+      SELECT * FROM location_history 
+      WHERE created_at >= ? AND created_at <= ?
+      ORDER BY created_at DESC
+    `).all(startDate, endDate) as LocationHistoryRow[];
+    return rows.map(mapLocationHistory);
+  });
+}
+
+export function getLatestLocation(): LocationHistory | undefined {
+  return wrapDbOperation("getLatestLocation", () => {
+    const row = db.prepare(`
+      SELECT * FROM location_history ORDER BY created_at DESC LIMIT 1
+    `).get() as LocationHistoryRow | undefined;
+    return row ? mapLocationHistory(row) : undefined;
+  });
+}
+
+export function deleteOldLocationHistory(retentionDays: number): number {
+  return wrapDbOperation("deleteOldLocationHistory", () => {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+    const result = db.prepare(`
+      DELETE FROM location_history WHERE created_at < ?
+    `).run(cutoffDate.toISOString());
+    return result.changes;
+  });
+}
+
+// Saved Places Operations
+export function createSavedPlace(data: InsertSavedPlace): SavedPlace {
+  return wrapDbOperation("createSavedPlace", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO saved_places (id, name, label, latitude, longitude, address, category, notes, is_starred, proximity_alert_enabled, proximity_radius_meters, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.name, data.label || null, data.latitude, data.longitude, 
+           data.address || null, data.category || "other", data.notes || null,
+           data.isStarred ? 1 : 0, data.proximityAlertEnabled ? 1 : 0, 
+           data.proximityRadiusMeters || 200, now, now);
+    
+    return {
+      id,
+      name: data.name,
+      label: data.label || null,
+      latitude: data.latitude,
+      longitude: data.longitude,
+      address: data.address || null,
+      category: (data.category || "other") as PlaceCategory,
+      notes: data.notes || null,
+      isStarred: data.isStarred || false,
+      proximityAlertEnabled: data.proximityAlertEnabled || false,
+      proximityRadiusMeters: data.proximityRadiusMeters || 200,
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+}
+
+export function getSavedPlace(id: string): SavedPlace | undefined {
+  return wrapDbOperation("getSavedPlace", () => {
+    const row = db.prepare(`
+      SELECT * FROM saved_places WHERE id = ?
+    `).get(id) as SavedPlaceRow | undefined;
+    return row ? mapSavedPlace(row) : undefined;
+  });
+}
+
+export function getAllSavedPlaces(): SavedPlace[] {
+  return wrapDbOperation("getAllSavedPlaces", () => {
+    const rows = db.prepare(`
+      SELECT * FROM saved_places ORDER BY is_starred DESC, name ASC
+    `).all() as SavedPlaceRow[];
+    return rows.map(mapSavedPlace);
+  });
+}
+
+export function getStarredPlaces(): SavedPlace[] {
+  return wrapDbOperation("getStarredPlaces", () => {
+    const rows = db.prepare(`
+      SELECT * FROM saved_places WHERE is_starred = 1 ORDER BY name ASC
+    `).all() as SavedPlaceRow[];
+    return rows.map(mapSavedPlace);
+  });
+}
+
+export function getSavedPlacesByCategory(category: PlaceCategory): SavedPlace[] {
+  return wrapDbOperation("getSavedPlacesByCategory", () => {
+    const rows = db.prepare(`
+      SELECT * FROM saved_places WHERE category = ? ORDER BY is_starred DESC, name ASC
+    `).all(category) as SavedPlaceRow[];
+    return rows.map(mapSavedPlace);
+  });
+}
+
+export function getPlacesWithProximityAlerts(): SavedPlace[] {
+  return wrapDbOperation("getPlacesWithProximityAlerts", () => {
+    const rows = db.prepare(`
+      SELECT * FROM saved_places WHERE proximity_alert_enabled = 1
+    `).all() as SavedPlaceRow[];
+    return rows.map(mapSavedPlace);
+  });
+}
+
+export function updateSavedPlace(id: string, data: UpdateSavedPlace): SavedPlace | undefined {
+  return wrapDbOperation("updateSavedPlace", () => {
+    const now = getCurrentTimestamp();
+    const updates: string[] = ["updated_at = ?"];
+    const values: (string | number | null)[] = [now];
+    
+    if (data.name !== undefined) { updates.push("name = ?"); values.push(data.name); }
+    if (data.label !== undefined) { updates.push("label = ?"); values.push(data.label); }
+    if (data.latitude !== undefined) { updates.push("latitude = ?"); values.push(data.latitude); }
+    if (data.longitude !== undefined) { updates.push("longitude = ?"); values.push(data.longitude); }
+    if (data.address !== undefined) { updates.push("address = ?"); values.push(data.address); }
+    if (data.category !== undefined) { updates.push("category = ?"); values.push(data.category); }
+    if (data.notes !== undefined) { updates.push("notes = ?"); values.push(data.notes); }
+    if (data.isStarred !== undefined) { updates.push("is_starred = ?"); values.push(data.isStarred ? 1 : 0); }
+    if (data.proximityAlertEnabled !== undefined) { updates.push("proximity_alert_enabled = ?"); values.push(data.proximityAlertEnabled ? 1 : 0); }
+    if (data.proximityRadiusMeters !== undefined) { updates.push("proximity_radius_meters = ?"); values.push(data.proximityRadiusMeters); }
+    
+    values.push(id);
+    db.prepare(`UPDATE saved_places SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+    return getSavedPlace(id);
+  });
+}
+
+export function deleteSavedPlace(id: string): boolean {
+  return wrapDbOperation("deleteSavedPlace", () => {
+    const result = db.prepare(`DELETE FROM saved_places WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// Place Lists Operations
+export function createPlaceList(data: InsertPlaceList): PlaceList {
+  return wrapDbOperation("createPlaceList", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO place_lists (id, name, description, icon, color, linked_to_grocery, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.name, data.description || null, data.icon || null, 
+           data.color || null, data.linkedToGrocery ? 1 : 0, now, now);
+    
+    return {
+      id,
+      name: data.name,
+      description: data.description || null,
+      icon: data.icon || null,
+      color: data.color || null,
+      linkedToGrocery: data.linkedToGrocery || false,
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+}
+
+export function getPlaceList(id: string): PlaceList | undefined {
+  return wrapDbOperation("getPlaceList", () => {
+    const row = db.prepare(`
+      SELECT * FROM place_lists WHERE id = ?
+    `).get(id) as PlaceListRow | undefined;
+    return row ? mapPlaceList(row) : undefined;
+  });
+}
+
+export function getAllPlaceLists(): PlaceList[] {
+  return wrapDbOperation("getAllPlaceLists", () => {
+    const rows = db.prepare(`
+      SELECT * FROM place_lists ORDER BY name ASC
+    `).all() as PlaceListRow[];
+    return rows.map(mapPlaceList);
+  });
+}
+
+export function getGroceryLinkedPlaceLists(): PlaceList[] {
+  return wrapDbOperation("getGroceryLinkedPlaceLists", () => {
+    const rows = db.prepare(`
+      SELECT * FROM place_lists WHERE linked_to_grocery = 1
+    `).all() as PlaceListRow[];
+    return rows.map(mapPlaceList);
+  });
+}
+
+export function updatePlaceList(id: string, data: UpdatePlaceList): PlaceList | undefined {
+  return wrapDbOperation("updatePlaceList", () => {
+    const now = getCurrentTimestamp();
+    const updates: string[] = ["updated_at = ?"];
+    const values: (string | number | null)[] = [now];
+    
+    if (data.name !== undefined) { updates.push("name = ?"); values.push(data.name); }
+    if (data.description !== undefined) { updates.push("description = ?"); values.push(data.description); }
+    if (data.icon !== undefined) { updates.push("icon = ?"); values.push(data.icon); }
+    if (data.color !== undefined) { updates.push("color = ?"); values.push(data.color); }
+    if (data.linkedToGrocery !== undefined) { updates.push("linked_to_grocery = ?"); values.push(data.linkedToGrocery ? 1 : 0); }
+    
+    values.push(id);
+    db.prepare(`UPDATE place_lists SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+    return getPlaceList(id);
+  });
+}
+
+export function deletePlaceList(id: string): boolean {
+  return wrapDbOperation("deletePlaceList", () => {
+    db.prepare(`DELETE FROM place_list_items WHERE place_list_id = ?`).run(id);
+    const result = db.prepare(`DELETE FROM place_lists WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// Place List Items Operations
+export function addPlaceToList(placeListId: string, savedPlaceId: string): PlaceListItem {
+  return wrapDbOperation("addPlaceToList", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO place_list_items (id, place_list_id, saved_place_id, added_at)
+      VALUES (?, ?, ?, ?)
+    `).run(id, placeListId, savedPlaceId, now);
+    
+    return {
+      id,
+      placeListId,
+      savedPlaceId,
+      addedAt: now,
+    };
+  });
+}
+
+export function removePlaceFromList(placeListId: string, savedPlaceId: string): boolean {
+  return wrapDbOperation("removePlaceFromList", () => {
+    const result = db.prepare(`
+      DELETE FROM place_list_items WHERE place_list_id = ? AND saved_place_id = ?
+    `).run(placeListId, savedPlaceId);
+    return result.changes > 0;
+  });
+}
+
+export function getPlacesInList(placeListId: string): SavedPlace[] {
+  return wrapDbOperation("getPlacesInList", () => {
+    const rows = db.prepare(`
+      SELECT sp.* FROM saved_places sp
+      JOIN place_list_items pli ON sp.id = pli.saved_place_id
+      WHERE pli.place_list_id = ?
+      ORDER BY sp.name ASC
+    `).all(placeListId) as SavedPlaceRow[];
+    return rows.map(mapSavedPlace);
+  });
+}
+
+export function getListsForPlace(savedPlaceId: string): PlaceList[] {
+  return wrapDbOperation("getListsForPlace", () => {
+    const rows = db.prepare(`
+      SELECT pl.* FROM place_lists pl
+      JOIN place_list_items pli ON pl.id = pli.place_list_id
+      WHERE pli.saved_place_id = ?
+      ORDER BY pl.name ASC
+    `).all(savedPlaceId) as PlaceListRow[];
+    return rows.map(mapPlaceList);
+  });
+}
+
+// Location Settings Operations
+export function getLocationSettings(): LocationSettings | undefined {
+  return wrapDbOperation("getLocationSettings", () => {
+    const row = db.prepare(`
+      SELECT * FROM location_settings LIMIT 1
+    `).get() as LocationSettingsRow | undefined;
+    return row ? mapLocationSettings(row) : undefined;
+  });
+}
+
+export function updateLocationSettings(data: Partial<InsertLocationSettings>): LocationSettings | undefined {
+  return wrapDbOperation("updateLocationSettings", () => {
+    const now = getCurrentTimestamp();
+    const current = getLocationSettings();
+    
+    if (!current) return undefined;
+    
+    const updates: string[] = ["updated_at = ?"];
+    const values: (string | number)[] = [now];
+    
+    if (data.trackingEnabled !== undefined) { updates.push("tracking_enabled = ?"); values.push(data.trackingEnabled ? 1 : 0); }
+    if (data.trackingIntervalMinutes !== undefined) { updates.push("tracking_interval_minutes = ?"); values.push(data.trackingIntervalMinutes); }
+    if (data.proximityAlertsEnabled !== undefined) { updates.push("proximity_alerts_enabled = ?"); values.push(data.proximityAlertsEnabled ? 1 : 0); }
+    if (data.defaultProximityRadiusMeters !== undefined) { updates.push("default_proximity_radius_meters = ?"); values.push(data.defaultProximityRadiusMeters); }
+    if (data.retentionDays !== undefined) { updates.push("retention_days = ?"); values.push(data.retentionDays); }
+    
+    values.push(current.id);
+    db.prepare(`UPDATE location_settings SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+    return getLocationSettings();
+  });
+}
+
+// Proximity Alert Operations
+export function createProximityAlert(data: InsertProximityAlert): ProximityAlert {
+  return wrapDbOperation("createProximityAlert", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO proximity_alerts (id, saved_place_id, place_list_id, distance_meters, alert_type, alert_message, acknowledged, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.savedPlaceId, data.placeListId || null, data.distanceMeters, 
+           data.alertType, data.alertMessage, data.acknowledged ? 1 : 0, now);
+    
+    return {
+      id,
+      savedPlaceId: data.savedPlaceId,
+      placeListId: data.placeListId || null,
+      distanceMeters: data.distanceMeters,
+      alertType: data.alertType as "grocery" | "reminder" | "general",
+      alertMessage: data.alertMessage,
+      acknowledged: data.acknowledged || false,
+      createdAt: now,
+    };
+  });
+}
+
+export function getRecentProximityAlerts(limit: number = 20): ProximityAlert[] {
+  return wrapDbOperation("getRecentProximityAlerts", () => {
+    const rows = db.prepare(`
+      SELECT * FROM proximity_alerts ORDER BY created_at DESC LIMIT ?
+    `).all(limit) as ProximityAlertRow[];
+    return rows.map(mapProximityAlert);
+  });
+}
+
+export function getUnacknowledgedAlerts(): ProximityAlert[] {
+  return wrapDbOperation("getUnacknowledgedAlerts", () => {
+    const rows = db.prepare(`
+      SELECT * FROM proximity_alerts WHERE acknowledged = 0 ORDER BY created_at DESC
+    `).all() as ProximityAlertRow[];
+    return rows.map(mapProximityAlert);
+  });
+}
+
+export function acknowledgeProximityAlert(id: string): boolean {
+  return wrapDbOperation("acknowledgeProximityAlert", () => {
+    const result = db.prepare(`
+      UPDATE proximity_alerts SET acknowledged = 1 WHERE id = ?
+    `).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function acknowledgeAllProximityAlerts(): number {
+  return wrapDbOperation("acknowledgeAllProximityAlerts", () => {
+    const result = db.prepare(`
+      UPDATE proximity_alerts SET acknowledged = 1 WHERE acknowledged = 0
+    `).run();
+    return result.changes;
+  });
+}
+
+// Proximity Calculation Helper
+export function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // Earth's radius in meters
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+  
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  
+  return R * c; // Distance in meters
+}
+
+// Find places near a location
+export function findNearbyPlaces(lat: number, lon: number, radiusMeters: number = 500): Array<SavedPlace & { distance: number }> {
+  return wrapDbOperation("findNearbyPlaces", () => {
+    const allPlaces = getAllSavedPlaces();
+    const nearbyPlaces: Array<SavedPlace & { distance: number }> = [];
+    
+    for (const place of allPlaces) {
+      const distance = calculateDistance(lat, lon, parseFloat(place.latitude), parseFloat(place.longitude));
+      if (distance <= radiusMeters) {
+        nearbyPlaces.push({ ...place, distance });
+      }
+    }
+    
+    return nearbyPlaces.sort((a, b) => a.distance - b.distance);
+  });
+}
+
+// Check if user is near any grocery-linked places
+export function checkGroceryProximity(lat: number, lon: number): Array<{ place: SavedPlace; list: PlaceList; distance: number }> {
+  return wrapDbOperation("checkGroceryProximity", () => {
+    const groceryLists = getGroceryLinkedPlaceLists();
+    const nearbyGroceryPlaces: Array<{ place: SavedPlace; list: PlaceList; distance: number }> = [];
+    
+    for (const list of groceryLists) {
+      const placesInList = getPlacesInList(list.id);
+      for (const place of placesInList) {
+        const distance = calculateDistance(lat, lon, parseFloat(place.latitude), parseFloat(place.longitude));
+        if (distance <= place.proximityRadiusMeters) {
+          nearbyGroceryPlaces.push({ place, list, distance });
+        }
+      }
+    }
+    
+    return nearbyGroceryPlaces.sort((a, b) => a.distance - b.distance);
   });
 }
 
