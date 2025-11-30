@@ -34,7 +34,9 @@ import {
   EyeOff,
   History,
   Pencil,
-  Check
+  Check,
+  Search,
+  Loader2
 } from "lucide-react";
 import {
   Sheet,
@@ -105,6 +107,22 @@ interface LocationSettings {
   proximityAlertsEnabled: boolean;
   defaultProximityRadiusMeters: number;
   retentionDays: number;
+}
+
+interface GeocodingResult {
+  place_id: number;
+  lat: string;
+  lon: string;
+  display_name: string;
+  address?: {
+    house_number?: string;
+    road?: string;
+    city?: string;
+    town?: string;
+    state?: string;
+    postcode?: string;
+    country?: string;
+  };
 }
 
 const PLACE_CATEGORIES = [
@@ -184,12 +202,14 @@ function AddPlaceDialog({
   open,
   onOpenChange,
   initialLocation,
+  initialAddress,
   onSave,
   isPending
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialLocation: { lat: number; lng: number } | null;
+  initialAddress?: string | null;
   onSave: (data: any) => void;
   isPending: boolean;
 }) {
@@ -201,6 +221,16 @@ function AddPlaceDialog({
   const [isStarred, setIsStarred] = useState(false);
   const [proximityAlertEnabled, setProximityAlertEnabled] = useState(false);
   const [proximityRadius, setProximityRadius] = useState("200");
+
+  useEffect(() => {
+    if (open && initialAddress) {
+      setAddress(initialAddress);
+      const nameParts = initialAddress.split(",").slice(0, 2);
+      if (nameParts.length > 0) {
+        setName(nameParts.join(",").trim());
+      }
+    }
+  }, [open, initialAddress]);
 
   useEffect(() => {
     if (!open) {
@@ -719,6 +749,144 @@ function CreateListDialog({
   );
 }
 
+function AddressSearch({
+  onSelectAddress,
+  onClose
+}: {
+  onSelectAddress: (lat: number, lng: number, address: string) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<GeocodingResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const searchAddress = async (searchQuery: string) => {
+    if (searchQuery.length < 3) {
+      setResults([]);
+      setShowResults(false);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5&addressdetails=1`,
+        {
+          headers: {
+            "Accept": "application/json",
+            "User-Agent": "ZEKEAssistant/1.0"
+          }
+        }
+      );
+      const data: GeocodingResult[] = await response.json();
+      setResults(data);
+      setShowResults(true);
+    } catch (error) {
+      console.error("Geocoding error:", error);
+      setResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setQuery(value);
+
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      searchAddress(value);
+    }, 300);
+  };
+
+  const handleSelectResult = (result: GeocodingResult) => {
+    const lat = parseFloat(result.lat);
+    const lng = parseFloat(result.lon);
+    onSelectAddress(lat, lng, result.display_name);
+    setShowResults(false);
+    setQuery("");
+  };
+
+  const formatAddress = (result: GeocodingResult): string => {
+    if (result.address) {
+      const parts = [];
+      if (result.address.house_number && result.address.road) {
+        parts.push(`${result.address.house_number} ${result.address.road}`);
+      } else if (result.address.road) {
+        parts.push(result.address.road);
+      }
+      const city = result.address.city || result.address.town;
+      if (city) parts.push(city);
+      if (result.address.state) parts.push(result.address.state);
+      if (parts.length > 0) return parts.join(", ");
+    }
+    const displayParts = result.display_name.split(",").slice(0, 3);
+    return displayParts.join(",").trim();
+  };
+
+  return (
+    <div className="flex items-center gap-2 flex-1 max-w-md relative">
+      <div className="relative flex-1">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          ref={inputRef}
+          value={query}
+          onChange={handleInputChange}
+          placeholder="Enter address to save..."
+          className="pl-9 pr-8 h-9"
+          data-testid="input-address-search"
+        />
+        {isSearching && (
+          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+        )}
+      </div>
+      <Button
+        size="icon"
+        variant="ghost"
+        onClick={onClose}
+        data-testid="button-close-search"
+      >
+        <X className="h-4 w-4" />
+      </Button>
+
+      {showResults && results.length > 0 && (
+        <div className="absolute top-full left-0 right-10 mt-1 bg-background border border-border rounded-md shadow-lg z-50 max-h-64 overflow-y-auto">
+          {results.map((result) => (
+            <button
+              key={result.place_id}
+              className="w-full text-left px-3 py-2.5 hover-elevate flex items-start gap-2 border-b border-border last:border-0"
+              onClick={() => handleSelectResult(result)}
+              data-testid={`result-${result.place_id}`}
+            >
+              <MapPin className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium truncate">{formatAddress(result)}</p>
+                <p className="text-xs text-muted-foreground truncate">{result.display_name}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {showResults && results.length === 0 && query.length >= 3 && !isSearching && (
+        <div className="absolute top-full left-0 right-10 mt-1 bg-background border border-border rounded-md shadow-lg z-50 p-4 text-center">
+          <p className="text-sm text-muted-foreground">No results found</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function LocationPage() {
   const { toast } = useToast();
   const [mapCenter, setMapCenter] = useState<[number, number]>([42.3601, -71.0589]);
@@ -730,6 +898,8 @@ export default function LocationPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [selectedTab, setSelectedTab] = useState("places");
   const [isLocating, setIsLocating] = useState(false);
+  const [showAddressSearch, setShowAddressSearch] = useState(false);
+  const [searchedAddress, setSearchedAddress] = useState<string | null>(null);
 
   const { data: places, isLoading: placesLoading } = useQuery<SavedPlace[]>({
     queryKey: ["/api/location/places"],
@@ -882,6 +1052,15 @@ export default function LocationPage() {
     setMapZoom(16);
   };
 
+  const handleAddressSelect = (lat: number, lng: number, address: string) => {
+    setSelectedLocation({ lat, lng });
+    setSearchedAddress(address);
+    setMapCenter([lat, lng]);
+    setMapZoom(16);
+    setShowAddressSearch(false);
+    setIsAddingPlace(true);
+  };
+
   const historyTrail = locationHistory?.map(loc => [
     parseFloat(loc.latitude),
     parseFloat(loc.longitude)
@@ -893,14 +1072,31 @@ export default function LocationPage() {
   return (
     <div className="flex flex-col h-screen h-[100dvh] bg-background" data-testid="location-page">
       <header className="h-11 sm:h-14 border-b border-border flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 md:px-6 shrink-0">
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <MapPin className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
-          <h1 className="text-base sm:text-lg md:text-xl font-semibold" data-testid="text-page-title">
-            Locations
-          </h1>
-        </div>
+        {showAddressSearch ? (
+          <AddressSearch
+            onSelectAddress={handleAddressSelect}
+            onClose={() => setShowAddressSearch(false)}
+          />
+        ) : (
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <MapPin className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+            <h1 className="text-base sm:text-lg md:text-xl font-semibold" data-testid="text-page-title">
+              Locations
+            </h1>
+          </div>
+        )}
         
         <div className="flex items-center gap-2">
+          {!showAddressSearch && (
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => setShowAddressSearch(true)}
+              data-testid="button-open-search"
+            >
+              <Search className="h-4 w-4" />
+            </Button>
+          )}
           <Button
             size="icon"
             variant="outline"
@@ -1183,9 +1379,13 @@ export default function LocationPage() {
         open={isAddingPlace}
         onOpenChange={(open) => {
           setIsAddingPlace(open);
-          if (!open) setSelectedLocation(null);
+          if (!open) {
+            setSelectedLocation(null);
+            setSearchedAddress(null);
+          }
         }}
         initialLocation={selectedLocation}
+        initialAddress={searchedAddress}
         onSave={(data) => addPlaceMutation.mutate(data)}
         isPending={addPlaceMutation.isPending}
       />
