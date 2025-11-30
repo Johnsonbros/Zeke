@@ -19,6 +19,7 @@ import TwilioLogPage from "@/pages/twilio-log";
 import LocationPage from "@/pages/location";
 import ContextAgentPage from "@/pages/context-agent";
 import ListsPage from "@/pages/lists";
+import MealsPage from "@/pages/meals";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 
@@ -29,6 +30,7 @@ function Router() {
       <Route path="/chat" component={ChatPage} />
       <Route path="/grocery" component={GroceryPage} />
       <Route path="/lists" component={ListsPage} />
+      <Route path="/meals" component={MealsPage} />
       <Route path="/memory" component={MemoryPage} />
       <Route path="/tasks" component={TasksPage} />
       <Route path="/calendar" component={CalendarPage} />

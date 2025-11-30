@@ -15,6 +15,7 @@ import {
   executeLocationTool,
   executePeopleTool,
   executeListTool,
+  executeFoodTool,
   communicationToolNames,
   reminderToolNames,
   taskToolNames,
@@ -27,6 +28,7 @@ import {
   locationToolNames,
   peopleToolNames,
   listToolNames,
+  foodToolNames,
   getActiveReminders as getActiveRemindersFromModule,
   restorePendingReminders as restorePendingRemindersFromModule,
   setReminderSendSmsCallback,
@@ -118,6 +120,8 @@ export async function executeTool(
     result = await executePeopleTool(toolName, args);
   } else if (listToolNames.includes(toolName)) {
     result = await executeListTool(toolName, args, effectivePermissions);
+  } else if (foodToolNames.includes(toolName)) {
+    result = await executeFoodTool(toolName, args);
   }
 
   if (result !== null) {

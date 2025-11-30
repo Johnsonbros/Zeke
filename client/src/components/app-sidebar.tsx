@@ -43,6 +43,7 @@ import {
   MapPin,
   Bot,
   List,
+  Utensils,
 } from "lucide-react";
 import type { Conversation } from "@shared/schema";
 import { format } from "date-fns";
@@ -70,6 +71,12 @@ const mainNavItems = [
     icon: List,
     href: "/lists",
     description: "Manage custom lists",
+  },
+  {
+    title: "Meals & Recipes",
+    icon: Utensils,
+    href: "/meals",
+    description: "Food preferences & recipes",
   },
   {
     title: "Tasks",

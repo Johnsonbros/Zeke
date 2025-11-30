@@ -118,7 +118,30 @@ import {
   updateCustomListItem,
   toggleCustomListItemChecked,
   deleteCustomListItem,
-  clearCheckedCustomListItems
+  clearCheckedCustomListItems,
+  getFamilyMembers,
+  getFoodPreferences,
+  upsertFoodPreference,
+  getDietaryRestrictions,
+  createDietaryRestriction,
+  getMealHistory,
+  createMealHistoryEntry,
+  updateMealRating,
+  searchRecipes,
+  getRecipeById,
+  toggleRecipeFavorite,
+  getFavoriteRecipes,
+  getActiveFamilyMembers,
+  deleteFoodPreference,
+  getLikedIngredients,
+  getDislikedIngredients,
+  deleteDietaryRestriction,
+  getSavedRecipes,
+  createRecipe,
+  updateRecipe,
+  deleteRecipe,
+  incrementRecipeCooked,
+  getMostCookedMeals
 } from "./db";
 import type { TwilioMessageSource } from "@shared/schema";
 import { generateContextualQuestion } from "./gettingToKnow";
@@ -162,7 +185,7 @@ import {
   stopAutomation,
   runAutomationNow 
 } from "./automations";
-import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, type Automation, type InsertAutomation } from "@shared/schema";
+import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, insertFoodPreferenceSchema, insertDietaryRestrictionSchema, insertSavedRecipeSchema, updateSavedRecipeSchema, insertMealHistorySchema, type Automation, type InsertAutomation } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
 import { listCalendarEvents, getTodaysEvents, getUpcomingEvents, createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, listCalendars, type CalendarEvent, type CalendarInfo } from "./googleCalendar";
@@ -3262,6 +3285,354 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Delete command error:", error);
       res.status(500).json({ error: error.message || "Failed to delete command" });
+    }
+  });
+
+  // === Food Preferences & Recipes API Routes ===
+
+  // GET /api/food/family - Get all family members
+  app.get("/api/food/family", (req, res) => {
+    try {
+      const members = getActiveFamilyMembers();
+      res.json(members);
+    } catch (error: any) {
+      console.error("Get family members error:", error);
+      res.status(500).json({ error: error.message || "Failed to get family members" });
+    }
+  });
+
+  // GET /api/food/preferences - Get all food preferences
+  app.get("/api/food/preferences", (req, res) => {
+    try {
+      const memberId = req.query.memberId as string | undefined;
+      const preferences = getFoodPreferences(memberId);
+      res.json(preferences);
+    } catch (error: any) {
+      console.error("Get food preferences error:", error);
+      res.status(500).json({ error: error.message || "Failed to get food preferences" });
+    }
+  });
+
+  // POST /api/food/preferences - Add a food preference
+  app.post("/api/food/preferences", (req, res) => {
+    try {
+      const parsed = insertFoodPreferenceSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Creating/updating food preference for member ${parsed.data.memberId}`);
+      const pref = upsertFoodPreference(parsed.data);
+      res.json(pref);
+    } catch (error: any) {
+      console.error("Add food preference error:", error);
+      res.status(500).json({ error: error.message || "Failed to add food preference" });
+    }
+  });
+
+  // DELETE /api/food/preferences/:id - Delete a food preference
+  app.delete("/api/food/preferences/:id", (req, res) => {
+    try {
+      const { id } = req.params;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Deleting food preference ${id}`);
+      const success = deleteFoodPreference(id);
+      if (!success) {
+        return res.status(404).json({ error: "Food preference not found" });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete food preference error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete food preference" });
+    }
+  });
+
+  // GET /api/food/preferences/summary - Get summary of preferences by member
+  app.get("/api/food/preferences/summary", (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching food preferences summary`);
+      const liked = getLikedIngredients();
+      const disliked = getDislikedIngredients();
+      const loved = getFoodPreferences().filter(p => p.preference === "love");
+      res.json({ liked, disliked, loved });
+    } catch (error: any) {
+      console.error("Get food preferences summary error:", error);
+      res.status(500).json({ error: error.message || "Failed to get food preferences summary" });
+    }
+  });
+
+  // GET /api/food/restrictions - Get all dietary restrictions
+  app.get("/api/food/restrictions", (req, res) => {
+    try {
+      const memberId = req.query.memberId as string | undefined;
+      const restrictions = getDietaryRestrictions(memberId);
+      res.json(restrictions);
+    } catch (error: any) {
+      console.error("Get dietary restrictions error:", error);
+      res.status(500).json({ error: error.message || "Failed to get dietary restrictions" });
+    }
+  });
+
+  // POST /api/food/restrictions - Add a dietary restriction
+  app.post("/api/food/restrictions", (req, res) => {
+    try {
+      const parsed = insertDietaryRestrictionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Creating dietary restriction for member ${parsed.data.memberId}`);
+      const restriction = createDietaryRestriction(parsed.data);
+      res.json(restriction);
+    } catch (error: any) {
+      console.error("Add dietary restriction error:", error);
+      res.status(500).json({ error: error.message || "Failed to add dietary restriction" });
+    }
+  });
+
+  // DELETE /api/food/restrictions/:id - Delete a dietary restriction
+  app.delete("/api/food/restrictions/:id", (req, res) => {
+    try {
+      const { id } = req.params;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Deleting dietary restriction ${id}`);
+      const success = deleteDietaryRestriction(id);
+      if (!success) {
+        return res.status(404).json({ error: "Dietary restriction not found" });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete dietary restriction error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete dietary restriction" });
+    }
+  });
+
+  // GET /api/recipes - Get all recipes with optional filters
+  app.get("/api/recipes", (req, res) => {
+    try {
+      const search = req.query.search as string | undefined;
+      const cuisine = req.query.cuisine as string | undefined;
+      const mealType = req.query.mealType as string | undefined;
+      const isFavorite = req.query.isFavorite === "true" ? true : (req.query.isFavorite === "false" ? false : undefined);
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching recipes with filters - search: ${search || 'none'}, cuisine: ${cuisine || 'none'}, mealType: ${mealType || 'none'}, isFavorite: ${isFavorite}`);
+      
+      let recipes;
+      if (search) {
+        recipes = searchRecipes(search);
+      } else if (cuisine || mealType || isFavorite !== undefined) {
+        recipes = getSavedRecipes({
+          cuisine,
+          mealType: mealType as any,
+          isFavorite
+        });
+      } else {
+        recipes = getSavedRecipes();
+      }
+      res.json(recipes);
+    } catch (error: any) {
+      console.error("Get recipes error:", error);
+      res.status(500).json({ error: error.message || "Failed to get recipes" });
+    }
+  });
+
+  // POST /api/recipes - Create a new recipe
+  app.post("/api/recipes", (req, res) => {
+    try {
+      const parsed = insertSavedRecipeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Creating recipe "${parsed.data.name}"`);
+      const recipe = createRecipe(parsed.data);
+      res.json(recipe);
+    } catch (error: any) {
+      console.error("Create recipe error:", error);
+      res.status(500).json({ error: error.message || "Failed to create recipe" });
+    }
+  });
+
+  // GET /api/recipes/:id - Get a single recipe
+  app.get("/api/recipes/:id", (req, res) => {
+    try {
+      const recipe = getRecipeById(req.params.id);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+      res.json(recipe);
+    } catch (error: any) {
+      console.error("Get recipe error:", error);
+      res.status(500).json({ error: error.message || "Failed to get recipe" });
+    }
+  });
+
+  // PUT /api/recipes/:id - Update a recipe
+  app.put("/api/recipes/:id", (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing = getRecipeById(id);
+      if (!existing) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+      
+      const parsed = updateSavedRecipeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Updating recipe "${existing.name}" (${id})`);
+      const recipe = updateRecipe(id, parsed.data);
+      res.json(recipe);
+    } catch (error: any) {
+      console.error("Update recipe error:", error);
+      res.status(500).json({ error: error.message || "Failed to update recipe" });
+    }
+  });
+
+  // DELETE /api/recipes/:id - Delete a recipe
+  app.delete("/api/recipes/:id", (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing = getRecipeById(id);
+      if (!existing) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Deleting recipe "${existing.name}" (${id})`);
+      const success = deleteRecipe(id);
+      res.json({ success });
+    } catch (error: any) {
+      console.error("Delete recipe error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete recipe" });
+    }
+  });
+
+  // POST /api/recipes/:id/favorite - Toggle recipe favorite
+  app.post("/api/recipes/:id/favorite", (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Toggling favorite for recipe ${req.params.id}`);
+      const recipe = toggleRecipeFavorite(req.params.id);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+      res.json(recipe);
+    } catch (error: any) {
+      console.error("Toggle recipe favorite error:", error);
+      res.status(500).json({ error: error.message || "Failed to toggle favorite" });
+    }
+  });
+
+  // POST /api/recipes/:id/cook - Log cooking a recipe and increment times cooked
+  app.post("/api/recipes/:id/cook", (req, res) => {
+    try {
+      const { id } = req.params;
+      const { rating } = req.body;
+      
+      const recipe = getRecipeById(id);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Logging cook for recipe "${recipe.name}" (${id})`);
+      
+      const updatedRecipe = incrementRecipeCooked(id);
+      
+      const mealEntry = createMealHistoryEntry({
+        name: recipe.name,
+        mealType: recipe.mealType || "dinner",
+        cuisine: recipe.cuisine || null,
+        rating: rating || null,
+        notes: `Cooked from saved recipe`,
+        recipeId: id,
+        cookedAt: new Date().toISOString(),
+      });
+      
+      res.json({ recipe: updatedRecipe, mealEntry });
+    } catch (error: any) {
+      console.error("Log recipe cook error:", error);
+      res.status(500).json({ error: error.message || "Failed to log recipe cook" });
+    }
+  });
+
+  // GET /api/meals/stats - Get meal statistics (must be before /api/meals/:id routes)
+  app.get("/api/meals/stats", (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching meal statistics`);
+      
+      const allMeals = getMealHistory();
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      
+      const thisMonth = allMeals.filter(meal => {
+        const cookedAt = new Date(meal.cookedAt);
+        return cookedAt >= startOfMonth;
+      }).length;
+      
+      const mostCooked = getMostCookedMeals(10);
+      
+      res.json({ thisMonth, mostCooked });
+    } catch (error: any) {
+      console.error("Get meal stats error:", error);
+      res.status(500).json({ error: error.message || "Failed to get meal statistics" });
+    }
+  });
+
+  // GET /api/meals - Get meal history
+  app.get("/api/meals", (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching meal history with limit ${limit}`);
+      const meals = getMealHistory(limit);
+      res.json(meals);
+    } catch (error: any) {
+      console.error("Get meal history error:", error);
+      res.status(500).json({ error: error.message || "Failed to get meal history" });
+    }
+  });
+
+  // POST /api/meals - Log a meal
+  app.post("/api/meals", (req, res) => {
+    try {
+      const parsed = insertMealHistorySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Logging meal "${parsed.data.name}"`);
+      const meal = createMealHistoryEntry({
+        ...parsed.data,
+        cookedAt: parsed.data.cookedAt || new Date().toISOString(),
+      });
+      res.json(meal);
+    } catch (error: any) {
+      console.error("Log meal error:", error);
+      res.status(500).json({ error: error.message || "Failed to log meal" });
+    }
+  });
+
+  // PUT /api/meals/:id/rating - Update meal rating
+  app.put("/api/meals/:id/rating", (req, res) => {
+    try {
+      const { rating } = req.body;
+      if (rating === undefined || rating < 1 || rating > 5) {
+        return res.status(400).json({ error: "Rating must be between 1 and 5" });
+      }
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Updating rating for meal ${req.params.id} to ${rating}`);
+      const meal = updateMealRating(req.params.id, rating);
+      if (!meal) {
+        return res.status(404).json({ error: "Meal not found" });
+      }
+      res.json(meal);
+    } catch (error: any) {
+      console.error("Update meal rating error:", error);
+      res.status(500).json({ error: error.message || "Failed to update rating" });
+    }
+  });
+
+  // GET /api/family - Get all family members
+  app.get("/api/family", (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching family members`);
+      const members = getFamilyMembers();
+      res.json(members);
+    } catch (error: any) {
+      console.error("Get family members error:", error);
+      res.status(500).json({ error: error.message || "Failed to get family members" });
     }
   });
   
