@@ -93,7 +93,17 @@ import {
   acknowledgeAllProximityAlerts,
   findNearbyPlaces,
   checkGroceryProximity,
-  calculateDistance
+  calculateDistance,
+  linkTaskToPlace,
+  linkReminderToPlace,
+  linkMemoryToPlace,
+  unlinkTaskFromPlace,
+  unlinkReminderFromPlace,
+  unlinkMemoryFromPlace,
+  getPlaceWithLinkedItems,
+  getTasksByPlace,
+  getRemindersByPlace,
+  getMemoriesByPlace
 } from "./db";
 import type { TwilioMessageSource } from "@shared/schema";
 import { generateContextualQuestion } from "./gettingToKnow";
@@ -2419,6 +2429,154 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Get lists for place error:", error);
       res.status(500).json({ error: error.message || "Failed to get lists for place" });
+    }
+  });
+
+  // === Location Linking Routes ===
+  
+  // GET /api/location/places/:id/items - Get all items linked to a place
+  app.get("/api/location/places/:id/items", (req, res) => {
+    try {
+      const result = getPlaceWithLinkedItems(req.params.id);
+      if (!result) {
+        return res.status(404).json({ error: "Place not found" });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Get place items error:", error);
+      res.status(500).json({ error: error.message || "Failed to get items for place" });
+    }
+  });
+
+  // POST /api/location/places/:id/link/task - Link a task to a place
+  app.post("/api/location/places/:id/link/task", (req, res) => {
+    try {
+      const { taskId } = req.body;
+      if (!taskId) {
+        return res.status(400).json({ error: "taskId is required" });
+      }
+      
+      const task = linkTaskToPlace(taskId, req.params.id);
+      if (!task) {
+        return res.status(404).json({ error: "Task not found" });
+      }
+      res.json(task);
+    } catch (error: any) {
+      console.error("Link task to place error:", error);
+      res.status(500).json({ error: error.message || "Failed to link task to place" });
+    }
+  });
+
+  // DELETE /api/location/places/:id/link/task/:taskId - Unlink a task from a place
+  app.delete("/api/location/places/:id/link/task/:taskId", (req, res) => {
+    try {
+      const task = unlinkTaskFromPlace(req.params.taskId);
+      if (!task) {
+        return res.status(404).json({ error: "Task not found" });
+      }
+      res.json(task);
+    } catch (error: any) {
+      console.error("Unlink task from place error:", error);
+      res.status(500).json({ error: error.message || "Failed to unlink task from place" });
+    }
+  });
+
+  // POST /api/location/places/:id/link/reminder - Link a reminder to a place
+  app.post("/api/location/places/:id/link/reminder", (req, res) => {
+    try {
+      const { reminderId } = req.body;
+      if (!reminderId) {
+        return res.status(400).json({ error: "reminderId is required" });
+      }
+      
+      const reminder = linkReminderToPlace(reminderId, req.params.id);
+      if (!reminder) {
+        return res.status(404).json({ error: "Reminder not found" });
+      }
+      res.json(reminder);
+    } catch (error: any) {
+      console.error("Link reminder to place error:", error);
+      res.status(500).json({ error: error.message || "Failed to link reminder to place" });
+    }
+  });
+
+  // DELETE /api/location/places/:id/link/reminder/:reminderId - Unlink a reminder from a place
+  app.delete("/api/location/places/:id/link/reminder/:reminderId", (req, res) => {
+    try {
+      const reminder = unlinkReminderFromPlace(req.params.reminderId);
+      if (!reminder) {
+        return res.status(404).json({ error: "Reminder not found" });
+      }
+      res.json(reminder);
+    } catch (error: any) {
+      console.error("Unlink reminder from place error:", error);
+      res.status(500).json({ error: error.message || "Failed to unlink reminder from place" });
+    }
+  });
+
+  // POST /api/location/places/:id/link/memory - Link a memory to a place
+  app.post("/api/location/places/:id/link/memory", (req, res) => {
+    try {
+      const { memoryId } = req.body;
+      if (!memoryId) {
+        return res.status(400).json({ error: "memoryId is required" });
+      }
+      
+      const memory = linkMemoryToPlace(memoryId, req.params.id);
+      if (!memory) {
+        return res.status(404).json({ error: "Memory not found" });
+      }
+      res.json(memory);
+    } catch (error: any) {
+      console.error("Link memory to place error:", error);
+      res.status(500).json({ error: error.message || "Failed to link memory to place" });
+    }
+  });
+
+  // DELETE /api/location/places/:id/link/memory/:memoryId - Unlink a memory from a place
+  app.delete("/api/location/places/:id/link/memory/:memoryId", (req, res) => {
+    try {
+      const memory = unlinkMemoryFromPlace(req.params.memoryId);
+      if (!memory) {
+        return res.status(404).json({ error: "Memory not found" });
+      }
+      res.json(memory);
+    } catch (error: any) {
+      console.error("Unlink memory from place error:", error);
+      res.status(500).json({ error: error.message || "Failed to unlink memory from place" });
+    }
+  });
+
+  // GET /api/location/places/:id/tasks - Get all tasks linked to a place
+  app.get("/api/location/places/:id/tasks", (req, res) => {
+    try {
+      const tasks = getTasksByPlace(req.params.id);
+      res.json(tasks);
+    } catch (error: any) {
+      console.error("Get tasks by place error:", error);
+      res.status(500).json({ error: error.message || "Failed to get tasks for place" });
+    }
+  });
+
+  // GET /api/location/places/:id/reminders - Get all reminders linked to a place
+  app.get("/api/location/places/:id/reminders", (req, res) => {
+    try {
+      const reminders = getRemindersByPlace(req.params.id);
+      res.json(reminders);
+    } catch (error: any) {
+      console.error("Get reminders by place error:", error);
+      res.status(500).json({ error: error.message || "Failed to get reminders for place" });
+    }
+  });
+
+  // GET /api/location/places/:id/memories - Get all memories linked to a place
+  app.get("/api/location/places/:id/memories", (req, res) => {
+    try {
+      const memories = getMemoriesByPlace(req.params.id);
+      res.json(memories);
+    } catch (error: any) {
+      console.error("Get memories by place error:", error);
+      res.status(500).json({ error: error.message || "Failed to get memories for place" });
     }
   });
 

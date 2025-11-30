@@ -265,6 +265,27 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category);
 `);
 
+// Add place_id column to tasks table if it doesn't exist
+try {
+  db.exec(`ALTER TABLE tasks ADD COLUMN place_id TEXT`);
+} catch (e) {
+  // Column may already exist, ignore error
+}
+
+// Add place_id column to reminders table if it doesn't exist  
+try {
+  db.exec(`ALTER TABLE reminders ADD COLUMN place_id TEXT`);
+} catch (e) {
+  // Column may already exist, ignore error
+}
+
+// Add place_id column to memory_notes table if it doesn't exist
+try {
+  db.exec(`ALTER TABLE memory_notes ADD COLUMN place_id TEXT`);
+} catch (e) {
+  // Column may already exist, ignore error
+}
+
 // Create contacts table if it doesn't exist
 db.exec(`
   CREATE TABLE IF NOT EXISTS contacts (
@@ -517,6 +538,7 @@ interface MemoryNoteRow {
   embedding: string | null;
   is_superseded: number;
   superseded_by: string | null;
+  place_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -547,6 +569,7 @@ interface ReminderRow {
   scheduled_for: string;
   created_at: string;
   completed: number;
+  place_id: string | null;
 }
 
 interface TaskRow {
@@ -557,6 +580,7 @@ interface TaskRow {
   due_date: string | null;
   category: string;
   completed: number;
+  place_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -711,6 +735,7 @@ function mapMemoryNote(row: MemoryNoteRow): MemoryNote {
     embedding: row.embedding,
     isSuperseded: Boolean(row.is_superseded),
     supersededBy: row.superseded_by,
+    placeId: row.place_id || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -746,6 +771,7 @@ function mapReminder(row: ReminderRow): Reminder {
     scheduledFor: row.scheduled_for,
     createdAt: row.created_at,
     completed: Boolean(row.completed),
+    placeId: row.place_id || null,
   };
 }
 
@@ -989,9 +1015,9 @@ export function createMemoryNote(data: CreateMemoryNoteInput): MemoryNote {
     const embeddingStr = data.embedding ? JSON.stringify(data.embedding) : null;
     
     db.prepare(`
-      INSERT INTO memory_notes (id, type, content, context, embedding, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, data.type, data.content, context, embeddingStr, now, now);
+      INSERT INTO memory_notes (id, type, content, context, embedding, place_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.type, data.content, context, embeddingStr, data.placeId || null, now, now);
     
     return { 
       id, 
@@ -1001,6 +1027,7 @@ export function createMemoryNote(data: CreateMemoryNoteInput): MemoryNote {
       embedding: embeddingStr,
       isSuperseded: false,
       supersededBy: null,
+      placeId: data.placeId || null,
       createdAt: now, 
       updatedAt: now 
     };
@@ -1318,9 +1345,9 @@ export function createReminder(data: InsertReminder): Reminder {
     const now = getCurrentTimestamp();
     
     db.prepare(`
-      INSERT INTO reminders (id, message, recipient_phone, conversation_id, scheduled_for, created_at, completed)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, data.message, data.recipientPhone || null, data.conversationId || null, data.scheduledFor, now, data.completed ? 1 : 0);
+      INSERT INTO reminders (id, message, recipient_phone, conversation_id, scheduled_for, created_at, completed, place_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.message, data.recipientPhone || null, data.conversationId || null, data.scheduledFor, now, data.completed ? 1 : 0, data.placeId || null);
     
     return {
       id,
@@ -1330,6 +1357,7 @@ export function createReminder(data: InsertReminder): Reminder {
       scheduledFor: data.scheduledFor,
       createdAt: now,
       completed: data.completed || false,
+      placeId: data.placeId || null,
     };
   });
 }
@@ -1432,6 +1460,7 @@ function mapTask(row: TaskRow): Task {
     dueDate: row.due_date,
     category: row.category as "work" | "personal" | "family",
     completed: Boolean(row.completed),
+    placeId: row.place_id || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1448,9 +1477,9 @@ export function createTask(data: InsertTask): Task {
     const completed = data.completed ?? false;
     
     db.prepare(`
-      INSERT INTO tasks (id, title, description, priority, due_date, category, completed, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, data.title, description, priority, data.dueDate || null, category, completed ? 1 : 0, now, now);
+      INSERT INTO tasks (id, title, description, priority, due_date, category, completed, place_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.title, description, priority, data.dueDate || null, category, completed ? 1 : 0, data.placeId || null, now, now);
     
     return {
       id,
@@ -1460,6 +1489,7 @@ export function createTask(data: InsertTask): Task {
       dueDate: data.dueDate || null,
       category: category as "work" | "personal" | "family",
       completed,
+      placeId: data.placeId || null,
       createdAt: now,
       updatedAt: now,
     };
@@ -2491,6 +2521,143 @@ export function deleteSavedPlace(id: string): boolean {
   return wrapDbOperation("deleteSavedPlace", () => {
     const result = db.prepare(`DELETE FROM saved_places WHERE id = ?`).run(id);
     return result.changes > 0;
+  });
+}
+
+// ============================================
+// LOCATION LINKING FUNCTIONS
+// ============================================
+
+// Link a task to a place
+export function linkTaskToPlace(taskId: string, placeId: string): Task | undefined {
+  return wrapDbOperation("linkTaskToPlace", () => {
+    db.prepare(`UPDATE tasks SET place_id = ? WHERE id = ?`).run(placeId, taskId);
+    return getTask(taskId);
+  });
+}
+
+// Unlink a task from its place
+export function unlinkTaskFromPlace(taskId: string): Task | undefined {
+  return wrapDbOperation("unlinkTaskFromPlace", () => {
+    db.prepare(`UPDATE tasks SET place_id = NULL WHERE id = ?`).run(taskId);
+    return getTask(taskId);
+  });
+}
+
+// Link a reminder to a place
+export function linkReminderToPlace(reminderId: string, placeId: string): Reminder | undefined {
+  return wrapDbOperation("linkReminderToPlace", () => {
+    db.prepare(`UPDATE reminders SET place_id = ? WHERE id = ?`).run(placeId, reminderId);
+    return getReminder(reminderId);
+  });
+}
+
+// Unlink a reminder from its place
+export function unlinkReminderFromPlace(reminderId: string): Reminder | undefined {
+  return wrapDbOperation("unlinkReminderFromPlace", () => {
+    db.prepare(`UPDATE reminders SET place_id = NULL WHERE id = ?`).run(reminderId);
+    return getReminder(reminderId);
+  });
+}
+
+// Link a memory note to a place
+export function linkMemoryToPlace(memoryId: string, placeId: string): MemoryNote | undefined {
+  return wrapDbOperation("linkMemoryToPlace", () => {
+    db.prepare(`UPDATE memory_notes SET place_id = ? WHERE id = ?`).run(placeId, memoryId);
+    return getMemoryNote(memoryId);
+  });
+}
+
+// Unlink a memory from its place
+export function unlinkMemoryFromPlace(memoryId: string): MemoryNote | undefined {
+  return wrapDbOperation("unlinkMemoryFromPlace", () => {
+    db.prepare(`UPDATE memory_notes SET place_id = NULL WHERE id = ?`).run(memoryId);
+    return getMemoryNote(memoryId);
+  });
+}
+
+// Get all tasks linked to a specific place
+export function getTasksByPlace(placeId: string): Task[] {
+  return wrapDbOperation("getTasksByPlace", () => {
+    const rows = db.prepare(`SELECT * FROM tasks WHERE place_id = ?`).all(placeId) as TaskRow[];
+    return rows.map(mapTask);
+  });
+}
+
+// Get all reminders linked to a specific place
+export function getRemindersByPlace(placeId: string): Reminder[] {
+  return wrapDbOperation("getRemindersByPlace", () => {
+    const rows = db.prepare(`SELECT * FROM reminders WHERE place_id = ?`).all(placeId) as ReminderRow[];
+    return rows.map(mapReminder);
+  });
+}
+
+// Get all memories linked to a specific place
+export function getMemoriesByPlace(placeId: string): MemoryNote[] {
+  return wrapDbOperation("getMemoriesByPlace", () => {
+    const rows = db.prepare(`SELECT * FROM memory_notes WHERE place_id = ?`).all(placeId) as MemoryNoteRow[];
+    return rows.map(mapMemoryNote);
+  });
+}
+
+// Get a place with all linked items
+export function getPlaceWithLinkedItems(placeId: string): { 
+  place: SavedPlace; 
+  tasks: Task[]; 
+  reminders: Reminder[]; 
+  memories: MemoryNote[];
+  lists: PlaceList[];
+} | undefined {
+  return wrapDbOperation("getPlaceWithLinkedItems", () => {
+    const place = getSavedPlace(placeId);
+    if (!place) return undefined;
+    
+    return {
+      place,
+      tasks: getTasksByPlace(placeId),
+      reminders: getRemindersByPlace(placeId),
+      memories: getMemoriesByPlace(placeId),
+      lists: getListsForPlace(placeId),
+    };
+  });
+}
+
+// Get all items linked to any location (for location intelligence overview)
+export function getAllLocationLinkedItems(): {
+  tasks: Array<Task & { placeName?: string }>;
+  reminders: Array<Reminder & { placeName?: string }>;
+  memories: Array<MemoryNote & { placeName?: string }>;
+} {
+  return wrapDbOperation("getAllLocationLinkedItems", () => {
+    // Get tasks with place info
+    const taskRows = db.prepare(`
+      SELECT t.*, sp.name as place_name 
+      FROM tasks t 
+      LEFT JOIN saved_places sp ON t.place_id = sp.id 
+      WHERE t.place_id IS NOT NULL
+    `).all() as (TaskRow & { place_name?: string })[];
+    
+    // Get reminders with place info
+    const reminderRows = db.prepare(`
+      SELECT r.*, sp.name as place_name 
+      FROM reminders r 
+      LEFT JOIN saved_places sp ON r.place_id = sp.id 
+      WHERE r.place_id IS NOT NULL
+    `).all() as (ReminderRow & { place_name?: string })[];
+    
+    // Get memories with place info
+    const memoryRows = db.prepare(`
+      SELECT m.*, sp.name as place_name 
+      FROM memory_notes m 
+      LEFT JOIN saved_places sp ON m.place_id = sp.id 
+      WHERE m.place_id IS NOT NULL
+    `).all() as (MemoryNoteRow & { place_name?: string })[];
+    
+    return {
+      tasks: taskRows.map(row => ({ ...mapTask(row), placeName: row.place_name || undefined })),
+      reminders: reminderRows.map(row => ({ ...mapReminder(row), placeName: row.place_name || undefined })),
+      memories: memoryRows.map(row => ({ ...mapMemoryNote(row), placeName: row.place_name || undefined })),
+    };
   });
 }
 

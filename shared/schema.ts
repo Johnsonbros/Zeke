@@ -49,6 +49,7 @@ export const memoryNotes = sqliteTable("memory_notes", {
   embedding: text("embedding"),
   isSuperseded: integer("is_superseded", { mode: "boolean" }).notNull().default(false),
   supersededBy: text("superseded_by"),
+  placeId: text("place_id"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -137,6 +138,7 @@ export const reminders = sqliteTable("reminders", {
   scheduledFor: text("scheduled_for").notNull(),
   createdAt: text("created_at").notNull(),
   completed: integer("completed", { mode: "boolean" }).notNull().default(false),
+  placeId: text("place_id"),
 });
 
 export const insertReminderSchema = createInsertSchema(reminders).omit({
@@ -156,6 +158,7 @@ export const tasks = sqliteTable("tasks", {
   dueDate: text("due_date"),
   category: text("category", { enum: ["work", "personal", "family"] }).notNull().default("personal"),
   completed: integer("completed", { mode: "boolean" }).notNull().default(false),
+  placeId: text("place_id"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -173,6 +176,7 @@ export const updateTaskSchema = z.object({
   dueDate: z.string().nullable().optional(),
   category: z.enum(["work", "personal", "family"]).optional(),
   completed: z.boolean().optional(),
+  placeId: z.string().nullable().optional(),
 });
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;
