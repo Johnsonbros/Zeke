@@ -60,7 +60,40 @@ import {
   getTwilioConversationPhones,
   updateTwilioMessageStatus,
   updateTwilioMessageError,
-  normalizePhoneNumber
+  normalizePhoneNumber,
+  createLocationHistory,
+  getLocationHistory,
+  getLocationHistoryInRange,
+  getLatestLocation,
+  deleteOldLocationHistory,
+  createSavedPlace,
+  getSavedPlace,
+  getAllSavedPlaces,
+  getStarredPlaces,
+  getSavedPlacesByCategory,
+  getPlacesWithProximityAlerts,
+  updateSavedPlace,
+  deleteSavedPlace,
+  createPlaceList,
+  getPlaceList,
+  getAllPlaceLists,
+  getGroceryLinkedPlaceLists,
+  updatePlaceList,
+  deletePlaceList,
+  addPlaceToList,
+  removePlaceFromList,
+  getPlacesInList,
+  getListsForPlace,
+  getLocationSettings,
+  updateLocationSettings,
+  createProximityAlert,
+  getRecentProximityAlerts,
+  getUnacknowledgedAlerts,
+  acknowledgeProximityAlert,
+  acknowledgeAllProximityAlerts,
+  findNearbyPlaces,
+  checkGroceryProximity,
+  calculateDistance
 } from "./db";
 import type { TwilioMessageSource } from "@shared/schema";
 import { generateContextualQuestion } from "./gettingToKnow";
@@ -1892,6 +1925,499 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Profile fetch error:", error);
       res.status(500).json({ error: error.message || "Failed to fetch user profile" });
+    }
+  });
+
+  // ============================================
+  // LOCATION INTELLIGENCE API ENDPOINTS
+  // ============================================
+
+  // === Location Settings ===
+  
+  // GET /api/location/settings - Get current location settings
+  app.get("/api/location/settings", (req, res) => {
+    try {
+      const settings = getLocationSettings();
+      res.json(settings || {
+        trackingEnabled: false,
+        trackingIntervalMinutes: 15,
+        proximityAlertsEnabled: true,
+        defaultProximityRadiusMeters: 200,
+        retentionDays: 30
+      });
+    } catch (error: any) {
+      console.error("Location settings fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch location settings" });
+    }
+  });
+
+  // PATCH /api/location/settings - Update location settings
+  app.patch("/api/location/settings", (req, res) => {
+    try {
+      const updated = updateLocationSettings(req.body);
+      if (!updated) {
+        return res.status(404).json({ error: "Location settings not found" });
+      }
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Location settings update error:", error);
+      res.status(500).json({ error: error.message || "Failed to update location settings" });
+    }
+  });
+
+  // === Location History ===
+  
+  // POST /api/location/history - Record a new location
+  app.post("/api/location/history", (req, res) => {
+    try {
+      const { latitude, longitude, accuracy, altitude, speed, heading, source } = req.body;
+      
+      if (!latitude || !longitude) {
+        return res.status(400).json({ error: "latitude and longitude are required" });
+      }
+      
+      const location = createLocationHistory({
+        latitude: String(latitude),
+        longitude: String(longitude),
+        accuracy: accuracy ? String(accuracy) : undefined,
+        altitude: altitude ? String(altitude) : undefined,
+        speed: speed ? String(speed) : undefined,
+        heading: heading ? String(heading) : undefined,
+        source: source || "gps"
+      });
+      
+      res.status(201).json(location);
+    } catch (error: any) {
+      console.error("Location history create error:", error);
+      res.status(500).json({ error: error.message || "Failed to record location" });
+    }
+  });
+
+  // GET /api/location/history - Get location history
+  app.get("/api/location/history", (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const startDate = req.query.startDate as string;
+      const endDate = req.query.endDate as string;
+      
+      let history;
+      if (startDate && endDate) {
+        history = getLocationHistoryInRange(startDate, endDate);
+      } else {
+        history = getLocationHistory(limit);
+      }
+      
+      res.json(history);
+    } catch (error: any) {
+      console.error("Location history fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch location history" });
+    }
+  });
+
+  // GET /api/location/current - Get the most recent location
+  app.get("/api/location/current", (req, res) => {
+    try {
+      const location = getLatestLocation();
+      if (!location) {
+        return res.status(404).json({ error: "No location history available" });
+      }
+      res.json(location);
+    } catch (error: any) {
+      console.error("Current location fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch current location" });
+    }
+  });
+
+  // DELETE /api/location/history - Delete old location history
+  app.delete("/api/location/history", (req, res) => {
+    try {
+      const retentionDays = parseInt(req.query.retentionDays as string) || 30;
+      const deleted = deleteOldLocationHistory(retentionDays);
+      res.json({ deleted, message: `Deleted ${deleted} location records older than ${retentionDays} days` });
+    } catch (error: any) {
+      console.error("Location history delete error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete location history" });
+    }
+  });
+
+  // === Saved Places ===
+  
+  // GET /api/location/places - Get all saved places
+  app.get("/api/location/places", (req, res) => {
+    try {
+      const category = req.query.category as string;
+      const starred = req.query.starred === "true";
+      
+      let places;
+      if (category) {
+        places = getSavedPlacesByCategory(category as any);
+      } else if (starred) {
+        places = getStarredPlaces();
+      } else {
+        places = getAllSavedPlaces();
+      }
+      
+      res.json(places);
+    } catch (error: any) {
+      console.error("Saved places fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch saved places" });
+    }
+  });
+
+  // POST /api/location/places - Create a new saved place
+  app.post("/api/location/places", (req, res) => {
+    try {
+      const { name, latitude, longitude, label, address, category, notes, isStarred, proximityAlertEnabled, proximityRadiusMeters } = req.body;
+      
+      if (!name || !latitude || !longitude) {
+        return res.status(400).json({ error: "name, latitude, and longitude are required" });
+      }
+      
+      const place = createSavedPlace({
+        name,
+        latitude: String(latitude),
+        longitude: String(longitude),
+        label,
+        address,
+        category: category || "other",
+        notes,
+        isStarred: isStarred || false,
+        proximityAlertEnabled: proximityAlertEnabled || false,
+        proximityRadiusMeters: proximityRadiusMeters || 200
+      });
+      
+      res.status(201).json(place);
+    } catch (error: any) {
+      console.error("Saved place create error:", error);
+      res.status(500).json({ error: error.message || "Failed to create saved place" });
+    }
+  });
+
+  // GET /api/location/places/:id - Get a specific saved place
+  app.get("/api/location/places/:id", (req, res) => {
+    try {
+      const place = getSavedPlace(req.params.id);
+      if (!place) {
+        return res.status(404).json({ error: "Place not found" });
+      }
+      res.json(place);
+    } catch (error: any) {
+      console.error("Saved place fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch saved place" });
+    }
+  });
+
+  // PATCH /api/location/places/:id - Update a saved place
+  app.patch("/api/location/places/:id", (req, res) => {
+    try {
+      const updated = updateSavedPlace(req.params.id, req.body);
+      if (!updated) {
+        return res.status(404).json({ error: "Place not found" });
+      }
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Saved place update error:", error);
+      res.status(500).json({ error: error.message || "Failed to update saved place" });
+    }
+  });
+
+  // DELETE /api/location/places/:id - Delete a saved place
+  app.delete("/api/location/places/:id", (req, res) => {
+    try {
+      const deleted = deleteSavedPlace(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Place not found" });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Saved place delete error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete saved place" });
+    }
+  });
+
+  // POST /api/location/places/:id/star - Toggle star status
+  app.post("/api/location/places/:id/star", (req, res) => {
+    try {
+      const place = getSavedPlace(req.params.id);
+      if (!place) {
+        return res.status(404).json({ error: "Place not found" });
+      }
+      const updated = updateSavedPlace(req.params.id, { isStarred: !place.isStarred });
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Star toggle error:", error);
+      res.status(500).json({ error: error.message || "Failed to toggle star" });
+    }
+  });
+
+  // === Place Lists ===
+  
+  // GET /api/location/lists - Get all place lists
+  app.get("/api/location/lists", (req, res) => {
+    try {
+      const groceryLinked = req.query.groceryLinked === "true";
+      
+      let lists;
+      if (groceryLinked) {
+        lists = getGroceryLinkedPlaceLists();
+      } else {
+        lists = getAllPlaceLists();
+      }
+      
+      res.json(lists);
+    } catch (error: any) {
+      console.error("Place lists fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch place lists" });
+    }
+  });
+
+  // POST /api/location/lists - Create a new place list
+  app.post("/api/location/lists", (req, res) => {
+    try {
+      const { name, description, icon, color, linkedToGrocery } = req.body;
+      
+      if (!name) {
+        return res.status(400).json({ error: "name is required" });
+      }
+      
+      const list = createPlaceList({
+        name,
+        description,
+        icon,
+        color,
+        linkedToGrocery: linkedToGrocery || false
+      });
+      
+      res.status(201).json(list);
+    } catch (error: any) {
+      console.error("Place list create error:", error);
+      res.status(500).json({ error: error.message || "Failed to create place list" });
+    }
+  });
+
+  // GET /api/location/lists/:id - Get a specific place list with its places
+  app.get("/api/location/lists/:id", (req, res) => {
+    try {
+      const list = getPlaceList(req.params.id);
+      if (!list) {
+        return res.status(404).json({ error: "List not found" });
+      }
+      
+      const places = getPlacesInList(req.params.id);
+      res.json({ ...list, places });
+    } catch (error: any) {
+      console.error("Place list fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch place list" });
+    }
+  });
+
+  // PATCH /api/location/lists/:id - Update a place list
+  app.patch("/api/location/lists/:id", (req, res) => {
+    try {
+      const updated = updatePlaceList(req.params.id, req.body);
+      if (!updated) {
+        return res.status(404).json({ error: "List not found" });
+      }
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Place list update error:", error);
+      res.status(500).json({ error: error.message || "Failed to update place list" });
+    }
+  });
+
+  // DELETE /api/location/lists/:id - Delete a place list
+  app.delete("/api/location/lists/:id", (req, res) => {
+    try {
+      const deleted = deletePlaceList(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "List not found" });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Place list delete error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete place list" });
+    }
+  });
+
+  // POST /api/location/lists/:id/places - Add a place to a list
+  app.post("/api/location/lists/:id/places", (req, res) => {
+    try {
+      const { placeId } = req.body;
+      
+      if (!placeId) {
+        return res.status(400).json({ error: "placeId is required" });
+      }
+      
+      const list = getPlaceList(req.params.id);
+      if (!list) {
+        return res.status(404).json({ error: "List not found" });
+      }
+      
+      const place = getSavedPlace(placeId);
+      if (!place) {
+        return res.status(404).json({ error: "Place not found" });
+      }
+      
+      const item = addPlaceToList(req.params.id, placeId);
+      res.status(201).json(item);
+    } catch (error: any) {
+      console.error("Add place to list error:", error);
+      res.status(500).json({ error: error.message || "Failed to add place to list" });
+    }
+  });
+
+  // DELETE /api/location/lists/:id/places/:placeId - Remove a place from a list
+  app.delete("/api/location/lists/:listId/places/:placeId", (req, res) => {
+    try {
+      const removed = removePlaceFromList(req.params.listId, req.params.placeId);
+      if (!removed) {
+        return res.status(404).json({ error: "Place not in list" });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Remove place from list error:", error);
+      res.status(500).json({ error: error.message || "Failed to remove place from list" });
+    }
+  });
+
+  // === Proximity & Nearby ===
+  
+  // POST /api/location/nearby - Find places near a location
+  app.post("/api/location/nearby", (req, res) => {
+    try {
+      const { latitude, longitude, radiusMeters } = req.body;
+      
+      if (!latitude || !longitude) {
+        return res.status(400).json({ error: "latitude and longitude are required" });
+      }
+      
+      const lat = parseFloat(latitude);
+      const lon = parseFloat(longitude);
+      const radius = radiusMeters || 500;
+      
+      const nearbyPlaces = findNearbyPlaces(lat, lon, radius);
+      res.json(nearbyPlaces);
+    } catch (error: any) {
+      console.error("Nearby places error:", error);
+      res.status(500).json({ error: error.message || "Failed to find nearby places" });
+    }
+  });
+
+  // POST /api/location/check-grocery-proximity - Check if near grocery-linked places
+  app.post("/api/location/check-grocery-proximity", (req, res) => {
+    try {
+      const { latitude, longitude } = req.body;
+      
+      if (!latitude || !longitude) {
+        return res.status(400).json({ error: "latitude and longitude are required" });
+      }
+      
+      const lat = parseFloat(latitude);
+      const lon = parseFloat(longitude);
+      
+      const nearbyGroceryPlaces = checkGroceryProximity(lat, lon);
+      
+      // Also get high-priority grocery items due today
+      const todaysTasks = getTasksDueToday();
+      const highPriorityGroceryItems = todaysTasks.filter(
+        (task: any) => task.category === "grocery" && task.priority === "high" && !task.completed
+      );
+      
+      res.json({
+        nearbyGroceryPlaces,
+        highPriorityGroceryItems,
+        shouldAlert: nearbyGroceryPlaces.length > 0 && highPriorityGroceryItems.length > 0
+      });
+    } catch (error: any) {
+      console.error("Grocery proximity check error:", error);
+      res.status(500).json({ error: error.message || "Failed to check grocery proximity" });
+    }
+  });
+
+  // === Proximity Alerts ===
+  
+  // GET /api/location/alerts - Get recent proximity alerts
+  app.get("/api/location/alerts", (req, res) => {
+    try {
+      const unacknowledged = req.query.unacknowledged === "true";
+      const limit = parseInt(req.query.limit as string) || 20;
+      
+      let alerts;
+      if (unacknowledged) {
+        alerts = getUnacknowledgedAlerts();
+      } else {
+        alerts = getRecentProximityAlerts(limit);
+      }
+      
+      res.json(alerts);
+    } catch (error: any) {
+      console.error("Proximity alerts fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch proximity alerts" });
+    }
+  });
+
+  // POST /api/location/alerts - Create a new proximity alert
+  app.post("/api/location/alerts", (req, res) => {
+    try {
+      const { savedPlaceId, placeListId, distanceMeters, alertType, alertMessage } = req.body;
+      
+      if (!savedPlaceId || !distanceMeters || !alertType || !alertMessage) {
+        return res.status(400).json({ error: "savedPlaceId, distanceMeters, alertType, and alertMessage are required" });
+      }
+      
+      const alert = createProximityAlert({
+        savedPlaceId,
+        placeListId,
+        distanceMeters: String(distanceMeters),
+        alertType,
+        alertMessage
+      });
+      
+      res.status(201).json(alert);
+    } catch (error: any) {
+      console.error("Proximity alert create error:", error);
+      res.status(500).json({ error: error.message || "Failed to create proximity alert" });
+    }
+  });
+
+  // POST /api/location/alerts/:id/acknowledge - Acknowledge an alert
+  app.post("/api/location/alerts/:id/acknowledge", (req, res) => {
+    try {
+      const acknowledged = acknowledgeProximityAlert(req.params.id);
+      if (!acknowledged) {
+        return res.status(404).json({ error: "Alert not found" });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Acknowledge alert error:", error);
+      res.status(500).json({ error: error.message || "Failed to acknowledge alert" });
+    }
+  });
+
+  // POST /api/location/alerts/acknowledge-all - Acknowledge all alerts
+  app.post("/api/location/alerts/acknowledge-all", (req, res) => {
+    try {
+      const count = acknowledgeAllProximityAlerts();
+      res.json({ acknowledged: count });
+    } catch (error: any) {
+      console.error("Acknowledge all alerts error:", error);
+      res.status(500).json({ error: error.message || "Failed to acknowledge all alerts" });
+    }
+  });
+
+  // GET /api/location/places/:id/lists - Get lists that contain a place
+  app.get("/api/location/places/:id/lists", (req, res) => {
+    try {
+      const place = getSavedPlace(req.params.id);
+      if (!place) {
+        return res.status(404).json({ error: "Place not found" });
+      }
+      
+      const lists = getListsForPlace(req.params.id);
+      res.json(lists);
+    } catch (error: any) {
+      console.error("Get lists for place error:", error);
+      res.status(500).json({ error: error.message || "Failed to get lists for place" });
     }
   });
   
