@@ -72,6 +72,13 @@ export {
   locationToolNames,
 } from "./location";
 
+export {
+  peopleToolDefinitions,
+  peopleToolPermissions,
+  executePeopleTool,
+  peopleToolNames,
+} from "./people";
+
 import type OpenAI from "openai";
 import type { ToolPermissions } from "../tools";
 
@@ -85,6 +92,7 @@ import { fileToolDefinitions, fileToolPermissions } from "./files";
 import { memoryToolDefinitions, memoryToolPermissions } from "./memory";
 import { utilityToolDefinitions, utilityToolPermissions } from "./utilities";
 import { locationToolDefinitions, locationToolPermissions } from "./location";
+import { peopleToolDefinitions, peopleToolPermissions } from "./people";
 
 export const allToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   ...reminderToolDefinitions,
@@ -97,6 +105,7 @@ export const allToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   ...calendarToolDefinitions,
   ...memoryToolDefinitions,
   ...locationToolDefinitions,
+  ...peopleToolDefinitions,
 ];
 
 export const allToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
@@ -110,4 +119,5 @@ export const allToolPermissions: Record<string, (permissions: ToolPermissions) =
   ...calendarToolPermissions,
   ...memoryToolPermissions,
   ...locationToolPermissions,
+  ...peopleToolPermissions,
 };

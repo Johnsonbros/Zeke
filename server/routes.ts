@@ -122,6 +122,7 @@ import {
   utilityToolNames,
 } from "./capabilities";
 import { setDailyCheckInSmsCallback, initializeDailyCheckIn } from "./dailyCheckIn";
+import { startPeopleProcessor } from "./peopleProcessor";
 import { 
   initializeAutomations, 
   setAutomationSmsCallback, 
@@ -372,6 +373,9 @@ export async function registerRoutes(
     }
   });
   initializeAutomations();
+  
+  // Start background people extraction from lifelogs
+  startPeopleProcessor();
   
   // Health check endpoint for Python agents bridge
   app.get("/api/health", (_req, res) => {

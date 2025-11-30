@@ -357,3 +357,117 @@ export async function checkLimitlessConnection(): Promise<{ connected: boolean; 
     };
   }
 }
+
+/**
+ * Extract people mentioned in a lifelog
+ * Returns an array of extracted people with context
+ */
+export interface ExtractedPerson {
+  name: string;
+  speakerType: "identified" | "mentioned" | "unknown";
+  context: string;
+  lifelogId: string;
+  lifelogTitle: string;
+  timestamp: string;
+}
+
+export function extractPeopleFromLifelog(lifelog: Lifelog): ExtractedPerson[] {
+  const people: ExtractedPerson[] = [];
+  const seenNames = new Set<string>();
+  
+  function processNode(node: ContentNode, parentContext: string = "") {
+    if (node.speakerName && node.speakerIdentifier !== "user" && node.speakerName !== "Unknown") {
+      const name = node.speakerName.trim();
+      if (!seenNames.has(name.toLowerCase())) {
+        seenNames.add(name.toLowerCase());
+        people.push({
+          name,
+          speakerType: "identified",
+          context: node.content?.substring(0, 200) || parentContext,
+          lifelogId: lifelog.id,
+          lifelogTitle: lifelog.title,
+          timestamp: node.startTime || lifelog.startTime,
+        });
+      }
+    }
+    
+    if (node.children) {
+      for (const child of node.children) {
+        processNode(child, node.content || parentContext);
+      }
+    }
+  }
+  
+  for (const content of lifelog.contents) {
+    processNode(content);
+  }
+  
+  return people;
+}
+
+/**
+ * Extract people from recent lifelogs
+ * Scans lifelogs from the given time period and extracts all identified speakers
+ */
+export async function extractPeopleFromRecentLifelogs(hours: number = 24): Promise<ExtractedPerson[]> {
+  try {
+    const lifelogs = await getRecentLifelogs(hours, 50);
+    const allPeople: ExtractedPerson[] = [];
+    
+    for (const lifelog of lifelogs) {
+      const people = extractPeopleFromLifelog(lifelog);
+      allPeople.push(...people);
+    }
+    
+    const uniquePeople = Array.from(
+      allPeople.reduce((map, person) => {
+        const key = person.name.toLowerCase();
+        if (!map.has(key) || person.speakerType === "identified") {
+          map.set(key, person);
+        }
+        return map;
+      }, new Map<string, ExtractedPerson>())
+    ).map(([, person]) => person);
+    
+    return uniquePeople;
+  } catch (error) {
+    console.error("Failed to extract people from lifelogs:", error);
+    return [];
+  }
+}
+
+/**
+ * Search for mentions of a specific person in lifelogs
+ */
+export async function searchPersonInLifelogs(personName: string, limit: number = 10): Promise<{
+  lifelogs: Lifelog[];
+  mentions: { lifelogId: string; context: string; timestamp: string }[];
+}> {
+  try {
+    const lifelogs = await searchLifelogs(personName, { limit });
+    const mentions: { lifelogId: string; context: string; timestamp: string }[] = [];
+    
+    for (const lifelog of lifelogs) {
+      const content = extractConversationContent(lifelog);
+      const lowerContent = content.toLowerCase();
+      const lowerName = personName.toLowerCase();
+      
+      let index = lowerContent.indexOf(lowerName);
+      while (index !== -1) {
+        const start = Math.max(0, index - 100);
+        const end = Math.min(content.length, index + personName.length + 100);
+        mentions.push({
+          lifelogId: lifelog.id,
+          context: content.substring(start, end),
+          timestamp: lifelog.startTime,
+        });
+        index = lowerContent.indexOf(lowerName, index + 1);
+      }
+    }
+    
+    return { lifelogs, mentions };
+  } catch (error) {
+    console.error(`Failed to search for ${personName} in lifelogs:`, error);
+    return { lifelogs: [], mentions: [] };
+  }
+}

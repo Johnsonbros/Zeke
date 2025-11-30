@@ -50,6 +50,9 @@ export const memoryNotes = sqliteTable("memory_notes", {
   isSuperseded: integer("is_superseded", { mode: "boolean" }).notNull().default(false),
   supersededBy: text("superseded_by"),
   placeId: text("place_id"),
+  contactId: text("contact_id"),
+  sourceType: text("source_type", { enum: ["conversation", "lifelog", "manual", "observation"] }).default("conversation"),
+  sourceId: text("source_id"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -200,6 +203,14 @@ export const contacts = sqliteTable("contacts", {
   canAccessTasks: integer("can_access_tasks", { mode: "boolean" }).notNull().default(false),
   canAccessGrocery: integer("can_access_grocery", { mode: "boolean" }).notNull().default(false),
   canSetReminders: integer("can_set_reminders", { mode: "boolean" }).notNull().default(false),
+  birthday: text("birthday"),
+  occupation: text("occupation"),
+  organization: text("organization"),
+  email: text("email"),
+  lastInteractionAt: text("last_interaction_at"),
+  interactionCount: integer("interaction_count").notNull().default(0),
+  metadata: text("metadata"),
+  isAutoCreated: integer("is_auto_created", { mode: "boolean" }).notNull().default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -221,6 +232,14 @@ export const updateContactSchema = z.object({
   canAccessTasks: z.boolean().optional(),
   canAccessGrocery: z.boolean().optional(),
   canSetReminders: z.boolean().optional(),
+  birthday: z.string().nullable().optional(),
+  occupation: z.string().nullable().optional(),
+  organization: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
+  lastInteractionAt: z.string().nullable().optional(),
+  interactionCount: z.number().optional(),
+  metadata: z.string().nullable().optional(),
+  isAutoCreated: z.boolean().optional(),
 });
 
 export type InsertContact = z.infer<typeof insertContactSchema>;
