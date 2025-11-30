@@ -12,6 +12,7 @@ import {
   getOverdueTasks,
   getPendingReminders,
 } from "../db";
+import { resolvePendingMemory, getAllPendingMemories } from "../agent";
 
 export const utilityToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
@@ -76,12 +77,50 @@ export const utilityToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "resolve_memory_conflict",
+      description: "Resolve a pending memory conflict when the user confirms or denies updating their memory. Use this when the user responds to a memory conflict question with 'yes', 'update', 'keep new', 'no', or 'keep old'.",
+      parameters: {
+        type: "object",
+        properties: {
+          conflict_id: {
+            type: "string",
+            description: "The ID of the pending memory conflict to resolve (from the conflict context).",
+          },
+          action: {
+            type: "string",
+            enum: ["confirm", "deny"],
+            description: "The action to take: 'confirm' to update with new information, 'deny' to keep existing memory.",
+          },
+        },
+        required: ["conflict_id", "action"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_pending_memory_conflicts",
+      description: "List all pending memory conflicts that are awaiting user confirmation.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+    },
+  },
 ];
 
 export const utilityToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
   get_current_time: () => true,
   get_current_weather: () => true,
   get_weather_forecast: () => true,
+  get_weather: () => true,
+  get_morning_briefing: (p) => p.isAdmin,
+  resolve_memory_conflict: (p) => p.isAdmin,
+  list_pending_memory_conflicts: (p) => p.isAdmin,
 };
 
 interface ExecuteOptions {
@@ -283,6 +322,77 @@ export async function executeUtilityTool(
       }
     }
     
+    case "resolve_memory_conflict": {
+      const { conflict_id, action } = args as {
+        conflict_id: string;
+        action: "confirm" | "deny";
+      };
+      
+      if (!conflict_id || !action) {
+        return JSON.stringify({
+          success: false,
+          error: "Missing conflict_id or action parameter",
+        });
+      }
+      
+      if (action !== "confirm" && action !== "deny") {
+        return JSON.stringify({
+          success: false,
+          error: "Action must be 'confirm' or 'deny'",
+        });
+      }
+      
+      try {
+        const result = await resolvePendingMemory(conflict_id, action);
+        return JSON.stringify({
+          success: result.success,
+          message: result.message,
+          action,
+        });
+      } catch (error: any) {
+        console.error("Failed to resolve memory conflict:", error);
+        return JSON.stringify({
+          success: false,
+          error: error.message || "Failed to resolve memory conflict",
+        });
+      }
+    }
+    
+    case "list_pending_memory_conflicts": {
+      try {
+        const pending = getAllPendingMemories();
+        
+        if (pending.length === 0) {
+          return JSON.stringify({
+            success: true,
+            message: "No pending memory conflicts",
+            conflicts: [],
+          });
+        }
+        
+        const conflicts = pending.map(p => ({
+          id: p.id,
+          newContent: p.content,
+          existingContent: p.conflictResult.conflictingMemory?.content,
+          conflictType: p.conflictResult.conflictType,
+          similarity: p.conflictResult.similarity,
+          createdAt: p.createdAt.toISOString(),
+        }));
+        
+        return JSON.stringify({
+          success: true,
+          message: `Found ${pending.length} pending memory conflict(s)`,
+          conflicts,
+        });
+      } catch (error: any) {
+        console.error("Failed to list pending memory conflicts:", error);
+        return JSON.stringify({
+          success: false,
+          error: error.message || "Failed to list pending memory conflicts",
+        });
+      }
+    }
+    
     default:
       return null;
   }
@@ -292,4 +402,6 @@ export const utilityToolNames = [
   "get_current_time",
   "get_weather",
   "get_morning_briefing",
+  "resolve_memory_conflict",
+  "list_pending_memory_conflicts",
 ];

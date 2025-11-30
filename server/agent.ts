@@ -26,8 +26,83 @@ import {
   createMemoryWithEmbedding,
   getSmartMemoryContext,
 } from "./semanticMemory";
+import {
+  detectMemoryConflict,
+  formatConflictQuestion,
+  type ConflictDetectionResult,
+} from "./memoryConflicts";
+import { supersedeMemoryNote } from "./db";
 import type { Message, Contact } from "@shared/schema";
 import { isMasterAdmin } from "@shared/schema";
+
+export interface PendingMemory {
+  id: string;
+  content: string;
+  type: "fact" | "preference" | "note" | "summary";
+  context: string;
+  conflictResult: ConflictDetectionResult;
+  createdAt: Date;
+}
+
+const pendingMemories: Map<string, PendingMemory> = new Map();
+
+export function getPendingMemory(id: string): PendingMemory | undefined {
+  return pendingMemories.get(id);
+}
+
+export function getAllPendingMemories(): PendingMemory[] {
+  return Array.from(pendingMemories.values());
+}
+
+export function clearExpiredPendingMemories(): void {
+  const expirationMs = 30 * 60 * 1000;
+  const now = Date.now();
+  const entries = Array.from(pendingMemories.entries());
+  for (let i = 0; i < entries.length; i++) {
+    const [id, memory] = entries[i];
+    if (now - memory.createdAt.getTime() > expirationMs) {
+      pendingMemories.delete(id);
+    }
+  }
+}
+
+export async function resolvePendingMemory(
+  id: string, 
+  action: "confirm" | "deny"
+): Promise<{ success: boolean; message: string }> {
+  const pending = pendingMemories.get(id);
+  if (!pending) {
+    return { success: false, message: "Pending memory not found or expired" };
+  }
+  
+  pendingMemories.delete(id);
+  
+  if (action === "deny") {
+    console.log(`Memory conflict resolved: Keeping old memory, discarding "${pending.content}"`);
+    return { success: true, message: "Kept existing memory, discarded new information" };
+  }
+  
+  try {
+    const supersedesContent = pending.conflictResult.conflictingMemory?.content;
+    const result = await createMemoryWithEmbedding({
+      type: pending.type,
+      content: pending.content,
+      context: pending.context,
+    }, { 
+      checkDuplicates: false,
+      supersedesContentLike: supersedesContent,
+    });
+    
+    if (result.wasCreated) {
+      console.log(`Memory conflict resolved: Updated with "${pending.content}"`);
+      return { success: true, message: "Memory updated successfully" };
+    }
+    return { success: false, message: "Failed to create memory" };
+  } catch (error) {
+    console.error("Error resolving pending memory:", error);
+    return { success: false, message: "Error creating memory" };
+  }
+}
 
 // Permission context passed to the agent for access control
 export interface UserPermissions {
@@ -442,6 +517,31 @@ You KNOW where Nate is. Use this information proactively to:
   }
 }
 
+function getPendingMemoryConflictContext(): string {
+  const pending = getAllPendingMemories();
+  if (pending.length === 0) return "";
+  
+  let context = "## Pending Memory Conflicts\n";
+  context += "The following new information conflicts with existing memories. Ask the user to confirm:\n\n";
+  
+  for (const p of pending) {
+    if (p.conflictResult.conflictingMemory) {
+      const question = formatConflictQuestion(
+        p.content,
+        p.conflictResult.conflictingMemory,
+        p.conflictResult.conflictType
+      );
+      context += `**Conflict ID: ${p.id}**\n${question}\n\n`;
+    }
+  }
+  
+  context += `When the user responds to confirm (yes, update, keep new) or deny (no, keep old), use the resolve_memory_conflict tool.\n`;
+  context += `For "yes"/"update"/"keep new" responses, resolve with action: "confirm".\n`;
+  context += `For "no"/"keep old" responses, resolve with action: "deny".\n\n`;
+  
+  return context;
+}
+
 // Build the system prompt
 async function buildSystemPrompt(userMessage: string, userPhoneNumber?: string, permissions?: UserPermissions): Promise<string> {
   // Default to admin permissions for web (maintains current behavior)
@@ -465,6 +565,9 @@ async function buildSystemPrompt(userMessage: string, userPhoneNumber?: string, 
   
   // Build access control section
   const accessControlSection = buildAccessControlPrompt(userPermissions);
+  
+  // Get pending memory conflicts context
+  const pendingConflictContext = userPermissions.isAdmin ? getPendingMemoryConflictContext() : "";
 
   return `You are ZEKE, Nate Johnson's personal AI assistant. You have a persistent memory and can be accessed via SMS or web.
 
@@ -474,6 +577,7 @@ ${profileContext}
 
 ${memoryContext}
 
+${pendingConflictContext}
 ${reminderContext}
 ${phoneContext}
 ${locationContext}
@@ -775,6 +879,42 @@ If nothing important to remember, return: {"memories": []}`,
         }
 
         try {
+          clearExpiredPendingMemories();
+          
+          let conflictResult: ConflictDetectionResult | null = null;
+          try {
+            if (memory.type === 'fact' || memory.type === 'preference') {
+              conflictResult = await detectMemoryConflict(memory.content, {
+                types: ["fact", "preference"],
+              });
+            }
+          } catch (conflictError) {
+            console.error("Memory conflict detection failed (non-fatal):", conflictError);
+          }
+
+          if (conflictResult?.hasConflict && conflictResult.conflictingMemory) {
+            const pendingId = `pending_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const pendingMemory: PendingMemory = {
+              id: pendingId,
+              content: memory.content,
+              type: memory.type as "fact" | "preference" | "note" | "summary",
+              context: memory.context || "",
+              conflictResult,
+              createdAt: new Date(),
+            };
+            pendingMemories.set(pendingId, pendingMemory);
+            
+            const question = formatConflictQuestion(
+              memory.content,
+              conflictResult.conflictingMemory,
+              conflictResult.conflictType
+            );
+            console.log(`Memory conflict detected - pending ID: ${pendingId}`);
+            console.log(`Conflict question: ${question}`);
+            console.log(`Stored pending memory for user confirmation`);
+            continue;
+          }
+
           const result = await createMemoryWithEmbedding({
             type: memory.type as "fact" | "preference" | "summary" | "note",
             content: memory.content,

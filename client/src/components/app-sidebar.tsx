@@ -42,6 +42,7 @@ import {
   User,
   MapPin,
   Bot,
+  List,
 } from "lucide-react";
 import type { Conversation } from "@shared/schema";
 import { format } from "date-fns";
@@ -63,6 +64,12 @@ const mainNavItems = [
     icon: ShoppingCart,
     href: "/grocery",
     description: "Shared family list",
+  },
+  {
+    title: "Lists",
+    icon: List,
+    href: "/lists",
+    description: "Manage custom lists",
   },
   {
     title: "Tasks",

@@ -103,7 +103,20 @@ import {
   getPlaceWithLinkedItems,
   getTasksByPlace,
   getRemindersByPlace,
-  getMemoriesByPlace
+  getMemoriesByPlace,
+  createCustomList,
+  getCustomList,
+  getAllCustomLists,
+  updateCustomList,
+  deleteCustomList,
+  createCustomListItem,
+  getCustomListItem,
+  getCustomListItems,
+  getCustomListWithItems,
+  updateCustomListItem,
+  toggleCustomListItemChecked,
+  deleteCustomListItem,
+  clearCheckedCustomListItems
 } from "./db";
 import type { TwilioMessageSource } from "@shared/schema";
 import { generateContextualQuestion } from "./gettingToKnow";
@@ -147,10 +160,11 @@ import {
   stopAutomation,
   runAutomationNow 
 } from "./automations";
-import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertAutomationSchema, type Automation, type InsertAutomation } from "@shared/schema";
+import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, type Automation, type InsertAutomation } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
 import { listCalendarEvents, getTodaysEvents, getUpcomingEvents, createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, listCalendars, type CalendarEvent, type CalendarInfo } from "./googleCalendar";
+import { parseQuickAction } from "./quickActions";
 
 // Initialize Twilio client for outbound SMS
 function getTwilioClient() {
@@ -686,8 +700,18 @@ export async function registerRoutes(
           source: "sms",
         });
         
-        // Get AI response (pass phone number so ZEKE can send SMS reminders)
-        const aiResponse = await chat(conversation.id, message, false, fromNumber);
+        // Check for quick action commands first (GROCERY, REMIND, REMEMBER, LIST)
+        console.log(`[QuickAction] Processing message from ${fromNumber}: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`);
+        const quickAction = parseQuickAction(message);
+        let aiResponse: string;
+        
+        if (quickAction.isQuickAction) {
+          console.log(`[QuickAction] Matched: type="${quickAction.type}", params=${JSON.stringify(quickAction.params)}`);
+          aiResponse = quickAction.response;
+        } else {
+          console.log(`[QuickAction] No match - forwarding to AI`);
+          aiResponse = await chat(conversation.id, message, false, fromNumber);
+        }
         
         // Store assistant message
         createMessage({
@@ -833,6 +857,82 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Set preference error:", error);
       res.status(500).json({ message: "Failed to set preference" });
+    }
+  });
+  
+  // Export all data as JSON backup
+  // SECURITY: This endpoint exposes sensitive data. Multiple layers of protection:
+  // 1. Logging all access attempts
+  // 2. Origin/Referer header check for same-origin requests (web UI only)
+  // 3. Optional secret token via query param or header for programmatic access
+  app.get("/api/export", async (req, res) => {
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    const origin = req.headers['origin'] || '';
+    const referer = req.headers['referer'] || '';
+    
+    // Log all access attempts for security audit
+    console.log(`[SECURITY] Export endpoint accessed - IP: ${clientIp}, User-Agent: ${userAgent}, Origin: ${origin}, Referer: ${referer}`);
+    
+    try {
+      // Check for secret token if configured (for programmatic access)
+      const exportToken = process.env.EXPORT_SECRET_TOKEN;
+      const providedToken = req.query.token as string || req.headers['x-export-token'] as string;
+      
+      // If token is configured, allow access with valid token
+      if (exportToken && providedToken === exportToken) {
+        console.log(`[SECURITY] Export access granted via secret token - IP: ${clientIp}`);
+      } else {
+        // Otherwise, verify this is a same-origin request from the web UI
+        const host = req.headers['host'] || '';
+        const isSameOrigin = origin ? origin.includes(host) : true; // If no origin header, might be direct navigation
+        const isSameReferer = referer ? referer.includes(host) : true;
+        
+        // Block requests with mismatched origins (CSRF-like protection)
+        if (origin && !isSameOrigin) {
+          console.warn(`[SECURITY] Export blocked - origin mismatch. Origin: ${origin}, Host: ${host}, IP: ${clientIp}`);
+          return res.status(403).json({ message: "Access denied" });
+        }
+        
+        // If a token is configured but not provided/matched, require same-origin
+        if (exportToken && !isSameReferer && !isSameOrigin) {
+          console.warn(`[SECURITY] Export blocked - token required for cross-origin access. IP: ${clientIp}`);
+          return res.status(403).json({ message: "Access denied - authentication required" });
+        }
+        
+        console.log(`[SECURITY] Export access granted via same-origin check - IP: ${clientIp}`);
+      }
+      
+      const memories = getAllMemoryNotes();
+      const preferences = getAllPreferences();
+      const contacts = getAllContacts();
+      const groceryItems = getAllGroceryItems();
+      const tasks = getAllTasks();
+      const reminders = getAllReminders();
+      
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        version: "1.0",
+        data: {
+          memories,
+          preferences,
+          contacts,
+          groceryItems,
+          tasks,
+          reminders,
+        },
+      };
+      
+      const filename = `zeke-backup-${new Date().toISOString().split('T')[0]}.json`;
+      
+      console.log(`[SECURITY] Export completed successfully - Records: ${memories.length} memories, ${contacts.length} contacts, ${tasks.length} tasks - IP: ${clientIp}`);
+      
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.json(exportData);
+    } catch (error: any) {
+      console.error(`[SECURITY] Export failed - IP: ${clientIp}, Error:`, error);
+      res.status(500).json({ message: "Export operation failed" });
     }
   });
   
@@ -1000,6 +1100,281 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Clear purchased items error:", error);
       res.status(500).json({ message: "Failed to clear purchased items" });
+    }
+  });
+  
+  // === CUSTOM LISTS API ROUTES ===
+  // SECURITY: These routes log access for audit purposes and validate inputs strictly.
+  // For a single-user app accessed via web UI, we trust same-origin requests.
+  // Error messages are kept generic to avoid information disclosure.
+  
+  // Helper to log list access attempts
+  const logListAccess = (action: string, req: Request, listId?: string) => {
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    console.log(`[LIST ACCESS] ${action}${listId ? ` (list: ${listId})` : ''} - IP: ${clientIp}, UA: ${userAgent?.toString().substring(0, 50)}`);
+  };
+  
+  // Get all custom lists
+  app.get("/api/lists", async (req, res) => {
+    logListAccess("GET /api/lists", req);
+    try {
+      const lists = getAllCustomLists();
+      res.json(lists);
+    } catch (error: any) {
+      console.error("Get custom lists error:", error);
+      res.status(500).json({ message: "Operation failed" });
+    }
+  });
+  
+  // Create custom list
+  app.post("/api/lists", async (req, res) => {
+    logListAccess("POST /api/lists", req);
+    try {
+      const parsed = insertCustomListSchema.safeParse(req.body);
+      if (!parsed.success) {
+        console.log("[LIST ACCESS] Invalid create request - validation failed");
+        return res.status(400).json({ message: "Invalid request" });
+      }
+      
+      const list = createCustomList(parsed.data);
+      console.log(`[LIST ACCESS] Created list: ${list.id} - "${list.name}"`);
+      res.json(list);
+    } catch (error: any) {
+      console.error("Create custom list error:", error);
+      res.status(500).json({ message: "Operation failed" });
+    }
+  });
+  
+  // Get custom list with items
+  app.get("/api/lists/:id", async (req, res) => {
+    const { id } = req.params;
+    logListAccess("GET /api/lists/:id", req, id);
+    
+    // Validate ID format (should be UUID-like)
+    if (!id || typeof id !== 'string' || id.length > 100) {
+      return res.status(400).json({ message: "Invalid request" });
+    }
+    
+    try {
+      const list = getCustomListWithItems(id);
+      
+      if (!list) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      
+      res.json(list);
+    } catch (error: any) {
+      console.error("Get custom list error:", error);
+      res.status(500).json({ message: "Operation failed" });
+    }
+  });
+  
+  // Update custom list
+  app.patch("/api/lists/:id", async (req, res) => {
+    const { id } = req.params;
+    logListAccess("PATCH /api/lists/:id", req, id);
+    
+    if (!id || typeof id !== 'string' || id.length > 100) {
+      return res.status(400).json({ message: "Invalid request" });
+    }
+    
+    try {
+      const existing = getCustomList(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      
+      const parsed = updateCustomListSchema.safeParse(req.body);
+      if (!parsed.success) {
+        console.log(`[LIST ACCESS] Invalid update request for list ${id} - validation failed`);
+        return res.status(400).json({ message: "Invalid request" });
+      }
+      
+      const list = updateCustomList(id, parsed.data);
+      console.log(`[LIST ACCESS] Updated list: ${id}`);
+      res.json(list);
+    } catch (error: any) {
+      console.error("Update custom list error:", error);
+      res.status(500).json({ message: "Operation failed" });
+    }
+  });
+  
+  // Delete custom list
+  app.delete("/api/lists/:id", async (req, res) => {
+    const { id } = req.params;
+    logListAccess("DELETE /api/lists/:id", req, id);
+    
+    if (!id || typeof id !== 'string' || id.length > 100) {
+      return res.status(400).json({ message: "Invalid request" });
+    }
+    
+    try {
+      const existing = getCustomList(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      
+      deleteCustomList(id);
+      console.log(`[LIST ACCESS] Deleted list: ${id} - "${existing.name}"`);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete custom list error:", error);
+      res.status(500).json({ message: "Operation failed" });
+    }
+  });
+  
+  // Add item to custom list
+  app.post("/api/lists/:id/items", async (req, res) => {
+    const { id } = req.params;
+    logListAccess("POST /api/lists/:id/items", req, id);
+    
+    if (!id || typeof id !== 'string' || id.length > 100) {
+      return res.status(400).json({ message: "Invalid request" });
+    }
+    
+    try {
+      const existing = getCustomList(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      
+      const parsed = insertCustomListItemSchema.safeParse({ ...req.body, listId: id });
+      if (!parsed.success) {
+        console.log(`[LIST ACCESS] Invalid item create request for list ${id} - validation failed`);
+        return res.status(400).json({ message: "Invalid request" });
+      }
+      
+      const item = createCustomListItem(parsed.data);
+      console.log(`[LIST ACCESS] Created item in list ${id}: ${item.id}`);
+      res.json(item);
+    } catch (error: any) {
+      console.error("Create custom list item error:", error);
+      res.status(500).json({ message: "Operation failed" });
+    }
+  });
+  
+  // Update custom list item
+  app.patch("/api/lists/:id/items/:itemId", async (req, res) => {
+    const { id, itemId } = req.params;
+    logListAccess("PATCH /api/lists/:id/items/:itemId", req, id);
+    
+    if (!id || !itemId || typeof id !== 'string' || typeof itemId !== 'string' || id.length > 100 || itemId.length > 100) {
+      return res.status(400).json({ message: "Invalid request" });
+    }
+    
+    try {
+      const existingList = getCustomList(id);
+      
+      if (!existingList) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      
+      const existingItem = getCustomListItem(itemId);
+      if (!existingItem || existingItem.listId !== id) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      
+      const parsed = updateCustomListItemSchema.safeParse(req.body);
+      if (!parsed.success) {
+        console.log(`[LIST ACCESS] Invalid item update request for item ${itemId} - validation failed`);
+        return res.status(400).json({ message: "Invalid request" });
+      }
+      
+      const item = updateCustomListItem(itemId, parsed.data);
+      console.log(`[LIST ACCESS] Updated item ${itemId} in list ${id}`);
+      res.json(item);
+    } catch (error: any) {
+      console.error("Update custom list item error:", error);
+      res.status(500).json({ message: "Operation failed" });
+    }
+  });
+  
+  // Delete custom list item
+  app.delete("/api/lists/:id/items/:itemId", async (req, res) => {
+    const { id, itemId } = req.params;
+    logListAccess("DELETE /api/lists/:id/items/:itemId", req, id);
+    
+    if (!id || !itemId || typeof id !== 'string' || typeof itemId !== 'string' || id.length > 100 || itemId.length > 100) {
+      return res.status(400).json({ message: "Invalid request" });
+    }
+    
+    try {
+      const existingList = getCustomList(id);
+      
+      if (!existingList) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      
+      const existingItem = getCustomListItem(itemId);
+      if (!existingItem || existingItem.listId !== id) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      
+      deleteCustomListItem(itemId);
+      console.log(`[LIST ACCESS] Deleted item ${itemId} from list ${id}`);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete custom list item error:", error);
+      res.status(500).json({ message: "Operation failed" });
+    }
+  });
+  
+  // Toggle custom list item checked status
+  app.post("/api/lists/:id/items/:itemId/toggle", async (req, res) => {
+    const { id, itemId } = req.params;
+    logListAccess("POST /api/lists/:id/items/:itemId/toggle", req, id);
+    
+    if (!id || !itemId || typeof id !== 'string' || typeof itemId !== 'string' || id.length > 100 || itemId.length > 100) {
+      return res.status(400).json({ message: "Invalid request" });
+    }
+    
+    try {
+      const existingList = getCustomList(id);
+      
+      if (!existingList) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      
+      const existingItem = getCustomListItem(itemId);
+      if (!existingItem || existingItem.listId !== id) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      
+      const item = toggleCustomListItemChecked(itemId);
+      console.log(`[LIST ACCESS] Toggled item ${itemId} in list ${id} - checked: ${item?.checked}`);
+      res.json(item);
+    } catch (error: any) {
+      console.error("Toggle custom list item error:", error);
+      res.status(500).json({ message: "Operation failed" });
+    }
+  });
+  
+  // Clear all checked items from a list
+  app.post("/api/lists/:id/clear-checked", async (req, res) => {
+    const { id } = req.params;
+    logListAccess("POST /api/lists/:id/clear-checked", req, id);
+    
+    if (!id || typeof id !== 'string' || id.length > 100) {
+      return res.status(400).json({ message: "Invalid request" });
+    }
+    
+    try {
+      const existing = getCustomList(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      
+      const count = clearCheckedCustomListItems(id);
+      console.log(`[LIST ACCESS] Cleared ${count} checked items from list ${id}`);
+      res.json({ success: true, deleted: count });
+    } catch (error: any) {
+      console.error("Clear checked items error:", error);
+      res.status(500).json({ message: "Operation failed" });
     }
   });
   

@@ -764,3 +764,81 @@ export const insertContextAgentSettingsSchema = createInsertSchema(contextAgentS
 
 export type InsertContextAgentSettings = z.infer<typeof insertContextAgentSettingsSchema>;
 export type ContextAgentSettings = typeof contextAgentSettings.$inferSelect;
+
+// ============================================
+// SHARED/CUSTOM LISTS SYSTEM
+// ============================================
+
+// Custom list types
+export const customListTypes = ["todo", "packing", "shopping", "wishlist", "custom"] as const;
+export type CustomListType = typeof customListTypes[number];
+
+// Custom list priority levels for items
+export const customListItemPriorities = ["low", "medium", "high"] as const;
+export type CustomListItemPriority = typeof customListItemPriorities[number];
+
+// Custom lists table for user-created lists
+export const customLists = sqliteTable("custom_lists", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  type: text("type", { enum: customListTypes }).notNull().default("custom"),
+  icon: text("icon"),
+  color: text("color"),
+  isShared: integer("is_shared", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertCustomListSchema = createInsertSchema(customLists).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateCustomListSchema = z.object({
+  name: z.string().min(1).optional(),
+  type: z.enum(customListTypes).optional(),
+  icon: z.string().nullable().optional(),
+  color: z.string().nullable().optional(),
+  isShared: z.boolean().optional(),
+});
+
+export type InsertCustomList = z.infer<typeof insertCustomListSchema>;
+export type UpdateCustomList = z.infer<typeof updateCustomListSchema>;
+export type CustomList = typeof customLists.$inferSelect;
+
+// Custom list items table for items within lists
+export const customListItems = sqliteTable("custom_list_items", {
+  id: text("id").primaryKey(),
+  listId: text("list_id").notNull().references(() => customLists.id),
+  content: text("content").notNull(),
+  checked: integer("checked", { mode: "boolean" }).notNull().default(false),
+  addedBy: text("added_by"),
+  priority: text("priority", { enum: customListItemPriorities }).default("medium"),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertCustomListItemSchema = createInsertSchema(customListItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateCustomListItemSchema = z.object({
+  content: z.string().min(1).optional(),
+  checked: z.boolean().optional(),
+  addedBy: z.string().nullable().optional(),
+  priority: z.enum(customListItemPriorities).optional(),
+  notes: z.string().nullable().optional(),
+});
+
+export type InsertCustomListItem = z.infer<typeof insertCustomListItemSchema>;
+export type UpdateCustomListItem = z.infer<typeof updateCustomListItemSchema>;
+export type CustomListItem = typeof customListItems.$inferSelect;
+
+// Custom list with items (for API responses)
+export interface CustomListWithItems extends CustomList {
+  items: CustomListItem[];
+}

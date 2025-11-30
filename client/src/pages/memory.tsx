@@ -11,8 +11,10 @@ import {
   Heart, 
   Lightbulb,
   FileText,
-  Clock
+  Clock,
+  Download
 } from "lucide-react";
+import { useState } from "react";
 import { Link } from "wouter";
 import type { MemoryNote } from "@shared/schema";
 import { format } from "date-fns";
@@ -107,10 +109,49 @@ function MemoryCard({
 
 export default function MemoryPage() {
   const { toast } = useToast();
+  const [isExporting, setIsExporting] = useState(false);
 
   const { data: memories, isLoading } = useQuery<MemoryNote[]>({
     queryKey: ["/api/memory"],
   });
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const response = await fetch("/api/export");
+      if (!response.ok) {
+        throw new Error("Failed to export data");
+      }
+      
+      const data = await response.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      
+      const date = new Date().toISOString().split('T')[0];
+      const filename = `zeke-backup-${date}.json`;
+      
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Export successful",
+        description: `Your data has been exported to ${filename}`,
+      });
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: "There was a problem exporting your data. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const deleteMemoryMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -143,11 +184,21 @@ export default function MemoryPage() {
   return (
     <ScrollArea className="h-full">
       <div className="bg-background" data-testid="memory-page">
-        <header className="sticky top-0 z-10 h-11 sm:h-14 border-b border-border bg-background/80 backdrop-blur flex items-center gap-2 sm:gap-3 px-3 sm:px-4">
+        <header className="sticky top-0 z-10 h-11 sm:h-14 border-b border-border bg-background/80 backdrop-blur flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4">
           <div className="flex items-center gap-1.5 sm:gap-2">
             <Brain className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
             <h1 className="text-base sm:text-lg font-semibold">ZEKE's Memory</h1>
           </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleExport}
+            disabled={isExporting}
+            data-testid="button-export-data"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            {isExporting ? "Exporting..." : "Export Data"}
+          </Button>
         </header>
 
         <main className="max-w-3xl mx-auto p-3 sm:p-4 pb-6 sm:pb-8">

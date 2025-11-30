@@ -41,7 +41,16 @@ import type {
   InsertLocationSettings,
   ProximityAlert,
   InsertProximityAlert,
-  PlaceCategory
+  PlaceCategory,
+  CustomList,
+  InsertCustomList,
+  UpdateCustomList,
+  CustomListItem,
+  InsertCustomListItem,
+  UpdateCustomListItem,
+  CustomListWithItems,
+  CustomListType,
+  CustomListItemPriority
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -520,6 +529,44 @@ try {
   console.error("Error initializing context agent settings:", e);
 }
 
+// ============================================
+// CUSTOM LISTS SYSTEM TABLES
+// ============================================
+
+// Create custom_lists table for user-created lists
+db.exec(`
+  CREATE TABLE IF NOT EXISTS custom_lists (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'custom',
+    icon TEXT,
+    color TEXT,
+    is_shared INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_custom_lists_type ON custom_lists(type);
+  CREATE INDEX IF NOT EXISTS idx_custom_lists_shared ON custom_lists(is_shared);
+`);
+
+// Create custom_list_items table for items within lists
+db.exec(`
+  CREATE TABLE IF NOT EXISTS custom_list_items (
+    id TEXT PRIMARY KEY,
+    list_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    checked INTEGER NOT NULL DEFAULT 0,
+    added_by TEXT,
+    priority TEXT DEFAULT 'medium',
+    notes TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (list_id) REFERENCES custom_lists(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_custom_list_items_list ON custom_list_items(list_id);
+  CREATE INDEX IF NOT EXISTS idx_custom_list_items_checked ON custom_list_items(checked);
+`);
+
 // Initialize default location settings if not exists
 try {
   const existingSettings = db.prepare(`SELECT id FROM location_settings LIMIT 1`).get();
@@ -764,6 +811,30 @@ interface ProximityAlertRow {
   alert_message: string;
   acknowledged: number;
   created_at: string;
+}
+
+// Custom lists system row types
+interface CustomListRow {
+  id: string;
+  name: string;
+  type: string;
+  icon: string | null;
+  color: string | null;
+  is_shared: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface CustomListItemRow {
+  id: string;
+  list_id: string;
+  content: string;
+  checked: number;
+  added_by: string | null;
+  priority: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // Helper to map database row to Conversation type (snake_case -> camelCase)
@@ -3525,6 +3596,253 @@ export function updateLastScanTime(): void {
   wrapDbOperation("updateLastScanTime", () => {
     const now = new Date().toISOString();
     db.prepare(`UPDATE context_agent_settings SET last_scan_at = ?, updated_at = ?`).run(now, now);
+  });
+}
+
+// ============================================
+// CUSTOM LISTS CRUD OPERATIONS
+// ============================================
+
+// Helper to map database row to CustomList type
+function mapCustomList(row: CustomListRow): CustomList {
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.type as CustomListType,
+    icon: row.icon,
+    color: row.color,
+    isShared: Boolean(row.is_shared),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// Helper to map database row to CustomListItem type
+function mapCustomListItem(row: CustomListItemRow): CustomListItem {
+  return {
+    id: row.id,
+    listId: row.list_id,
+    content: row.content,
+    checked: Boolean(row.checked),
+    addedBy: row.added_by,
+    priority: row.priority as CustomListItemPriority,
+    notes: row.notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// Custom List CRUD
+
+export function createCustomList(data: InsertCustomList): CustomList {
+  return wrapDbOperation("createCustomList", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    const type = data.type || "custom";
+    const isShared = data.isShared ?? false;
+    
+    db.prepare(`
+      INSERT INTO custom_lists (id, name, type, icon, color, is_shared, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.name, type, data.icon || null, data.color || null, isShared ? 1 : 0, now, now);
+    
+    return {
+      id,
+      name: data.name,
+      type: type as CustomListType,
+      icon: data.icon || null,
+      color: data.color || null,
+      isShared,
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+}
+
+export function getCustomList(id: string): CustomList | undefined {
+  return wrapDbOperation("getCustomList", () => {
+    const row = db.prepare(`
+      SELECT * FROM custom_lists WHERE id = ?
+    `).get(id) as CustomListRow | undefined;
+    return row ? mapCustomList(row) : undefined;
+  });
+}
+
+export function getAllCustomLists(): CustomList[] {
+  return wrapDbOperation("getAllCustomLists", () => {
+    const rows = db.prepare(`
+      SELECT * FROM custom_lists ORDER BY created_at DESC
+    `).all() as CustomListRow[];
+    return rows.map(mapCustomList);
+  });
+}
+
+export function getCustomListByName(name: string): CustomList | undefined {
+  return wrapDbOperation("getCustomListByName", () => {
+    const row = db.prepare(`
+      SELECT * FROM custom_lists WHERE LOWER(name) = LOWER(?)
+    `).get(name) as CustomListRow | undefined;
+    return row ? mapCustomList(row) : undefined;
+  });
+}
+
+export function getCustomListsByType(type: CustomListType): CustomList[] {
+  return wrapDbOperation("getCustomListsByType", () => {
+    const rows = db.prepare(`
+      SELECT * FROM custom_lists WHERE type = ? ORDER BY created_at DESC
+    `).all(type) as CustomListRow[];
+    return rows.map(mapCustomList);
+  });
+}
+
+export function getSharedCustomLists(): CustomList[] {
+  return wrapDbOperation("getSharedCustomLists", () => {
+    const rows = db.prepare(`
+      SELECT * FROM custom_lists WHERE is_shared = 1 ORDER BY created_at DESC
+    `).all() as CustomListRow[];
+    return rows.map(mapCustomList);
+  });
+}
+
+export function updateCustomList(id: string, data: UpdateCustomList): CustomList | undefined {
+  return wrapDbOperation("updateCustomList", () => {
+    const existing = getCustomList(id);
+    if (!existing) return undefined;
+    
+    const now = getCurrentTimestamp();
+    const name = data.name ?? existing.name;
+    const type = data.type ?? existing.type;
+    const icon = data.icon !== undefined ? data.icon : existing.icon;
+    const color = data.color !== undefined ? data.color : existing.color;
+    const isShared = data.isShared ?? existing.isShared;
+    
+    db.prepare(`
+      UPDATE custom_lists 
+      SET name = ?, type = ?, icon = ?, color = ?, is_shared = ?, updated_at = ? 
+      WHERE id = ?
+    `).run(name, type, icon, color, isShared ? 1 : 0, now, id);
+    
+    return getCustomList(id);
+  });
+}
+
+export function deleteCustomList(id: string): boolean {
+  return wrapDbOperation("deleteCustomList", () => {
+    const result = db.prepare(`DELETE FROM custom_lists WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// Custom List Item CRUD
+
+export function createCustomListItem(data: InsertCustomListItem): CustomListItem {
+  return wrapDbOperation("createCustomListItem", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    const checked = data.checked ?? false;
+    const priority = data.priority || "medium";
+    
+    db.prepare(`
+      INSERT INTO custom_list_items (id, list_id, content, checked, added_by, priority, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.listId, data.content, checked ? 1 : 0, data.addedBy || null, priority, data.notes || null, now, now);
+    
+    return {
+      id,
+      listId: data.listId,
+      content: data.content,
+      checked,
+      addedBy: data.addedBy || null,
+      priority: priority as CustomListItemPriority,
+      notes: data.notes || null,
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+}
+
+export function getCustomListItem(id: string): CustomListItem | undefined {
+  return wrapDbOperation("getCustomListItem", () => {
+    const row = db.prepare(`
+      SELECT * FROM custom_list_items WHERE id = ?
+    `).get(id) as CustomListItemRow | undefined;
+    return row ? mapCustomListItem(row) : undefined;
+  });
+}
+
+export function getCustomListItems(listId: string): CustomListItem[] {
+  return wrapDbOperation("getCustomListItems", () => {
+    const rows = db.prepare(`
+      SELECT * FROM custom_list_items 
+      WHERE list_id = ? 
+      ORDER BY checked ASC, created_at DESC
+    `).all(listId) as CustomListItemRow[];
+    return rows.map(mapCustomListItem);
+  });
+}
+
+export function getCustomListWithItems(id: string): CustomListWithItems | undefined {
+  return wrapDbOperation("getCustomListWithItems", () => {
+    const list = getCustomList(id);
+    if (!list) return undefined;
+    
+    const items = getCustomListItems(id);
+    return {
+      ...list,
+      items,
+    };
+  });
+}
+
+export function updateCustomListItem(id: string, data: UpdateCustomListItem): CustomListItem | undefined {
+  return wrapDbOperation("updateCustomListItem", () => {
+    const existing = getCustomListItem(id);
+    if (!existing) return undefined;
+    
+    const now = getCurrentTimestamp();
+    const content = data.content ?? existing.content;
+    const checked = data.checked ?? existing.checked;
+    const addedBy = data.addedBy !== undefined ? data.addedBy : existing.addedBy;
+    const priority = data.priority ?? existing.priority;
+    const notes = data.notes !== undefined ? data.notes : existing.notes;
+    
+    db.prepare(`
+      UPDATE custom_list_items 
+      SET content = ?, checked = ?, added_by = ?, priority = ?, notes = ?, updated_at = ? 
+      WHERE id = ?
+    `).run(content, checked ? 1 : 0, addedBy, priority, notes, now, id);
+    
+    return getCustomListItem(id);
+  });
+}
+
+export function toggleCustomListItemChecked(id: string): CustomListItem | undefined {
+  return wrapDbOperation("toggleCustomListItemChecked", () => {
+    const existing = getCustomListItem(id);
+    if (!existing) return undefined;
+    
+    const now = getCurrentTimestamp();
+    const newChecked = !existing.checked;
+    
+    db.prepare(`
+      UPDATE custom_list_items SET checked = ?, updated_at = ? WHERE id = ?
+    `).run(newChecked ? 1 : 0, now, id);
+    
+    return getCustomListItem(id);
+  });
+}
+
+export function deleteCustomListItem(id: string): boolean {
+  return wrapDbOperation("deleteCustomListItem", () => {
+    const result = db.prepare(`DELETE FROM custom_list_items WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function clearCheckedCustomListItems(listId: string): number {
+  return wrapDbOperation("clearCheckedCustomListItems", () => {
+    const result = db.prepare(`DELETE FROM custom_list_items WHERE list_id = ? AND checked = 1`).run(listId);
+    return result.changes;
   });
 }
 
