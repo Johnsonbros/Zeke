@@ -92,7 +92,7 @@ interface LocationHistory {
   longitude: string;
   accuracy?: string;
   source: string;
-  recordedAt: string;
+  createdAt: string;
 }
 
 type DashboardStats = {
@@ -518,27 +518,40 @@ function MapCenterController({ center }: { center: [number, number] }) {
   return null;
 }
 
+function getLocationStatus(lastUpdate: string | undefined): { status: string; color: string } {
+  if (!lastUpdate) return { status: "No GPS", color: "text-muted-foreground" };
+  
+  const now = new Date();
+  const updateTime = new Date(lastUpdate);
+  const diffMinutes = (now.getTime() - updateTime.getTime()) / (1000 * 60);
+  
+  if (diffMinutes < 5) return { status: "Live", color: "text-green-500" };
+  if (diffMinutes < 30) return { status: "Recent", color: "text-green-400" };
+  if (diffMinutes < 60) return { status: "30m ago", color: "text-yellow-500" };
+  if (diffMinutes < 120) return { status: "1h ago", color: "text-yellow-600" };
+  if (diffMinutes < 1440) return { status: `${Math.floor(diffMinutes / 60)}h ago`, color: "text-orange-500" };
+  return { status: "Stale", color: "text-muted-foreground" };
+}
+
 function LocationWidget({
   places,
   currentLocation,
-  browserLocation,
   isLoading,
 }: {
   places: SavedPlace[] | undefined;
   currentLocation: LocationHistory | undefined;
-  browserLocation: { lat: number; lng: number } | null;
   isLoading: boolean;
 }) {
   const starredPlaces = places?.filter(p => p.isStarred) || [];
   const recentPlaces = places?.slice(0, 5) || [];
   
-  const mapCenter: [number, number] = browserLocation 
-    ? [browserLocation.lat, browserLocation.lng]
-    : currentLocation 
-      ? [parseFloat(currentLocation.latitude), parseFloat(currentLocation.longitude)]
-      : places && places.length > 0 
-        ? [parseFloat(places[0].latitude), parseFloat(places[0].longitude)]
-        : [42.3601, -71.0589];
+  const mapCenter: [number, number] = currentLocation 
+    ? [parseFloat(currentLocation.latitude), parseFloat(currentLocation.longitude)]
+    : places && places.length > 0 
+      ? [parseFloat(places[0].latitude), parseFloat(places[0].longitude)]
+      : [42.3601, -71.0589];
+  
+  const locationStatus = getLocationStatus(currentLocation?.createdAt);
 
   if (isLoading) {
     return (
@@ -588,9 +601,9 @@ function LocationWidget({
             <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
             <MapCenterController center={mapCenter} />
             
-            {browserLocation && (
+            {currentLocation && (
               <Marker
-                position={[browserLocation.lat, browserLocation.lng]}
+                position={[parseFloat(currentLocation.latitude), parseFloat(currentLocation.longitude)]}
                 icon={currentLocationIcon}
               />
             )}
@@ -623,10 +636,10 @@ function LocationWidget({
           <div className="text-center p-2 sm:p-3 rounded-lg bg-muted/50">
             <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
               <Navigation className="h-3 w-3" />
-              <span className="text-[10px] sm:text-xs">Status</span>
+              <span className="text-[10px] sm:text-xs">GPS</span>
             </div>
-            <p className="text-[10px] sm:text-xs font-medium text-green-500" data-testid="stat-location-status">
-              {browserLocation ? "Live" : currentLocation ? "Stored" : "Idle"}
+            <p className={`text-[10px] sm:text-xs font-medium ${locationStatus.color}`} data-testid="stat-location-status">
+              {locationStatus.status}
             </p>
           </div>
         </div>
@@ -933,25 +946,6 @@ function DashboardChatWidget() {
 }
 
 export default function DashboardPage() {
-  const [browserLocation, setBrowserLocation] = useState<{ lat: number; lng: number } | null>(null);
-
-  useEffect(() => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setBrowserLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          });
-        },
-        (error) => {
-          console.log("Geolocation error:", error.message);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-      );
-    }
-  }, []);
-
   const { data: tasks, isLoading: tasksLoading } = useQuery<Task[]>({
     queryKey: ["/api/tasks"],
   });
@@ -1205,7 +1199,6 @@ export default function DashboardPage() {
           <LocationWidget
             places={savedPlaces}
             currentLocation={currentLocation}
-            browserLocation={browserLocation}
             isLoading={isLocationLoading}
           />
           <FeatureCard
