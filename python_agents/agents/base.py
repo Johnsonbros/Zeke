@@ -108,6 +108,7 @@ class AgentId(str, Enum):
     RESEARCH_SCOUT = "research_scout"
     PERSONAL_DATA_STEWARD = "personal_data_steward"
     SAFETY_AUDITOR = "safety_auditor"
+    LIMITLESS_ANALYST = "limitless_analyst"
 
 
 class AgentStatus(str, Enum):
@@ -128,6 +129,7 @@ class CapabilityCategory(str, Enum):
     GROCERY = "grocery"
     PROFILE = "profile"
     SYSTEM = "system"
+    LIMITLESS = "limitless"
 
 
 class HandoffReason(str, Enum):
