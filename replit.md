@@ -30,6 +30,14 @@ A specialized sub-agent that preprocesses Limitless pendant lifelog data and pro
 The user interface features a dark theme with a coral red accent and Poppins font. It's designed as a dashboard-first interface where the homepage (`/`) provides at-a-glance information and quick access. A global sidebar navigation using Shadcn UI components provides persistent access to all features (Dashboard, Chat, Grocery List, Tasks, Memory, Contacts, Automations, SMS Log). Chat functionality is a dedicated feature page (`/chat`) rather than the central focus.
 
 ### Technical Implementations
+- **Context Router System** (`server/contextRouter.ts`): An intelligent context assembly system that replaces monolithic prompt building. It uses a 3-layer architecture:
+  - **Layer A (Global)**: Always included - user profile essentials, timezone, current time
+  - **Layer B (Route-aware)**: Bundles prioritized by current app section and route
+  - **Layer C (On-demand)**: RAG-based retrieval for specific queries via semantic search
+  - Each bundle has token budgets (primary: 2000, secondary: 800, tertiary: 400) to keep prompts lean
+  - Route-to-bundle mappings defined in `ROUTE_BUNDLES` for each app section (/chat, /tasks, /grocery, etc.)
+  - Bundle builders: `buildGlobalBundle`, `buildMemoryBundle`, `buildTasksBundle`, `buildCalendarBundle`, `buildGroceryBundle`, `buildLocationsBundle`, `buildLimitlessBundle`, `buildContactsBundle`, `buildProfileBundle`
+  - Intent detection via `detectIntent()` to help route context appropriately
 - **Memory Model**: Optimized for a single user, storing long-term memory in the database and markdown files. Conversation history is summarized, and facts, preferences, and summaries are automatically extracted.
 - **Semantic Memory System**: Uses OpenAI `text-embedding-3-small` for vector embeddings, ranking memories by Recency, Relevance, and Importance. It includes automatic deduplication and a supersession system for updated information.
 - **Access Control System**: A three-tier system with granular permissions for contacts and system components, enforcing security at multiple layers.

@@ -1,0 +1,890 @@
+/**
+ * Context Router - ZEKE's intelligent context assembly system
+ * 
+ * This module implements a "context router" that:
+ * 1. Detects the user's intent and current app section
+ * 2. Determines which context bundles to load based on route + query
+ * 3. Assembles context with token budgets to keep prompts lean
+ * 4. Provides curated, relevant context to agents instead of dumping everything
+ * 
+ * Architecture:
+ * - Layer A: Global context (always included) - user profile, timezone, preferences
+ * - Layer B: Route-aware bundles (mode-aware) - tasks, calendar, locations, etc.
+ * - Layer C: On-demand retrieval (RAG) - semantic search for specific queries
+ */
+
+import {
+  getAllProfileSections,
+  getLatestLocation,
+  getStarredPlaces,
+  findNearbyPlaces,
+  checkGroceryProximity,
+  getAllTasks,
+  getAllGroceryItems,
+  getAllContacts,
+  getAllMemoryNotes,
+} from "./db";
+import { getSmartMemoryContext } from "./semanticMemory";
+import { getRecentLifelogs, getLifelogOverview } from "./limitless";
+import { getUpcomingEvents } from "./googleCalendar";
+import type { GroceryItem, Task, Contact, MemoryNote, Message } from "@shared/schema";
+
+/**
+ * Application context available to the router
+ */
+export interface AppContext {
+  userId: string;
+  currentRoute: string;
+  userMessage: string;
+  userPhoneNumber?: string;
+  isAdmin: boolean;
+  now: Date;
+  timezone: string;
+}
+
+/**
+ * A context bundle with its content and metadata
+ */
+export interface ContextBundle {
+  name: string;
+  priority: "primary" | "secondary" | "tertiary";
+  content: string;
+  tokenEstimate: number;
+}
+
+/**
+ * Route configuration for context assembly
+ */
+export interface RouteConfig {
+  primary: string[];
+  secondary: string[];
+  tertiary?: string[];
+}
+
+/**
+ * Token budget configuration per bundle priority
+ */
+export interface TokenBudget {
+  primary: number;
+  secondary: number;
+  tertiary: number;
+  global: number;
+  total: number;
+}
+
+/**
+ * Default token budgets - keep total under 8000 tokens for context
+ */
+export const DEFAULT_TOKEN_BUDGET: TokenBudget = {
+  primary: 2000,
+  secondary: 800,
+  tertiary: 400,
+  global: 1000,
+  total: 6000,
+};
+
+/**
+ * Route-to-bundle mapping table
+ * Maps each app route to which bundles to prioritize
+ */
+export const ROUTE_BUNDLES: Record<string, RouteConfig> = {
+  "/": {
+    primary: ["tasks", "calendar"],
+    secondary: ["memory", "grocery"],
+    tertiary: ["locations"],
+  },
+  "/chat": {
+    primary: ["memory", "limitless"],
+    secondary: ["tasks", "calendar"],
+    tertiary: ["locations", "contacts"],
+  },
+  "/tasks": {
+    primary: ["tasks"],
+    secondary: ["calendar", "memory"],
+    tertiary: ["locations"],
+  },
+  "/grocery": {
+    primary: ["grocery"],
+    secondary: ["memory"],
+    tertiary: ["tasks"],
+  },
+  "/memory": {
+    primary: ["memory"],
+    secondary: ["contacts", "limitless"],
+    tertiary: ["tasks"],
+  },
+  "/contacts": {
+    primary: ["contacts"],
+    secondary: ["memory", "sms"],
+    tertiary: ["calendar"],
+  },
+  "/automations": {
+    primary: ["tasks", "calendar"],
+    secondary: ["memory"],
+    tertiary: ["grocery"],
+  },
+  "/sms-log": {
+    primary: ["sms", "contacts"],
+    secondary: ["memory"],
+    tertiary: ["tasks"],
+  },
+  "/limitless": {
+    primary: ["limitless"],
+    secondary: ["memory", "contacts"],
+    tertiary: ["tasks"],
+  },
+  "/locations": {
+    primary: ["locations"],
+    secondary: ["tasks", "grocery"],
+    tertiary: ["calendar"],
+  },
+  "/food": {
+    primary: ["food", "grocery"],
+    secondary: ["memory"],
+    tertiary: ["tasks"],
+  },
+  "/profile": {
+    primary: ["profile"],
+    secondary: ["memory", "contacts"],
+    tertiary: ["tasks"],
+  },
+  // SMS fallback - used when route is unknown (SMS conversations)
+  "sms": {
+    primary: ["memory", "limitless"],
+    secondary: ["tasks", "calendar", "grocery"],
+    tertiary: ["locations", "contacts"],
+  },
+};
+
+/**
+ * Estimate tokens in a string (rough: ~4 chars per token)
+ */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Truncate text to fit within token budget
+ */
+export function truncateToTokens(text: string, maxTokens: number): string {
+  const maxChars = maxTokens * 4;
+  if (text.length <= maxChars) return text;
+  return text.substring(0, maxChars - 20) + "\n[...truncated]";
+}
+
+/**
+ * Build the global context bundle (Layer A)
+ * Always included in every request
+ */
+export async function buildGlobalBundle(ctx: AppContext): Promise<ContextBundle> {
+  const parts: string[] = [];
+  
+  // Current time context
+  const now = new Date();
+  const timeString = now.toLocaleString("en-US", { 
+    timeZone: ctx.timezone,
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+  });
+  parts.push(`## Current Time\n${timeString} (${ctx.timezone})`);
+  
+  // Load user profile sections
+  try {
+    const profileSections = getAllProfileSections();
+    if (profileSections.length > 0) {
+      const basicInfo = profileSections.find(s => s.section === "basic_info");
+      const work = profileSections.find(s => s.section === "work");
+      const family = profileSections.find(s => s.section === "family");
+      const preferences = profileSections.find(s => s.section === "preferences");
+      
+      const profileParts: string[] = [];
+      
+      if (basicInfo?.data) {
+        const data = typeof basicInfo.data === 'string' ? JSON.parse(basicInfo.data) : basicInfo.data;
+        if (data.fullName) profileParts.push(`Name: ${data.fullName}`);
+        if (data.location) profileParts.push(`Location: ${data.location}`);
+        if (data.timezone) profileParts.push(`Timezone: ${data.timezone}`);
+      }
+      
+      if (work?.data) {
+        const data = typeof work.data === 'string' ? JSON.parse(work.data) : work.data;
+        if (data.occupation) profileParts.push(`Occupation: ${data.occupation}`);
+        if (data.company) profileParts.push(`Company: ${data.company}`);
+      }
+      
+      if (family?.data) {
+        const data = typeof family.data === 'string' ? JSON.parse(family.data) : family.data;
+        const familyMembers: string[] = [];
+        if (data.spouse?.displayName) familyMembers.push(`Spouse: ${data.spouse.displayName}`);
+        if (data.children?.length > 0) {
+          const childNames = data.children.map((c: any) => c.displayName).filter(Boolean);
+          if (childNames.length > 0) familyMembers.push(`Children: ${childNames.join(", ")}`);
+        }
+        if (familyMembers.length > 0) profileParts.push(familyMembers.join("; "));
+      }
+      
+      if (preferences?.data) {
+        const data = typeof preferences.data === 'string' ? JSON.parse(preferences.data) : preferences.data;
+        if (data.communicationStyle) profileParts.push(`Communication style: ${data.communicationStyle}`);
+      }
+      
+      if (profileParts.length > 0) {
+        parts.push(`## User Profile\n${profileParts.join("\n")}`);
+      }
+    }
+  } catch (error) {
+    console.error("Error loading profile for global bundle:", error);
+  }
+  
+  // User access level
+  if (ctx.isAdmin) {
+    parts.push(`## Access Level\nAdmin (full access to all features)`);
+  }
+  
+  const content = parts.join("\n\n");
+  return {
+    name: "global",
+    priority: "primary",
+    content,
+    tokenEstimate: estimateTokens(content),
+  };
+}
+
+/**
+ * Build the memory context bundle
+ * Includes semantic search results relevant to the query
+ */
+export async function buildMemoryBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
+  const parts: string[] = [];
+  
+  try {
+    // Get semantic memory context for the query
+    const memoryContext = await getSmartMemoryContext(ctx.userMessage);
+    if (memoryContext && memoryContext.length > 0) {
+      parts.push(`## Relevant Memories\n${memoryContext}`);
+    }
+    
+    // Get recent important memories if query-based search returned little
+    if (parts.length === 0 || estimateTokens(parts.join("\n")) < 200) {
+      const allNotes = getAllMemoryNotes();
+      const recentNotes = allNotes
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 5);
+      
+      if (recentNotes.length > 0) {
+        const notesList = recentNotes.map(n => `- [${n.type}] ${n.content}`).join("\n");
+        parts.push(`## Recent Memories\n${notesList}`);
+      }
+    }
+  } catch (error) {
+    console.error("Error building memory bundle:", error);
+  }
+  
+  const content = truncateToTokens(parts.join("\n\n"), maxTokens);
+  return {
+    name: "memory",
+    priority: "secondary",
+    content,
+    tokenEstimate: estimateTokens(content),
+  };
+}
+
+/**
+ * Build the tasks context bundle
+ */
+export async function buildTasksBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
+  const parts: string[] = [];
+  
+  try {
+    const allTasks = getAllTasks();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Overdue tasks
+    const overdueTasks = allTasks.filter(t => 
+      !t.completed && 
+      t.dueDate && 
+      new Date(t.dueDate) < today
+    );
+    
+    // Today's tasks
+    const todayEnd = new Date(today);
+    todayEnd.setHours(23, 59, 59, 999);
+    const todaysTasks = allTasks.filter(t =>
+      !t.completed &&
+      t.dueDate &&
+      new Date(t.dueDate) >= today &&
+      new Date(t.dueDate) <= todayEnd
+    );
+    
+    // High priority incomplete tasks
+    const highPriorityTasks = allTasks.filter(t =>
+      !t.completed &&
+      t.priority === "high"
+    ).slice(0, 5);
+    
+    // Upcoming tasks (next 7 days)
+    const weekFromNow = new Date(today);
+    weekFromNow.setDate(weekFromNow.getDate() + 7);
+    const upcomingTasks = allTasks.filter(t =>
+      !t.completed &&
+      t.dueDate &&
+      new Date(t.dueDate) > todayEnd &&
+      new Date(t.dueDate) <= weekFromNow
+    ).slice(0, 5);
+    
+    // Build task summary
+    const incompleteTasks = allTasks.filter(t => !t.completed);
+    parts.push(`## Tasks Overview\nTotal incomplete: ${incompleteTasks.length}, Overdue: ${overdueTasks.length}, Due today: ${todaysTasks.length}`);
+    
+    if (overdueTasks.length > 0) {
+      const overdueList = overdueTasks.slice(0, 5).map(t => 
+        `- [OVERDUE] ${t.title}${t.priority === "high" ? " (HIGH)" : ""}`
+      ).join("\n");
+      parts.push(`### Overdue Tasks\n${overdueList}`);
+    }
+    
+    if (todaysTasks.length > 0) {
+      const todayList = todaysTasks.map(t => 
+        `- ${t.title}${t.priority === "high" ? " (HIGH)" : ""}`
+      ).join("\n");
+      parts.push(`### Today's Tasks\n${todayList}`);
+    }
+    
+    if (highPriorityTasks.length > 0 && highPriorityTasks.some(t => !todaysTasks.includes(t) && !overdueTasks.includes(t))) {
+      const priorityList = highPriorityTasks
+        .filter(t => !todaysTasks.includes(t) && !overdueTasks.includes(t))
+        .map(t => `- ${t.title}${t.dueDate ? ` (due: ${new Date(t.dueDate).toLocaleDateString()})` : ""}`)
+        .join("\n");
+      if (priorityList) parts.push(`### High Priority\n${priorityList}`);
+    }
+    
+    if (upcomingTasks.length > 0) {
+      const upcomingList = upcomingTasks.map(t => 
+        `- ${t.title} (due: ${new Date(t.dueDate!).toLocaleDateString()})`
+      ).join("\n");
+      parts.push(`### Upcoming This Week\n${upcomingList}`);
+    }
+  } catch (error) {
+    console.error("Error building tasks bundle:", error);
+  }
+  
+  const content = truncateToTokens(parts.join("\n\n"), maxTokens);
+  return {
+    name: "tasks",
+    priority: "primary",
+    content,
+    tokenEstimate: estimateTokens(content),
+  };
+}
+
+/**
+ * Build the calendar context bundle
+ */
+export async function buildCalendarBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
+  const parts: string[] = [];
+  
+  try {
+    // Get upcoming events for the next 3 days
+    const events = await getUpcomingEvents(10);
+    
+    if (events && events.length > 0) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      const todaysEvents = events.filter((e: any) => {
+        const eventDate = new Date(e.start?.dateTime || e.start?.date);
+        return eventDate >= today && eventDate < tomorrow;
+      });
+      
+      const upcomingEvents = events.filter((e: any) => {
+        const eventDate = new Date(e.start?.dateTime || e.start?.date);
+        return eventDate >= tomorrow;
+      });
+      
+      if (todaysEvents.length > 0) {
+        const eventList = todaysEvents.map((e: any) => {
+          const time = e.start?.dateTime 
+            ? new Date(e.start.dateTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+            : "All day";
+          return `- ${time}: ${e.summary}`;
+        }).join("\n");
+        parts.push(`## Today's Schedule\n${eventList}`);
+      } else {
+        parts.push(`## Today's Schedule\nNo events scheduled for today.`);
+      }
+      
+      if (upcomingEvents.length > 0) {
+        const eventList = upcomingEvents.slice(0, 5).map((e: any) => {
+          const date = new Date(e.start?.dateTime || e.start?.date);
+          const dateStr = date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+          const time = e.start?.dateTime 
+            ? new Date(e.start.dateTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+            : "All day";
+          return `- ${dateStr} ${time}: ${e.summary}`;
+        }).join("\n");
+        parts.push(`### Upcoming Events\n${eventList}`);
+      }
+    } else {
+      parts.push(`## Calendar\nNo upcoming events found.`);
+    }
+  } catch (error) {
+    // Calendar might not be configured
+    parts.push(`## Calendar\nCalendar not configured or unavailable.`);
+  }
+  
+  const content = truncateToTokens(parts.join("\n\n"), maxTokens);
+  return {
+    name: "calendar",
+    priority: "secondary",
+    content,
+    tokenEstimate: estimateTokens(content),
+  };
+}
+
+/**
+ * Build the grocery context bundle
+ */
+export async function buildGroceryBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
+  const parts: string[] = [];
+  
+  try {
+    const items = getAllGroceryItems();
+    const toBuy = items.filter((i: GroceryItem) => !i.purchased);
+    const purchased = items.filter((i: GroceryItem) => i.purchased);
+    
+    parts.push(`## Grocery List\nItems to buy: ${toBuy.length}, Recently purchased: ${purchased.length}`);
+    
+    if (toBuy.length > 0) {
+      // Group by category
+      const byCategory: Record<string, GroceryItem[]> = {};
+      toBuy.forEach((item: GroceryItem) => {
+        const cat = item.category || "Other";
+        if (!byCategory[cat]) byCategory[cat] = [];
+        byCategory[cat].push(item);
+      });
+      
+      const categoryList = Object.entries(byCategory).map(([cat, categoryItems]) => {
+        const itemList = categoryItems.map((i: GroceryItem) => 
+          `  - ${i.name}${i.quantity && i.quantity !== "1" ? ` (${i.quantity})` : ""}`
+        ).join("\n");
+        return `**${cat}:**\n${itemList}`;
+      }).join("\n");
+      
+      parts.push(`### To Buy\n${categoryList}`);
+    }
+  } catch (error) {
+    console.error("Error building grocery bundle:", error);
+  }
+  
+  const content = truncateToTokens(parts.join("\n\n"), maxTokens);
+  return {
+    name: "grocery",
+    priority: "secondary",
+    content,
+    tokenEstimate: estimateTokens(content),
+  };
+}
+
+/**
+ * Build the locations context bundle
+ */
+export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
+  const parts: string[] = [];
+  
+  try {
+    // Get current location
+    const location = getLatestLocation();
+    if (location) {
+      const ageMs = Date.now() - new Date(location.createdAt).getTime();
+      const ageMinutes = Math.floor(ageMs / 60000);
+      const ageStr = ageMinutes < 60 
+        ? `${ageMinutes} minutes ago`
+        : `${Math.floor(ageMinutes / 60)} hours ago`;
+      
+      // Latitude and longitude are strings in the schema
+      const lat = parseFloat(location.latitude);
+      const lng = parseFloat(location.longitude);
+      parts.push(`## Current Location\nLat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)} (${ageStr})`);
+      
+      // Check nearby places (requires numeric lat/lng)
+      const nearbyPlaces = findNearbyPlaces(lat, lng, 0.5);
+      if (nearbyPlaces.length > 0) {
+        const placeList = nearbyPlaces.slice(0, 3).map(p => `- ${p.name} (${p.category || "place"})`).join("\n");
+        parts.push(`### Nearby Saved Places\n${placeList}`);
+      }
+      
+      // Check grocery proximity - returns an array of nearby grocery stores
+      const groceryProximity = checkGroceryProximity(lat, lng);
+      if (groceryProximity && groceryProximity.length > 0) {
+        const storeNames = groceryProximity.map(g => g.place.name).join(", ");
+        const items = getAllGroceryItems().filter((i: GroceryItem) => !i.purchased);
+        if (items.length > 0) {
+          parts.push(`### Grocery Alert\nNear: ${storeNames}. You have ${items.length} items on your grocery list!`);
+        }
+      }
+    }
+    
+    // Starred places
+    const starred = getStarredPlaces();
+    if (starred.length > 0) {
+      const starredList = starred.slice(0, 5).map(p => `- ${p.name} (${p.category || "starred"})`).join("\n");
+      parts.push(`### Favorite Places\n${starredList}`);
+    }
+  } catch (error) {
+    console.error("Error building locations bundle:", error);
+  }
+  
+  const content = truncateToTokens(parts.join("\n\n"), maxTokens);
+  return {
+    name: "locations",
+    priority: "tertiary",
+    content,
+    tokenEstimate: estimateTokens(content),
+  };
+}
+
+/**
+ * Build the Limitless/lifelog context bundle
+ */
+export async function buildLimitlessBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
+  const parts: string[] = [];
+  
+  try {
+    // Get lifelog overview
+    const overview = await getLifelogOverview();
+    
+    if (overview && overview.connected) {
+      parts.push(`## Limitless Pendant Data`);
+      parts.push(`Today: ${overview.today.count} conversations, Yesterday: ${overview.yesterday.count}, Last 7 days: ${overview.last7Days.count}`);
+      
+      if (overview.mostRecent) {
+        parts.push(`Most recent: "${overview.mostRecent.title}" (${overview.mostRecent.age})`);
+      }
+      
+      // If the user message seems to be asking about conversations, search
+      const lifelogKeywords = ["today", "earlier", "conversation", "said", "talked", "meeting", "discussed", "mentioned"];
+      const hasLifelogIntent = lifelogKeywords.some(k => ctx.userMessage.toLowerCase().includes(k));
+      
+      if (hasLifelogIntent && overview.today.count > 0) {
+        // Get recent lifelogs
+        const recent = await getRecentLifelogs(24, 3);
+        if (recent && recent.length > 0) {
+          const recentList = recent.map((l: any) => 
+            `- "${l.title}" at ${new Date(l.startTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`
+          ).join("\n");
+          parts.push(`### Recent Conversations\n${recentList}`);
+        }
+      }
+    } else {
+      parts.push(`## Limitless Pendant\nNot connected or no API key configured.`);
+    }
+  } catch (error) {
+    console.error("Error building limitless bundle:", error);
+    parts.push(`## Limitless Pendant\nUnable to fetch data.`);
+  }
+  
+  const content = truncateToTokens(parts.join("\n\n"), maxTokens);
+  return {
+    name: "limitless",
+    priority: "secondary",
+    content,
+    tokenEstimate: estimateTokens(content),
+  };
+}
+
+/**
+ * Build the contacts context bundle
+ */
+export async function buildContactsBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
+  const parts: string[] = [];
+  
+  try {
+    const contacts = getAllContacts();
+    
+    // Summary
+    parts.push(`## Contacts\nTotal: ${contacts.length}`);
+    
+    // Family members
+    const family = contacts.filter(c => 
+      c.relationship && ["spouse", "parent", "child", "sibling", "family"].some(r => 
+        c.relationship!.toLowerCase().includes(r)
+      )
+    );
+    if (family.length > 0) {
+      const familyList = family.slice(0, 5).map(c => {
+        const name = [c.firstName, c.lastName].filter(Boolean).join(" ");
+        return `- ${name}${c.relationship ? ` (${c.relationship})` : ""}`;
+      }).join("\n");
+      parts.push(`### Family\n${familyList}`);
+    }
+    
+    // Recently contacted
+    const recentContacts = contacts
+      .filter(c => c.lastInteractionAt)
+      .sort((a, b) => new Date(b.lastInteractionAt!).getTime() - new Date(a.lastInteractionAt!).getTime())
+      .slice(0, 5);
+    
+    if (recentContacts.length > 0) {
+      const recentList = recentContacts.map(c => {
+        const name = [c.firstName, c.lastName].filter(Boolean).join(" ");
+        return `- ${name}`;
+      }).join("\n");
+      parts.push(`### Recent Contacts\n${recentList}`);
+    }
+  } catch (error) {
+    console.error("Error building contacts bundle:", error);
+  }
+  
+  const content = truncateToTokens(parts.join("\n\n"), maxTokens);
+  return {
+    name: "contacts",
+    priority: "tertiary",
+    content,
+    tokenEstimate: estimateTokens(content),
+  };
+}
+
+/**
+ * Build a minimal SMS context bundle (just summary, not full logs)
+ */
+export async function buildSmsBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
+  // SMS bundle is lightweight - just indicates the context
+  const content = `## SMS Context\nUser is communicating via SMS from ${ctx.userPhoneNumber || "unknown number"}.`;
+  return {
+    name: "sms",
+    priority: "tertiary",
+    content,
+    tokenEstimate: estimateTokens(content),
+  };
+}
+
+/**
+ * Build food preferences context bundle
+ */
+export async function buildFoodBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
+  // Food bundle would pull from food preferences, recipes, meal history
+  // For now, a placeholder that can be expanded
+  const content = `## Food Context\nFood preferences and meal planning features available.`;
+  return {
+    name: "food",
+    priority: "tertiary",
+    content,
+    tokenEstimate: estimateTokens(content),
+  };
+}
+
+/**
+ * Build profile context bundle (more detailed than global)
+ */
+export async function buildProfileBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
+  const parts: string[] = [];
+  
+  try {
+    const profileSections = getAllProfileSections();
+    
+    for (const profileSection of profileSections) {
+      if (!profileSection.data) continue;
+      
+      const data = typeof profileSection.data === 'string' ? JSON.parse(profileSection.data) : profileSection.data;
+      const sectionName = profileSection.section.replace(/_/g, " ").replace(/\b\w/g, (letter: string) => letter.toUpperCase());
+      
+      // Format section data
+      const entries = Object.entries(data)
+        .filter(([_, v]) => v && (typeof v !== 'object' || (Array.isArray(v) && v.length > 0)))
+        .map(([k, v]) => {
+          if (Array.isArray(v)) {
+            return `${k}: ${v.map((item: any) => item.displayName || item.name || item).join(", ")}`;
+          }
+          if (typeof v === 'object' && v !== null) {
+            return `${k}: ${(v as any).displayName || JSON.stringify(v)}`;
+          }
+          return `${k}: ${v}`;
+        });
+      
+      if (entries.length > 0) {
+        parts.push(`### ${sectionName}\n${entries.join("\n")}`);
+      }
+    }
+  } catch (error) {
+    console.error("Error building profile bundle:", error);
+  }
+  
+  const content = truncateToTokens(parts.join("\n\n"), maxTokens);
+  return {
+    name: "profile",
+    priority: "primary",
+    content,
+    tokenEstimate: estimateTokens(content),
+  };
+}
+
+/**
+ * Bundle builder registry
+ */
+const BUNDLE_BUILDERS: Record<string, (ctx: AppContext, maxTokens: number) => Promise<ContextBundle>> = {
+  memory: buildMemoryBundle,
+  tasks: buildTasksBundle,
+  calendar: buildCalendarBundle,
+  grocery: buildGroceryBundle,
+  locations: buildLocationsBundle,
+  limitless: buildLimitlessBundle,
+  contacts: buildContactsBundle,
+  sms: buildSmsBundle,
+  food: buildFoodBundle,
+  profile: buildProfileBundle,
+};
+
+/**
+ * Main context router - assembles context based on route and query
+ */
+export async function assembleContext(
+  ctx: AppContext,
+  budget: TokenBudget = DEFAULT_TOKEN_BUDGET
+): Promise<string> {
+  const bundles: ContextBundle[] = [];
+  
+  // Always include global bundle
+  const globalBundle = await buildGlobalBundle(ctx);
+  bundles.push(globalBundle);
+  
+  // Determine route config
+  let routeConfig = ROUTE_BUNDLES[ctx.currentRoute];
+  if (!routeConfig) {
+    // Default to SMS config for unknown routes (likely SMS conversation)
+    routeConfig = ROUTE_BUNDLES["sms"];
+  }
+  
+  // Build primary bundles
+  for (const bundleName of routeConfig.primary) {
+    const builder = BUNDLE_BUILDERS[bundleName];
+    if (builder) {
+      try {
+        const bundle = await builder(ctx, budget.primary);
+        bundle.priority = "primary";
+        bundles.push(bundle);
+      } catch (error) {
+        console.error(`Error building ${bundleName} bundle:`, error);
+      }
+    }
+  }
+  
+  // Build secondary bundles
+  for (const bundleName of routeConfig.secondary) {
+    const builder = BUNDLE_BUILDERS[bundleName];
+    if (builder) {
+      try {
+        const bundle = await builder(ctx, budget.secondary);
+        bundle.priority = "secondary";
+        bundles.push(bundle);
+      } catch (error) {
+        console.error(`Error building ${bundleName} bundle:`, error);
+      }
+    }
+  }
+  
+  // Build tertiary bundles if we have token budget
+  const usedTokens = bundles.reduce((sum, b) => sum + b.tokenEstimate, 0);
+  if (usedTokens < budget.total - budget.tertiary && routeConfig.tertiary) {
+    for (const bundleName of routeConfig.tertiary) {
+      const builder = BUNDLE_BUILDERS[bundleName];
+      if (builder) {
+        try {
+          const bundle = await builder(ctx, budget.tertiary);
+          bundle.priority = "tertiary";
+          bundles.push(bundle);
+        } catch (error) {
+          console.error(`Error building ${bundleName} bundle:`, error);
+        }
+      }
+    }
+  }
+  
+  // Assemble final context string
+  const contextParts: string[] = [];
+  
+  // Global context first
+  const global = bundles.find(b => b.name === "global");
+  if (global && global.content) {
+    contextParts.push(global.content);
+  }
+  
+  // Primary bundles
+  const primaryBundles = bundles.filter(b => b.priority === "primary" && b.name !== "global" && b.content);
+  for (const bundle of primaryBundles) {
+    contextParts.push(bundle.content);
+  }
+  
+  // Secondary bundles
+  const secondaryBundles = bundles.filter(b => b.priority === "secondary" && b.content);
+  for (const bundle of secondaryBundles) {
+    contextParts.push(bundle.content);
+  }
+  
+  // Tertiary bundles (if included)
+  const tertiaryBundles = bundles.filter(b => b.priority === "tertiary" && b.content);
+  for (const bundle of tertiaryBundles) {
+    contextParts.push(bundle.content);
+  }
+  
+  const assembledContext = contextParts.join("\n\n");
+  
+  // Log context assembly for debugging
+  console.log(`[ContextRouter] Assembled context for route "${ctx.currentRoute}":`, {
+    bundles: bundles.map(b => ({ name: b.name, priority: b.priority, tokens: b.tokenEstimate })),
+    totalTokens: bundles.reduce((sum, b) => sum + b.tokenEstimate, 0),
+  });
+  
+  return assembledContext;
+}
+
+/**
+ * Detect intent from user message to help with routing
+ */
+export function detectIntent(userMessage: string): string {
+  const lowerMessage = userMessage.toLowerCase();
+  
+  // Task-related
+  if (/\b(task|todo|to-do|remind|deadline|overdue|priority)\b/.test(lowerMessage)) {
+    return "tasks";
+  }
+  
+  // Calendar-related
+  if (/\b(calendar|schedule|event|meeting|appointment|busy|free|available)\b/.test(lowerMessage)) {
+    return "calendar";
+  }
+  
+  // Grocery-related
+  if (/\b(grocery|groceries|shopping|buy|store|food|meal|recipe)\b/.test(lowerMessage)) {
+    return "grocery";
+  }
+  
+  // Location-related
+  if (/\b(location|where|near|nearby|directions|address|place|gps)\b/.test(lowerMessage)) {
+    return "locations";
+  }
+  
+  // Limitless/conversation-related
+  if (/\b(today|earlier|conversation|said|talked|meeting|discussed|mentioned|pendant|lifelog)\b/.test(lowerMessage)) {
+    return "limitless";
+  }
+  
+  // Memory-related
+  if (/\b(remember|memory|recall|forgot|fact|preference|note)\b/.test(lowerMessage)) {
+    return "memory";
+  }
+  
+  // Contact-related
+  if (/\b(contact|person|people|call|text|phone|email)\b/.test(lowerMessage)) {
+    return "contacts";
+  }
+  
+  return "general";
+}
