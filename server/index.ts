@@ -5,6 +5,7 @@ import { createServer } from "http";
 import { startPythonAgents, waitForPythonAgents } from "./python-agents";
 import { log } from "./logger";
 import { initializeGroceryAutoClear } from "./jobs/groceryAutoClear";
+import { initializeConversationSummarizer } from "./jobs/conversationSummarizer";
 
 export { log };
 
@@ -66,6 +67,7 @@ app.use((req, res, next) => {
   await registerRoutes(httpServer, app);
   
   initializeGroceryAutoClear();
+  initializeConversationSummarizer();
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

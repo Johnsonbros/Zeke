@@ -36,8 +36,15 @@ The user interface features a dark theme with a coral red accent and Poppins fon
   - **Layer C (On-demand)**: RAG-based retrieval for specific queries via semantic search
   - Each bundle has token budgets (primary: 2000, secondary: 800, tertiary: 400) to keep prompts lean
   - Route-to-bundle mappings defined in `ROUTE_BUNDLES` for each app section (/chat, /tasks, /grocery, etc.)
-  - Bundle builders: `buildGlobalBundle`, `buildMemoryBundle`, `buildTasksBundle`, `buildCalendarBundle`, `buildGroceryBundle`, `buildLocationsBundle`, `buildLimitlessBundle`, `buildContactsBundle`, `buildProfileBundle`
+  - Bundle builders: `buildGlobalBundle`, `buildMemoryBundle`, `buildTasksBundle`, `buildCalendarBundle`, `buildGroceryBundle`, `buildLocationsBundle`, `buildLimitlessBundle`, `buildContactsBundle`, `buildProfileBundle`, `buildConversationBundle`
   - Intent detection via `detectIntent()` to help route context appropriately
+  - Enable via `USE_CONTEXT_ROUTER=true` environment variable (defaults to legacy mode for backward compatibility)
+- **Conversation Summarization System** (`server/conversationSummarizer.ts`): Compresses older conversation history into bullet summaries for token-efficient context:
+  - Automatically summarizes conversations exceeding 30 messages using GPT-4o-mini
+  - Stores summaries in `conversations.summary` with `summarizedMessageCount` and `lastSummarizedAt` tracking
+  - `getConversationContext()`: Returns summary + recent messages for efficient prompt building
+  - `summarizeAllPendingConversations()`: Batch summarization for background processing
+  - Integration with Context Router via `buildConversationBundle`
 - **Memory Model**: Optimized for a single user, storing long-term memory in the database and markdown files. Conversation history is summarized, and facts, preferences, and summaries are automatically extracted.
 - **Semantic Memory System**: Uses OpenAI `text-embedding-3-small` for vector embeddings, ranking memories by Recency, Relevance, and Importance. It includes automatic deduplication and a supersession system for updated information.
 - **Access Control System**: A three-tier system with granular permissions for contacts and system components, enforcing security at multiple layers.

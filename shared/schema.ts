@@ -9,6 +9,9 @@ export const conversations = sqliteTable("conversations", {
   phoneNumber: text("phone_number"),
   source: text("source", { enum: ["web", "sms"] }).notNull().default("web"),
   mode: text("mode", { enum: ["chat", "getting_to_know"] }).notNull().default("chat"),
+  summary: text("summary"),
+  summarizedMessageCount: integer("summarized_message_count").default(0),
+  lastSummarizedAt: text("last_summarized_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

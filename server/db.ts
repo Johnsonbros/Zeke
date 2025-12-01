@@ -909,6 +909,25 @@ try {
   console.error("Migration error for conversations.mode:", e);
 }
 
+// Migration: Add conversation summarization columns
+try {
+  const convInfo = db.prepare("PRAGMA table_info(conversations)").all() as Array<{ name: string }>;
+  if (!convInfo.some(col => col.name === "summary")) {
+    console.log("Adding 'summary' column to conversations table...");
+    db.exec(`ALTER TABLE conversations ADD COLUMN summary TEXT`);
+  }
+  if (!convInfo.some(col => col.name === "summarized_message_count")) {
+    console.log("Adding 'summarized_message_count' column to conversations table...");
+    db.exec(`ALTER TABLE conversations ADD COLUMN summarized_message_count INTEGER DEFAULT 0`);
+  }
+  if (!convInfo.some(col => col.name === "last_summarized_at")) {
+    console.log("Adding 'last_summarized_at' column to conversations table...");
+    db.exec(`ALTER TABLE conversations ADD COLUMN last_summarized_at TEXT`);
+  }
+} catch (e) {
+  console.error("Migration error for conversation summarization:", e);
+}
+
 // Migration: Add supersession columns to memory_notes if they don't exist
 try {
   const memInfo = db.prepare("PRAGMA table_info(memory_notes)").all() as Array<{ name: string }>;
@@ -935,6 +954,9 @@ interface ConversationRow {
   phone_number: string | null;
   source: string;
   mode: string;
+  summary: string | null;
+  summarized_message_count: number | null;
+  last_summarized_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1251,6 +1273,9 @@ function mapConversation(row: ConversationRow): Conversation {
     phoneNumber: row.phone_number,
     source: row.source as "web" | "sms",
     mode: row.mode as "chat" | "getting_to_know",
+    summary: row.summary,
+    summarizedMessageCount: row.summarized_message_count ?? 0,
+    lastSummarizedAt: row.last_summarized_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1447,6 +1472,9 @@ export function createConversation(data: InsertConversation): Conversation {
       phoneNumber, 
       source: source as "web" | "sms",
       mode: mode as "chat" | "getting_to_know",
+      summary: null,
+      summarizedMessageCount: 0,
+      lastSummarizedAt: null,
       createdAt: now, 
       updatedAt: now 
     };
@@ -1487,6 +1515,42 @@ export function updateConversationTimestamp(id: string): void {
     db.prepare(`
       UPDATE conversations SET updated_at = ? WHERE id = ?
     `).run(now, id);
+  });
+}
+
+export function updateConversationSummary(
+  id: string, 
+  summary: string, 
+  summarizedMessageCount: number
+): Conversation | undefined {
+  return wrapDbOperation("updateConversationSummary", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      UPDATE conversations 
+      SET summary = ?, summarized_message_count = ?, last_summarized_at = ?, updated_at = ? 
+      WHERE id = ?
+    `).run(summary, summarizedMessageCount, now, now, id);
+    return getConversation(id);
+  });
+}
+
+export function getConversationsNeedingSummary(messageThreshold: number = 30): Array<{ conversationId: string; messageCount: number; summarizedCount: number }> {
+  return wrapDbOperation("getConversationsNeedingSummary", () => {
+    const rows = db.prepare(`
+      SELECT c.id as conversation_id, 
+             COUNT(m.id) as message_count,
+             COALESCE(c.summarized_message_count, 0) as summarized_count
+      FROM conversations c
+      LEFT JOIN messages m ON m.conversation_id = c.id
+      GROUP BY c.id
+      HAVING COUNT(m.id) - COALESCE(c.summarized_message_count, 0) >= ?
+    `).all(messageThreshold) as Array<{ conversation_id: string; message_count: number; summarized_count: number }>;
+    
+    return rows.map(r => ({
+      conversationId: r.conversation_id,
+      messageCount: r.message_count,
+      summarizedCount: r.summarized_count
+    }));
   });
 }
 
@@ -1564,9 +1628,9 @@ export function createMemoryNote(data: CreateMemoryNoteInput): MemoryNote {
     const embeddingStr = data.embedding ? JSON.stringify(data.embedding) : null;
     
     db.prepare(`
-      INSERT INTO memory_notes (id, type, content, context, embedding, place_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, data.type, data.content, context, embeddingStr, data.placeId || null, now, now);
+      INSERT INTO memory_notes (id, type, content, context, embedding, place_id, contact_id, source_type, source_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.type, data.content, context, embeddingStr, data.placeId || null, data.contactId || null, data.sourceType || "conversation", data.sourceId || null, now, now);
     
     return { 
       id, 
@@ -1577,6 +1641,9 @@ export function createMemoryNote(data: CreateMemoryNoteInput): MemoryNote {
       isSuperseded: false,
       supersededBy: null,
       placeId: data.placeId || null,
+      contactId: data.contactId || null,
+      sourceType: (data.sourceType || "conversation") as "conversation" | "lifelog" | "manual" | "observation",
+      sourceId: data.sourceId || null,
       createdAt: now, 
       updatedAt: now 
     };

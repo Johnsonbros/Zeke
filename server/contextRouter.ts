@@ -23,10 +23,12 @@ import {
   getAllGroceryItems,
   getAllContacts,
   getAllMemoryNotes,
+  getConversation,
 } from "./db";
 import { getSmartMemoryContext } from "./semanticMemory";
 import { getRecentLifelogs, getLifelogOverview } from "./limitless";
 import { getUpcomingEvents } from "./googleCalendar";
+import { getConversationContext } from "./conversationSummarizer";
 import type { GroceryItem, Task, Contact, MemoryNote, Message } from "@shared/schema";
 
 /**
@@ -37,6 +39,7 @@ export interface AppContext {
   currentRoute: string;
   userMessage: string;
   userPhoneNumber?: string;
+  conversationId?: string;
   isAdmin: boolean;
   now: Date;
   timezone: string;
@@ -94,8 +97,8 @@ export const ROUTE_BUNDLES: Record<string, RouteConfig> = {
     tertiary: ["locations"],
   },
   "/chat": {
-    primary: ["memory", "limitless"],
-    secondary: ["tasks", "calendar"],
+    primary: ["memory", "conversation"],
+    secondary: ["tasks", "calendar", "limitless"],
     tertiary: ["locations", "contacts"],
   },
   "/tasks": {
@@ -150,8 +153,8 @@ export const ROUTE_BUNDLES: Record<string, RouteConfig> = {
   },
   // SMS fallback - used when route is unknown (SMS conversations)
   "sms": {
-    primary: ["memory", "limitless"],
-    secondary: ["tasks", "calendar", "grocery"],
+    primary: ["memory", "conversation"],
+    secondary: ["tasks", "calendar", "grocery", "limitless"],
     tertiary: ["locations", "contacts"],
   },
 };
@@ -682,6 +685,68 @@ export async function buildFoodBundle(ctx: AppContext, maxTokens: number): Promi
 }
 
 /**
+ * Build conversation history bundle with summarization
+ * 
+ * Note: This bundle provides a SUMMARY view of conversation history for context.
+ * The actual message history is still passed separately to the chat completion.
+ * This summary helps the agent understand the broader conversation arc without
+ * duplicating the raw messages that are already in the messages array.
+ * 
+ * When a summary exists (for long conversations), we include:
+ * - The compressed summary of older messages
+ * - A note about how many messages were summarized
+ * 
+ * We intentionally do NOT include recent raw messages here because:
+ * - They're already in the chat completion's messages array
+ * - Including them here would cause token waste and confusion
+ */
+export async function buildConversationBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
+  if (!ctx.conversationId) {
+    return {
+      name: "conversation",
+      priority: "primary",
+      content: "",
+      tokenEstimate: 0,
+    };
+  }
+
+  try {
+    const { summary, recentMessages, totalMessages, summarizedCount } = getConversationContext(ctx.conversationId);
+    const parts: string[] = [];
+
+    // Only include the summary if we have one (long conversations)
+    // Recent messages are NOT included here - they're in the messages array
+    if (summary && summarizedCount > 0) {
+      parts.push(`## Conversation History Summary`);
+      parts.push(`The following summarizes ${summarizedCount} earlier messages in this conversation:`);
+      parts.push(summary);
+      parts.push(`\n(${recentMessages.length} recent messages follow in the conversation below)`);
+    } else if (totalMessages > 0) {
+      // No summary yet - just note the conversation exists
+      // Don't duplicate messages that are already in the chat history
+      parts.push(`## Conversation Context`);
+      parts.push(`This conversation has ${totalMessages} message(s). Recent messages are included below.`);
+    }
+
+    const content = truncateToTokens(parts.join("\n\n"), maxTokens);
+    return {
+      name: "conversation",
+      priority: "primary",
+      content,
+      tokenEstimate: estimateTokens(content),
+    };
+  } catch (error) {
+    console.error("Error building conversation bundle:", error);
+    return {
+      name: "conversation",
+      priority: "primary",
+      content: "",
+      tokenEstimate: 0,
+    };
+  }
+}
+
+/**
  * Build profile context bundle (more detailed than global)
  */
 export async function buildProfileBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
@@ -740,6 +805,7 @@ const BUNDLE_BUILDERS: Record<string, (ctx: AppContext, maxTokens: number) => Pr
   sms: buildSmsBundle,
   food: buildFoodBundle,
   profile: buildProfileBundle,
+  conversation: buildConversationBundle,
 };
 
 /**

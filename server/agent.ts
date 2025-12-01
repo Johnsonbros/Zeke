@@ -42,6 +42,7 @@ import {
   type TokenBudget,
   DEFAULT_TOKEN_BUDGET 
 } from "./contextRouter";
+import { summarizeConversation } from "./conversationSummarizer";
 
 export interface PendingMemory {
   id: string;
@@ -558,18 +559,21 @@ function getPendingMemoryConflictContext(): string {
  * @param currentRoute - The current app route (e.g., "/chat", "/tasks", "sms")
  * @param userPhoneNumber - Optional phone number for SMS context
  * @param isAdmin - Whether the user has admin access
+ * @param conversationId - Optional conversation ID for conversation context
  */
 export async function buildSmartContext(
   userMessage: string,
   currentRoute: string = "/chat",
   userPhoneNumber?: string,
-  isAdmin: boolean = true
+  isAdmin: boolean = true,
+  conversationId?: string
 ): Promise<string> {
   const appContext: AppContext = {
     userId: "nate", // Single-user system
     currentRoute,
     userMessage,
     userPhoneNumber,
+    conversationId,
     isAdmin,
     now: new Date(),
     timezone: "America/New_York",
@@ -593,7 +597,8 @@ async function buildSystemPrompt(
   userMessage: string, 
   userPhoneNumber?: string, 
   permissions?: UserPermissions,
-  currentRoute: string = "/chat"
+  currentRoute: string = "/chat",
+  conversationId?: string
 ): Promise<string> {
   // Default to admin permissions for web (maintains current behavior)
   const userPermissions = permissions || getAdminPermissions();
@@ -606,7 +611,8 @@ async function buildSystemPrompt(
       userMessage,
       currentRoute,
       userPhoneNumber,
-      userPermissions.isAdmin
+      userPermissions.isAdmin,
+      conversationId
     );
     dynamicContext = smartContext;
     console.log("[Agent] Using Context Router for dynamic context");
@@ -1057,8 +1063,8 @@ export async function chat(
   // Determine current route for context routing (SMS vs web chat)
   const currentRoute = userPhoneNumber ? "sms" : "/chat";
   
-  // Build system prompt with context (including phone number for SMS reminders)
-  let systemPrompt = await buildSystemPrompt(userMessage, userPhoneNumber, userPermissions, currentRoute);
+  // Build system prompt with context (including phone number for SMS reminders and conversation context)
+  let systemPrompt = await buildSystemPrompt(userMessage, userPhoneNumber, userPermissions, currentRoute, conversationId);
   
   // Apply Getting To Know You mode enhancements (only for admin users)
   if (isGettingToKnowMode && userPermissions.isAdmin) {
@@ -1147,6 +1153,15 @@ export async function chat(
         // Extract and store any important memory (async, don't wait) - only for admin users
         if (userPermissions.isAdmin) {
           extractMemory(userMessage, assistantMessage).catch(console.error);
+        }
+
+        // Trigger conversation summarization in background (fire-and-forget)
+        // Only summarize if we have a valid conversationId and enough messages
+        if (conversationId && history.length >= 25) {
+          // Near threshold - trigger summarization which will check if 30+ unsummarized
+          summarizeConversation(conversationId).catch(err => {
+            console.error("[Summarizer] Background summarization error:", err);
+          });
         }
 
         return assistantMessage;
