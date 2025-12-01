@@ -35,6 +35,13 @@ import {
 import { supersedeMemoryNote } from "./db";
 import type { Message, Contact } from "@shared/schema";
 import { isMasterAdmin } from "@shared/schema";
+import { 
+  assembleContext, 
+  detectIntent,
+  type AppContext,
+  type TokenBudget,
+  DEFAULT_TOKEN_BUDGET 
+} from "./contextRouter";
 
 export interface PendingMemory {
   id: string;
@@ -543,15 +550,73 @@ function getPendingMemoryConflictContext(): string {
   return context;
 }
 
+/**
+ * Build dynamic context using the Context Router
+ * This is a smarter, more token-efficient alternative to the legacy context building
+ * 
+ * @param userMessage - The user's message
+ * @param currentRoute - The current app route (e.g., "/chat", "/tasks", "sms")
+ * @param userPhoneNumber - Optional phone number for SMS context
+ * @param isAdmin - Whether the user has admin access
+ */
+export async function buildSmartContext(
+  userMessage: string,
+  currentRoute: string = "/chat",
+  userPhoneNumber?: string,
+  isAdmin: boolean = true
+): Promise<string> {
+  const appContext: AppContext = {
+    userId: "nate", // Single-user system
+    currentRoute,
+    userMessage,
+    userPhoneNumber,
+    isAdmin,
+    now: new Date(),
+    timezone: "America/New_York",
+  };
+
+  try {
+    const context = await assembleContext(appContext);
+    console.log(`[ContextRouter] Built smart context for route "${currentRoute}", intent: "${detectIntent(userMessage)}"`);
+    return context;
+  } catch (error) {
+    console.error("[ContextRouter] Error building smart context, falling back to empty:", error);
+    return "";
+  }
+}
+
 // Build the system prompt
-async function buildSystemPrompt(userMessage: string, userPhoneNumber?: string, permissions?: UserPermissions): Promise<string> {
+// Set USE_CONTEXT_ROUTER=true to enable the new Context Router for smarter context assembly
+const USE_CONTEXT_ROUTER = process.env.USE_CONTEXT_ROUTER === "true";
+
+async function buildSystemPrompt(
+  userMessage: string, 
+  userPhoneNumber?: string, 
+  permissions?: UserPermissions,
+  currentRoute: string = "/chat"
+): Promise<string> {
   // Default to admin permissions for web (maintains current behavior)
   const userPermissions = permissions || getAdminPermissions();
   
-  // Only include personal context if user has access
-  const profileContext = userPermissions.canAccessPersonalInfo ? loadProfileContext() : "";
-  const memoryContext = userPermissions.canAccessPersonalInfo ? await getMemoryContext(userMessage) : "";
-  const locationContext = userPermissions.canAccessPersonalInfo ? getLocationContext() : "";
+  let dynamicContext: string;
+  
+  if (USE_CONTEXT_ROUTER && userPermissions.canAccessPersonalInfo) {
+    // Use the new Context Router for smarter, token-efficient context assembly
+    const smartContext = await buildSmartContext(
+      userMessage,
+      currentRoute,
+      userPhoneNumber,
+      userPermissions.isAdmin
+    );
+    dynamicContext = smartContext;
+    console.log("[Agent] Using Context Router for dynamic context");
+  } else {
+    // Legacy context building (fallback)
+    const profileContext = userPermissions.canAccessPersonalInfo ? loadProfileContext() : "";
+    const memoryContext = userPermissions.canAccessPersonalInfo ? await getMemoryContext(userMessage) : "";
+    const locationContext = userPermissions.canAccessPersonalInfo ? getLocationContext() : "";
+    dynamicContext = `${profileContext}\n\n${memoryContext}\n\n${locationContext}`;
+  }
 
   const activeReminders = getActiveReminders();
   const reminderContext =
@@ -574,14 +639,11 @@ async function buildSystemPrompt(userMessage: string, userPhoneNumber?: string, 
 
 ${accessControlSection}
 
-${profileContext}
-
-${memoryContext}
+${dynamicContext}
 
 ${pendingConflictContext}
 ${reminderContext}
 ${phoneContext}
-${locationContext}
 ## Your Tools
 You have access to the following tools. **USE THEM - DON'T DEFLECT:**
 
@@ -992,8 +1054,11 @@ export async function chat(
     userPermissions = getAdminPermissions();
   }
 
+  // Determine current route for context routing (SMS vs web chat)
+  const currentRoute = userPhoneNumber ? "sms" : "/chat";
+  
   // Build system prompt with context (including phone number for SMS reminders)
-  let systemPrompt = await buildSystemPrompt(userMessage, userPhoneNumber, userPermissions);
+  let systemPrompt = await buildSystemPrompt(userMessage, userPhoneNumber, userPermissions, currentRoute);
   
   // Apply Getting To Know You mode enhancements (only for admin users)
   if (isGettingToKnowMode && userPermissions.isAdmin) {
