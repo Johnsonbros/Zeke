@@ -17,7 +17,14 @@ ZEKE is a single-user personal AI assistant for Nate Johnson, focusing on high-q
 ZEKE utilizes a multi-agent architecture with a Node.js + TypeScript (Express) backend, a Python FastAPI microservice for agent orchestration, and a React frontend with Tailwind CSS and shadcn/ui components. SQLite serves as the persistent data store.
 
 ### Multi-Agent System (Python)
-The core of ZEKE is a multi-agent system in Python, featuring specialized agents like Conductor (orchestration), Memory Curator, Comms Pilot, Ops Planner, Research Scout, and Safety Auditor. The TypeScript backend communicates with this service, with an automatic fallback to a legacy single-agent loop if the Python service is unavailable.
+The core of ZEKE is a multi-agent system in Python, featuring specialized agents like Conductor (orchestration), Memory Curator, Comms Pilot, Ops Planner, Research Scout, Safety Auditor, and Limitless Analyst. The TypeScript backend communicates with this service, with an automatic fallback to a legacy single-agent loop if the Python service is unavailable.
+
+#### Limitless Analyst Agent
+A specialized sub-agent that preprocesses Limitless pendant lifelog data and provides curated context bundles to other agents:
+- **Context Bundles**: Creates structured, token-limited (~2000 tokens) packages containing summaries, key points, action items, people mentioned, and relevant quotes
+- **Proactive Memory Persistence**: Automatically saves high-priority action items and insights to long-term memory via `save_lifelog_insight` tool
+- **Routing**: The Conductor routes all LIFELOG_QUERY intents to the Limitless Analyst for specialized processing
+- **Tools**: get_lifelog_overview, search_lifelogs, get_recent_lifelogs, get_lifelog_context, get_daily_summary, save_lifelog_insight
 
 ### UI/UX Decisions
 The user interface features a dark theme with a coral red accent and Poppins font. It's designed as a dashboard-first interface where the homepage (`/`) provides at-a-glance information and quick access. A global sidebar navigation using Shadcn UI components provides persistent access to all features (Dashboard, Chat, Grocery List, Tasks, Memory, Contacts, Automations, SMS Log). Chat functionality is a dedicated feature page (`/chat`) rather than the central focus.
