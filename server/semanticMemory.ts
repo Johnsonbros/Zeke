@@ -6,7 +6,9 @@ import {
   getMemoryNotesWithoutEmbeddings,
   parseEmbedding,
   supersedeMemoryNote,
-  findMemoryNoteByContent
+  findMemoryNoteByContent,
+  getMemoryWithConfidence,
+  type MemoryWithConfidence
 } from "./db";
 import { 
   generateEmbedding, 
@@ -206,6 +208,30 @@ function buildBasicMemoryContext(allNotes: SemanticMemoryNote[]): string {
   return context;
 }
 
+// Helper to get confidence label for display
+function getConfidenceLabel(confidence: MemoryWithConfidence): string {
+  const score = confidence.effectiveScore;
+  if (score >= 0.8) return "high";
+  if (score >= 0.5) return "medium";
+  if (score >= 0.3) return "low";
+  return "uncertain";
+}
+
+// Helper to format memory with confidence info
+function formatMemoryWithConfidence(note: SemanticMemoryNote, relevanceScore?: number): string {
+  const confidence = getMemoryWithConfidence(note);
+  const confidenceLabel = getConfidenceLabel(confidence);
+  const confidenceStr = `[confidence: ${confidenceLabel}]`;
+  const relevanceStr = relevanceScore !== undefined 
+    ? `[relevance: ${(relevanceScore * 100).toFixed(0)}%]` 
+    : "";
+  
+  // Add warning for uncertain memories
+  const warningStr = confidence.needsConfirmation ? " [NEEDS VERIFICATION]" : "";
+  
+  return `- [${note.type}] ${note.content} ${relevanceStr} ${confidenceStr}${warningStr}`;
+}
+
 export async function getSmartMemoryContext(userMessage: string): Promise<string> {
   const allNotes = getAllMemoryNotes().map(toSemanticMemory);
   
@@ -242,11 +268,17 @@ export async function getSmartMemoryContext(userMessage: string): Promise<string
       .slice(0, 2);
 
     let context = "";
+    
+    // Collect memories needing confirmation for special section
+    const memoriesNeedingConfirmation: Array<{note: SemanticMemoryNote, relevanceScore?: number}> = [];
 
     context += "## Relevant Memory (by semantic similarity)\n";
     relevantMemories.forEach(({ item, relevanceScore }) => {
-      const scoreStr = `[relevance: ${(relevanceScore * 100).toFixed(0)}%]`;
-      context += `- [${item.type}] ${item.content} ${scoreStr}\n`;
+      const confidence = getMemoryWithConfidence(item);
+      if (confidence.needsConfirmation) {
+        memoriesNeedingConfirmation.push({ note: item, relevanceScore });
+      }
+      context += formatMemoryWithConfidence(item, relevanceScore) + "\n";
     });
     context += "\n";
 
@@ -256,7 +288,11 @@ export async function getSmartMemoryContext(userMessage: string): Promise<string
     if (additionalFacts.length > 0) {
       context += "## Known Facts\n";
       additionalFacts.forEach(note => {
-        context += `- ${note.content}\n`;
+        const confidence = getMemoryWithConfidence(note);
+        if (confidence.needsConfirmation) {
+          memoriesNeedingConfirmation.push({ note });
+        }
+        context += formatMemoryWithConfidence(note) + "\n";
       });
       context += "\n";
     }
@@ -265,7 +301,11 @@ export async function getSmartMemoryContext(userMessage: string): Promise<string
     if (additionalPreferences.length > 0) {
       context += "## Preferences\n";
       additionalPreferences.forEach(note => {
-        context += `- ${note.content}\n`;
+        const confidence = getMemoryWithConfidence(note);
+        if (confidence.needsConfirmation) {
+          memoriesNeedingConfirmation.push({ note });
+        }
+        context += formatMemoryWithConfidence(note) + "\n";
       });
       context += "\n";
     }
@@ -274,7 +314,18 @@ export async function getSmartMemoryContext(userMessage: string): Promise<string
     if (additionalSummaries.length > 0) {
       context += "## Recent Conversation Summaries\n";
       additionalSummaries.forEach(note => {
-        context += `- ${note.content}\n`;
+        context += formatMemoryWithConfidence(note) + "\n";
+      });
+      context += "\n";
+    }
+    
+    // Add special section for memories needing verification
+    if (memoriesNeedingConfirmation.length > 0) {
+      context += "## MEMORIES NEEDING VERIFICATION\n";
+      context += "The following memories have low confidence or haven't been confirmed recently. ";
+      context += "If you use any of these in your response, consider naturally asking the user to confirm if this is still accurate:\n";
+      memoriesNeedingConfirmation.forEach(({ note }) => {
+        context += `- "${note.content}" (${note.type})\n`;
       });
       context += "\n";
     }
