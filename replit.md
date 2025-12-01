@@ -34,6 +34,11 @@ The user interface features a dark theme with a coral red accent and Poppins fon
 - **Semantic Memory System**: Uses OpenAI `text-embedding-3-small` for vector embeddings, ranking memories by Recency, Relevance, and Importance. It includes automatic deduplication and a supersession system for updated information.
 - **Access Control System**: A three-tier system with granular permissions for contacts and system components, enforcing security at multiple layers.
 - **Reminders & Automations**: Scheduled jobs using node-cron for recurring tasks, morning briefings, and scheduled SMS messages, with permission verification.
+- **Intelligent Workflow Automations**: AI-powered workflow features including:
+  - **AI Task Breakdown**: Automatically analyzes complex tasks and generates subtasks with suggested due dates and priorities (uses GPT-4o-mini)
+  - **Smart Grocery Suggestions**: Suggests related grocery items when adding items (e.g., pasta → sauce, garlic, parmesan)
+  - **Proactive Task Follow-up**: Daily 8 AM SMS check-in with overdue/upcoming tasks and AI-generated action suggestions
+  - **Multi-step Reminder Sequences**: Create linked reminders at intervals like "1 week, 1 day, 1 hour before" an event
 - **Tooling**: Integrates various AI tools for communication (SMS), task management, calendar (Google Calendar), weather, web search (Perplexity), file operations, and Limitless pendant lifelogs.
 - **Limitless Pendant Integration**: Connects to the Limitless API to access and semantically search recorded conversations from the user's wearable device. Includes:
   - `get_lifelog_overview`: ALWAYS use first when user asks about lifelog data - shows available data across today, yesterday, and last 7 days with the most recent recording age.
