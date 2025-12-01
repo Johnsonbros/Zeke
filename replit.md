@@ -53,6 +53,11 @@ The user interface features a dark theme with a coral red accent and Poppins fon
     - `search_info`: "Hey ZEKE, search for [topic]" - Searches web via Perplexity and sends results via SMS
 - **Limitless Analytics Dashboard**: Interactive dashboard at `/limitless` showing conversation trends, top contacts, topics, and daily summaries with recharts visualizations.
 - **Automatic People Tracking System**: Autonomously extracts and tracks relationships from lifelogs and conversations, creating/updating contacts and linking memories to individuals.
+- **Enhanced Contacts System**: Comprehensive contact management with:
+  - Separated name fields (firstName, lastName, middleName) for better organization
+  - Extended contact info (email, aiAssistantPhone, imageUrl)
+  - Contact notes system allowing both ZEKE and Nate to add observations/notes with types (interaction, observation, comment, fact)
+  - Three-tab detail panel: Messages (communication history), Details (contact info), Notes (observations/comments)
 - **Admin Profile System**: Comprehensive profile management integrated into ZEKE's context for personalized assistance.
 - **Database Schema**: SQLite database includes tables for conversations, messages, memory notes, preferences, grocery items, tasks, contacts, profile sections, and Twilio messages.
 - **Twilio SMS Logging**: Comprehensive logging of all SMS activity with conversation threading and an accessible log page.
