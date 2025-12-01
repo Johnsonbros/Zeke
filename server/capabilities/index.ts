@@ -100,6 +100,16 @@ export {
   automationToolNames,
 } from "./automations";
 
+export {
+  weatherTools,
+  generateAIWeatherBriefing,
+  checkAndSendSevereWeatherAlerts,
+  startWeatherMonitoring,
+  stopWeatherMonitoring,
+  getWeatherMonitoringStatus,
+  setWeatherAlertCallback,
+} from "./weather";
+
 import type OpenAI from "openai";
 import type { ToolPermissions } from "../tools";
 
@@ -117,6 +127,24 @@ import { peopleToolDefinitions, peopleToolPermissions } from "./people";
 import { listToolDefinitions, listToolPermissions } from "./lists";
 import { foodToolDefinitions, foodToolPermissions } from "./food";
 import { automationToolDefinitions, automationToolPermissions } from "./automations";
+import { weatherTools } from "./weather";
+
+const weatherToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = weatherTools.map(tool => ({
+  type: "function" as const,
+  function: {
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
+  },
+}));
+
+const weatherToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
+  get_weather_briefing: (p) => p.isAdmin || p.canSetReminders,
+  check_severe_weather: (p) => p.isAdmin,
+  configure_weather_monitoring: (p) => p.isAdmin,
+};
+
+export const weatherToolNames = weatherTools.map(t => t.name);
 
 export const allToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   ...reminderToolDefinitions,
@@ -133,6 +161,7 @@ export const allToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   ...listToolDefinitions,
   ...foodToolDefinitions,
   ...automationToolDefinitions,
+  ...weatherToolDefinitions,
 ];
 
 export const allToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
@@ -150,4 +179,5 @@ export const allToolPermissions: Record<string, (permissions: ToolPermissions) =
   ...listToolPermissions,
   ...foodToolPermissions,
   ...automationToolPermissions,
+  ...weatherToolPermissions,
 };

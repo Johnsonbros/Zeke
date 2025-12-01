@@ -12,7 +12,7 @@ import type { Automation, Contact } from "@shared/schema";
 import { isMasterAdmin, MASTER_ADMIN_PHONE, getContactFullName } from "@shared/schema";
 import { sendDailyCheckIn } from "./dailyCheckIn";
 import { generateTaskFollowUp } from "./capabilities/workflows";
-import { generateMorningWeatherReport, formatMorningWeatherReportForSms } from "./weather";
+import { generateAIWeatherBriefing, setWeatherAlertCallback, startWeatherMonitoring } from "./capabilities/weather";
 
 const scheduledTasks: Map<string, cron.ScheduledTask> = new Map();
 
@@ -23,6 +23,16 @@ export function setAutomationSmsCallback(
   callback: (phone: string, message: string) => Promise<void>
 ): void {
   sendSmsCallback = callback;
+  
+  setWeatherAlertCallback(async (phones: string[], message: string) => {
+    for (const phone of phones) {
+      try {
+        await callback(phone, message);
+      } catch (error) {
+        console.error(`[WeatherAlert] Failed to send alert to ${phone}:`, error);
+      }
+    }
+  });
 }
 
 export function setMorningBriefingCallback(
@@ -365,27 +375,23 @@ export async function executeAutomation(automation: Automation): Promise<{
           const settings = automation.settings ? JSON.parse(automation.settings) : {};
           const city = settings.city || "Abington";
           const state = settings.state || "MA";
-          const recipientName = authCheck.isMasterAdmin 
-            ? "Nate" 
-            : (authCheck.contact?.firstName || undefined);
           
-          console.log(`[AUDIT] [${timestamp}] Generating weather report for ${city}, ${state} for ${recipientName || "recipient"}`);
+          console.log(`[AUDIT] [${timestamp}] Generating AI weather briefing for ${city}, ${state}`);
           
-          const report = await generateMorningWeatherReport(city, state, recipientName);
-          const smsMessage = formatMorningWeatherReportForSms(report);
+          const weatherBriefing = await generateAIWeatherBriefing(city, state);
           
-          await sendSmsCallback(automation.recipientPhone, smsMessage);
+          await sendSmsCallback(automation.recipientPhone, weatherBriefing);
           
-          console.log(`[AUDIT] [${timestamp}] Weather report sent successfully to ${automation.recipientPhone}`);
+          console.log(`[AUDIT] [${timestamp}] Weather briefing sent successfully to ${automation.recipientPhone}`);
           return {
             success: true,
-            message: `Weather report for ${city}, ${state} sent to ${automation.recipientPhone}`,
+            message: `Weather briefing for ${city}, ${state} sent to ${automation.recipientPhone}`,
           };
         } catch (weatherError: any) {
-          console.error(`[AUDIT] [${timestamp}] Weather report generation failed:`, weatherError);
+          console.error(`[AUDIT] [${timestamp}] Weather briefing generation failed:`, weatherError);
           return {
             success: false,
-            message: `Weather report failed: ${weatherError.message}`,
+            message: `Weather briefing failed: ${weatherError.message}`,
             error: weatherError.message,
           };
         }
@@ -478,6 +484,20 @@ export function initializeAutomations(): void {
   
   for (const automation of automations) {
     scheduleAutomation(automation);
+  }
+  
+  const weatherAutomation = automations.find(a => a.type === "weather_report");
+  if (weatherAutomation && weatherAutomation.settings) {
+    try {
+      const settings = JSON.parse(weatherAutomation.settings);
+      const city = settings.city || "Abington";
+      const state = settings.state || "MA";
+      startWeatherMonitoring(city, state);
+    } catch {
+      startWeatherMonitoring("Abington", "MA");
+    }
+  } else {
+    startWeatherMonitoring("Abington", "MA");
   }
   
   console.log("[Automations] Initialization complete");

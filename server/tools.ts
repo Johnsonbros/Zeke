@@ -31,6 +31,8 @@ import {
   listToolNames,
   foodToolNames,
   automationToolNames,
+  weatherToolNames,
+  weatherTools,
   getActiveReminders as getActiveRemindersFromModule,
   restorePendingReminders as restorePendingRemindersFromModule,
   setReminderSendSmsCallback,
@@ -126,6 +128,11 @@ export async function executeTool(
     result = await executeFoodTool(toolName, args);
   } else if (automationToolNames.includes(toolName)) {
     result = await executeAutomationTool(toolName, args, options);
+  } else if (weatherToolNames.includes(toolName)) {
+    const tool = weatherTools.find(t => t.name === toolName);
+    if (tool) {
+      result = await tool.execute(args as any);
+    }
   }
 
   if (result !== null) {
