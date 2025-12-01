@@ -308,3 +308,21 @@ export const reminderToolNames = [
   "list_reminders",
   "cancel_reminder",
 ];
+
+/**
+ * Schedule a reminder created externally (e.g., from pendant context agent)
+ * This properly sets up the timeout and SMS delivery
+ */
+export function scheduleReminderExecution(reminderId: string, scheduledFor: Date): void {
+  const delay = scheduledFor.getTime() - Date.now();
+  
+  if (delay > 0) {
+    const timeoutId = setTimeout(() => executeReminder(reminderId), delay);
+    activeTimeouts.set(reminderId, timeoutId);
+    console.log(`Scheduled reminder ${reminderId} for ${scheduledFor.toLocaleString("en-US", { timeZone: "America/New_York" })}`);
+  } else {
+    // Already past due, execute immediately
+    console.log(`Reminder ${reminderId} is past due, executing immediately`);
+    executeReminder(reminderId);
+  }
+}

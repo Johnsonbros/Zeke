@@ -50,6 +50,14 @@ export interface ParsedAction {
     quantity?: string;
     category?: string;
   } | null;
+  eventDetails: {
+    title: string;
+    startTime: string;
+    endTime?: string;
+    location?: string;
+    description?: string;
+    allDay?: boolean;
+  } | null;
   searchQuery: string | null;
   originalCommand: string;
   reasoning: string;
@@ -96,6 +104,7 @@ Respond with a JSON object containing:
   "reminderTime": "<ISO datetime or relative time if set_reminder, null otherwise>",
   "taskDetails": { "title": "...", "priority": "...", "dueDate": "...", "category": "..." } or null,
   "groceryItem": { "name": "...", "quantity": "...", "category": "..." } or null,
+  "eventDetails": { "title": "...", "startTime": "<ISO datetime>", "endTime": "<ISO datetime or null>", "location": "...", "description": "...", "allDay": false } or null,
   "searchQuery": "<query if search_info, null otherwise>",
   "reasoning": "<brief explanation of your interpretation>"
 }`;
@@ -158,6 +167,7 @@ Parse this command and determine what action ZEKE should take.`;
       reminderTime: parsed.reminderTime || null,
       taskDetails: parsed.taskDetails || null,
       groceryItem: parsed.groceryItem || null,
+      eventDetails: parsed.eventDetails || null,
       searchQuery: parsed.searchQuery || null,
       originalCommand: command.rawCommand,
       reasoning: parsed.reasoning || "",

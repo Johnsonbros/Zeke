@@ -31,6 +31,9 @@ import {
   getContact,
 } from "./db";
 import { createTask, createGroceryItem, createReminder } from "./db";
+import { scheduleReminderExecution } from "./capabilities/reminders";
+import { executeCalendarTool } from "./capabilities/calendar";
+import { executeSearchTool } from "./capabilities/search";
 import type { WakeWordCommand, ContextAgentSettings } from "@shared/schema";
 import { MASTER_ADMIN_PHONE } from "@shared/schema";
 
@@ -334,7 +337,7 @@ async function executeAction(
             } else {
               scheduledFor.setHours(scheduledFor.getHours() + 1);
             }
-          } else if (action.reminderTime.includes("minute")) {
+          } else if (action.reminderTime.includes("minute") || action.reminderTime.includes("min")) {
             const match = action.reminderTime.match(/(\d+)/);
             if (match) {
               scheduledFor.setMinutes(scheduledFor.getMinutes() + parseInt(match[1]));
@@ -345,11 +348,17 @@ async function executeAction(
             scheduledFor.setDate(scheduledFor.getDate() + 1);
             scheduledFor.setHours(9, 0, 0, 0);
           } else {
-            // Try to parse as ISO date
-            try {
-              scheduledFor = new Date(action.reminderTime);
-            } catch {
-              scheduledFor.setHours(scheduledFor.getHours() + 1);
+            // Try to parse as ISO date or extract number for minutes
+            const numMatch = action.reminderTime.match(/(\d+)/);
+            if (numMatch) {
+              // If just a number, assume minutes
+              scheduledFor.setMinutes(scheduledFor.getMinutes() + parseInt(numMatch[1]));
+            } else {
+              try {
+                scheduledFor = new Date(action.reminderTime);
+              } catch {
+                scheduledFor.setHours(scheduledFor.getHours() + 1);
+              }
             }
           }
         } else {
@@ -357,6 +366,7 @@ async function executeAction(
           scheduledFor.setHours(scheduledFor.getHours() + 1);
         }
         
+        // Create reminder in database with recipient phone for SMS delivery
         const reminder = createReminder({
           message: reminderMessage,
           scheduledFor: scheduledFor.toISOString(),
@@ -364,26 +374,96 @@ async function executeAction(
           completed: false,
         });
         
+        // Schedule the reminder execution using the reminder system's scheduler
+        // This ensures the SMS callback is properly used when the reminder fires
+        scheduleReminderExecution(reminder.id, scheduledFor);
+        
+        const timeStr = scheduledFor.toLocaleString("en-US", { 
+          timeZone: "America/New_York",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+          month: "short",
+          day: "numeric"
+        });
+        
         return { 
           success: true, 
-          message: `Set reminder for ${scheduledFor.toLocaleString()}: "${reminderMessage}"` 
+          message: `Set reminder for ${timeStr} via SMS: "${reminderMessage}"` 
         };
       }
       
       case "schedule_event": {
-        // Calendar integration would go here
-        return { 
-          success: false, 
-          message: "Calendar scheduling not yet implemented" 
-        };
+        if (!action.eventDetails?.title || !action.eventDetails?.startTime) {
+          return { success: false, message: "No event title or start time specified" };
+        }
+        
+        try {
+          const result = await executeCalendarTool("create_calendar_event", {
+            title: action.eventDetails.title,
+            start_time: action.eventDetails.startTime,
+            end_time: action.eventDetails.endTime || undefined,
+            location: action.eventDetails.location || undefined,
+            description: action.eventDetails.description || `Created via ZEKE voice command: "${action.originalCommand}"`,
+            all_day: action.eventDetails.allDay || false,
+          });
+          
+          if (result) {
+            const parsed = JSON.parse(result);
+            if (parsed.success) {
+              return { 
+                success: true, 
+                message: parsed.message || `Created calendar event: "${action.eventDetails.title}"` 
+              };
+            } else {
+              return { 
+                success: false, 
+                message: parsed.error || "Failed to create calendar event" 
+              };
+            }
+          }
+          return { success: false, message: "No response from calendar tool" };
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : "Unknown error";
+          return { success: false, message: `Calendar error: ${errorMsg}` };
+        }
       }
       
       case "search_info": {
-        // Search/research would go here
-        return { 
-          success: false, 
-          message: "Search not yet implemented for voice commands" 
-        };
+        if (!action.searchQuery) {
+          return { success: false, message: "No search query specified" };
+        }
+        
+        try {
+          // Use Perplexity search for better answers
+          const result = await executeSearchTool(
+            "perplexity_search", 
+            { query: action.searchQuery },
+            {}
+          );
+          
+          if (result) {
+            const parsed = JSON.parse(result);
+            if (parsed.answer || parsed.results) {
+              // Send the answer via SMS to Nate
+              if (sendSmsCallback) {
+                const answer = parsed.answer || (parsed.results?.[0]?.snippet || "No results found");
+                const formattedAnswer = `ZEKE Search Result for "${action.searchQuery}":\n\n${answer}`;
+                await sendSmsCallback(`+1${MASTER_ADMIN_PHONE}`, formattedAnswer, "context_agent");
+              }
+              return { 
+                success: true, 
+                message: `Search completed and result sent via SMS` 
+              };
+            } else if (parsed.error) {
+              return { success: false, message: parsed.error };
+            }
+          }
+          return { success: false, message: "No search results" };
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : "Unknown error";
+          return { success: false, message: `Search error: ${errorMsg}` };
+        }
       }
       
       default:
