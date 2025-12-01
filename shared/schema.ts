@@ -199,8 +199,13 @@ export type AccessLevel = typeof accessLevels[number];
 // Contacts table for managing who can communicate with ZEKE
 export const contacts = sqliteTable("contacts", {
   id: text("id").primaryKey(),
-  name: text("name").notNull(),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull().default(""),
+  middleName: text("middle_name"),
   phoneNumber: text("phone_number").notNull().unique(),
+  email: text("email"),
+  aiAssistantPhone: text("ai_assistant_phone"),
+  imageUrl: text("image_url"),
   accessLevel: text("access_level", { enum: accessLevels }).notNull().default("unknown"),
   relationship: text("relationship").default(""),
   notes: text("notes").default(""),
@@ -212,7 +217,6 @@ export const contacts = sqliteTable("contacts", {
   birthday: text("birthday"),
   occupation: text("occupation"),
   organization: text("organization"),
-  email: text("email"),
   lastInteractionAt: text("last_interaction_at"),
   interactionCount: integer("interaction_count").notNull().default(0),
   metadata: text("metadata"),
@@ -221,6 +225,28 @@ export const contacts = sqliteTable("contacts", {
   updatedAt: text("updated_at").notNull(),
 });
 
+// Note types for contact observations
+export const contactNoteTypes = ["interaction", "observation", "comment", "fact"] as const;
+export type ContactNoteType = typeof contactNoteTypes[number];
+
+// Contact notes table for ZEKE's observations about people
+export const contactNotes = sqliteTable("contact_notes", {
+  id: text("id").primaryKey(),
+  contactId: text("contact_id").notNull(),
+  content: text("content").notNull(),
+  noteType: text("note_type", { enum: contactNoteTypes }).notNull().default("observation"),
+  createdBy: text("created_by", { enum: ["nate", "zeke"] }).notNull().default("zeke"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertContactNoteSchema = createInsertSchema(contactNotes).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertContactNote = z.infer<typeof insertContactNoteSchema>;
+export type ContactNote = typeof contactNotes.$inferSelect;
+
 export const insertContactSchema = createInsertSchema(contacts).omit({
   id: true,
   createdAt: true,
@@ -228,8 +254,13 @@ export const insertContactSchema = createInsertSchema(contacts).omit({
 });
 
 export const updateContactSchema = z.object({
-  name: z.string().min(1).optional(),
+  firstName: z.string().min(1).optional(),
+  lastName: z.string().optional(),
+  middleName: z.string().nullable().optional(),
   phoneNumber: z.string().optional(),
+  email: z.string().nullable().optional(),
+  aiAssistantPhone: z.string().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
   accessLevel: z.enum(accessLevels).optional(),
   relationship: z.string().optional(),
   notes: z.string().optional(),
@@ -241,7 +272,6 @@ export const updateContactSchema = z.object({
   birthday: z.string().nullable().optional(),
   occupation: z.string().nullable().optional(),
   organization: z.string().nullable().optional(),
-  email: z.string().nullable().optional(),
   lastInteractionAt: z.string().nullable().optional(),
   interactionCount: z.number().optional(),
   metadata: z.string().nullable().optional(),

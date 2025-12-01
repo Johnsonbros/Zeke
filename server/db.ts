@@ -20,6 +20,9 @@ import type {
   InsertContact,
   UpdateContact,
   AccessLevel,
+  ContactNote,
+  InsertContactNote,
+  ContactNoteType,
   Automation,
   InsertAutomation,
   TwilioMessage,
@@ -359,8 +362,14 @@ try {
 db.exec(`
   CREATE TABLE IF NOT EXISTS contacts (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
+    name TEXT,
+    first_name TEXT NOT NULL DEFAULT '',
+    last_name TEXT NOT NULL DEFAULT '',
+    middle_name TEXT,
     phone_number TEXT NOT NULL UNIQUE,
+    email TEXT,
+    ai_assistant_phone TEXT,
+    image_url TEXT,
     access_level TEXT NOT NULL DEFAULT 'unknown',
     relationship TEXT DEFAULT '',
     notes TEXT DEFAULT '',
@@ -369,11 +378,125 @@ db.exec(`
     can_access_tasks INTEGER NOT NULL DEFAULT 0,
     can_access_grocery INTEGER NOT NULL DEFAULT 0,
     can_set_reminders INTEGER NOT NULL DEFAULT 0,
+    birthday TEXT,
+    occupation TEXT,
+    organization TEXT,
+    last_interaction_at TEXT,
+    interaction_count INTEGER NOT NULL DEFAULT 0,
+    metadata TEXT,
+    is_auto_created INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(phone_number);
   CREATE INDEX IF NOT EXISTS idx_contacts_access_level ON contacts(access_level);
+`);
+
+// Migration: Add new contact fields if they don't exist
+try {
+  db.exec(`ALTER TABLE contacts ADD COLUMN first_name TEXT NOT NULL DEFAULT ''`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE contacts ADD COLUMN last_name TEXT NOT NULL DEFAULT ''`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE contacts ADD COLUMN middle_name TEXT`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE contacts ADD COLUMN ai_assistant_phone TEXT`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE contacts ADD COLUMN image_url TEXT`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE contacts ADD COLUMN email TEXT`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE contacts ADD COLUMN birthday TEXT`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE contacts ADD COLUMN occupation TEXT`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE contacts ADD COLUMN organization TEXT`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE contacts ADD COLUMN last_interaction_at TEXT`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE contacts ADD COLUMN interaction_count INTEGER NOT NULL DEFAULT 0`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE contacts ADD COLUMN metadata TEXT`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE contacts ADD COLUMN is_auto_created INTEGER NOT NULL DEFAULT 0`);
+} catch (e) {
+  // Column may already exist
+}
+
+// Migrate existing contacts: split 'name' field into first_name and last_name
+try {
+  const contactsWithName = db.prepare(`
+    SELECT id, name FROM contacts 
+    WHERE name IS NOT NULL AND name != '' 
+    AND (first_name IS NULL OR first_name = '')
+  `).all() as Array<{ id: string; name: string }>;
+  
+  for (const contact of contactsWithName) {
+    const nameParts = contact.name.trim().split(/\s+/);
+    const firstName = nameParts[0] || contact.name;
+    const lastName = nameParts.slice(1).join(' ') || '';
+    
+    db.prepare(`
+      UPDATE contacts SET first_name = ?, last_name = ? WHERE id = ?
+    `).run(firstName, lastName, contact.id);
+  }
+  
+  if (contactsWithName.length > 0) {
+    console.log(`Migrated ${contactsWithName.length} contact(s) from 'name' to first_name/last_name fields`);
+  }
+} catch (e) {
+  // Migration may have already run or name column doesn't exist
+}
+
+// Create contact_notes table for ZEKE's observations about people
+db.exec(`
+  CREATE TABLE IF NOT EXISTS contact_notes (
+    id TEXT PRIMARY KEY,
+    contact_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    note_type TEXT NOT NULL DEFAULT 'observation',
+    created_by TEXT NOT NULL DEFAULT 'zeke',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_contact_notes_contact ON contact_notes(contact_id);
+  CREATE INDEX IF NOT EXISTS idx_contact_notes_type ON contact_notes(note_type);
+  CREATE INDEX IF NOT EXISTS idx_contact_notes_created ON contact_notes(created_at);
 `);
 
 // Create automations table if it doesn't exist
@@ -890,8 +1013,14 @@ interface TaskRow {
 
 interface ContactRow {
   id: string;
-  name: string;
+  name: string | null;
+  first_name: string;
+  last_name: string;
+  middle_name: string | null;
   phone_number: string;
+  email: string | null;
+  ai_assistant_phone: string | null;
+  image_url: string | null;
   access_level: string;
   relationship: string;
   notes: string;
@@ -903,7 +1032,6 @@ interface ContactRow {
   birthday: string | null;
   occupation: string | null;
   organization: string | null;
-  email: string | null;
   last_interaction_at: string | null;
   interaction_count: number;
   metadata: string | null;
@@ -2180,8 +2308,13 @@ export function getTopLevelTasks(includeCompleted: boolean = true): Task[] {
 function mapContact(row: ContactRow): Contact {
   return {
     id: row.id,
-    name: row.name,
+    firstName: row.first_name || '',
+    lastName: row.last_name || '',
+    middleName: row.middle_name,
     phoneNumber: row.phone_number,
+    email: row.email,
+    aiAssistantPhone: row.ai_assistant_phone,
+    imageUrl: row.image_url,
     accessLevel: row.access_level as AccessLevel,
     relationship: row.relationship,
     notes: row.notes,
@@ -2193,7 +2326,6 @@ function mapContact(row: ContactRow): Contact {
     birthday: row.birthday,
     occupation: row.occupation,
     organization: row.organization,
-    email: row.email,
     lastInteractionAt: row.last_interaction_at,
     interactionCount: row.interaction_count || 0,
     metadata: row.metadata,
@@ -2201,6 +2333,14 @@ function mapContact(row: ContactRow): Contact {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+// Helper to get full name from firstName/lastName
+export function getContactFullName(contact: Contact): string {
+  const parts = [contact.firstName];
+  if (contact.middleName) parts.push(contact.middleName);
+  if (contact.lastName) parts.push(contact.lastName);
+  return parts.join(' ').trim() || 'Unknown';
 }
 
 // Helper to normalize phone number for comparison (strips formatting)
@@ -2235,31 +2375,43 @@ export function createContact(data: InsertContact): Contact {
     const canAccessGrocery = data.canAccessGrocery ?? defaults.canAccessGrocery;
     const canSetReminders = data.canSetReminders ?? defaults.canSetReminders;
     
+    const firstName = data.firstName || '';
+    const lastName = data.lastName || '';
+    const middleName = data.middleName || null;
+    const email = data.email || null;
+    const aiAssistantPhone = data.aiAssistantPhone || null;
+    const imageUrl = data.imageUrl || null;
     const birthday = data.birthday || null;
     const occupation = data.occupation || null;
     const organization = data.organization || null;
-    const email = data.email || null;
     const isAutoCreated = data.isAutoCreated ?? false;
     const metadata = data.metadata || null;
     
     db.prepare(`
-      INSERT INTO contacts (id, name, phone_number, access_level, relationship, notes, 
+      INSERT INTO contacts (id, first_name, last_name, middle_name, phone_number, email, ai_assistant_phone, image_url,
+        access_level, relationship, notes, 
         can_access_personal_info, can_access_calendar, can_access_tasks, can_access_grocery, can_set_reminders,
-        birthday, occupation, organization, email, last_interaction_at, interaction_count, metadata, is_auto_created,
+        birthday, occupation, organization, last_interaction_at, interaction_count, metadata, is_auto_created,
         created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      id, data.name, normalizedPhone, accessLevel, relationship, notes,
+      id, firstName, lastName, middleName, normalizedPhone, email, aiAssistantPhone, imageUrl,
+      accessLevel, relationship, notes,
       canAccessPersonalInfo ? 1 : 0, canAccessCalendar ? 1 : 0, canAccessTasks ? 1 : 0, 
       canAccessGrocery ? 1 : 0, canSetReminders ? 1 : 0,
-      birthday, occupation, organization, email, now, 0, metadata, isAutoCreated ? 1 : 0,
+      birthday, occupation, organization, now, 0, metadata, isAutoCreated ? 1 : 0,
       now, now
     );
     
     return {
       id,
-      name: data.name,
+      firstName,
+      lastName,
+      middleName,
       phoneNumber: normalizedPhone,
+      email,
+      aiAssistantPhone,
+      imageUrl,
       accessLevel: accessLevel as AccessLevel,
       relationship,
       notes,
@@ -2271,7 +2423,6 @@ export function createContact(data: InsertContact): Contact {
       birthday,
       occupation,
       organization,
-      email,
       lastInteractionAt: now,
       interactionCount: 0,
       metadata,
@@ -2304,7 +2455,7 @@ export function getContactByPhone(phone: string): Contact | undefined {
 export function getAllContacts(): Contact[] {
   return wrapDbOperation("getAllContacts", () => {
     const rows = db.prepare(`
-      SELECT * FROM contacts ORDER BY name ASC
+      SELECT * FROM contacts ORDER BY first_name ASC, last_name ASC
     `).all() as ContactRow[];
     return rows.map(mapContact);
   });
@@ -2313,7 +2464,7 @@ export function getAllContacts(): Contact[] {
 export function getContactsByAccessLevel(level: AccessLevel): Contact[] {
   return wrapDbOperation("getContactsByAccessLevel", () => {
     const rows = db.prepare(`
-      SELECT * FROM contacts WHERE access_level = ? ORDER BY name ASC
+      SELECT * FROM contacts WHERE access_level = ? ORDER BY first_name ASC, last_name ASC
     `).all(level) as ContactRow[];
     return rows.map(mapContact);
   });
@@ -2325,8 +2476,13 @@ export function updateContact(id: string, data: UpdateContact): Contact | undefi
     if (!existing) return undefined;
     
     const now = getCurrentTimestamp();
-    const name = data.name ?? existing.name;
+    const firstName = data.firstName ?? existing.firstName;
+    const lastName = data.lastName ?? existing.lastName;
+    const middleName = data.middleName !== undefined ? data.middleName : existing.middleName;
     const phoneNumber = data.phoneNumber ? normalizePhoneNumber(data.phoneNumber) : existing.phoneNumber;
+    const email = data.email !== undefined ? data.email : existing.email;
+    const aiAssistantPhone = data.aiAssistantPhone !== undefined ? data.aiAssistantPhone : existing.aiAssistantPhone;
+    const imageUrl = data.imageUrl !== undefined ? data.imageUrl : existing.imageUrl;
     const accessLevel = data.accessLevel ?? existing.accessLevel;
     const relationship = data.relationship ?? existing.relationship;
     const notes = data.notes ?? existing.notes;
@@ -2338,7 +2494,6 @@ export function updateContact(id: string, data: UpdateContact): Contact | undefi
     const birthday = data.birthday !== undefined ? data.birthday : existing.birthday;
     const occupation = data.occupation !== undefined ? data.occupation : existing.occupation;
     const organization = data.organization !== undefined ? data.organization : existing.organization;
-    const email = data.email !== undefined ? data.email : existing.email;
     const lastInteractionAt = data.lastInteractionAt !== undefined ? data.lastInteractionAt : existing.lastInteractionAt;
     const interactionCount = data.interactionCount ?? existing.interactionCount;
     const metadata = data.metadata !== undefined ? data.metadata : existing.metadata;
@@ -2346,18 +2501,20 @@ export function updateContact(id: string, data: UpdateContact): Contact | undefi
     
     db.prepare(`
       UPDATE contacts 
-      SET name = ?, phone_number = ?, access_level = ?, relationship = ?, notes = ?,
+      SET first_name = ?, last_name = ?, middle_name = ?, phone_number = ?, email = ?, ai_assistant_phone = ?, image_url = ?,
+          access_level = ?, relationship = ?, notes = ?,
           can_access_personal_info = ?, can_access_calendar = ?, can_access_tasks = ?,
           can_access_grocery = ?, can_set_reminders = ?,
-          birthday = ?, occupation = ?, organization = ?, email = ?,
+          birthday = ?, occupation = ?, organization = ?,
           last_interaction_at = ?, interaction_count = ?, metadata = ?, is_auto_created = ?,
           updated_at = ?
       WHERE id = ?
     `).run(
-      name, phoneNumber, accessLevel, relationship, notes,
+      firstName, lastName, middleName, phoneNumber, email, aiAssistantPhone, imageUrl,
+      accessLevel, relationship, notes,
       canAccessPersonalInfo ? 1 : 0, canAccessCalendar ? 1 : 0, canAccessTasks ? 1 : 0,
       canAccessGrocery ? 1 : 0, canSetReminders ? 1 : 0,
-      birthday, occupation, organization, email,
+      birthday, occupation, organization,
       lastInteractionAt, interactionCount, metadata, isAutoCreated ? 1 : 0,
       now, id
     );
@@ -2370,6 +2527,80 @@ export function deleteContact(id: string): boolean {
   return wrapDbOperation("deleteContact", () => {
     const result = db.prepare(`DELETE FROM contacts WHERE id = ?`).run(id);
     return result.changes > 0;
+  });
+}
+
+// Contact Notes CRUD operations
+interface ContactNoteRow {
+  id: string;
+  contact_id: string;
+  content: string;
+  note_type: string;
+  created_by: string;
+  created_at: string;
+}
+
+function mapContactNote(row: ContactNoteRow): ContactNote {
+  return {
+    id: row.id,
+    contactId: row.contact_id,
+    content: row.content,
+    noteType: row.note_type as ContactNoteType,
+    createdBy: row.created_by as "nate" | "zeke",
+    createdAt: row.created_at,
+  };
+}
+
+export function createContactNote(data: InsertContactNote): ContactNote {
+  return wrapDbOperation("createContactNote", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO contact_notes (id, contact_id, content, note_type, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, data.contactId, data.content, data.noteType || 'observation', data.createdBy || 'zeke', now);
+    
+    return {
+      id,
+      contactId: data.contactId,
+      content: data.content,
+      noteType: (data.noteType || 'observation') as ContactNoteType,
+      createdBy: (data.createdBy || 'zeke') as "nate" | "zeke",
+      createdAt: now,
+    };
+  });
+}
+
+export function getContactNotes(contactId: string): ContactNote[] {
+  return wrapDbOperation("getContactNotes", () => {
+    const rows = db.prepare(`
+      SELECT * FROM contact_notes WHERE contact_id = ? ORDER BY created_at DESC
+    `).all(contactId) as ContactNoteRow[];
+    return rows.map(mapContactNote);
+  });
+}
+
+export function getContactNotesByType(contactId: string, noteType: ContactNoteType): ContactNote[] {
+  return wrapDbOperation("getContactNotesByType", () => {
+    const rows = db.prepare(`
+      SELECT * FROM contact_notes WHERE contact_id = ? AND note_type = ? ORDER BY created_at DESC
+    `).all(contactId, noteType) as ContactNoteRow[];
+    return rows.map(mapContactNote);
+  });
+}
+
+export function deleteContactNote(id: string): boolean {
+  return wrapDbOperation("deleteContactNote", () => {
+    const result = db.prepare(`DELETE FROM contact_notes WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function deleteAllContactNotes(contactId: string): number {
+  return wrapDbOperation("deleteAllContactNotes", () => {
+    const result = db.prepare(`DELETE FROM contact_notes WHERE contact_id = ?`).run(contactId);
+    return result.changes;
   });
 }
 
@@ -2392,7 +2623,8 @@ export function getOrCreateContactForPhone(phone: string): Contact {
       
       // Create master admin contact
       return createContact({
-        name: "Nate (Admin)",
+        firstName: "Nate",
+        lastName: "(Admin)",
         phoneNumber: normalizedPhone,
         accessLevel: "admin",
         relationship: "Owner",
@@ -2411,7 +2643,8 @@ export function getOrCreateContactForPhone(phone: string): Contact {
     
     // Create unknown contact
     return createContact({
-      name: `Unknown (${normalizedPhone})`,
+      firstName: "Unknown",
+      lastName: `(${normalizedPhone})`,
       phoneNumber: normalizedPhone,
       accessLevel: "unknown",
       relationship: "",
