@@ -1209,3 +1209,88 @@ export interface LimitlessAnalytics {
     count: number;
   }>;
 }
+
+// ============================================
+// CROSS-DOMAIN ENTITY LINKING SYSTEM
+// ============================================
+
+// Entity types that can be extracted and linked across domains
+export const entityTypes = ["person", "task", "memory", "calendar_event", "location", "grocery_item", "conversation", "topic"] as const;
+export type EntityType = typeof entityTypes[number];
+
+// Domains where entities can be referenced
+export const entityDomains = ["memory", "task", "contact", "calendar", "location", "grocery", "conversation"] as const;
+export type EntityDomain = typeof entityDomains[number];
+
+// Relationship types between entities
+export const entityRelationshipTypes = ["mentions", "derived_from", "scheduled_near", "located_at", "depends_on", "same_subject", "part_of", "reinforces"] as const;
+export type EntityRelationshipType = typeof entityRelationshipTypes[number];
+
+// Entities table - canonical entities extracted from across the system
+export const entities = sqliteTable("entities", {
+  id: text("id").primaryKey(),
+  type: text("type", { enum: entityTypes }).notNull(),
+  label: text("label").notNull(),
+  canonicalId: text("canonical_id"),
+  metadata: text("metadata"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertEntitySchema = createInsertSchema(entities).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertEntity = z.infer<typeof insertEntitySchema>;
+export type Entity = typeof entities.$inferSelect;
+
+// Entity references table - tracks where entities are referenced
+export const entityReferences = sqliteTable("entity_references", {
+  id: text("id").primaryKey(),
+  entityId: text("entity_id").notNull(),
+  domain: text("domain", { enum: entityDomains }).notNull(),
+  itemId: text("item_id").notNull(),
+  confidence: text("confidence").notNull(),
+  extractedAt: text("extracted_at").notNull(),
+  context: text("context"),
+});
+
+export const insertEntityReferenceSchema = createInsertSchema(entityReferences).omit({
+  id: true,
+});
+
+export type InsertEntityReference = z.infer<typeof insertEntityReferenceSchema>;
+export type EntityReference = typeof entityReferences.$inferSelect;
+
+// Entity links table - tracks relationships between entities
+export const entityLinks = sqliteTable("entity_links", {
+  id: text("id").primaryKey(),
+  sourceEntityId: text("source_entity_id").notNull(),
+  targetEntityId: text("target_entity_id").notNull(),
+  relationshipType: text("relationship_type", { enum: entityRelationshipTypes }).notNull(),
+  weight: text("weight").notNull(),
+  firstSeenAt: text("first_seen_at").notNull(),
+  lastSeenAt: text("last_seen_at").notNull(),
+  metadata: text("metadata"),
+});
+
+export const insertEntityLinkSchema = createInsertSchema(entityLinks).omit({
+  id: true,
+});
+
+export type InsertEntityLink = z.infer<typeof insertEntityLinkSchema>;
+export type EntityLink = typeof entityLinks.$inferSelect;
+
+// Helper interface for entity with its references
+export interface EntityWithReferences extends Entity {
+  references: EntityReference[];
+}
+
+// Helper interface for entity with linked entities
+export interface EntityWithLinks extends Entity {
+  linkedEntities: Array<{
+    entity: Entity;
+    link: EntityLink;
+    direction: "source" | "target";
+  }>;
+}

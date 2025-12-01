@@ -76,7 +76,18 @@ import type {
   InsertConversationMetric,
   ToolOutcome,
   ConversationQualityStats,
-  MemoryWithConfidence
+  MemoryWithConfidence,
+  Entity,
+  InsertEntity,
+  EntityType,
+  EntityReference,
+  InsertEntityReference,
+  EntityDomain,
+  EntityLink,
+  InsertEntityLink,
+  EntityRelationshipType,
+  EntityWithReferences,
+  EntityWithLinks
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -942,6 +953,65 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_limitless_summaries_created ON limitless_summaries(created_at);
 `);
 
+// ============================================
+// CROSS-DOMAIN ENTITY LINKING SYSTEM TABLES
+// ============================================
+
+// Create entities table for canonical entities extracted from across the system
+db.exec(`
+  CREATE TABLE IF NOT EXISTS entities (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    label TEXT NOT NULL,
+    canonical_id TEXT,
+    metadata TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
+  CREATE INDEX IF NOT EXISTS idx_entities_label ON entities(label);
+  CREATE INDEX IF NOT EXISTS idx_entities_canonical ON entities(canonical_id);
+`);
+
+// Create entity_references table for tracking where entities are referenced
+db.exec(`
+  CREATE TABLE IF NOT EXISTS entity_references (
+    id TEXT PRIMARY KEY,
+    entity_id TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    confidence TEXT NOT NULL,
+    extracted_at TEXT NOT NULL,
+    context TEXT,
+    FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_entity_references_entity ON entity_references(entity_id);
+  CREATE INDEX IF NOT EXISTS idx_entity_references_domain ON entity_references(domain);
+  CREATE INDEX IF NOT EXISTS idx_entity_references_item ON entity_references(item_id);
+  CREATE INDEX IF NOT EXISTS idx_entity_references_domain_item ON entity_references(domain, item_id);
+`);
+
+// Create entity_links table for tracking relationships between entities
+db.exec(`
+  CREATE TABLE IF NOT EXISTS entity_links (
+    id TEXT PRIMARY KEY,
+    source_entity_id TEXT NOT NULL,
+    target_entity_id TEXT NOT NULL,
+    relationship_type TEXT NOT NULL,
+    weight TEXT NOT NULL,
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    metadata TEXT,
+    FOREIGN KEY (source_entity_id) REFERENCES entities(id) ON DELETE CASCADE,
+    FOREIGN KEY (target_entity_id) REFERENCES entities(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_entity_links_source ON entity_links(source_entity_id);
+  CREATE INDEX IF NOT EXISTS idx_entity_links_target ON entity_links(target_entity_id);
+  CREATE INDEX IF NOT EXISTS idx_entity_links_relationship ON entity_links(relationship_type);
+  CREATE INDEX IF NOT EXISTS idx_entity_links_weight ON entity_links(weight);
+`);
+
+console.log("Cross-domain entity linking tables initialized");
+
 // Seed initial family members if table is empty
 try {
   const existingMembers = db.prepare(`SELECT COUNT(*) as count FROM family_members`).get() as { count: number };
@@ -1337,6 +1407,37 @@ interface LimitlessSummaryRow {
   updated_at: string;
 }
 
+// Entity system row types
+interface EntityRow {
+  id: string;
+  type: string;
+  label: string;
+  canonical_id: string | null;
+  metadata: string | null;
+  created_at: string;
+}
+
+interface EntityReferenceRow {
+  id: string;
+  entity_id: string;
+  domain: string;
+  item_id: string;
+  confidence: string;
+  extracted_at: string;
+  context: string | null;
+}
+
+interface EntityLinkRow {
+  id: string;
+  source_entity_id: string;
+  target_entity_id: string;
+  relationship_type: string;
+  weight: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  metadata: string | null;
+}
+
 // Helper to map database row to Conversation type (snake_case -> camelCase)
 function mapConversation(row: ConversationRow): Conversation {
   return {
@@ -1515,6 +1616,43 @@ function mapProximityAlert(row: ProximityAlertRow): ProximityAlert {
     alertMessage: row.alert_message,
     acknowledged: Boolean(row.acknowledged),
     createdAt: row.created_at,
+  };
+}
+
+// Entity system mapper functions
+function mapEntity(row: EntityRow): Entity {
+  return {
+    id: row.id,
+    type: row.type as EntityType,
+    label: row.label,
+    canonicalId: row.canonical_id,
+    metadata: row.metadata,
+    createdAt: row.created_at,
+  };
+}
+
+function mapEntityReference(row: EntityReferenceRow): EntityReference {
+  return {
+    id: row.id,
+    entityId: row.entity_id,
+    domain: row.domain as EntityDomain,
+    itemId: row.item_id,
+    confidence: row.confidence,
+    extractedAt: row.extracted_at,
+    context: row.context,
+  };
+}
+
+function mapEntityLink(row: EntityLinkRow): EntityLink {
+  return {
+    id: row.id,
+    sourceEntityId: row.source_entity_id,
+    targetEntityId: row.target_entity_id,
+    relationshipType: row.relationship_type as EntityRelationshipType,
+    weight: row.weight,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at,
+    metadata: row.metadata,
   };
 }
 
@@ -5767,6 +5905,376 @@ export function getMemoryConfidenceStats(): {
       needsConfirmation,
       averageConfidence: avgConfidence
     };
+  });
+}
+
+// ============================================
+// CROSS-DOMAIN ENTITY LINKING FUNCTIONS
+// ============================================
+
+// CRUD: Create a new entity
+export function createEntity(data: InsertEntity): Entity {
+  return wrapDbOperation("createEntity", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO entities (id, type, label, canonical_id, metadata, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.type,
+      data.label,
+      data.canonicalId || null,
+      data.metadata || null,
+      now
+    );
+    
+    return getEntity(id)!;
+  });
+}
+
+// CRUD: Get entity by ID
+export function getEntity(id: string): Entity | undefined {
+  return wrapDbOperation("getEntity", () => {
+    const row = db.prepare(`SELECT * FROM entities WHERE id = ?`).get(id) as EntityRow | undefined;
+    return row ? mapEntity(row) : undefined;
+  });
+}
+
+// CRUD: Update entity
+export function updateEntity(id: string, data: Partial<InsertEntity>): Entity | undefined {
+  return wrapDbOperation("updateEntity", () => {
+    const existing = getEntity(id);
+    if (!existing) return undefined;
+    
+    const updates: string[] = [];
+    const values: (string | null)[] = [];
+    
+    if (data.type !== undefined) {
+      updates.push("type = ?");
+      values.push(data.type);
+    }
+    if (data.label !== undefined) {
+      updates.push("label = ?");
+      values.push(data.label);
+    }
+    if (data.canonicalId !== undefined) {
+      updates.push("canonical_id = ?");
+      values.push(data.canonicalId);
+    }
+    if (data.metadata !== undefined) {
+      updates.push("metadata = ?");
+      values.push(data.metadata);
+    }
+    
+    if (updates.length > 0) {
+      values.push(id);
+      db.prepare(`UPDATE entities SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+    }
+    
+    return getEntity(id);
+  });
+}
+
+// CRUD: Delete entity
+export function deleteEntity(id: string): boolean {
+  return wrapDbOperation("deleteEntity", () => {
+    const result = db.prepare(`DELETE FROM entities WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// CRUD: Create entity reference
+export function createEntityReference(data: InsertEntityReference): EntityReference {
+  return wrapDbOperation("createEntityReference", () => {
+    const id = uuidv4();
+    
+    db.prepare(`
+      INSERT INTO entity_references (id, entity_id, domain, item_id, confidence, extracted_at, context)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.entityId,
+      data.domain,
+      data.itemId,
+      data.confidence,
+      data.extractedAt,
+      data.context || null
+    );
+    
+    return getEntityReference(id)!;
+  });
+}
+
+// CRUD: Get entity reference by ID
+export function getEntityReference(id: string): EntityReference | undefined {
+  return wrapDbOperation("getEntityReference", () => {
+    const row = db.prepare(`SELECT * FROM entity_references WHERE id = ?`).get(id) as EntityReferenceRow | undefined;
+    return row ? mapEntityReference(row) : undefined;
+  });
+}
+
+// CRUD: Get all references for an entity
+export function getEntityReferences(entityId: string): EntityReference[] {
+  return wrapDbOperation("getEntityReferences", () => {
+    const rows = db.prepare(`SELECT * FROM entity_references WHERE entity_id = ? ORDER BY extracted_at DESC`).all(entityId) as EntityReferenceRow[];
+    return rows.map(mapEntityReference);
+  });
+}
+
+// CRUD: Delete entity reference
+export function deleteEntityReference(id: string): boolean {
+  return wrapDbOperation("deleteEntityReference", () => {
+    const result = db.prepare(`DELETE FROM entity_references WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// CRUD: Create entity link
+export function createEntityLink(data: InsertEntityLink): EntityLink {
+  return wrapDbOperation("createEntityLink", () => {
+    const id = uuidv4();
+    
+    db.prepare(`
+      INSERT INTO entity_links (id, source_entity_id, target_entity_id, relationship_type, weight, first_seen_at, last_seen_at, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.sourceEntityId,
+      data.targetEntityId,
+      data.relationshipType,
+      data.weight,
+      data.firstSeenAt,
+      data.lastSeenAt,
+      data.metadata || null
+    );
+    
+    return getEntityLink(id)!;
+  });
+}
+
+// CRUD: Get entity link by ID
+export function getEntityLink(id: string): EntityLink | undefined {
+  return wrapDbOperation("getEntityLink", () => {
+    const row = db.prepare(`SELECT * FROM entity_links WHERE id = ?`).get(id) as EntityLinkRow | undefined;
+    return row ? mapEntityLink(row) : undefined;
+  });
+}
+
+// CRUD: Get all links for an entity (both as source and target)
+export function getEntityLinks(entityId: string): EntityLink[] {
+  return wrapDbOperation("getEntityLinks", () => {
+    const rows = db.prepare(`
+      SELECT * FROM entity_links 
+      WHERE source_entity_id = ? OR target_entity_id = ? 
+      ORDER BY last_seen_at DESC
+    `).all(entityId, entityId) as EntityLinkRow[];
+    return rows.map(mapEntityLink);
+  });
+}
+
+// CRUD: Update entity link (e.g., to update weight or lastSeenAt)
+export function updateEntityLink(id: string, data: Partial<{
+  weight: string;
+  lastSeenAt: string;
+  metadata: string | null;
+}>): EntityLink | undefined {
+  return wrapDbOperation("updateEntityLink", () => {
+    const existing = getEntityLink(id);
+    if (!existing) return undefined;
+    
+    const updates: string[] = [];
+    const values: (string | null)[] = [];
+    
+    if (data.weight !== undefined) {
+      updates.push("weight = ?");
+      values.push(data.weight);
+    }
+    if (data.lastSeenAt !== undefined) {
+      updates.push("last_seen_at = ?");
+      values.push(data.lastSeenAt);
+    }
+    if (data.metadata !== undefined) {
+      updates.push("metadata = ?");
+      values.push(data.metadata);
+    }
+    
+    if (updates.length > 0) {
+      values.push(id);
+      db.prepare(`UPDATE entity_links SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+    }
+    
+    return getEntityLink(id);
+  });
+}
+
+// CRUD: Delete entity link
+export function deleteEntityLink(id: string): boolean {
+  return wrapDbOperation("deleteEntityLink", () => {
+    const result = db.prepare(`DELETE FROM entity_links WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// Query: Get entities by type
+export function getEntitiesByType(type: EntityType): Entity[] {
+  return wrapDbOperation("getEntitiesByType", () => {
+    const rows = db.prepare(`SELECT * FROM entities WHERE type = ? ORDER BY created_at DESC`).all(type) as EntityRow[];
+    return rows.map(mapEntity);
+  });
+}
+
+// Query: Get entities for a specific domain item
+export function getEntitiesForItem(domain: EntityDomain, itemId: string): Entity[] {
+  return wrapDbOperation("getEntitiesForItem", () => {
+    const rows = db.prepare(`
+      SELECT e.* FROM entities e
+      INNER JOIN entity_references r ON e.id = r.entity_id
+      WHERE r.domain = ? AND r.item_id = ?
+      ORDER BY r.confidence DESC
+    `).all(domain, itemId) as EntityRow[];
+    return rows.map(mapEntity);
+  });
+}
+
+// Query: Get related entities (entities linked to a given entity)
+export function getRelatedEntities(entityId: string): EntityWithLinks {
+  return wrapDbOperation("getRelatedEntities", () => {
+    const entity = getEntity(entityId);
+    if (!entity) {
+      throw new Error(`Entity not found: ${entityId}`);
+    }
+    
+    const links = getEntityLinks(entityId);
+    const linkedEntities: EntityWithLinks["linkedEntities"] = [];
+    
+    for (const link of links) {
+      const isSource = link.sourceEntityId === entityId;
+      const relatedId = isSource ? link.targetEntityId : link.sourceEntityId;
+      const relatedEntity = getEntity(relatedId);
+      
+      if (relatedEntity) {
+        linkedEntities.push({
+          entity: relatedEntity,
+          link,
+          direction: isSource ? "source" : "target"
+        });
+      }
+    }
+    
+    return {
+      ...entity,
+      linkedEntities
+    };
+  });
+}
+
+// Query: Get all items across domains that reference an entity
+export function getItemsRelatedToEntity(entityId: string): Array<{
+  domain: EntityDomain;
+  itemId: string;
+  confidence: string;
+  context: string | null;
+}> {
+  return wrapDbOperation("getItemsRelatedToEntity", () => {
+    const rows = db.prepare(`
+      SELECT domain, item_id, confidence, context
+      FROM entity_references
+      WHERE entity_id = ?
+      ORDER BY confidence DESC
+    `).all(entityId) as Array<{
+      domain: string;
+      item_id: string;
+      confidence: string;
+      context: string | null;
+    }>;
+    
+    return rows.map(row => ({
+      domain: row.domain as EntityDomain,
+      itemId: row.item_id,
+      confidence: row.confidence,
+      context: row.context
+    }));
+  });
+}
+
+// Query: Get entity with all its references
+export function getEntityWithReferences(entityId: string): EntityWithReferences | undefined {
+  return wrapDbOperation("getEntityWithReferences", () => {
+    const entity = getEntity(entityId);
+    if (!entity) return undefined;
+    
+    const references = getEntityReferences(entityId);
+    
+    return {
+      ...entity,
+      references
+    };
+  });
+}
+
+// Query: Find entities by label (partial match)
+export function findEntitiesByLabel(searchLabel: string): Entity[] {
+  return wrapDbOperation("findEntitiesByLabel", () => {
+    const rows = db.prepare(`
+      SELECT * FROM entities 
+      WHERE label LIKE ? 
+      ORDER BY created_at DESC
+    `).all(`%${searchLabel}%`) as EntityRow[];
+    return rows.map(mapEntity);
+  });
+}
+
+// Query: Get all entities
+export function getAllEntities(): Entity[] {
+  return wrapDbOperation("getAllEntities", () => {
+    const rows = db.prepare(`SELECT * FROM entities ORDER BY created_at DESC`).all() as EntityRow[];
+    return rows.map(mapEntity);
+  });
+}
+
+// Query: Get links by relationship type
+export function getEntityLinksByType(relationshipType: EntityRelationshipType): EntityLink[] {
+  return wrapDbOperation("getEntityLinksByType", () => {
+    const rows = db.prepare(`
+      SELECT * FROM entity_links 
+      WHERE relationship_type = ? 
+      ORDER BY weight DESC
+    `).all(relationshipType) as EntityLinkRow[];
+    return rows.map(mapEntityLink);
+  });
+}
+
+// Query: Find or create entity link (useful for updating existing relationships)
+export function findOrCreateEntityLink(
+  sourceEntityId: string, 
+  targetEntityId: string, 
+  relationshipType: EntityRelationshipType
+): EntityLink {
+  return wrapDbOperation("findOrCreateEntityLink", () => {
+    const existing = db.prepare(`
+      SELECT * FROM entity_links 
+      WHERE source_entity_id = ? AND target_entity_id = ? AND relationship_type = ?
+    `).get(sourceEntityId, targetEntityId, relationshipType) as EntityLinkRow | undefined;
+    
+    if (existing) {
+      // Update lastSeenAt
+      const now = getCurrentTimestamp();
+      db.prepare(`UPDATE entity_links SET last_seen_at = ? WHERE id = ?`).run(now, existing.id);
+      return getEntityLink(existing.id)!;
+    }
+    
+    const now = getCurrentTimestamp();
+    return createEntityLink({
+      sourceEntityId,
+      targetEntityId,
+      relationshipType,
+      weight: "0.5",
+      firstSeenAt: now,
+      lastSeenAt: now,
+      metadata: null
+    });
   });
 }
 
