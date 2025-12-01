@@ -203,6 +203,25 @@ import {
   getMorningBriefingEnhancement,
   getLimitlessSummaries,
 } from "./limitless";
+import {
+  recordConversationSignal,
+  recordMemoryUsage,
+  recordToolOutcome,
+  getQualityMetrics,
+  getSystemMetrics,
+  getToolMetrics,
+} from "./metricsCollector";
+import {
+  getConversationQualityStats,
+  getOverallQualityStats,
+  getMemoryConfidenceStats,
+  getLowConfidenceMemories,
+  getMemoriesNeedingConfirmation,
+  getHighConfidenceMemories,
+  getMemoryWithConfidence,
+  confirmMemory,
+  contradictMemory,
+} from "./db";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertContactNoteSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, insertFoodPreferenceSchema, insertDietaryRestrictionSchema, insertSavedRecipeSchema, updateSavedRecipeSchema, insertMealHistorySchema, type Automation, type InsertAutomation, getContactFullName } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
@@ -4372,6 +4391,224 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Generate Limitless summary error:", error);
       res.status(500).json({ error: error.message || "Failed to generate summary" });
+    }
+  });
+
+  // ============================================
+  // CONVERSATION QUALITY METRICS API
+  // ============================================
+
+  // GET /api/metrics/quality - Get overall system quality metrics
+  app.get("/api/metrics/quality", async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 7;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching system quality metrics (days: ${days})`);
+      
+      const metrics = getSystemMetrics(days);
+      res.json(metrics);
+    } catch (error: any) {
+      console.error("Get quality metrics error:", error);
+      res.status(500).json({ error: error.message || "Failed to get quality metrics" });
+    }
+  });
+
+  // GET /api/metrics/conversation/:id - Get quality metrics for a specific conversation
+  app.get("/api/metrics/conversation/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching conversation metrics for ${id}`);
+      
+      const metrics = getQualityMetrics(id);
+      res.json(metrics);
+    } catch (error: any) {
+      console.error("Get conversation metrics error:", error);
+      res.status(500).json({ error: error.message || "Failed to get conversation metrics" });
+    }
+  });
+
+  // GET /api/metrics/tool/:name - Get success rate for a specific tool
+  app.get("/api/metrics/tool/:name", async (req, res) => {
+    try {
+      const { name } = req.params;
+      const days = parseInt(req.query.days as string) || 7;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching tool metrics for ${name} (days: ${days})`);
+      
+      const metrics = getToolMetrics(name, days);
+      res.json(metrics);
+    } catch (error: any) {
+      console.error("Get tool metrics error:", error);
+      res.status(500).json({ error: error.message || "Failed to get tool metrics" });
+    }
+  });
+
+  // POST /api/metrics/feedback - Record explicit user feedback
+  app.post("/api/metrics/feedback", async (req, res) => {
+    try {
+      const { conversationId, feedback, note, messageId } = req.body;
+      
+      if (!conversationId || !feedback) {
+        return res.status(400).json({ error: "conversationId and feedback are required" });
+      }
+      
+      if (!["positive", "negative", "neutral"].includes(feedback)) {
+        return res.status(400).json({ error: "feedback must be positive, negative, or neutral" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Recording feedback for ${conversationId}: ${feedback}`);
+      
+      recordConversationSignal(conversationId, {
+        explicitFeedback: feedback,
+        feedbackNote: note,
+        messageId,
+      });
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Record feedback error:", error);
+      res.status(500).json({ error: error.message || "Failed to record feedback" });
+    }
+  });
+
+  // POST /api/metrics/tool-outcome - Record tool outcome (for Python agents)
+  app.post("/api/metrics/tool-outcome", async (req, res) => {
+    try {
+      const { conversationId, toolName, outcome, durationMs, errorMessage, messageId, memoriesUsed } = req.body;
+      
+      if (!conversationId || !toolName || !outcome) {
+        return res.status(400).json({ error: "conversationId, toolName, and outcome are required" });
+      }
+      
+      if (!["success", "failure", "partial", "timeout", "skipped"].includes(outcome)) {
+        return res.status(400).json({ error: "Invalid outcome value" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Recording tool outcome: ${toolName} = ${outcome}`);
+      
+      // Use a synthetic call ID for direct recording
+      const callId = `api_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const { startToolTracking } = await import("./metricsCollector");
+      startToolTracking(callId, toolName, conversationId);
+      recordToolOutcome(callId, outcome, { errorMessage, messageId, memoriesUsed });
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Record tool outcome error:", error);
+      res.status(500).json({ error: error.message || "Failed to record tool outcome" });
+    }
+  });
+
+  // ============================================
+  // MEMORY CONFIDENCE API
+  // ============================================
+
+  // GET /api/memory/confidence/stats - Get overall memory confidence stats
+  app.get("/api/memory/confidence/stats", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching memory confidence stats`);
+      const stats = getMemoryConfidenceStats();
+      res.json(stats);
+    } catch (error: any) {
+      console.error("Get memory confidence stats error:", error);
+      res.status(500).json({ error: error.message || "Failed to get memory confidence stats" });
+    }
+  });
+
+  // GET /api/memory/confidence/low - Get memories with low confidence
+  app.get("/api/memory/confidence/low", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching low confidence memories (limit: ${limit})`);
+      const memories = getLowConfidenceMemories(limit);
+      res.json(memories);
+    } catch (error: any) {
+      console.error("Get low confidence memories error:", error);
+      res.status(500).json({ error: error.message || "Failed to get low confidence memories" });
+    }
+  });
+
+  // GET /api/memory/confidence/needs-confirmation - Get memories needing confirmation
+  app.get("/api/memory/confidence/needs-confirmation", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching memories needing confirmation`);
+      const memories = getMemoriesNeedingConfirmation();
+      res.json(memories);
+    } catch (error: any) {
+      console.error("Get memories needing confirmation error:", error);
+      res.status(500).json({ error: error.message || "Failed to get memories needing confirmation" });
+    }
+  });
+
+  // GET /api/memory/confidence/high - Get high confidence memories
+  app.get("/api/memory/confidence/high", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching high confidence memories (limit: ${limit})`);
+      const memories = getHighConfidenceMemories(limit);
+      res.json(memories);
+    } catch (error: any) {
+      console.error("Get high confidence memories error:", error);
+      res.status(500).json({ error: error.message || "Failed to get high confidence memories" });
+    }
+  });
+
+  // POST /api/memory/:id/confirm - Confirm a memory is accurate
+  app.post("/api/memory/:id/confirm", async (req, res) => {
+    try {
+      const { id } = req.params;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Confirming memory: ${id}`);
+      
+      const memory = confirmMemory(id);
+      if (!memory) {
+        return res.status(404).json({ error: "Memory not found" });
+      }
+      
+      res.json({ success: true, memory: getMemoryWithConfidence(memory) });
+    } catch (error: any) {
+      console.error("Confirm memory error:", error);
+      res.status(500).json({ error: error.message || "Failed to confirm memory" });
+    }
+  });
+
+  // POST /api/memory/:id/contradict - Mark a memory as contradicted
+  app.post("/api/memory/:id/contradict", async (req, res) => {
+    try {
+      const { id } = req.params;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Contradicting memory: ${id}`);
+      
+      const memory = contradictMemory(id);
+      if (!memory) {
+        return res.status(404).json({ error: "Memory not found" });
+      }
+      
+      res.json({ success: true, memory: getMemoryWithConfidence(memory) });
+    } catch (error: any) {
+      console.error("Contradict memory error:", error);
+      res.status(500).json({ error: error.message || "Failed to contradict memory" });
+    }
+  });
+
+  // POST /api/memory/usage - Record memory usage in a conversation (for Python agents)
+  app.post("/api/memory/usage", async (req, res) => {
+    try {
+      const { conversationId, messageId, memoriesUsed, memoriesConfirmed, memoriesContradicted } = req.body;
+      
+      if (!conversationId) {
+        return res.status(400).json({ error: "conversationId is required" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Recording memory usage for conversation ${conversationId}`);
+      
+      recordMemoryUsage(conversationId, {
+        messageId,
+        memoriesUsed,
+        memoriesConfirmed,
+        memoriesContradicted,
+      });
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Record memory usage error:", error);
+      res.status(500).json({ error: error.message || "Failed to record memory usage" });
     }
   });
   

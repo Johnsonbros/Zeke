@@ -43,6 +43,13 @@ import {
   DEFAULT_TOKEN_BUDGET 
 } from "./contextRouter";
 import { summarizeConversation } from "./conversationSummarizer";
+import {
+  startToolTracking,
+  recordToolOutcome,
+  recordConversationSignal,
+  detectRetry,
+  detectFollowUpNeeded,
+} from "./metricsCollector";
 
 export interface PendingMemory {
   id: string;
@@ -1050,6 +1057,12 @@ export async function chat(
   const history = getRecentMessages(conversationId, 20);
   const isGettingToKnowMode = conversation?.mode === "getting_to_know";
   
+  // Check for retry pattern (user repeating a similar question)
+  const userMessages = history.filter(m => m.role === 'user').map(m => m.content);
+  if (detectRetry(userMessage, userMessages)) {
+    recordConversationSignal(conversationId, { userRetried: true });
+  }
+  
   // Determine user permissions
   let userPermissions = permissions;
   if (!userPermissions && userPhoneNumber) {
@@ -1144,6 +1157,11 @@ export async function chat(
         const assistantMessage =
           message.content || "I apologize, but I couldn't generate a response. Please try again.";
 
+        // Check if response suggests follow-up is needed
+        if (detectFollowUpNeeded(assistantMessage)) {
+          recordConversationSignal(conversationId, { requiredFollowUp: true });
+        }
+
         // Generate title for new conversations
         if (isNewConversation) {
           const title = await generateConversationTitle(userMessage);
@@ -1174,7 +1192,7 @@ export async function chat(
         tool_calls: message.tool_calls,
       });
 
-      // Execute each tool call and add results
+      // Execute each tool call and add results (with metrics tracking)
       for (const toolCall of message.tool_calls) {
         if (toolCall.type === 'function') {
           const toolName = toolCall.function.name;
@@ -1188,6 +1206,9 @@ export async function chat(
 
           console.log(`Tool call: ${toolName}`, toolArgs);
 
+          // Start metrics tracking for this tool call
+          startToolTracking(toolCall.id, toolName, conversationId);
+
           // Pass permissions to executeTool for access control
           const toolPermissions = {
             isAdmin: userPermissions.isAdmin,
@@ -1197,7 +1218,23 @@ export async function chat(
             canAccessGrocery: userPermissions.canAccessGrocery,
             canSetReminders: userPermissions.canSetReminders,
           };
-          const result = await executeTool(toolName, toolArgs, conversationId, toolPermissions);
+          
+          let result: string;
+          try {
+            result = await executeTool(toolName, toolArgs, conversationId, toolPermissions);
+            
+            // Determine outcome based on result content
+            const resultObj = JSON.parse(result);
+            const outcome = resultObj.error || resultObj.success === false ? "failure" : "success";
+            recordToolOutcome(toolCall.id, outcome, {
+              errorMessage: resultObj.error || resultObj.errorMessage,
+            });
+          } catch (toolError) {
+            result = JSON.stringify({ error: `Tool execution failed: ${toolError}` });
+            recordToolOutcome(toolCall.id, "failure", {
+              errorMessage: toolError instanceof Error ? toolError.message : String(toolError),
+            });
+          }
 
           console.log(`Tool result: ${result.substring(0, 200)}...`);
 
