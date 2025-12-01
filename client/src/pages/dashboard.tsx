@@ -1185,16 +1185,17 @@ export default function DashboardPage() {
     queryKey: ["/api/memory/confidence/stats"],
   });
 
-  const { data: insights, isLoading: insightsLoading } = useQuery<Insight[]>({
-    queryKey: ["/api/insights", { active: true, limit: 5 }],
+  const { data: insightsData, isLoading: insightsLoading } = useQuery<{ count: number; insights: Insight[] }>({
+    queryKey: ["/api/insights?active=true&limit=5"],
   });
+  const insights = insightsData?.insights;
 
   const refreshInsightsMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("POST", "/api/insights/refresh");
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/insights"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/insights?active=true&limit=5"] });
     },
   });
 
@@ -1203,7 +1204,7 @@ export default function DashboardPage() {
       await apiRequest("PATCH", `/api/insights/${id}`, { status });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/insights"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/insights?active=true&limit=5"] });
     },
   });
 
