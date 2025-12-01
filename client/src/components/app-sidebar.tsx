@@ -44,6 +44,7 @@ import {
   Bot,
   List,
   Utensils,
+  Mic,
 } from "lucide-react";
 import type { Conversation } from "@shared/schema";
 import { format } from "date-fns";
@@ -125,6 +126,12 @@ const mainNavItems = [
     icon: Bot,
     href: "/context-agent",
     description: "Wake word detection",
+  },
+  {
+    title: "Limitless Analytics",
+    icon: Mic,
+    href: "/limitless",
+    description: "AI conversation insights",
   },
 ];
 
