@@ -739,6 +739,186 @@ function LocationWidget({
   );
 }
 
+interface ConversationMetricsSummary {
+  totalConversations: number;
+  avgToolSuccessRate: number;
+  avgResponseTimeMs: number;
+  avgRetryRate: number;
+  avgFollowUpNeeded: number;
+  recentTrend: "improving" | "stable" | "declining";
+}
+
+interface MemoryConfidenceStats {
+  totalMemories: number;
+  highConfidence: number;
+  mediumConfidence: number;
+  lowConfidence: number;
+  needingConfirmation: number;
+}
+
+function ConversationQualityWidget({
+  metrics,
+  memoryStats,
+  isLoading,
+}: {
+  metrics: ConversationMetricsSummary | undefined;
+  memoryStats: MemoryConfidenceStats | undefined;
+  isLoading: boolean;
+}) {
+  const getTrendIcon = (trend: string) => {
+    switch (trend) {
+      case "improving":
+        return <ArrowRight className="h-3 w-3 rotate-[-45deg] text-green-500" />;
+      case "declining":
+        return <ArrowRight className="h-3 w-3 rotate-45 text-yellow-500" />;
+      default:
+        return <ArrowRight className="h-3 w-3 text-muted-foreground" />;
+    }
+  };
+
+  const getSuccessRateColor = (rate: number) => {
+    if (rate >= 0.9) return "text-green-500";
+    if (rate >= 0.7) return "text-yellow-500";
+    return "text-destructive";
+  };
+
+  if (isLoading) {
+    return (
+      <Card data-testid="widget-quality-metrics">
+        <CardHeader className="pb-2 sm:pb-3">
+          <Skeleton className="h-5 w-40" />
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-12" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const successRate = metrics?.avgToolSuccessRate ?? 0;
+  const avgResponseTime = metrics?.avgResponseTimeMs ?? 0;
+  const retryRate = metrics?.avgRetryRate ?? 0;
+  const followUpRate = metrics?.avgFollowUpNeeded ?? 0;
+  const trend = metrics?.recentTrend ?? "stable";
+
+  const confidenceTotal = memoryStats?.totalMemories ?? 0;
+  const highConf = memoryStats?.highConfidence ?? 0;
+  const medConf = memoryStats?.mediumConfidence ?? 0;
+  const lowConf = memoryStats?.lowConfidence ?? 0;
+  const needsConfirm = memoryStats?.needingConfirmation ?? 0;
+
+  return (
+    <Card data-testid="widget-quality-metrics">
+      <CardHeader className="pb-2 sm:pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-primary/10">
+              <Sparkles className="h-4 w-4 text-primary" />
+            </div>
+            <CardTitle className="text-sm sm:text-base">AI Quality Metrics</CardTitle>
+          </div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            {getTrendIcon(trend)}
+            <span className="capitalize">{trend}</span>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3 sm:space-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+          <div className="text-center p-2 sm:p-3 rounded-lg bg-muted/50">
+            <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+              <CheckCircle2 className="h-3 w-3" />
+              <span className="text-[10px] sm:text-xs">Success</span>
+            </div>
+            <p className={`text-base sm:text-lg font-semibold ${getSuccessRateColor(successRate)}`} data-testid="stat-success-rate">
+              {(successRate * 100).toFixed(0)}%
+            </p>
+          </div>
+          <div className="text-center p-2 sm:p-3 rounded-lg bg-muted/50">
+            <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+              <Clock className="h-3 w-3" />
+              <span className="text-[10px] sm:text-xs">Avg Time</span>
+            </div>
+            <p className="text-base sm:text-lg font-semibold" data-testid="stat-avg-time">
+              {avgResponseTime > 0 ? `${(avgResponseTime / 1000).toFixed(1)}s` : "—"}
+            </p>
+          </div>
+          <div className="text-center p-2 sm:p-3 rounded-lg bg-muted/50">
+            <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+              <AlertCircle className="h-3 w-3" />
+              <span className="text-[10px] sm:text-xs">Retries</span>
+            </div>
+            <p className="text-base sm:text-lg font-semibold" data-testid="stat-retry-rate">
+              {(retryRate * 100).toFixed(0)}%
+            </p>
+          </div>
+          <div className="text-center p-2 sm:p-3 rounded-lg bg-muted/50">
+            <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+              <MessageSquare className="h-3 w-3" />
+              <span className="text-[10px] sm:text-xs">Follow-ups</span>
+            </div>
+            <p className="text-base sm:text-lg font-semibold" data-testid="stat-followup-rate">
+              {(followUpRate * 100).toFixed(0)}%
+            </p>
+          </div>
+        </div>
+
+        {confidenceTotal > 0 && (
+          <div className="space-y-2">
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">
+              Memory Confidence
+            </p>
+            <div className="flex gap-1 h-2 rounded-full overflow-hidden bg-muted">
+              {highConf > 0 && (
+                <div 
+                  className="bg-green-500 h-full" 
+                  style={{ width: `${(highConf / confidenceTotal) * 100}%` }}
+                  title={`High: ${highConf}`}
+                />
+              )}
+              {medConf > 0 && (
+                <div 
+                  className="bg-yellow-500 h-full" 
+                  style={{ width: `${(medConf / confidenceTotal) * 100}%` }}
+                  title={`Medium: ${medConf}`}
+                />
+              )}
+              {lowConf > 0 && (
+                <div 
+                  className="bg-orange-500 h-full" 
+                  style={{ width: `${(lowConf / confidenceTotal) * 100}%` }}
+                  title={`Low: ${lowConf}`}
+                />
+              )}
+            </div>
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                High: {highConf}
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
+                Med: {medConf}
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                Low: {lowConf}
+              </span>
+              {needsConfirm > 0 && (
+                <span className="flex items-center gap-1 text-destructive">
+                  <AlertCircle className="h-2.5 w-2.5" />
+                  Verify: {needsConfirm}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function getTimeGreeting(): string {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
@@ -804,7 +984,17 @@ export default function DashboardPage() {
     queryKey: ["/api/location/history"],
   });
 
+  const { data: conversationMetrics, isLoading: metricsLoading } = useQuery<ConversationMetricsSummary>({
+    queryKey: ["/api/metrics/summary"],
+  });
+
+  const { data: memoryConfidence, isLoading: memoryConfLoading } = useQuery<MemoryConfidenceStats>({
+    queryKey: ["/api/memory/confidence/stats"],
+  });
+
   const currentLocation = locationHistory?.[0];
+
+  const isQualityMetricsLoading = metricsLoading || memoryConfLoading;
 
   const stats: DashboardStats = {
     tasks: {
@@ -1002,10 +1192,10 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
-          <CommunicationsWidget 
-            stats={smsStats} 
-            conversations={smsConversations}
-            isLoading={isSmsLoading}
+          <ConversationQualityWidget 
+            metrics={conversationMetrics}
+            memoryStats={memoryConfidence}
+            isLoading={isQualityMetricsLoading}
           />
           <FeatureCard
             title="ZEKE's Memory"
@@ -1014,6 +1204,14 @@ export default function DashboardPage() {
             href="/memory"
             badge={{ text: `${stats.memories.total} memories` }}
             action="View memories"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
+          <CommunicationsWidget 
+            stats={smsStats} 
+            conversations={smsConversations}
+            isLoading={isSmsLoading}
           />
         </div>
 

@@ -4441,6 +4441,50 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/metrics/summary - Get summary metrics for dashboard widget
+  app.get("/api/metrics/summary", async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 7;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching metrics summary for dashboard (days: ${days})`);
+      
+      const systemMetrics = getSystemMetrics(days);
+      const { qualityStats } = systemMetrics;
+      
+      // Calculate metrics for dashboard
+      const totalConversations = qualityStats.totalConversations || 0;
+      
+      // Success rate is already a percentage, convert to 0-1 range
+      const avgToolSuccessRate = (qualityStats.overallSuccessRate || 0) / 100;
+      
+      // For response time, retry rate, and follow-up rate we need to query additional data
+      // For now, use defaults until we add these to the quality stats query
+      const avgResponseTimeMs = 0; // TODO: Add average tool duration to quality stats
+      const avgRetryRate = 0; // TODO: Track retry patterns
+      const avgFollowUpNeeded = 0; // TODO: Track follow-up patterns
+      
+      // Determine trend based on total conversations (simple heuristic for now)
+      // In the future, compare with previous period
+      let recentTrend: "improving" | "stable" | "declining" = "stable";
+      if (totalConversations > 10 && avgToolSuccessRate >= 0.8) {
+        recentTrend = "improving";
+      } else if (totalConversations > 5 && avgToolSuccessRate < 0.5) {
+        recentTrend = "declining";
+      }
+      
+      res.json({
+        totalConversations,
+        avgToolSuccessRate,
+        avgResponseTimeMs,
+        avgRetryRate,
+        avgFollowUpNeeded,
+        recentTrend,
+      });
+    } catch (error: any) {
+      console.error("Get metrics summary error:", error);
+      res.status(500).json({ error: error.message || "Failed to get metrics summary" });
+    }
+  });
+
   // POST /api/metrics/feedback - Record explicit user feedback
   app.post("/api/metrics/feedback", async (req, res) => {
     try {
