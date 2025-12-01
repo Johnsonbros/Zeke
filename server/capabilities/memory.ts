@@ -7,6 +7,8 @@ import {
   getLifelogContext,
   extractConversationContent,
   checkLimitlessConnection,
+  generateDailySummary,
+  getLimitlessSummaryByDate,
   type Lifelog,
 } from "../limitless";
 
@@ -98,6 +100,44 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "generate_daily_summary",
+      description: "Generate an AI-powered summary of all conversations from a specific day. Extracts key discussions, action items, insights, people mentioned, and topics discussed. The summary is cached for faster retrieval.",
+      parameters: {
+        type: "object",
+        properties: {
+          date: {
+            type: "string",
+            description: "Date to summarize in YYYY-MM-DD format. Defaults to today if not provided.",
+          },
+          force_regenerate: {
+            type: "boolean",
+            description: "Force regeneration even if a cached summary exists (default: false)",
+          },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_daily_summary",
+      description: "Get a previously generated daily summary for a specific date. Returns the cached summary if it exists, without regenerating.",
+      parameters: {
+        type: "object",
+        properties: {
+          date: {
+            type: "string",
+            description: "Date to get summary for in YYYY-MM-DD format. Defaults to today if not provided.",
+          },
+        },
+        required: [],
+      },
+    },
+  },
 ];
 
 export const memoryToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
@@ -105,6 +145,8 @@ export const memoryToolPermissions: Record<string, (permissions: ToolPermissions
   get_recent_lifelogs: (p) => p.canAccessPersonalInfo,
   get_lifelog_context: (p) => p.canAccessPersonalInfo,
   check_limitless_status: () => true,
+  generate_daily_summary: (p) => p.isAdmin,
+  get_daily_summary: (p) => p.canAccessPersonalInfo,
 };
 
 export async function executeMemoryTool(
@@ -261,6 +303,105 @@ export async function executeMemoryTool(
       }
     }
     
+    case "generate_daily_summary": {
+      const { date, force_regenerate } = args as {
+        date?: string;
+        force_regenerate?: boolean;
+      };
+      
+      const targetDate = date || new Date().toISOString().split("T")[0];
+      
+      try {
+        const result = await generateDailySummary(targetDate, force_regenerate ?? false);
+        
+        if (!result) {
+          return JSON.stringify({
+            success: false,
+            message: `No conversations found for ${targetDate}`,
+          });
+        }
+        
+        const summary = result.summary;
+        const keyDiscussions = summary.keyDiscussions ? JSON.parse(summary.keyDiscussions) : [];
+        const actionItems = summary.actionItems ? JSON.parse(summary.actionItems) : [];
+        const insights = summary.insights ? JSON.parse(summary.insights) : [];
+        const people = summary.peopleInteracted ? JSON.parse(summary.peopleInteracted) : [];
+        const topics = summary.topicsDiscussed ? JSON.parse(summary.topicsDiscussed) : [];
+        
+        return JSON.stringify({
+          success: true,
+          cached: result.cached,
+          date: summary.date,
+          title: summary.summaryTitle,
+          summary: summary.aiSummary,
+          conversationCount: summary.totalConversations,
+          totalDurationMinutes: summary.totalDurationMinutes,
+          keyDiscussions,
+          actionItems,
+          insights,
+          peopleInteracted: people,
+          topicsDiscussed: topics,
+          message: result.cached 
+            ? `Retrieved cached summary for ${targetDate}` 
+            : `Generated new summary for ${targetDate}`,
+        });
+      } catch (error: any) {
+        console.error("Failed to generate daily summary:", error);
+        return JSON.stringify({
+          success: false,
+          error: error.message || "Failed to generate daily summary",
+        });
+      }
+    }
+    
+    case "get_daily_summary": {
+      const { date } = args as {
+        date?: string;
+      };
+      
+      const targetDate = date || new Date().toISOString().split("T")[0];
+      
+      try {
+        const summary = getLimitlessSummaryByDate(targetDate);
+        
+        if (!summary) {
+          return JSON.stringify({
+            success: true,
+            exists: false,
+            message: `No summary exists for ${targetDate}. Use generate_daily_summary to create one.`,
+          });
+        }
+        
+        const keyDiscussions = summary.keyDiscussions ? JSON.parse(summary.keyDiscussions) : [];
+        const actionItems = summary.actionItems ? JSON.parse(summary.actionItems) : [];
+        const insights = summary.insights ? JSON.parse(summary.insights) : [];
+        const people = summary.peopleInteracted ? JSON.parse(summary.peopleInteracted) : [];
+        const topics = summary.topicsDiscussed ? JSON.parse(summary.topicsDiscussed) : [];
+        
+        return JSON.stringify({
+          success: true,
+          exists: true,
+          date: summary.date,
+          title: summary.summaryTitle,
+          summary: summary.aiSummary,
+          conversationCount: summary.totalConversations,
+          totalDurationMinutes: summary.totalDurationMinutes,
+          keyDiscussions,
+          actionItems,
+          insights,
+          peopleInteracted: people,
+          topicsDiscussed: topics,
+          createdAt: summary.createdAt,
+        });
+      } catch (error: any) {
+        console.error("Failed to get daily summary:", error);
+        return JSON.stringify({
+          success: false,
+          error: error.message || "Failed to get daily summary",
+        });
+      }
+    }
+    
     default:
       return null;
   }
@@ -271,4 +412,6 @@ export const memoryToolNames = [
   "get_recent_lifelogs",
   "get_lifelog_context",
   "check_limitless_status",
+  "generate_daily_summary",
+  "get_daily_summary",
 ];
