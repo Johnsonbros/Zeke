@@ -43,7 +43,7 @@ export const insertMessageSchema = createInsertSchema(messages).omit({
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Message = typeof messages.$inferSelect;
 
-// Memory notes table
+// Memory notes table with confidence scoring
 export const memoryNotes = sqliteTable("memory_notes", {
   id: text("id").primaryKey(),
   type: text("type", { enum: ["summary", "note", "preference", "fact"] }).notNull(),
@@ -56,6 +56,12 @@ export const memoryNotes = sqliteTable("memory_notes", {
   contactId: text("contact_id"),
   sourceType: text("source_type", { enum: ["conversation", "lifelog", "manual", "observation"] }).default("conversation"),
   sourceId: text("source_id"),
+  // Confidence scoring fields
+  confidenceScore: text("confidence_score").default("0.8"), // 0-1 scale, stored as text for precision
+  lastConfirmedAt: text("last_confirmed_at"), // When the memory was last verified/used successfully
+  confirmationCount: integer("confirmation_count").default(0), // Times this memory was confirmed accurate
+  usageCount: integer("usage_count").default(0), // Times this memory was used in responses
+  lastUsedAt: text("last_used_at"), // When this memory was last used
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -68,6 +74,71 @@ export const insertMemoryNoteSchema = createInsertSchema(memoryNotes).omit({
 
 export type InsertMemoryNote = z.infer<typeof insertMemoryNoteSchema>;
 export type MemoryNote = typeof memoryNotes.$inferSelect;
+
+// ============================================
+// CONVERSATION QUALITY METRICS SYSTEM
+// ============================================
+
+// Tool call outcomes for tracking success/failure
+export const toolOutcomes = ["success", "failure", "partial", "timeout", "skipped"] as const;
+export type ToolOutcome = typeof toolOutcomes[number];
+
+// Conversation metrics table - tracks quality signals per conversation
+export const conversationMetrics = sqliteTable("conversation_metrics", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id").notNull(),
+  messageId: text("message_id"), // Optional: link to specific message
+  // Tool usage tracking
+  toolName: text("tool_name"),
+  toolOutcome: text("tool_outcome", { enum: toolOutcomes }),
+  toolDurationMs: integer("tool_duration_ms"),
+  toolErrorMessage: text("tool_error_message"),
+  // Conversation quality signals
+  requiredFollowUp: integer("required_follow_up", { mode: "boolean" }).default(false),
+  userRetried: integer("user_retried", { mode: "boolean" }).default(false), // User asked same thing again
+  explicitFeedback: text("explicit_feedback", { enum: ["positive", "negative", "neutral"] }),
+  feedbackNote: text("feedback_note"),
+  // Memory usage in this interaction
+  memoriesUsed: text("memories_used"), // JSON array of memory IDs used
+  memoriesConfirmed: text("memories_confirmed"), // JSON array of memory IDs confirmed accurate
+  memoriesContradicted: text("memories_contradicted"), // JSON array of memory IDs found incorrect
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertConversationMetricSchema = createInsertSchema(conversationMetrics).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertConversationMetric = z.infer<typeof insertConversationMetricSchema>;
+export type ConversationMetric = typeof conversationMetrics.$inferSelect;
+
+// Aggregated conversation quality stats (computed periodically)
+export interface ConversationQualityStats {
+  conversationId: string;
+  totalMessages: number;
+  totalToolCalls: number;
+  successfulToolCalls: number;
+  failedToolCalls: number;
+  toolSuccessRate: number;
+  followUpCount: number;
+  retryCount: number;
+  positiveFeedbackCount: number;
+  negativeFeedbackCount: number;
+  averageToolDurationMs: number;
+  memoriesUsedCount: number;
+  memoriesConfirmedCount: number;
+  memoriesContradictedCount: number;
+  qualityScore: number; // 0-100 computed score
+  computedAt: string;
+}
+
+// Memory with computed effective confidence
+export interface MemoryWithConfidence extends MemoryNote {
+  effectiveConfidence: number; // Computed confidence factoring in time decay
+  confidenceLevel: "high" | "medium" | "low"; // Human-readable level
+  needsConfirmation: boolean; // Whether to prompt user before using
+}
 
 // Preferences table
 export const preferences = sqliteTable("preferences", {

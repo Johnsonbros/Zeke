@@ -71,7 +71,12 @@ import type {
   SavedRecipe,
   InsertSavedRecipe,
   UpdateSavedRecipe,
-  RecipeMealType
+  RecipeMealType,
+  ConversationMetric,
+  InsertConversationMetric,
+  ToolOutcome,
+  ConversationQualityStats,
+  MemoryWithConfidence
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -711,6 +716,73 @@ try {
 } catch (e) {
   console.error("Error initializing context agent settings:", e);
 }
+
+// ============================================
+// CONVERSATION QUALITY METRICS SYSTEM
+// ============================================
+
+// Create conversation_metrics table for tracking quality signals
+db.exec(`
+  CREATE TABLE IF NOT EXISTS conversation_metrics (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    message_id TEXT,
+    tool_name TEXT,
+    tool_outcome TEXT,
+    tool_duration_ms INTEGER,
+    tool_error_message TEXT,
+    required_follow_up INTEGER DEFAULT 0,
+    user_retried INTEGER DEFAULT 0,
+    explicit_feedback TEXT,
+    feedback_note TEXT,
+    memories_used TEXT,
+    memories_confirmed TEXT,
+    memories_contradicted TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_conversation_metrics_conversation ON conversation_metrics(conversation_id);
+  CREATE INDEX IF NOT EXISTS idx_conversation_metrics_message ON conversation_metrics(message_id);
+  CREATE INDEX IF NOT EXISTS idx_conversation_metrics_tool ON conversation_metrics(tool_name);
+  CREATE INDEX IF NOT EXISTS idx_conversation_metrics_outcome ON conversation_metrics(tool_outcome);
+  CREATE INDEX IF NOT EXISTS idx_conversation_metrics_created ON conversation_metrics(created_at);
+`);
+
+// Migration: Add memory confidence fields to memory_notes table if they don't exist
+try {
+  db.exec(`ALTER TABLE memory_notes ADD COLUMN confidence_score TEXT DEFAULT '0.8'`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE memory_notes ADD COLUMN last_confirmed_at TEXT`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE memory_notes ADD COLUMN confirmation_count INTEGER DEFAULT 0`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE memory_notes ADD COLUMN usage_count INTEGER DEFAULT 0`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE memory_notes ADD COLUMN last_used_at TEXT`);
+} catch (e) {
+  // Column may already exist
+}
+
+// Create index for confidence-based queries
+try {
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_memory_notes_confidence ON memory_notes(confidence_score)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_memory_notes_last_used ON memory_notes(last_used_at)`);
+} catch (e) {
+  // Indexes may already exist
+}
+
+console.log("Conversation metrics and memory confidence tables initialized");
 
 // ============================================
 // CUSTOM LISTS SYSTEM TABLES
@@ -5261,6 +5333,440 @@ export function getLimitlessSummariesInRange(startDate: string, endDate: string)
       ORDER BY date DESC, created_at DESC
     `).all(startDate, endDate) as LimitlessSummaryRow[];
     return rows.map(mapLimitlessSummary);
+  });
+}
+
+// ============================================
+// CONVERSATION QUALITY METRICS FUNCTIONS
+// ============================================
+
+interface ConversationMetricRow {
+  id: string;
+  conversation_id: string;
+  message_id: string | null;
+  tool_name: string | null;
+  tool_outcome: string | null;
+  tool_duration_ms: number | null;
+  tool_error_message: string | null;
+  required_follow_up: number;
+  user_retried: number;
+  explicit_feedback: string | null;
+  feedback_note: string | null;
+  memories_used: string | null;
+  memories_confirmed: string | null;
+  memories_contradicted: string | null;
+  created_at: string;
+}
+
+function mapConversationMetric(row: ConversationMetricRow): ConversationMetric {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    messageId: row.message_id,
+    toolName: row.tool_name,
+    toolOutcome: row.tool_outcome as ToolOutcome | null,
+    toolDurationMs: row.tool_duration_ms,
+    toolErrorMessage: row.tool_error_message,
+    requiredFollowUp: Boolean(row.required_follow_up),
+    userRetried: Boolean(row.user_retried),
+    explicitFeedback: row.explicit_feedback as "positive" | "negative" | "neutral" | null,
+    feedbackNote: row.feedback_note,
+    memoriesUsed: row.memories_used,
+    memoriesConfirmed: row.memories_confirmed,
+    memoriesContradicted: row.memories_contradicted,
+    createdAt: row.created_at,
+  };
+}
+
+export function createConversationMetric(data: InsertConversationMetric): ConversationMetric {
+  return wrapDbOperation("createConversationMetric", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO conversation_metrics (
+        id, conversation_id, message_id, tool_name, tool_outcome,
+        tool_duration_ms, tool_error_message, required_follow_up, user_retried,
+        explicit_feedback, feedback_note, memories_used, memories_confirmed,
+        memories_contradicted, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.conversationId,
+      data.messageId || null,
+      data.toolName || null,
+      data.toolOutcome || null,
+      data.toolDurationMs || null,
+      data.toolErrorMessage || null,
+      data.requiredFollowUp ? 1 : 0,
+      data.userRetried ? 1 : 0,
+      data.explicitFeedback || null,
+      data.feedbackNote || null,
+      data.memoriesUsed || null,
+      data.memoriesConfirmed || null,
+      data.memoriesContradicted || null,
+      now
+    );
+    
+    return getConversationMetricById(id)!;
+  });
+}
+
+export function getConversationMetricById(id: string): ConversationMetric | undefined {
+  return wrapDbOperation("getConversationMetricById", () => {
+    const row = db.prepare(`SELECT * FROM conversation_metrics WHERE id = ?`).get(id) as ConversationMetricRow | undefined;
+    return row ? mapConversationMetric(row) : undefined;
+  });
+}
+
+export function getMetricsByConversation(conversationId: string): ConversationMetric[] {
+  return wrapDbOperation("getMetricsByConversation", () => {
+    const rows = db.prepare(`
+      SELECT * FROM conversation_metrics WHERE conversation_id = ? ORDER BY created_at DESC
+    `).all(conversationId) as ConversationMetricRow[];
+    return rows.map(mapConversationMetric);
+  });
+}
+
+export function getMetricsByTool(toolName: string, limit: number = 100): ConversationMetric[] {
+  return wrapDbOperation("getMetricsByTool", () => {
+    const rows = db.prepare(`
+      SELECT * FROM conversation_metrics 
+      WHERE tool_name = ? 
+      ORDER BY created_at DESC 
+      LIMIT ?
+    `).all(toolName, limit) as ConversationMetricRow[];
+    return rows.map(mapConversationMetric);
+  });
+}
+
+export function getRecentMetrics(limit: number = 100): ConversationMetric[] {
+  return wrapDbOperation("getRecentMetrics", () => {
+    const rows = db.prepare(`
+      SELECT * FROM conversation_metrics ORDER BY created_at DESC LIMIT ?
+    `).all(limit) as ConversationMetricRow[];
+    return rows.map(mapConversationMetric);
+  });
+}
+
+export function getToolSuccessRate(toolName: string, days: number = 7): { successRate: number; total: number; successful: number; failed: number } {
+  return wrapDbOperation("getToolSuccessRate", () => {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    const cutoff = cutoffDate.toISOString();
+    
+    const stats = db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN tool_outcome = 'success' THEN 1 ELSE 0 END) as successful,
+        SUM(CASE WHEN tool_outcome = 'failure' THEN 1 ELSE 0 END) as failed
+      FROM conversation_metrics
+      WHERE tool_name = ? AND created_at >= ?
+    `).get(toolName, cutoff) as { total: number; successful: number; failed: number };
+    
+    return {
+      total: stats.total || 0,
+      successful: stats.successful || 0,
+      failed: stats.failed || 0,
+      successRate: stats.total > 0 ? (stats.successful / stats.total) * 100 : 0
+    };
+  });
+}
+
+export function getConversationQualityStats(conversationId: string): ConversationQualityStats {
+  return wrapDbOperation("getConversationQualityStats", () => {
+    const metrics = getMetricsByConversation(conversationId);
+    
+    const totalToolCalls = metrics.filter(m => m.toolName).length;
+    const successfulToolCalls = metrics.filter(m => m.toolOutcome === "success").length;
+    const failedToolCalls = metrics.filter(m => m.toolOutcome === "failure").length;
+    const followUpCount = metrics.filter(m => m.requiredFollowUp).length;
+    const retryCount = metrics.filter(m => m.userRetried).length;
+    const positiveFeedbackCount = metrics.filter(m => m.explicitFeedback === "positive").length;
+    const negativeFeedbackCount = metrics.filter(m => m.explicitFeedback === "negative").length;
+    
+    const toolDurations = metrics.filter(m => m.toolDurationMs).map(m => m.toolDurationMs!);
+    const avgToolDuration = toolDurations.length > 0 
+      ? toolDurations.reduce((a, b) => a + b, 0) / toolDurations.length 
+      : 0;
+    
+    let memoriesUsedCount = 0;
+    let memoriesConfirmedCount = 0;
+    let memoriesContradictedCount = 0;
+    
+    metrics.forEach(m => {
+      if (m.memoriesUsed) {
+        try { memoriesUsedCount += JSON.parse(m.memoriesUsed).length; } catch {}
+      }
+      if (m.memoriesConfirmed) {
+        try { memoriesConfirmedCount += JSON.parse(m.memoriesConfirmed).length; } catch {}
+      }
+      if (m.memoriesContradicted) {
+        try { memoriesContradictedCount += JSON.parse(m.memoriesContradicted).length; } catch {}
+      }
+    });
+    
+    // Calculate quality score (0-100)
+    let qualityScore = 50; // Base score
+    if (totalToolCalls > 0) {
+      qualityScore += ((successfulToolCalls / totalToolCalls) - 0.5) * 30; // Up to +15 or -15
+    }
+    qualityScore -= retryCount * 5; // -5 per retry
+    qualityScore -= followUpCount * 3; // -3 per follow-up needed
+    qualityScore += positiveFeedbackCount * 10; // +10 per positive feedback
+    qualityScore -= negativeFeedbackCount * 10; // -10 per negative feedback
+    qualityScore = Math.max(0, Math.min(100, qualityScore)); // Clamp to 0-100
+    
+    return {
+      conversationId,
+      totalMessages: metrics.length,
+      totalToolCalls,
+      successfulToolCalls,
+      failedToolCalls,
+      toolSuccessRate: totalToolCalls > 0 ? (successfulToolCalls / totalToolCalls) * 100 : 0,
+      followUpCount,
+      retryCount,
+      positiveFeedbackCount,
+      negativeFeedbackCount,
+      averageToolDurationMs: avgToolDuration,
+      memoriesUsedCount,
+      memoriesConfirmedCount,
+      memoriesContradictedCount,
+      qualityScore,
+      computedAt: new Date().toISOString()
+    };
+  });
+}
+
+export function getOverallQualityStats(days: number = 7): {
+  totalConversations: number;
+  totalToolCalls: number;
+  overallSuccessRate: number;
+  averageQualityScore: number;
+  toolStats: Array<{ toolName: string; successRate: number; count: number }>;
+} {
+  return wrapDbOperation("getOverallQualityStats", () => {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    const cutoff = cutoffDate.toISOString();
+    
+    // Get overall stats
+    const overall = db.prepare(`
+      SELECT 
+        COUNT(DISTINCT conversation_id) as total_conversations,
+        COUNT(CASE WHEN tool_name IS NOT NULL THEN 1 END) as total_tool_calls,
+        SUM(CASE WHEN tool_outcome = 'success' THEN 1 ELSE 0 END) as successful_calls
+      FROM conversation_metrics
+      WHERE created_at >= ?
+    `).get(cutoff) as { total_conversations: number; total_tool_calls: number; successful_calls: number };
+    
+    // Get per-tool stats
+    const toolStats = db.prepare(`
+      SELECT 
+        tool_name,
+        COUNT(*) as count,
+        SUM(CASE WHEN tool_outcome = 'success' THEN 1 ELSE 0 END) as successful
+      FROM conversation_metrics
+      WHERE tool_name IS NOT NULL AND created_at >= ?
+      GROUP BY tool_name
+      ORDER BY count DESC
+    `).all(cutoff) as Array<{ tool_name: string; count: number; successful: number }>;
+    
+    return {
+      totalConversations: overall.total_conversations || 0,
+      totalToolCalls: overall.total_tool_calls || 0,
+      overallSuccessRate: overall.total_tool_calls > 0 
+        ? (overall.successful_calls / overall.total_tool_calls) * 100 
+        : 0,
+      averageQualityScore: 75, // TODO: compute from individual conversation scores
+      toolStats: toolStats.map(t => ({
+        toolName: t.tool_name,
+        count: t.count,
+        successRate: t.count > 0 ? (t.successful / t.count) * 100 : 0
+      }))
+    };
+  });
+}
+
+// ============================================
+// MEMORY CONFIDENCE FUNCTIONS
+// ============================================
+
+const CONFIDENCE_DECAY_RATE = 0.02; // 2% decay per day
+const HIGH_CONFIDENCE_THRESHOLD = 0.7;
+const LOW_CONFIDENCE_THRESHOLD = 0.4;
+const CONFIRMATION_BOOST = 0.1;
+const CONTRADICTION_PENALTY = 0.2;
+
+export function calculateEffectiveConfidence(memory: MemoryNote): number {
+  const baseConfidence = parseFloat(memory.confidenceScore || "0.8");
+  const now = new Date();
+  
+  // Apply time decay
+  let daysSinceLastConfirm = 0;
+  if (memory.lastConfirmedAt) {
+    daysSinceLastConfirm = Math.floor(
+      (now.getTime() - new Date(memory.lastConfirmedAt).getTime()) / (1000 * 60 * 60 * 24)
+    );
+  } else if (memory.lastUsedAt) {
+    daysSinceLastConfirm = Math.floor(
+      (now.getTime() - new Date(memory.lastUsedAt).getTime()) / (1000 * 60 * 60 * 24)
+    );
+  } else {
+    daysSinceLastConfirm = Math.floor(
+      (now.getTime() - new Date(memory.createdAt).getTime()) / (1000 * 60 * 60 * 24)
+    );
+  }
+  
+  // Decay formula: confidence * (1 - decay_rate)^days
+  const decayedConfidence = baseConfidence * Math.pow(1 - CONFIDENCE_DECAY_RATE, daysSinceLastConfirm);
+  
+  // Boost for confirmations
+  const confirmationBoost = Math.min((memory.confirmationCount || 0) * 0.02, 0.2);
+  
+  // Final confidence clamped to 0-1
+  return Math.max(0, Math.min(1, decayedConfidence + confirmationBoost));
+}
+
+export function getMemoryWithConfidence(memory: MemoryNote): MemoryWithConfidence {
+  const effectiveConfidence = calculateEffectiveConfidence(memory);
+  
+  let confidenceLevel: "high" | "medium" | "low";
+  if (effectiveConfidence >= HIGH_CONFIDENCE_THRESHOLD) {
+    confidenceLevel = "high";
+  } else if (effectiveConfidence >= LOW_CONFIDENCE_THRESHOLD) {
+    confidenceLevel = "medium";
+  } else {
+    confidenceLevel = "low";
+  }
+  
+  return {
+    ...memory,
+    effectiveConfidence,
+    confidenceLevel,
+    needsConfirmation: confidenceLevel === "low"
+  };
+}
+
+export function updateMemoryUsage(memoryId: string): MemoryNote | undefined {
+  return wrapDbOperation("updateMemoryUsage", () => {
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      UPDATE memory_notes 
+      SET usage_count = COALESCE(usage_count, 0) + 1, 
+          last_used_at = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(now, now, memoryId);
+    
+    return getMemoryNote(memoryId);
+  });
+}
+
+export function confirmMemory(memoryId: string): MemoryNote | undefined {
+  return wrapDbOperation("confirmMemory", () => {
+    const now = getCurrentTimestamp();
+    const existing = getMemoryNote(memoryId);
+    if (!existing) return undefined;
+    
+    const currentConfidence = parseFloat(existing.confidenceScore || "0.8");
+    const newConfidence = Math.min(1, currentConfidence + CONFIRMATION_BOOST);
+    
+    db.prepare(`
+      UPDATE memory_notes 
+      SET confirmation_count = COALESCE(confirmation_count, 0) + 1,
+          last_confirmed_at = ?,
+          confidence_score = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(now, newConfidence.toString(), now, memoryId);
+    
+    return getMemoryNote(memoryId);
+  });
+}
+
+export function contradictMemory(memoryId: string): MemoryNote | undefined {
+  return wrapDbOperation("contradictMemory", () => {
+    const now = getCurrentTimestamp();
+    const existing = getMemoryNote(memoryId);
+    if (!existing) return undefined;
+    
+    const currentConfidence = parseFloat(existing.confidenceScore || "0.8");
+    const newConfidence = Math.max(0, currentConfidence - CONTRADICTION_PENALTY);
+    
+    db.prepare(`
+      UPDATE memory_notes 
+      SET confidence_score = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(newConfidence.toString(), now, memoryId);
+    
+    return getMemoryNote(memoryId);
+  });
+}
+
+export function getLowConfidenceMemories(limit: number = 20): MemoryWithConfidence[] {
+  return wrapDbOperation("getLowConfidenceMemories", () => {
+    const allNotes = getAllMemoryNotes();
+    const withConfidence = allNotes.map(getMemoryWithConfidence);
+    return withConfidence
+      .filter(m => m.confidenceLevel === "low" && !m.isSuperseded)
+      .sort((a, b) => a.effectiveConfidence - b.effectiveConfidence)
+      .slice(0, limit);
+  });
+}
+
+export function getMemoriesNeedingConfirmation(): MemoryWithConfidence[] {
+  return wrapDbOperation("getMemoriesNeedingConfirmation", () => {
+    const allNotes = getAllMemoryNotes();
+    const withConfidence = allNotes.map(getMemoryWithConfidence);
+    return withConfidence
+      .filter(m => m.needsConfirmation && !m.isSuperseded)
+      .sort((a, b) => a.effectiveConfidence - b.effectiveConfidence);
+  });
+}
+
+export function getHighConfidenceMemories(limit: number = 50): MemoryWithConfidence[] {
+  return wrapDbOperation("getHighConfidenceMemories", () => {
+    const allNotes = getAllMemoryNotes();
+    const withConfidence = allNotes.map(getMemoryWithConfidence);
+    return withConfidence
+      .filter(m => m.confidenceLevel === "high" && !m.isSuperseded)
+      .sort((a, b) => b.effectiveConfidence - a.effectiveConfidence)
+      .slice(0, limit);
+  });
+}
+
+export function getMemoryConfidenceStats(): {
+  total: number;
+  highConfidence: number;
+  mediumConfidence: number;
+  lowConfidence: number;
+  needsConfirmation: number;
+  averageConfidence: number;
+} {
+  return wrapDbOperation("getMemoryConfidenceStats", () => {
+    const allNotes = getAllMemoryNotes().filter(m => !m.isSuperseded);
+    const withConfidence = allNotes.map(getMemoryWithConfidence);
+    
+    const highConfidence = withConfidence.filter(m => m.confidenceLevel === "high").length;
+    const mediumConfidence = withConfidence.filter(m => m.confidenceLevel === "medium").length;
+    const lowConfidence = withConfidence.filter(m => m.confidenceLevel === "low").length;
+    const needsConfirmation = withConfidence.filter(m => m.needsConfirmation).length;
+    
+    const avgConfidence = withConfidence.length > 0
+      ? withConfidence.reduce((sum, m) => sum + m.effectiveConfidence, 0) / withConfidence.length
+      : 0;
+    
+    return {
+      total: allNotes.length,
+      highConfidence,
+      mediumConfidence,
+      lowConfidence,
+      needsConfirmation,
+      averageConfidence: avgConfidence
+    };
   });
 }
 
