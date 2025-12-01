@@ -1294,3 +1294,79 @@ export interface EntityWithLinks extends Entity {
     direction: "source" | "target";
   }>;
 }
+
+// ============================================
+// PROACTIVE INSIGHTS SYSTEM
+// ============================================
+
+// Insight types for different detector sources
+export const insightTypes = [
+  "task_overdue", 
+  "task_cluster", 
+  "task_completion_trend",
+  "memory_stale", 
+  "memory_low_confidence",
+  "calendar_busy", 
+  "calendar_conflict",
+  "contact_mention", 
+  "pattern",
+  "cross_domain_connection"
+] as const;
+export type InsightType = typeof insightTypes[number];
+
+// Categories for organizing insights
+export const insightCategories = ["task_health", "memory_hygiene", "calendar_load", "cross_domain"] as const;
+export type InsightCategory = typeof insightCategories[number];
+
+// Priority levels for insights
+export const insightPriorities = ["high", "medium", "low"] as const;
+export type InsightPriority = typeof insightPriorities[number];
+
+// Status tracking for insights
+export const insightStatuses = ["new", "surfaced", "snoozed", "completed", "dismissed"] as const;
+export type InsightStatus = typeof insightStatuses[number];
+
+// Proactive insights table - stores generated insights from detectors
+export const insights = sqliteTable("insights", {
+  id: text("id").primaryKey(),
+  type: text("type", { enum: insightTypes }).notNull(),
+  category: text("category", { enum: insightCategories }).notNull(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  priority: text("priority", { enum: insightPriorities }).notNull().default("medium"),
+  confidence: text("confidence").notNull().default("0.8"),
+  suggestedAction: text("suggested_action"),
+  actionPayload: text("action_payload"),
+  status: text("status", { enum: insightStatuses }).notNull().default("new"),
+  sourceEntityId: text("source_entity_id"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  dismissedAt: text("dismissed_at"),
+  surfacedAt: text("surfaced_at"),
+  expiresAt: text("expires_at"),
+});
+
+export const insertInsightSchema = createInsertSchema(insights).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateInsightSchema = z.object({
+  status: z.enum(insightStatuses).optional(),
+  priority: z.enum(insightPriorities).optional(),
+  dismissedAt: z.string().nullable().optional(),
+  surfacedAt: z.string().nullable().optional(),
+});
+
+export type InsertInsight = z.infer<typeof insertInsightSchema>;
+export type UpdateInsight = z.infer<typeof updateInsightSchema>;
+export type Insight = typeof insights.$inferSelect;
+
+// Helper interface for insight statistics
+export interface InsightStats {
+  total: number;
+  byCategory: Record<InsightCategory, number>;
+  byStatus: Record<InsightStatus, number>;
+  byPriority: Record<InsightPriority, number>;
+}

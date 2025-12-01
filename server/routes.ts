@@ -228,8 +228,17 @@ import {
   getItemsRelatedToEntity,
   findEntitiesByLabel,
   getEntitiesByType,
+  getInsight,
+  getActiveInsights,
+  getAllInsights,
+  updateInsight,
+  dismissInsight,
+  snoozeInsight,
+  completeInsight,
+  getInsightStats,
 } from "./db";
-import type { EntityDomain, EntityType } from "@shared/schema";
+import { generateAllInsights } from "./insightsGenerator";
+import type { EntityDomain, EntityType, InsightCategory, InsightStatus, InsightPriority } from "@shared/schema";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertContactNoteSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, insertFoodPreferenceSchema, insertDietaryRestrictionSchema, insertSavedRecipeSchema, updateSavedRecipeSchema, insertMealHistorySchema, type Automation, type InsertAutomation, getContactFullName } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
@@ -4874,6 +4883,128 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Get related items error:", error);
       res.status(500).json({ error: error.message || "Failed to get related items" });
+    }
+  });
+
+  // === PROACTIVE INSIGHTS API ===
+
+  // GET /api/insights - Get insights with optional filters
+  app.get("/api/insights", async (req, res) => {
+    try {
+      const status = req.query.status as InsightStatus | undefined;
+      const category = req.query.category as InsightCategory | undefined;
+      const priority = req.query.priority as InsightPriority | undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+      const activeOnly = req.query.active === "true";
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching insights (status: ${status || "any"}, category: ${category || "any"}, limit: ${limit || "all"})`);
+      
+      let insights;
+      if (activeOnly) {
+        insights = getActiveInsights({ category, limit, priority });
+      } else {
+        insights = getAllInsights({ status, category, limit });
+      }
+      
+      res.json({
+        count: insights.length,
+        insights
+      });
+    } catch (error: any) {
+      console.error("Get insights error:", error);
+      res.status(500).json({ error: error.message || "Failed to get insights" });
+    }
+  });
+
+  // GET /api/insights/stats - Get insight statistics
+  app.get("/api/insights/stats", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching insight statistics`);
+      const stats = getInsightStats();
+      res.json(stats);
+    } catch (error: any) {
+      console.error("Get insight stats error:", error);
+      res.status(500).json({ error: error.message || "Failed to get insight statistics" });
+    }
+  });
+
+  // GET /api/insights/:id - Get single insight by ID
+  app.get("/api/insights/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching insight ${id}`);
+      
+      const insight = getInsight(id);
+      if (!insight) {
+        return res.status(404).json({ error: "Insight not found" });
+      }
+      
+      res.json(insight);
+    } catch (error: any) {
+      console.error("Get insight error:", error);
+      res.status(500).json({ error: error.message || "Failed to get insight" });
+    }
+  });
+
+  // PATCH /api/insights/:id - Update insight status
+  app.patch("/api/insights/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { action, priority } = req.body;
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Updating insight ${id} (action: ${action})`);
+      
+      let updatedInsight;
+      
+      switch (action) {
+        case "dismiss":
+          updatedInsight = dismissInsight(id);
+          break;
+        case "snooze":
+          updatedInsight = snoozeInsight(id);
+          break;
+        case "complete":
+          updatedInsight = completeInsight(id);
+          break;
+        case "update":
+          if (priority) {
+            updatedInsight = updateInsight(id, { priority });
+          } else {
+            return res.status(400).json({ error: "Priority required for update action" });
+          }
+          break;
+        default:
+          return res.status(400).json({ error: "Invalid action. Use: dismiss, snooze, complete, or update" });
+      }
+      
+      if (!updatedInsight) {
+        return res.status(404).json({ error: "Insight not found" });
+      }
+      
+      res.json({ success: true, insight: updatedInsight });
+    } catch (error: any) {
+      console.error("Update insight error:", error);
+      res.status(500).json({ error: error.message || "Failed to update insight" });
+    }
+  });
+
+  // POST /api/insights/refresh - Trigger manual insight generation
+  app.post("/api/insights/refresh", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Triggering insight generation`);
+      
+      const result = await generateAllInsights();
+      
+      res.json({
+        success: true,
+        created: result.created,
+        skipped: result.skipped,
+        byCategory: result.byCategory,
+        errors: result.errors.length > 0 ? result.errors : undefined
+      });
+    } catch (error: any) {
+      console.error("Refresh insights error:", error);
+      res.status(500).json({ error: error.message || "Failed to generate insights" });
     }
   });
   

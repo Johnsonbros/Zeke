@@ -87,7 +87,15 @@ import type {
   InsertEntityLink,
   EntityRelationshipType,
   EntityWithReferences,
-  EntityWithLinks
+  EntityWithLinks,
+  Insight,
+  InsertInsight,
+  UpdateInsight,
+  InsightType,
+  InsightCategory,
+  InsightPriority,
+  InsightStatus,
+  InsightStats
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -1012,6 +1020,36 @@ db.exec(`
 
 console.log("Cross-domain entity linking tables initialized");
 
+// Create insights table for proactive insights system
+db.exec(`
+  CREATE TABLE IF NOT EXISTS insights (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    category TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    priority TEXT NOT NULL DEFAULT 'medium',
+    confidence TEXT NOT NULL DEFAULT '0.8',
+    suggested_action TEXT,
+    action_payload TEXT,
+    status TEXT NOT NULL DEFAULT 'new',
+    source_entity_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    dismissed_at TEXT,
+    surfaced_at TEXT,
+    expires_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_insights_status ON insights(status);
+  CREATE INDEX IF NOT EXISTS idx_insights_category ON insights(category);
+  CREATE INDEX IF NOT EXISTS idx_insights_type ON insights(type);
+  CREATE INDEX IF NOT EXISTS idx_insights_priority ON insights(priority);
+  CREATE INDEX IF NOT EXISTS idx_insights_status_category ON insights(status, category);
+  CREATE INDEX IF NOT EXISTS idx_insights_created ON insights(created_at);
+`);
+
+console.log("Proactive insights table initialized");
+
 // Seed initial family members if table is empty
 try {
   const existingMembers = db.prepare(`SELECT COUNT(*) as count FROM family_members`).get() as { count: number };
@@ -1438,6 +1476,26 @@ interface EntityLinkRow {
   metadata: string | null;
 }
 
+// Insight system row type
+interface InsightRow {
+  id: string;
+  type: string;
+  category: string;
+  title: string;
+  content: string;
+  priority: string;
+  confidence: string;
+  suggested_action: string | null;
+  action_payload: string | null;
+  status: string;
+  source_entity_id: string | null;
+  created_at: string;
+  updated_at: string;
+  dismissed_at: string | null;
+  surfaced_at: string | null;
+  expires_at: string | null;
+}
+
 // Helper to map database row to Conversation type (snake_case -> camelCase)
 function mapConversation(row: ConversationRow): Conversation {
   return {
@@ -1653,6 +1711,28 @@ function mapEntityLink(row: EntityLinkRow): EntityLink {
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
     metadata: row.metadata,
+  };
+}
+
+// Insight system mapper function
+function mapInsight(row: InsightRow): Insight {
+  return {
+    id: row.id,
+    type: row.type as InsightType,
+    category: row.category as InsightCategory,
+    title: row.title,
+    content: row.content,
+    priority: row.priority as InsightPriority,
+    confidence: row.confidence,
+    suggestedAction: row.suggested_action,
+    actionPayload: row.action_payload,
+    status: row.status as InsightStatus,
+    sourceEntityId: row.source_entity_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    dismissedAt: row.dismissed_at,
+    surfacedAt: row.surfaced_at,
+    expiresAt: row.expires_at,
   };
 }
 
@@ -6275,6 +6355,333 @@ export function findOrCreateEntityLink(
       lastSeenAt: now,
       metadata: null
     });
+  });
+}
+
+// ============================================
+// PROACTIVE INSIGHTS CRUD OPERATIONS
+// ============================================
+
+// CRUD: Create insight
+export function createInsight(data: InsertInsight): Insight {
+  return wrapDbOperation("createInsight", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO insights (
+        id, type, category, title, content, priority, confidence, 
+        suggested_action, action_payload, status, source_entity_id, 
+        created_at, updated_at, dismissed_at, surfaced_at, expires_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.type,
+      data.category,
+      data.title,
+      data.content,
+      data.priority || "medium",
+      data.confidence || "0.8",
+      data.suggestedAction || null,
+      data.actionPayload || null,
+      data.status || "new",
+      data.sourceEntityId || null,
+      now,
+      now,
+      data.dismissedAt || null,
+      data.surfacedAt || null,
+      data.expiresAt || null
+    );
+    
+    return getInsight(id)!;
+  });
+}
+
+// CRUD: Get insight by ID
+export function getInsight(id: string): Insight | undefined {
+  return wrapDbOperation("getInsight", () => {
+    const row = db.prepare(`SELECT * FROM insights WHERE id = ?`).get(id) as InsightRow | undefined;
+    return row ? mapInsight(row) : undefined;
+  });
+}
+
+// CRUD: Update insight
+export function updateInsight(id: string, data: UpdateInsight): Insight | undefined {
+  return wrapDbOperation("updateInsight", () => {
+    const existing = getInsight(id);
+    if (!existing) return undefined;
+    
+    const now = getCurrentTimestamp();
+    const updates: string[] = ["updated_at = ?"];
+    const values: (string | null)[] = [now];
+    
+    if (data.status !== undefined) {
+      updates.push("status = ?");
+      values.push(data.status);
+    }
+    if (data.priority !== undefined) {
+      updates.push("priority = ?");
+      values.push(data.priority);
+    }
+    if (data.dismissedAt !== undefined) {
+      updates.push("dismissed_at = ?");
+      values.push(data.dismissedAt);
+    }
+    if (data.surfacedAt !== undefined) {
+      updates.push("surfaced_at = ?");
+      values.push(data.surfacedAt);
+    }
+    
+    values.push(id);
+    db.prepare(`UPDATE insights SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+    
+    return getInsight(id);
+  });
+}
+
+// CRUD: Delete insight
+export function deleteInsight(id: string): boolean {
+  return wrapDbOperation("deleteInsight", () => {
+    const result = db.prepare(`DELETE FROM insights WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// Query: Get active insights (status in ["new", "surfaced"])
+export function getActiveInsights(options?: { 
+  category?: InsightCategory; 
+  limit?: number;
+  priority?: InsightPriority;
+}): Insight[] {
+  return wrapDbOperation("getActiveInsights", () => {
+    let query = `SELECT * FROM insights WHERE status IN ('new', 'surfaced')`;
+    const params: (string | number)[] = [];
+    
+    if (options?.category) {
+      query += ` AND category = ?`;
+      params.push(options.category);
+    }
+    if (options?.priority) {
+      query += ` AND priority = ?`;
+      params.push(options.priority);
+    }
+    
+    query += ` ORDER BY 
+      CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END,
+      created_at DESC`;
+    
+    if (options?.limit) {
+      query += ` LIMIT ?`;
+      params.push(options.limit);
+    }
+    
+    const rows = db.prepare(query).all(...params) as InsightRow[];
+    return rows.map(mapInsight);
+  });
+}
+
+// Query: Get insights by category
+export function getInsightsByCategory(category: InsightCategory): Insight[] {
+  return wrapDbOperation("getInsightsByCategory", () => {
+    const rows = db.prepare(`
+      SELECT * FROM insights 
+      WHERE category = ? 
+      ORDER BY created_at DESC
+    `).all(category) as InsightRow[];
+    return rows.map(mapInsight);
+  });
+}
+
+// Query: Get insights by status
+export function getInsightsByStatus(status: InsightStatus): Insight[] {
+  return wrapDbOperation("getInsightsByStatus", () => {
+    const rows = db.prepare(`
+      SELECT * FROM insights 
+      WHERE status = ? 
+      ORDER BY created_at DESC
+    `).all(status) as InsightRow[];
+    return rows.map(mapInsight);
+  });
+}
+
+// Query: Get insights by type
+export function getInsightsByType(type: InsightType): Insight[] {
+  return wrapDbOperation("getInsightsByType", () => {
+    const rows = db.prepare(`
+      SELECT * FROM insights 
+      WHERE type = ? 
+      ORDER BY created_at DESC
+    `).all(type) as InsightRow[];
+    return rows.map(mapInsight);
+  });
+}
+
+// Query: Get all insights with optional filtering
+export function getAllInsights(options?: {
+  status?: InsightStatus;
+  category?: InsightCategory;
+  type?: InsightType;
+  limit?: number;
+}): Insight[] {
+  return wrapDbOperation("getAllInsights", () => {
+    let query = `SELECT * FROM insights WHERE 1=1`;
+    const params: (string | number)[] = [];
+    
+    if (options?.status) {
+      query += ` AND status = ?`;
+      params.push(options.status);
+    }
+    if (options?.category) {
+      query += ` AND category = ?`;
+      params.push(options.category);
+    }
+    if (options?.type) {
+      query += ` AND type = ?`;
+      params.push(options.type);
+    }
+    
+    query += ` ORDER BY created_at DESC`;
+    
+    if (options?.limit) {
+      query += ` LIMIT ?`;
+      params.push(options.limit);
+    }
+    
+    const rows = db.prepare(query).all(...params) as InsightRow[];
+    return rows.map(mapInsight);
+  });
+}
+
+// Action: Dismiss an insight
+export function dismissInsight(id: string): Insight | undefined {
+  return wrapDbOperation("dismissInsight", () => {
+    const now = getCurrentTimestamp();
+    return updateInsight(id, { 
+      status: "dismissed", 
+      dismissedAt: now 
+    });
+  });
+}
+
+// Action: Snooze an insight
+export function snoozeInsight(id: string): Insight | undefined {
+  return wrapDbOperation("snoozeInsight", () => {
+    return updateInsight(id, { 
+      status: "snoozed"
+    });
+  });
+}
+
+// Action: Complete an insight (action was taken)
+export function completeInsight(id: string): Insight | undefined {
+  return wrapDbOperation("completeInsight", () => {
+    return updateInsight(id, { 
+      status: "completed"
+    });
+  });
+}
+
+// Action: Surface an insight (mark as shown to user)
+export function surfaceInsight(id: string): Insight | undefined {
+  return wrapDbOperation("surfaceInsight", () => {
+    const now = getCurrentTimestamp();
+    return updateInsight(id, { 
+      status: "surfaced", 
+      surfacedAt: now 
+    });
+  });
+}
+
+// Query: Get insight statistics
+export function getInsightStats(): InsightStats {
+  return wrapDbOperation("getInsightStats", () => {
+    const total = db.prepare(`SELECT COUNT(*) as count FROM insights`).get() as { count: number };
+    
+    const byCategory = db.prepare(`
+      SELECT category, COUNT(*) as count FROM insights GROUP BY category
+    `).all() as Array<{ category: string; count: number }>;
+    
+    const byStatus = db.prepare(`
+      SELECT status, COUNT(*) as count FROM insights GROUP BY status
+    `).all() as Array<{ status: string; count: number }>;
+    
+    const byPriority = db.prepare(`
+      SELECT priority, COUNT(*) as count FROM insights GROUP BY priority
+    `).all() as Array<{ priority: string; count: number }>;
+    
+    const categoryMap: Record<InsightCategory, number> = {
+      task_health: 0,
+      memory_hygiene: 0,
+      calendar_load: 0,
+      cross_domain: 0
+    };
+    byCategory.forEach(row => {
+      categoryMap[row.category as InsightCategory] = row.count;
+    });
+    
+    const statusMap: Record<InsightStatus, number> = {
+      new: 0,
+      surfaced: 0,
+      snoozed: 0,
+      completed: 0,
+      dismissed: 0
+    };
+    byStatus.forEach(row => {
+      statusMap[row.status as InsightStatus] = row.count;
+    });
+    
+    const priorityMap: Record<InsightPriority, number> = {
+      high: 0,
+      medium: 0,
+      low: 0
+    };
+    byPriority.forEach(row => {
+      priorityMap[row.priority as InsightPriority] = row.count;
+    });
+    
+    return {
+      total: total.count,
+      byCategory: categoryMap,
+      byStatus: statusMap,
+      byPriority: priorityMap
+    };
+  });
+}
+
+// Query: Check if insight exists for a specific type and source entity
+export function insightExistsForSource(type: InsightType, sourceEntityId: string): boolean {
+  return wrapDbOperation("insightExistsForSource", () => {
+    const row = db.prepare(`
+      SELECT id FROM insights 
+      WHERE type = ? AND source_entity_id = ? AND status IN ('new', 'surfaced')
+      LIMIT 1
+    `).get(type, sourceEntityId) as { id: string } | undefined;
+    return !!row;
+  });
+}
+
+// Query: Find existing insight by type and source
+export function findInsightByTypeAndSource(type: InsightType, sourceEntityId: string): Insight | undefined {
+  return wrapDbOperation("findInsightByTypeAndSource", () => {
+    const row = db.prepare(`
+      SELECT * FROM insights 
+      WHERE type = ? AND source_entity_id = ? AND status IN ('new', 'surfaced')
+      LIMIT 1
+    `).get(type, sourceEntityId) as InsightRow | undefined;
+    return row ? mapInsight(row) : undefined;
+  });
+}
+
+// Query: Cleanup expired insights
+export function cleanupExpiredInsights(): number {
+  return wrapDbOperation("cleanupExpiredInsights", () => {
+    const now = getCurrentTimestamp();
+    const result = db.prepare(`
+      DELETE FROM insights 
+      WHERE expires_at IS NOT NULL AND expires_at < ? AND status NOT IN ('completed', 'dismissed')
+    `).run(now);
+    return result.changes;
   });
 }
 
