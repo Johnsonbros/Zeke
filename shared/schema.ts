@@ -436,8 +436,8 @@ export interface FamilyData {
   relationshipStatus?: string;
   spouse?: string;
   children?: string[];
-  parents?: string;
-  siblings?: string;
+  parents?: string[];
+  siblings?: string[];
   pets?: string[];
   notes?: string;
 }

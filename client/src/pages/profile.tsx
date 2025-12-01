@@ -393,20 +393,20 @@ function FamilySection({
         </div>
         <div className="space-y-2">
           <label className="text-sm font-medium">Parents</label>
-          <Input
-            value={formData.parents || ""}
-            onChange={(e) => handleChange("parents", e.target.value)}
-            placeholder="Parents' names"
-            data-testid="input-parents"
+          <ArrayInput
+            items={formData.parents || []}
+            onChange={(items) => handleChange("parents", items)}
+            placeholder="Add a parent's name"
+            testIdPrefix="parents"
           />
         </div>
         <div className="space-y-2">
           <label className="text-sm font-medium">Siblings</label>
-          <Input
-            value={formData.siblings || ""}
-            onChange={(e) => handleChange("siblings", e.target.value)}
-            placeholder="Siblings' names"
-            data-testid="input-siblings"
+          <ArrayInput
+            items={formData.siblings || []}
+            onChange={(items) => handleChange("siblings", items)}
+            placeholder="Add a sibling's name"
+            testIdPrefix="siblings"
           />
         </div>
       </div>

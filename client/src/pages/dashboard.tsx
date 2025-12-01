@@ -747,220 +747,23 @@ function getTimeGreeting(): string {
 }
 
 function DashboardChatWidget() {
-  const [inputValue, setInputValue] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { toast } = useToast();
-
-  const sendMessageMutation = useMutation({
-    mutationFn: async (data: { message: string; conversationId?: string }) => {
-      const response = await apiRequest("POST", "/api/chat", {
-        message: data.message,
-        conversationId: data.conversationId,
-        source: "web",
-      });
-      const result: ChatResponse = await response.json();
-      if (!result?.conversation?.id || !result?.message?.id) {
-        throw new Error("Invalid response from server");
-      }
-      return result;
-    },
-    onSuccess: (data) => {
-      if (data?.conversation?.id) {
-        setConversationId(data.conversation.id);
-        if (data.userMessage) {
-          setMessages(prev => [...prev, data.userMessage!]);
-        }
-        if (data.message) {
-          setMessages(prev => [...prev, data.message]);
-        }
-        queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
-      }
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Failed to send message",
-        description: error.message || "Please try again",
-        variant: "destructive",
-      });
-    },
-  });
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, sendMessageMutation.isPending]);
-
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 100) + "px";
-    }
-  }, [inputValue]);
-
-  const handleSend = () => {
-    if (!inputValue.trim() || sendMessageMutation.isPending) return;
-    sendMessageMutation.mutate({
-      message: inputValue.trim(),
-      conversationId: conversationId || undefined,
-    });
-    setInputValue("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const handleNewChat = () => {
-    setConversationId(null);
-    setMessages([]);
-    setInputValue("");
-  };
-
   return (
-    <Card className="flex flex-col h-[400px] sm:h-[450px]" data-testid="dashboard-chat-widget">
-      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2 px-3 sm:px-4 pt-3 sm:pt-4 border-b shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-primary/10">
-            <MessageSquare className="h-4 w-4 text-primary" />
+    <Link href="/chat">
+      <Card className="hover-elevate cursor-pointer h-full" data-testid="dashboard-chat-widget">
+        <CardContent className="p-3 sm:p-4 h-full flex flex-col items-center justify-center min-h-[150px]">
+          <div className="p-2 sm:p-3 rounded-lg bg-primary/10 mb-2 sm:mb-3">
+            <MessageSquare className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
           </div>
-          <CardTitle className="text-sm sm:text-base font-medium">Chat with ZEKE</CardTitle>
-        </div>
-        <div className="flex items-center gap-1">
-          {messages.length > 0 && (
-            <Button 
-              size="sm" 
-              variant="ghost" 
-              className="h-7 px-2 text-xs gap-1"
-              onClick={handleNewChat}
-              data-testid="button-new-dashboard-chat"
-            >
-              <Plus className="h-3 w-3" />
-              New
-            </Button>
-          )}
-          <Link href="/chat">
-            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1" data-testid="button-expand-chat">
-              <Maximize2 className="h-3 w-3" />
-              <span className="hidden sm:inline">Full Chat</span>
-            </Button>
-          </Link>
-        </div>
-      </CardHeader>
-
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="p-2 sm:p-3">
-          {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-center p-4">
-              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
-                <Sparkles className="h-6 w-6 text-primary" />
-              </div>
-              <h3 className="text-sm font-medium mb-1">Ask ZEKE anything</h3>
-              <p className="text-xs text-muted-foreground mb-4 max-w-[200px]">
-                Get help with tasks, reminders, or just chat
-              </p>
-              <div className="flex flex-wrap gap-1.5 justify-center">
-                {["What's on my calendar?", "Add a reminder", "Check my tasks"].map((prompt, i) => (
-                  <Button
-                    key={i}
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => {
-                      setInputValue(prompt);
-                      setTimeout(() => handleSend(), 100);
-                    }}
-                    disabled={sendMessageMutation.isPending}
-                    data-testid={`quick-prompt-${i}`}
-                  >
-                    {prompt}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {messages.map((msg) => (
-                <div 
-                  key={msg.id}
-                  className={`flex items-start gap-2 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
-                  data-testid={`chat-message-${msg.id}`}
-                >
-                  <Avatar className="h-6 w-6 shrink-0">
-                    <AvatarFallback 
-                      className={`text-[10px] font-semibold ${
-                        msg.role === "user" 
-                          ? "bg-accent text-accent-foreground" 
-                          : "bg-primary text-primary-foreground"
-                      }`}
-                    >
-                      {msg.role === "user" ? "NJ" : "Z"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div 
-                    className={`rounded-lg px-2.5 py-1.5 max-w-[85%] ${
-                      msg.role === "user" 
-                        ? "bg-primary text-primary-foreground" 
-                        : "bg-accent text-accent-foreground"
-                    }`}
-                  >
-                    <p className="text-xs whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                  </div>
-                </div>
-              ))}
-              {sendMessageMutation.isPending && (
-                <div className="flex items-start gap-2">
-                  <Avatar className="h-6 w-6 shrink-0">
-                    <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-semibold">
-                      Z
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="bg-accent rounded-lg px-2.5 py-1.5">
-                    <div className="flex gap-1">
-                      <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-          )}
-        </div>
-      </ScrollArea>
-
-      <div className="p-2 sm:p-3 border-t shrink-0">
-        <div className="flex gap-2">
-          <Textarea
-            ref={textareaRef}
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask ZEKE..."
-            className="min-h-[36px] max-h-[80px] resize-none text-sm"
-            rows={1}
-            disabled={sendMessageMutation.isPending}
-            data-testid="input-dashboard-chat"
-          />
-          <Button 
-            size="icon"
-            onClick={handleSend}
-            disabled={!inputValue.trim() || sendMessageMutation.isPending}
-            data-testid="button-send-dashboard-chat"
-          >
-            <Send className="h-4 w-4" />
+          <h3 className="font-medium text-sm sm:text-base mb-1">Chat with ZEKE</h3>
+          <p className="text-xs sm:text-sm text-muted-foreground text-center max-w-[200px] mb-3 sm:mb-4">
+            Get help with tasks, reminders, or just chat
+          </p>
+          <Button size="sm" data-testid="button-expand-chat">
+            Open Chat
           </Button>
-        </div>
-      </div>
-    </Card>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
 
