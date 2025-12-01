@@ -65,6 +65,7 @@ The user interface features a dark theme with a coral red accent and Poppins fon
   - Contact notes system allowing both ZEKE and Nate to add observations/notes with types (interaction, observation, comment, fact)
   - Three-tab detail panel: Messages (communication history), Details (contact info), Notes (observations/comments)
 - **Admin Profile System**: Comprehensive profile management integrated into ZEKE's context for personalized assistance.
+  - **Contact Linking for Family Members**: Profile family section (spouse, parents, siblings, children) supports "@" mention functionality to link family members with existing contacts. Type "@name" to search and select contacts, creating relationship context. Uses `FamilyMemberRef` type with optional `contactId` and required `displayName`. Linked members display with a link icon.
 - **Database Schema**: SQLite database includes tables for conversations, messages, memory notes, preferences, grocery items, tasks, contacts, profile sections, and Twilio messages.
 - **Twilio SMS Logging**: Comprehensive logging of all SMS activity with conversation threading and an accessible log page.
 - **Location Intelligence System**: A GPS-aware system with an interactive map UI, location tracking, saved places, proximity detection, and AI tools for location-based assistance.

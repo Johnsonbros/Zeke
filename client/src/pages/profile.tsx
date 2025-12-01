@@ -43,6 +43,7 @@ import type {
   BasicInfoData,
   WorkData,
   FamilyData,
+  FamilyMemberRef,
   InterestsData,
   PreferencesData,
   GoalsData,
@@ -51,6 +52,7 @@ import type {
   ImportantDateData,
   CustomFieldData,
 } from "@shared/schema";
+import { FamilyMemberInput } from "@/components/FamilyMemberInput";
 
 const SECTION_CONFIG = {
   basic_info: { label: "Basic Info", icon: User, color: "text-blue-500" },
@@ -366,7 +368,10 @@ function FamilySection({
     setFormData(data);
   }, [data]);
 
-  const handleChange = (field: keyof FamilyData, value: string | string[]) => {
+  const handleChange = (
+    field: keyof FamilyData,
+    value: string | string[] | FamilyMemberRef | FamilyMemberRef[] | undefined
+  ) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -384,39 +389,43 @@ function FamilySection({
         </div>
         <div className="space-y-2">
           <label className="text-sm font-medium">Spouse/Partner</label>
-          <Input
-            value={formData.spouse || ""}
-            onChange={(e) => handleChange("spouse", e.target.value)}
-            placeholder="Partner's name"
-            data-testid="input-spouse"
+          <FamilyMemberInput
+            value={formData.spouse}
+            onChange={(value) => handleChange("spouse", value)}
+            placeholder="Type name or @contact"
+            testIdPrefix="spouse"
+            mode="single"
           />
         </div>
         <div className="space-y-2">
           <label className="text-sm font-medium">Parents</label>
-          <ArrayInput
-            items={formData.parents || []}
-            onChange={(items) => handleChange("parents", items)}
-            placeholder="Add a parent's name"
+          <FamilyMemberInput
+            value={formData.parents}
+            onChange={(value) => handleChange("parents", value)}
+            placeholder="Type name or @contact"
             testIdPrefix="parents"
+            mode="array"
           />
         </div>
         <div className="space-y-2">
           <label className="text-sm font-medium">Siblings</label>
-          <ArrayInput
-            items={formData.siblings || []}
-            onChange={(items) => handleChange("siblings", items)}
-            placeholder="Add a sibling's name"
+          <FamilyMemberInput
+            value={formData.siblings}
+            onChange={(value) => handleChange("siblings", value)}
+            placeholder="Type name or @contact"
             testIdPrefix="siblings"
+            mode="array"
           />
         </div>
       </div>
       <div className="space-y-2">
         <label className="text-sm font-medium">Children</label>
-        <ArrayInput
-          items={formData.children || []}
-          onChange={(items) => handleChange("children", items)}
-          placeholder="Add a child's name"
+        <FamilyMemberInput
+          value={formData.children}
+          onChange={(value) => handleChange("children", value)}
+          placeholder="Type name or @contact"
           testIdPrefix="children"
+          mode="array"
         />
       </div>
       <div className="space-y-2">

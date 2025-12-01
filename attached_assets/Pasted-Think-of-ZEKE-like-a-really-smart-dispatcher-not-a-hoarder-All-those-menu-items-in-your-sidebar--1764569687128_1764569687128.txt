@@ -1,0 +1,217 @@
+Think of ZEKE like a really smart dispatcher, not a hoarder.
+
+All those menu items in your sidebar — Tasks, Calendar, Locations, SMS Log, Limitless, etc. — are data silos. Context engineering here is about never dumping everything into the model, and instead building a pipeline that says:
+
+“Given what Nate just asked and what screen he’s on, which 3–5 slices of the world does ZEKE actually need, and in what form?”
+
+Let’s break it down big-picture first, then into concrete pieces you can implement.
+
+⸻
+
+1. Big picture: a “context router” in front of the brain
+
+Architecture-wise, you want something like this on every request:
+	1.	User does something
+	•	Types a message, clicks “Tasks,” opens “Locations,” etc.
+	2.	Intent + mode detection
+	•	“Is this about tasks, food, driving, planning the week, business analytics…?”
+	3.	Context router
+	•	Looks at intent + current app section (that sidebar)
+	•	Decides which stores to hit (Tasks DB, Calendar, Locations, Limitless, Memory, SMS, etc.)
+	•	Pulls only the relevant subset, possibly summarized.
+	4.	Assemble prompt for the right agent
+	•	System instructions (who ZEKE is, safety, style)
+	•	User message
+	•	Selected context bundles (tasks, events, locations, notes…)
+	•	Tools the agent is allowed to call
+	5.	Agent reasons + calls tools
+	•	Can fetch more data if needed (RAG, DB reads, external APIs)
+	•	Writes results back to your stores
+
+So ZEKE doesn’t “hold all variables in his head.” He has many databases + a very opinionated context builder.
+
+⸻
+
+2. Layer your context: what ZEKE always knows vs what he fetches
+
+You can think in layers:
+
+Layer A – Global context (always include)
+	•	Who the user is (Nate, role, family, home base)
+	•	Timezone, current time, day of week
+	•	High-level preferences (family, business, tone, privacy rules)
+	•	A short “profile summary” of Nate + Johnson Bros.
+
+This is small and constant — it can live in a system-level memory block injected into every prompt.
+
+⸻
+
+Layer B – App-section context bundles (mode-aware)
+
+Each sidebar item gets its own “context bundle” definition.
+
+Example bundles:
+	•	Tasks bundle
+	•	Today’s tasks
+	•	Overdue tasks
+	•	3–5 “important” tasks (flagged, high priority)
+	•	A short summary: “Nate’s current workload state”
+	•	Calendar bundle
+	•	Today’s events + first few for tomorrow
+	•	Any events tagged “Plumbing / Jobs”
+	•	Summary: “Your day looks light/heavy, gaps at X and Y”
+	•	Locations bundle
+	•	Current GPS (family/home/van)
+	•	Saved key locations (home, shop, top customers)
+	•	Recent movement pattern for today (“You’ve been in Quincy since 8am…”)
+	•	Grocery / Meals bundle
+	•	Pantry/inventory state
+	•	Meal plan for the week
+	•	Family food preferences + allergies
+	•	ZEKE’s Memory bundle
+	•	Last N important facts learned
+	•	Summaries of key long-term notes
+
+When the user is in /tasks, your context router boosts the Tasks bundle; when in /locations, you swap priorities.
+
+So the rule is: current screen + user text → which bundles and how big.
+
+⸻
+
+Layer C – On-demand retrieval (RAG & search)
+
+For deeper questions (“What did I tell you about that customer in Quincy last month?”), ZEKE should:
+	1.	Use the query to run vector search / text search over:
+	•	ZEKE’s Memory
+	•	SMS log
+	•	Limitless analytics transcripts
+	•	Notes attached to tasks / jobs / customers
+	2.	Pull only top-k results (say 3–10)
+	3.	Optionally summarize if they’re long
+	4.	Inject that as a separate “Retrieved info” section in the prompt.
+
+This keeps the context window lean but powerful.
+
+⸻
+
+3. Short-term vs long-term: don’t let the chat history explode
+
+You also need a memory policy so ZEKE doesn’t shove 3 months of chat into every call.
+
+For each conversation / feature area, keep:
+	•	Recent turns verbatim (e.g. last 10–20 messages)
+	•	Older turns summarized into bullet notes:
+	•	“Nate prefers X for scheduling”
+	•	“Nate asked to prioritize emergency calls before estimates”
+
+On every Nth message, you can:
+	•	Compress older history into a summary object
+	•	Throw away the full text
+	•	Keep the summary in ZEKE’s long-term memory store, linked to the topic
+
+Then the context router can pull “topic summaries” instead of raw logs.
+
+⸻
+
+4. Multi-agent angle: specialists with curated context
+
+Given your ZEKE design, a clean way to run this is:
+	•	Orchestrator / Router Agent
+	•	Sees: user message + very light global context
+	•	Job: decide which specialist agent(s) to call, and what they need.
+	•	Specialist agents
+	•	TasksAgent – knows tasks schema + rules
+	•	CalendarAgent – jobs, events, availability
+	•	LocationsAgent – GPS, zones, commute estimates
+	•	MemoryAgent – RAG over ZEKE’s Memory + Limitless
+	•	BusinessOpsAgent – revenue, job metrics, marketing (Limitless Analytics)
+
+Each specialist has:
+	•	Tight instructions: “You are the TasksAgent, you only reason about tasks…”
+	•	Fixed tool set: only the APIs relevant to its domain
+	•	A context builder keyed to that domain:
+	•	build_tasks_context(query, app_state, db)
+	•	build_calendar_context(…), etc.
+
+The orchestrator passes a small, structured payload:
+{ intent: "schedule", scope: "today", user_message: "...", user_id: "nate" }
+and the TasksAgent uses its context builder to decide exactly which data to fetch.
+
+⸻
+
+5. Concrete example with your sidebar
+
+Say you’re in Tasks, and you type:
+
+“ZEKE, what should I focus on for the next 2 hours?”
+
+Your pipeline might do:
+	1.	Mode: /tasks → primary domain: Tasks; secondary: Calendar, Locations.
+	2.	Intent: “prioritization / planning / time-boxing”.
+	3.	Context router assembles:
+	•	Global profile chunk (who Nate is, business hours, etc.)
+	•	Tasks bundle:
+	•	All tasks due today
+	•	Overdue + high-priority tasks
+	•	“Work” tagged tasks only (filter out personal, unless you say otherwise)
+	•	Calendar bundle:
+	•	Next 4 hours of events
+	•	Locations bundle:
+	•	Current location + travel time to next job, if any
+	4.	Agent call:
+	•	Pass all of that into a PlanningAgent that’s allowed to:
+	•	Reorder tasks
+	•	Mark some as “focus now”
+	•	Suggest blocks on Calendar
+	5.	Output:
+	•	A ranked list: “Do X, then Y, ignore Z”
+	•	Optional tool calls to actually update Tasks and Calendar.
+
+Exactly the same idea if you’re in Meals & Recipes: swap Tasks/Calendar slices for Grocery/Meals slices.
+
+⸻
+
+6. How to actually implement this cleanly in ZEKE
+
+Here’s how I’d structure it in code terms:
+	1.	Define a typed AppContext
+
+type AppContext = {
+  user: UserProfile
+  db: DbClients
+  now: Date
+  currentRoute: string // "/tasks", "/locations", etc.
+}
+
+
+	2.	Define “context bundles” as functions
+
+async function buildTasksBundle(ctx, query) { ... }
+async function buildCalendarBundle(ctx, query) { ... }
+async function buildLocationsBundle(ctx, query) { ... }
+async function buildMemoryBundle(ctx, query) { ... }
+
+
+	3.	Define a routing table
+
+const ROUTES = {
+  "/tasks":    { primary: ["tasks"], secondary: ["calendar", "memory"] },
+  "/calendar": { primary: ["calendar"], secondary: ["tasks", "locations"] },
+  "/locations": { primary: ["locations"], secondary: ["calendar"] },
+  ...
+}
+
+
+	4.	Context router
+	•	Looks up route
+	•	Picks bundles
+	•	Calls each bundle with a token budget (e.g. tasks get 800 tokens, calendar 300, memory 400)
+	•	Concatenates into structured prompt sections.
+	5.	Agents use this router as a pre-step
+	•	Before Agent.run(), you call buildContextFor(agentName, ctx, query).
+
+That gives ZEKE a single brain with a disciplined way to decide what to think about each time you talk to him, even with tons of variables lying around.
+
+⸻
+
+As ZEKE grows new features (more menu items, more sensors, more tools), you don’t grow the prompt; you grow the context router and bundles. That’s how you keep him smart instead of scatterbrained.
