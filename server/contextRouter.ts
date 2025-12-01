@@ -24,12 +24,20 @@ import {
   getAllContacts,
   getAllMemoryNotes,
   getConversation,
+  getEntitiesForItem,
+  getItemsRelatedToEntity,
+  getEntity,
+  getMessagesByConversation,
+  getMemoryNote,
+  getTask,
+  getSavedPlace,
+  getContact,
 } from "./db";
 import { getSmartMemoryContext } from "./semanticMemory";
 import { getRecentLifelogs, getLifelogOverview } from "./limitless";
 import { getUpcomingEvents } from "./googleCalendar";
 import { getConversationContext } from "./conversationSummarizer";
-import type { GroceryItem, Task, Contact, MemoryNote, Message } from "@shared/schema";
+import type { GroceryItem, Task, Contact, MemoryNote, Message, Entity, EntityDomain } from "@shared/schema";
 
 /**
  * Application context available to the router
@@ -792,6 +800,160 @@ export async function buildProfileBundle(ctx: AppContext, maxTokens: number): Pr
 }
 
 /**
+ * Build cross-domain context bundle (Layer C - on-demand context)
+ * 
+ * This bundle finds entities referenced in the current conversation and
+ * surfaces related items from other domains, creating cross-domain connections.
+ * 
+ * Examples of cross-domain context:
+ * - "About John Smith: Mentioned in 3 memories, has upcoming calendar event 'Lunch with John', appears in 2 tasks"
+ * - "About Home: Location appears in memory about family routines, nearby task 'Pick up dry cleaning'"
+ * 
+ * @param conversationId - Optional conversation ID to extract entities from
+ * @param recentEntities - Optional array of entities to include directly
+ * @returns A context string with cross-domain connections (max 800 tokens)
+ */
+export async function buildCrossDomainBundle(
+  conversationId?: string,
+  recentEntities?: Entity[]
+): Promise<string> {
+  const maxTokens = 800;
+  const parts: string[] = [];
+  const seenEntityIds = new Set<string>();
+  const entitySummaries: Array<{ label: string; summary: string }> = [];
+
+  try {
+    // Collect entities from conversation messages
+    if (conversationId) {
+      const messages = getMessagesByConversation(conversationId);
+      
+      for (const message of messages.slice(-10)) {
+        const entities = getEntitiesForItem("conversation", message.id);
+        for (const entity of entities) {
+          if (!seenEntityIds.has(entity.id)) {
+            seenEntityIds.add(entity.id);
+            recentEntities = recentEntities || [];
+            recentEntities.push(entity);
+          }
+        }
+      }
+    }
+
+    // Process each entity and find related items across domains
+    if (recentEntities && recentEntities.length > 0) {
+      for (const entity of recentEntities) {
+        if (seenEntityIds.has(entity.id) === false) {
+          seenEntityIds.add(entity.id);
+        }
+        
+        const relatedItems = getItemsRelatedToEntity(entity.id);
+        if (relatedItems.length === 0) continue;
+
+        // Group items by domain
+        const byDomain: Record<EntityDomain, Array<{ itemId: string; context: string | null }>> = {
+          memory: [],
+          task: [],
+          contact: [],
+          calendar: [],
+          location: [],
+          grocery: [],
+          conversation: [],
+        };
+
+        for (const item of relatedItems) {
+          byDomain[item.domain].push({ itemId: item.itemId, context: item.context });
+        }
+
+        // Build summary for this entity
+        const summaryParts: string[] = [];
+
+        // Memory references
+        if (byDomain.memory.length > 0) {
+          const memoryDetails = byDomain.memory.slice(0, 3).map(m => {
+            const note = getMemoryNote(m.itemId);
+            return note ? note.content.substring(0, 50) + (note.content.length > 50 ? "..." : "") : null;
+          }).filter(Boolean);
+          
+          if (memoryDetails.length > 0) {
+            summaryParts.push(`Mentioned in ${byDomain.memory.length} memories (${memoryDetails.join("; ")})`);
+          } else {
+            summaryParts.push(`Mentioned in ${byDomain.memory.length} memories`);
+          }
+        }
+
+        // Task references
+        if (byDomain.task.length > 0) {
+          const taskDetails = byDomain.task.slice(0, 3).map(t => {
+            const task = getTask(t.itemId);
+            return task ? `"${task.title}"${task.completed ? " (done)" : ""}` : null;
+          }).filter(Boolean);
+          
+          if (taskDetails.length > 0) {
+            summaryParts.push(`Related tasks: ${taskDetails.join(", ")}`);
+          } else {
+            summaryParts.push(`Appears in ${byDomain.task.length} tasks`);
+          }
+        }
+
+        // Calendar references
+        if (byDomain.calendar.length > 0) {
+          summaryParts.push(`Has ${byDomain.calendar.length} calendar event(s)`);
+        }
+
+        // Location references
+        if (byDomain.location.length > 0) {
+          const locationDetails = byDomain.location.slice(0, 2).map(l => {
+            const place = getSavedPlace(l.itemId);
+            return place ? place.name : null;
+          }).filter(Boolean);
+          
+          if (locationDetails.length > 0) {
+            summaryParts.push(`Associated with: ${locationDetails.join(", ")}`);
+          } else {
+            summaryParts.push(`Linked to ${byDomain.location.length} location(s)`);
+          }
+        }
+
+        // Contact references
+        if (byDomain.contact.length > 0) {
+          const contactDetails = byDomain.contact.slice(0, 2).map(c => {
+            const contact = getContact(c.itemId);
+            return contact ? `${contact.firstName} ${contact.lastName}`.trim() : null;
+          }).filter(Boolean);
+          
+          if (contactDetails.length > 0) {
+            summaryParts.push(`Related to: ${contactDetails.join(", ")}`);
+          } else {
+            summaryParts.push(`Connected to ${byDomain.contact.length} contact(s)`);
+          }
+        }
+
+        if (summaryParts.length > 0) {
+          entitySummaries.push({
+            label: entity.label,
+            summary: summaryParts.join("; "),
+          });
+        }
+      }
+    }
+
+    // Build the final context string
+    if (entitySummaries.length > 0) {
+      parts.push("## Related Context");
+      
+      for (const { label, summary } of entitySummaries.slice(0, 10)) {
+        parts.push(`About ${label}: ${summary}`);
+      }
+    }
+  } catch (error) {
+    console.error("Error building cross-domain bundle:", error);
+  }
+
+  const content = truncateToTokens(parts.join("\n"), maxTokens);
+  return content;
+}
+
+/**
  * Bundle builder registry
  */
 const BUNDLE_BUILDERS: Record<string, (ctx: AppContext, maxTokens: number) => Promise<ContextBundle>> = {
@@ -873,6 +1035,17 @@ export async function assembleContext(
     }
   }
   
+  // Layer C: Build cross-domain bundle for on-demand context
+  // This surfaces entities from the conversation and their related items across domains
+  let crossDomainContent = "";
+  if (ctx.conversationId) {
+    try {
+      crossDomainContent = await buildCrossDomainBundle(ctx.conversationId);
+    } catch (error) {
+      console.error("Error building cross-domain bundle:", error);
+    }
+  }
+  
   // Assemble final context string
   const contextParts: string[] = [];
   
@@ -900,12 +1073,18 @@ export async function assembleContext(
     contextParts.push(bundle.content);
   }
   
+  // Layer C: Add cross-domain context (on-demand)
+  if (crossDomainContent) {
+    contextParts.push(crossDomainContent);
+  }
+  
   const assembledContext = contextParts.join("\n\n");
   
   // Log context assembly for debugging
   console.log(`[ContextRouter] Assembled context for route "${ctx.currentRoute}":`, {
     bundles: bundles.map(b => ({ name: b.name, priority: b.priority, tokens: b.tokenEstimate })),
     totalTokens: bundles.reduce((sum, b) => sum + b.tokenEstimate, 0),
+    hasCrossDomainContext: !!crossDomainContent,
   });
   
   return assembledContext;

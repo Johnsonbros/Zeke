@@ -38,6 +38,7 @@ import { isMasterAdmin } from "@shared/schema";
 import { 
   assembleContext, 
   detectIntent,
+  buildCrossDomainBundle,
   type AppContext,
   type TokenBudget,
   DEFAULT_TOKEN_BUDGET 
@@ -614,6 +615,7 @@ async function buildSystemPrompt(
   
   if (USE_CONTEXT_ROUTER && userPermissions.canAccessPersonalInfo) {
     // Use the new Context Router for smarter, token-efficient context assembly
+    // Note: assembleContext now includes cross-domain bundle automatically
     const smartContext = await buildSmartContext(
       userMessage,
       currentRoute,
@@ -628,7 +630,21 @@ async function buildSystemPrompt(
     const profileContext = userPermissions.canAccessPersonalInfo ? loadProfileContext() : "";
     const memoryContext = userPermissions.canAccessPersonalInfo ? await getMemoryContext(userMessage) : "";
     const locationContext = userPermissions.canAccessPersonalInfo ? getLocationContext() : "";
-    dynamicContext = `${profileContext}\n\n${memoryContext}\n\n${locationContext}`;
+    
+    // Add cross-domain context for legacy path
+    let crossDomainContext = "";
+    if (userPermissions.canAccessPersonalInfo && conversationId) {
+      try {
+        crossDomainContext = await buildCrossDomainBundle(conversationId);
+        if (crossDomainContext) {
+          console.log("[Agent] Added cross-domain context to legacy prompt");
+        }
+      } catch (error) {
+        console.error("[Agent] Error building cross-domain context:", error);
+      }
+    }
+    
+    dynamicContext = `${profileContext}\n\n${memoryContext}\n\n${locationContext}\n\n${crossDomainContext}`;
   }
 
   const activeReminders = getActiveReminders();
