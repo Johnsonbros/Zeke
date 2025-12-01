@@ -185,6 +185,12 @@ import {
   stopAutomation,
   runAutomationNow 
 } from "./automations";
+import {
+  generateDailySummary,
+  getConversationAnalytics,
+  getMorningBriefingEnhancement,
+  getLimitlessSummaries,
+} from "./limitless";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, insertFoodPreferenceSchema, insertDietaryRestrictionSchema, insertSavedRecipeSchema, updateSavedRecipeSchema, insertMealHistorySchema, type Automation, type InsertAutomation } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
@@ -3633,6 +3639,129 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Get family members error:", error);
       res.status(500).json({ error: error.message || "Failed to get family members" });
+    }
+  });
+
+  // ============================================
+  // LIMITLESS AI SUMMARY ROUTES
+  // ============================================
+
+  // GET /api/limitless/summaries - Get all cached summaries
+  app.get("/api/limitless/summaries", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 30;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching Limitless summaries (limit: ${limit})`);
+      const summaries = getLimitlessSummaries(limit);
+      res.json(summaries);
+    } catch (error: any) {
+      console.error("Get Limitless summaries error:", error);
+      res.status(500).json({ error: error.message || "Failed to get summaries" });
+    }
+  });
+
+  // GET /api/limitless/summary/:date - Get or generate summary for a specific date
+  app.get("/api/limitless/summary/:date", async (req, res) => {
+    try {
+      const { date } = req.params;
+      const forceRegenerate = req.query.regenerate === "true";
+      
+      // Validate date format
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Getting Limitless summary for ${date} (regenerate: ${forceRegenerate})`);
+      
+      const result = await generateDailySummary(date, forceRegenerate);
+      
+      if (!result) {
+        return res.status(404).json({ error: "No conversations found for this date" });
+      }
+      
+      res.json(result);
+    } catch (error: any) {
+      console.error("Get Limitless summary error:", error);
+      res.status(500).json({ error: error.message || "Failed to get summary" });
+    }
+  });
+
+  // GET /api/limitless/analytics - Get conversation analytics for a date range
+  app.get("/api/limitless/analytics", async (req, res) => {
+    try {
+      const { start, end, days } = req.query;
+      
+      let startDate: string;
+      let endDate: string;
+      
+      if (start && end) {
+        startDate = start as string;
+        endDate = end as string;
+      } else {
+        // Default to last N days
+        const daysBack = parseInt(days as string) || 7;
+        const endDateObj = new Date();
+        const startDateObj = new Date();
+        startDateObj.setDate(startDateObj.getDate() - daysBack);
+        
+        startDate = startDateObj.toISOString().split("T")[0];
+        endDate = endDateObj.toISOString().split("T")[0];
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching Limitless analytics (${startDate} to ${endDate})`);
+      
+      const analytics = await getConversationAnalytics(startDate, endDate);
+      res.json({
+        dateRange: { start: startDate, end: endDate },
+        ...analytics,
+      });
+    } catch (error: any) {
+      console.error("Get Limitless analytics error:", error);
+      res.status(500).json({ error: error.message || "Failed to get analytics" });
+    }
+  });
+
+  // GET /api/limitless/morning-briefing - Get enhanced morning briefing content
+  app.get("/api/limitless/morning-briefing", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching Limitless morning briefing enhancement`);
+      const briefingData = await getMorningBriefingEnhancement();
+      res.json(briefingData);
+    } catch (error: any) {
+      console.error("Get morning briefing enhancement error:", error);
+      res.status(500).json({ error: error.message || "Failed to get morning briefing" });
+    }
+  });
+
+  // POST /api/limitless/generate-summary - Manually trigger summary generation for a date
+  app.post("/api/limitless/generate-summary", async (req, res) => {
+    try {
+      const { date, forceRegenerate = false } = req.body;
+      
+      if (!date) {
+        return res.status(400).json({ error: "Date is required" });
+      }
+      
+      // Validate date format
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Generating Limitless summary for ${date} (force: ${forceRegenerate})`);
+      
+      const result = await generateDailySummary(date, forceRegenerate);
+      
+      if (!result) {
+        return res.status(404).json({ error: "No conversations found for this date" });
+      }
+      
+      res.json({
+        success: true,
+        cached: result.cached,
+        summary: result.summary,
+      });
+    } catch (error: any) {
+      console.error("Generate Limitless summary error:", error);
+      res.status(500).json({ error: error.message || "Failed to generate summary" });
     }
   });
   
