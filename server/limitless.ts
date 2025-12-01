@@ -381,6 +381,111 @@ export async function checkLimitlessConnection(): Promise<{ connected: boolean; 
 }
 
 /**
+ * Get an overview of available lifelog data
+ * Useful for ZEKE to understand what data is available before searching
+ */
+export interface LifelogOverview {
+  connected: boolean;
+  today: {
+    count: number;
+    conversations: { title: string; time: string; isStarred: boolean }[];
+  };
+  yesterday: {
+    count: number;
+    conversations: { title: string; time: string; isStarred: boolean }[];
+  };
+  last7Days: {
+    count: number;
+    dates: string[];
+  };
+  mostRecent?: {
+    title: string;
+    time: string;
+    age: string;
+  };
+}
+
+export async function getLifelogOverview(): Promise<LifelogOverview> {
+  const now = new Date();
+  const today = now.toISOString().split("T")[0];
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+  try {
+    // Get today's conversations
+    const todayResponse = await getLifelogs({ date: today, limit: 50, direction: "desc" });
+    const todayLogs = todayResponse.data.lifelogs;
+
+    // Get yesterday's conversations
+    const yesterdayResponse = await getLifelogs({ date: yesterday, limit: 50, direction: "desc" });
+    const yesterdayLogs = yesterdayResponse.data.lifelogs;
+
+    // Get last 7 days overview
+    const weekResponse = await getLifelogs({ 
+      start: weekAgo, 
+      end: today, 
+      limit: 100, 
+      direction: "desc" 
+    });
+    const weekLogs = weekResponse.data.lifelogs;
+
+    // Get unique dates from last 7 days
+    const uniqueDates = Array.from(new Set(weekLogs.map((log) => log.startTime.split("T")[0])));
+
+    // Find most recent conversation
+    const allLogs = [...todayLogs, ...yesterdayLogs, ...weekLogs];
+    const mostRecent = allLogs.length > 0 ? allLogs[0] : null;
+
+    const formatConversation = (log: Lifelog) => ({
+      title: log.title,
+      time: formatTimeRange(log.startTime, log.endTime),
+      isStarred: log.isStarred,
+    });
+
+    const getAge = (dateStr: string): string => {
+      const date = new Date(dateStr);
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / (1000 * 60));
+      const diffHours = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffMins < 60) return `${diffMins} minutes ago`;
+      if (diffHours < 24) return `${diffHours} hours ago`;
+      return `${diffDays} days ago`;
+    };
+
+    return {
+      connected: true,
+      today: {
+        count: todayLogs.length,
+        conversations: todayLogs.slice(0, 5).map(formatConversation),
+      },
+      yesterday: {
+        count: yesterdayLogs.length,
+        conversations: yesterdayLogs.slice(0, 5).map(formatConversation),
+      },
+      last7Days: {
+        count: weekLogs.length,
+        dates: uniqueDates.slice(0, 7),
+      },
+      mostRecent: mostRecent ? {
+        title: mostRecent.title,
+        time: formatTimeRange(mostRecent.startTime, mostRecent.endTime),
+        age: getAge(mostRecent.startTime),
+      } : undefined,
+    };
+  } catch (error: any) {
+    console.error("Failed to get lifelog overview:", error);
+    return {
+      connected: false,
+      today: { count: 0, conversations: [] },
+      yesterday: { count: 0, conversations: [] },
+      last7Days: { count: 0, dates: [] },
+    };
+  }
+}
+
+/**
  * Extract people mentioned in a lifelog
  * Returns an array of extracted people with context
  */
@@ -761,12 +866,12 @@ export async function getMorningBriefingEnhancement(): Promise<{
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().split("T")[0];
 
-    let recentSummary = getLimitlessSummaryByDate(yesterdayStr);
+    let recentSummary: LimitlessSummary | null = getLimitlessSummaryByDate(yesterdayStr) ?? null;
     
     // If no cached summary, try to generate one
     if (!recentSummary) {
       const result = await generateDailySummary(yesterdayStr);
-      recentSummary = result?.summary || null;
+      recentSummary = result?.summary ?? null;
     }
 
     // Extract pending action items from recent summaries (last 3 days)

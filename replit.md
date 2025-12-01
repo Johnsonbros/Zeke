@@ -28,7 +28,14 @@ The user interface features a dark theme with a coral red accent and Poppins fon
 - **Access Control System**: A three-tier system with granular permissions for contacts and system components, enforcing security at multiple layers.
 - **Reminders & Automations**: Scheduled jobs using node-cron for recurring tasks, morning briefings, and scheduled SMS messages, with permission verification.
 - **Tooling**: Integrates various AI tools for communication (SMS), task management, calendar (Google Calendar), weather, web search (Perplexity), file operations, and Limitless pendant lifelogs.
-- **Limitless Pendant Integration**: Connects to the Limitless API to access and semantically search recorded conversations from the user's wearable device.
+- **Limitless Pendant Integration**: Connects to the Limitless API to access and semantically search recorded conversations from the user's wearable device. Includes:
+  - `get_lifelog_overview`: ALWAYS use first when user asks about lifelog data - shows available data across today, yesterday, and last 7 days with the most recent recording age.
+  - `search_lifelogs`: Semantic + keyword search across all available lifelog data.
+  - `get_recent_lifelogs`: Get conversations from last N hours (default 24, use 48-72 for broader searches).
+  - `get_lifelog_context`: Get relevant excerpts for a topic (searches last 72 hours).
+  - `generate_daily_summary`: AI-powered daily conversation summary with key discussions, action items, insights.
+  - `get_daily_summary`: Retrieve cached daily summary.
+- **Limitless Analytics Dashboard**: Interactive dashboard at `/limitless` showing conversation trends, top contacts, topics, and daily summaries with recharts visualizations.
 - **Automatic People Tracking System**: Autonomously extracts and tracks relationships from lifelogs and conversations, creating/updating contacts and linking memories to individuals.
 - **Admin Profile System**: Comprehensive profile management integrated into ZEKE's context for personalized assistance.
 - **Database Schema**: SQLite database includes tables for conversations, messages, memory notes, preferences, grocery items, tasks, contacts, profile sections, and Twilio messages.

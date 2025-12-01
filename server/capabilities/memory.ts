@@ -7,6 +7,7 @@ import {
   getLifelogContext,
   extractConversationContent,
   checkLimitlessConnection,
+  getLifelogOverview,
   generateDailySummary,
   getLimitlessSummaryByDate,
   type Lifelog,
@@ -16,8 +17,20 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "get_lifelog_overview",
+      description: "ALWAYS use this first when Nate asks about his lifelog data or what was recorded. Returns a quick overview of available Limitless lifelog data including: today's conversations, yesterday's conversations, last 7 days count, and the most recent recording with its age. This helps understand what data is available before doing specific searches.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "search_lifelogs",
-      description: "Search through Nate's recorded conversations and lifelogs from the Limitless pendant. Uses hybrid search (semantic + keyword) to find relevant conversations by topic, person, or content. Perfect for questions like 'What did Bob say about the project?' or 'Find the conversation where we discussed pricing'.",
+      description: "Search through Nate's recorded conversations and lifelogs from the Limitless pendant. Uses hybrid search (semantic + keyword) to find relevant conversations by topic, person, or content. Perfect for questions like 'What did Bob say about the project?' or 'Find the conversation where we discussed pricing'. Searches across ALL available data unless a specific date is provided.",
       parameters: {
         type: "object",
         properties: {
@@ -31,7 +44,7 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
           },
           date: {
             type: "string",
-            description: "Filter to specific date (YYYY-MM-DD format)",
+            description: "Filter to specific date (YYYY-MM-DD format). Omit to search all available data.",
           },
           starred_only: {
             type: "boolean",
@@ -46,13 +59,13 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "get_recent_lifelogs",
-      description: "Get recent recorded conversations from Nate's Limitless pendant. Useful for context about what happened today or in the last few hours.",
+      description: "Get recent recorded conversations from Nate's Limitless pendant. Default is 24 hours - use a larger value (48, 72, or more) when looking for 'recent' conversations that might be from earlier today or yesterday. Use get_lifelog_overview first if unsure what data is available.",
       parameters: {
         type: "object",
         properties: {
           hours: {
             type: "number",
-            description: "How many hours back to look (default 24)",
+            description: "How many hours back to look (default 24). Use 48-72 hours for a broader search.",
           },
           limit: {
             type: "number",
@@ -60,7 +73,7 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
           },
           today_only: {
             type: "boolean",
-            description: "Only get conversations from today",
+            description: "Only get conversations from today (since midnight)",
           },
         },
         required: [],
@@ -71,7 +84,7 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "get_lifelog_context",
-      description: "Get relevant lifelog context for a specific topic. Returns formatted conversation excerpts that can help answer questions about what was discussed. Use this before answering questions that might benefit from real-world context.",
+      description: "Get relevant lifelog context for a specific topic. Returns formatted conversation excerpts that can help answer questions about what was discussed. Searches the last 72 hours by default. Use this before answering questions that might benefit from real-world context.",
       parameters: {
         type: "object",
         properties: {
@@ -92,7 +105,7 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "check_limitless_status",
-      description: "Check if the Limitless pendant API is connected and working properly.",
+      description: "Check if the Limitless pendant API is connected and working properly. Use get_lifelog_overview instead for a more informative check that also shows available data.",
       parameters: {
         type: "object",
         properties: {},
@@ -141,6 +154,7 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
 ];
 
 export const memoryToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
+  get_lifelog_overview: (p) => p.canAccessPersonalInfo,
   search_lifelogs: (p) => p.canAccessPersonalInfo,
   get_recent_lifelogs: (p) => p.canAccessPersonalInfo,
   get_lifelog_context: (p) => p.canAccessPersonalInfo,
@@ -154,6 +168,45 @@ export async function executeMemoryTool(
   args: Record<string, unknown>
 ): Promise<string | null> {
   switch (toolName) {
+    case "get_lifelog_overview": {
+      try {
+        const overview = await getLifelogOverview();
+        
+        if (!overview.connected) {
+          return JSON.stringify({
+            success: false,
+            error: "Unable to connect to Limitless API. Make sure the API key is configured.",
+          });
+        }
+        
+        return JSON.stringify({
+          success: true,
+          overview: {
+            todayCount: overview.today.count,
+            todayConversations: overview.today.conversations,
+            yesterdayCount: overview.yesterday.count,
+            yesterdayConversations: overview.yesterday.conversations,
+            last7DaysCount: overview.last7Days.count,
+            datesWithData: overview.last7Days.dates,
+            mostRecent: overview.mostRecent,
+          },
+          summary: overview.today.count > 0
+            ? `Found ${overview.today.count} conversation(s) today, ${overview.yesterday.count} yesterday, and ${overview.last7Days.count} total in the last 7 days.${overview.mostRecent ? ` Most recent was "${overview.mostRecent.title}" (${overview.mostRecent.age}).` : ""}`
+            : overview.yesterday.count > 0
+            ? `No conversations today, but found ${overview.yesterday.count} yesterday and ${overview.last7Days.count} total in the last 7 days.${overview.mostRecent ? ` Most recent was "${overview.mostRecent.title}" (${overview.mostRecent.age}).` : ""}`
+            : overview.last7Days.count > 0
+            ? `No recent conversations. Found ${overview.last7Days.count} in the last 7 days on these dates: ${overview.last7Days.dates.join(", ")}.${overview.mostRecent ? ` Most recent was "${overview.mostRecent.title}" (${overview.mostRecent.age}).` : ""}`
+            : "No conversations found in the last 7 days. The pendant may not be recording or syncing.",
+        });
+      } catch (error: any) {
+        console.error("Failed to get lifelog overview:", error);
+        return JSON.stringify({
+          success: false,
+          error: error.message || "Failed to get lifelog overview.",
+        });
+      }
+    }
+    
     case "search_lifelogs": {
       const { query, limit, date, starred_only } = args as {
         query: string;
@@ -343,8 +396,7 @@ export async function executeMemoryTool(
           cached: result.cached,
           date: summary.date,
           title: summary.summaryTitle,
-          summary: summary.aiSummary,
-          conversationCount: summary.totalConversations,
+          conversationCount: summary.lifelogCount,
           totalDurationMinutes: summary.totalDurationMinutes,
           keyDiscussions,
           actionItems,
@@ -402,8 +454,7 @@ export async function executeMemoryTool(
           exists: true,
           date: summary.date,
           title: summary.summaryTitle,
-          summary: summary.aiSummary,
-          conversationCount: summary.totalConversations,
+          conversationCount: summary.lifelogCount,
           totalDurationMinutes: summary.totalDurationMinutes,
           keyDiscussions,
           actionItems,
