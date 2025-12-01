@@ -99,11 +99,20 @@ const COLORS = [
 function SummaryCard({ summary }: { summary: LimitlessSummary }) {
   const [expanded, setExpanded] = useState(false);
 
-  const keyDiscussions = summary.keyDiscussions ? JSON.parse(summary.keyDiscussions) : [];
-  const actionItems = summary.actionItems ? JSON.parse(summary.actionItems) : [];
-  const insights = summary.insights ? JSON.parse(summary.insights) : [];
-  const people = summary.peopleInteracted ? JSON.parse(summary.peopleInteracted) : [];
-  const topics = summary.topicsDiscussed ? JSON.parse(summary.topicsDiscussed) : [];
+  const safeJsonParse = (jsonStr: string | null | undefined): unknown[] => {
+    if (!jsonStr) return [];
+    try {
+      return JSON.parse(jsonStr);
+    } catch {
+      return [];
+    }
+  };
+
+  const keyDiscussions = safeJsonParse(summary.keyDiscussions) as string[];
+  const actionItems = safeJsonParse(summary.actionItems) as string[];
+  const insights = safeJsonParse(summary.insights) as string[];
+  const people = safeJsonParse(summary.peopleInteracted) as string[];
+  const topics = safeJsonParse(summary.topicsDiscussed) as string[];
 
   return (
     <Card className="mb-4" data-testid={`summary-card-${summary.date}`}>
@@ -248,7 +257,7 @@ function AnalyticsOverview({ analytics }: { analytics: AnalyticsData }) {
               <MessageSquare className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{analytics.totalConversations}</p>
+              <p className="text-2xl font-bold">{analytics.totalConversations ?? 0}</p>
               <p className="text-xs text-muted-foreground">Total Conversations</p>
             </div>
           </div>
@@ -262,7 +271,7 @@ function AnalyticsOverview({ analytics }: { analytics: AnalyticsData }) {
               <Clock className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{Math.round(analytics.totalDurationMinutes / 60)}h</p>
+              <p className="text-2xl font-bold">{Math.round((analytics.totalDurationMinutes ?? 0) / 60)}h</p>
               <p className="text-xs text-muted-foreground">Total Duration</p>
             </div>
           </div>
@@ -276,7 +285,7 @@ function AnalyticsOverview({ analytics }: { analytics: AnalyticsData }) {
               <TrendingUp className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{analytics.avgConversationsPerDay.toFixed(1)}</p>
+              <p className="text-2xl font-bold">{(analytics.avgConversationsPerDay ?? 0).toFixed(1)}</p>
               <p className="text-xs text-muted-foreground">Avg/Day</p>
             </div>
           </div>
@@ -290,7 +299,7 @@ function AnalyticsOverview({ analytics }: { analytics: AnalyticsData }) {
               <ListChecks className="h-5 w-5 text-green-500" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{analytics.actionItemsCount}</p>
+              <p className="text-2xl font-bold">{analytics.actionItemsCount ?? 0}</p>
               <p className="text-xs text-muted-foreground">Action Items</p>
             </div>
           </div>
@@ -340,7 +349,7 @@ function DailyTrendsChart({ dailyStats }: { dailyStats: AnalyticsData["dailyStat
 }
 
 function TopPeopleChart({ topPeople }: { topPeople: AnalyticsData["topPeople"] }) {
-  if (topPeople.length === 0) {
+  if (!topPeople || topPeople.length === 0) {
     return (
       <Card data-testid="chart-top-people">
         <CardHeader>
@@ -414,7 +423,7 @@ function TopPeopleChart({ topPeople }: { topPeople: AnalyticsData["topPeople"] }
 }
 
 function TopTopicsChart({ topTopics }: { topTopics: AnalyticsData["topTopics"] }) {
-  if (topTopics.length === 0) {
+  if (!topTopics || topTopics.length === 0) {
     return (
       <Card data-testid="chart-top-topics">
         <CardHeader>
@@ -616,13 +625,13 @@ export default function LimitlessPage() {
                 <>
                   <AnalyticsOverview analytics={analyticsQuery.data} />
 
-                  {analyticsQuery.data.dailyStats.length > 0 && (
+                  {analyticsQuery.data.dailyStats && analyticsQuery.data.dailyStats.length > 0 && (
                     <DailyTrendsChart dailyStats={analyticsQuery.data.dailyStats} />
                   )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <TopPeopleChart topPeople={analyticsQuery.data.topPeople} />
-                    <TopTopicsChart topTopics={analyticsQuery.data.topTopics} />
+                    <TopPeopleChart topPeople={analyticsQuery.data.topPeople || []} />
+                    <TopTopicsChart topTopics={analyticsQuery.data.topTopics || []} />
                   </div>
                 </>
               ) : null}

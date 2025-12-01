@@ -322,11 +322,21 @@ export async function executeMemoryTool(
         }
         
         const summary = result.summary;
-        const keyDiscussions = summary.keyDiscussions ? JSON.parse(summary.keyDiscussions) : [];
-        const actionItems = summary.actionItems ? JSON.parse(summary.actionItems) : [];
-        const insights = summary.insights ? JSON.parse(summary.insights) : [];
-        const people = summary.peopleInteracted ? JSON.parse(summary.peopleInteracted) : [];
-        const topics = summary.topicsDiscussed ? JSON.parse(summary.topicsDiscussed) : [];
+        
+        const safeJsonParse = (jsonStr: string | null | undefined): unknown[] => {
+          if (!jsonStr) return [];
+          try {
+            return JSON.parse(jsonStr);
+          } catch {
+            return [];
+          }
+        };
+        
+        const keyDiscussions = safeJsonParse(summary.keyDiscussions);
+        const actionItems = safeJsonParse(summary.actionItems);
+        const insights = safeJsonParse(summary.insights);
+        const people = safeJsonParse(summary.peopleInteracted);
+        const topics = safeJsonParse(summary.topicsDiscussed);
         
         return JSON.stringify({
           success: true,
@@ -372,11 +382,20 @@ export async function executeMemoryTool(
           });
         }
         
-        const keyDiscussions = summary.keyDiscussions ? JSON.parse(summary.keyDiscussions) : [];
-        const actionItems = summary.actionItems ? JSON.parse(summary.actionItems) : [];
-        const insights = summary.insights ? JSON.parse(summary.insights) : [];
-        const people = summary.peopleInteracted ? JSON.parse(summary.peopleInteracted) : [];
-        const topics = summary.topicsDiscussed ? JSON.parse(summary.topicsDiscussed) : [];
+        const safeJsonParse = (jsonStr: string | null | undefined): unknown[] => {
+          if (!jsonStr) return [];
+          try {
+            return JSON.parse(jsonStr);
+          } catch {
+            return [];
+          }
+        };
+        
+        const keyDiscussions = safeJsonParse(summary.keyDiscussions);
+        const actionItems = safeJsonParse(summary.actionItems);
+        const insights = safeJsonParse(summary.insights);
+        const people = safeJsonParse(summary.peopleInteracted);
+        const topics = safeJsonParse(summary.topicsDiscussed);
         
         return JSON.stringify({
           success: true,
