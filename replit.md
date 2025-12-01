@@ -24,7 +24,8 @@ Python agents can request curated, domain-specific context bundles from the Type
 - **Endpoint**: `POST /api/bridge/context-bundle` with `{domain, query, route, conversationId}`
 - **Available Domains**: global, memory, tasks, calendar, grocery, locations, limitless, contacts, profile, conversation
 - **Usage**: `await bridge.get_context_bundle(domain="memory", query=message)` returns token-efficient context bundles
-- **Fallback**: ConductorAgent.enrich_context() falls back to legacy get_memory_context/get_user_profile if bundle fetch fails
+- **Dual-Context Strategy**: ConductorAgent.enrich_context() fetches both Context Router bundles (stored in `context.metadata["memory_bundle"]` and `context.metadata["global_bundle"]`) AND legacy structured data (stored in `context.memory_context` and `context.user_profile`) - maintaining backward compatibility while providing optimized bundles
+- **Token Budgets**: global (1000), primary domains (2000), secondary domains (800), tertiary domains (400)
 
 #### Limitless Analyst Agent
 A specialized sub-agent that preprocesses Limitless pendant lifelog data and provides curated context bundles to other agents:
