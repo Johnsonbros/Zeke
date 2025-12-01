@@ -297,6 +297,12 @@ import {
   DEFAULT_TOKEN_BUDGET,
 } from "./contextRouter";
 import { onTaskCreated } from "./entityExtractor";
+import {
+  analyzeTaskPatterns,
+  getSchedulingSuggestion,
+  getQuickSchedulingSuggestions,
+  getPatternInsights,
+} from "./predictiveTaskScheduler";
 
 // Initialize Twilio client for outbound SMS
 function getTwilioClient() {
@@ -1925,6 +1931,88 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Task follow-up preview error:", error);
       res.status(500).json({ message: "Failed to generate preview", error: error.message });
+    }
+  });
+
+  // ==================== PREDICTIVE TASK SCHEDULING API ====================
+  
+  // Get task scheduling patterns analysis
+  app.get("/api/tasks/scheduling/patterns", async (_req, res) => {
+    try {
+      const patterns = await analyzeTaskPatterns();
+      res.json({
+        success: true,
+        ...patterns,
+      });
+    } catch (error: any) {
+      console.error("Task pattern analysis error:", error?.message || "Unknown error");
+      res.status(500).json({ success: false, message: "Failed to analyze patterns" });
+    }
+  });
+
+  // Get AI-powered scheduling suggestion for a new task
+  app.post("/api/tasks/scheduling/suggest", async (req, res) => {
+    try {
+      const { title, category, priority, description } = req.body;
+      
+      if (!title || typeof title !== "string" || title.trim().length === 0) {
+        return res.status(400).json({ success: false, message: "Task title is required" });
+      }
+      
+      const suggestion = await getSchedulingSuggestion(
+        title.trim(),
+        category || "personal",
+        priority || "medium",
+        description
+      );
+      
+      res.json({
+        success: true,
+        suggestion,
+      });
+    } catch (error: any) {
+      console.error("Scheduling suggestion error:", error?.message || "Unknown error");
+      res.status(500).json({ success: false, message: "Failed to get suggestion" });
+    }
+  });
+
+  // Get quick scheduling options based on patterns
+  app.post("/api/tasks/scheduling/quick-options", async (req, res) => {
+    try {
+      const { title, category, priority } = req.body;
+      
+      const suggestions = await getQuickSchedulingSuggestions(
+        title && typeof title === "string" && title.trim().length > 0 ? title.trim() : "Task",
+        category || "personal",
+        priority || "medium"
+      );
+      
+      res.json({
+        success: true,
+        suggestions,
+      });
+    } catch (error: any) {
+      console.error("Quick scheduling options error:", error?.message || "Unknown error");
+      res.status(500).json({ success: false, message: "Failed to get options", suggestions: [] });
+    }
+  });
+
+  // Get pattern insights and recommendations
+  app.get("/api/tasks/scheduling/insights", async (_req, res) => {
+    try {
+      const insights = await getPatternInsights();
+      res.json({
+        success: true,
+        ...insights,
+      });
+    } catch (error: any) {
+      console.error("Pattern insights error:", error?.message || "Unknown error");
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to get insights",
+        patterns: { patterns: [], insights: [], preferredDays: [], preferredHours: [], categoryBreakdown: {}, priorityBreakdown: {} },
+        recommendations: []
+      });
     }
   });
   

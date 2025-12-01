@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Plus, 
@@ -20,7 +21,12 @@ import {
   User,
   Users,
   ChevronDown,
-  Pencil
+  Pencil,
+  Sparkles,
+  Clock,
+  TrendingUp,
+  BarChart3,
+  Lightbulb
 } from "lucide-react";
 import { 
   Select,
@@ -52,7 +58,58 @@ import {
   FormLabel,
 } from "@/components/ui/form";
 import type { Task } from "@shared/schema";
-import { format, isPast, isToday, parseISO } from "date-fns";
+import { format, isPast, isToday, parseISO, parse } from "date-fns";
+
+interface QuickSuggestion {
+  label: string;
+  date: string;
+  time: string;
+}
+
+interface PatternAnalysis {
+  preferredDays: string[];
+  preferredHours: number[];
+  categoryBreakdown: { [key: string]: number };
+  insights: string[];
+}
+
+interface SchedulingInsights {
+  patterns: PatternAnalysis;
+  recommendations: string[];
+}
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
+function formatTimeDisplay(time: string): string {
+  try {
+    const [hours, minutes] = time.split(":").map(Number);
+    const period = hours >= 12 ? "pm" : "am";
+    const displayHour = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+    return `${displayHour}:${String(minutes).padStart(2, "0")}${period}`;
+  } catch {
+    return time;
+  }
+}
+
+function formatHourDisplay(hour: number): string {
+  const period = hour >= 12 ? "pm" : "am";
+  const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  return `${displayHour}${period}`;
+}
 
 const PRIORITIES = ["low", "medium", "high"] as const;
 const CATEGORIES = ["work", "personal", "family"] as const;
@@ -387,6 +444,223 @@ function TaskEditDialog({
   );
 }
 
+function QuickScheduleSuggestions({
+  suggestions,
+  isLoading,
+  onSelect,
+  disabled
+}: {
+  suggestions: QuickSuggestion[];
+  isLoading: boolean;
+  onSelect: (date: string) => void;
+  disabled: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <div className="flex gap-1.5 flex-wrap">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-7 w-20 rounded-md" />
+        ))}
+      </div>
+    );
+  }
+
+  if (!suggestions || suggestions.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex gap-1.5 flex-wrap items-center">
+      <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
+      {suggestions.map((suggestion, index) => (
+        <Button
+          key={index}
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs gap-1 px-2"
+          onClick={() => onSelect(suggestion.date)}
+          disabled={disabled}
+          data-testid={`button-schedule-suggestion-${index}`}
+        >
+          <Clock className="h-3 w-3" />
+          {suggestion.label} at {formatTimeDisplay(suggestion.time)}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+function SchedulingInsightsSection() {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const { data: patterns, isLoading: patternsLoading } = useQuery<PatternAnalysis>({
+    queryKey: ["/api/tasks/scheduling/patterns"],
+    queryFn: async () => {
+      const response = await fetch("/api/tasks/scheduling/patterns");
+      if (!response.ok) throw new Error("Failed to fetch patterns");
+      return response.json();
+    },
+    enabled: isOpen,
+  });
+
+  const { data: insights, isLoading: insightsLoading } = useQuery<SchedulingInsights>({
+    queryKey: ["/api/tasks/scheduling/insights"],
+    queryFn: async () => {
+      const response = await fetch("/api/tasks/scheduling/insights");
+      if (!response.ok) throw new Error("Failed to fetch insights");
+      return response.json();
+    },
+    enabled: isOpen,
+  });
+
+  const isLoading = patternsLoading || insightsLoading;
+  const totalTasks = patterns?.categoryBreakdown 
+    ? Object.values(patterns.categoryBreakdown).reduce((a, b) => a + b, 0) 
+    : 0;
+
+  return (
+    <Collapsible 
+      open={isOpen} 
+      onOpenChange={setIsOpen}
+      data-testid="section-scheduling-insights"
+    >
+      <CollapsibleTrigger asChild>
+        <Button 
+          variant="ghost" 
+          className="w-full justify-between h-10 text-sm text-muted-foreground hover:text-foreground"
+          data-testid="button-toggle-insights"
+        >
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4" />
+            Scheduling Insights
+          </div>
+          <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? "" : "-rotate-90"}`} />
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-2 space-y-3">
+        {isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-20 w-full rounded-lg" />
+            <Skeleton className="h-16 w-full rounded-lg" />
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Card className="border-border">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2 p-3">
+                  <CardTitle className="text-xs font-medium text-muted-foreground">
+                    Preferred Days
+                  </CardTitle>
+                  <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                </CardHeader>
+                <CardContent className="p-3 pt-0">
+                  <p 
+                    className="text-sm font-medium"
+                    data-testid="text-preferred-days"
+                  >
+                    {patterns?.preferredDays && patterns.preferredDays.length > 0
+                      ? patterns.preferredDays.slice(0, 3).join(", ")
+                      : "No pattern detected"}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-border">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2 p-3">
+                  <CardTitle className="text-xs font-medium text-muted-foreground">
+                    Preferred Hours
+                  </CardTitle>
+                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                </CardHeader>
+                <CardContent className="p-3 pt-0">
+                  <p 
+                    className="text-sm font-medium"
+                    data-testid="text-preferred-hours"
+                  >
+                    {patterns?.preferredHours && patterns.preferredHours.length > 0
+                      ? patterns.preferredHours.slice(0, 3).map(formatHourDisplay).join(", ")
+                      : "No pattern detected"}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {patterns?.categoryBreakdown && totalTasks > 0 && (
+              <Card className="border-border">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2 p-3">
+                  <CardTitle className="text-xs font-medium text-muted-foreground">
+                    Category Breakdown
+                  </CardTitle>
+                  <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
+                </CardHeader>
+                <CardContent className="p-3 pt-0">
+                  <div className="flex flex-wrap gap-2" data-testid="category-breakdown">
+                    {Object.entries(patterns.categoryBreakdown).map(([category, count]) => {
+                      const percentage = Math.round((count / totalTasks) * 100);
+                      return (
+                        <Badge 
+                          key={category} 
+                          variant="secondary" 
+                          className="gap-1 text-xs"
+                          data-testid={`category-stat-${category}`}
+                        >
+                          {getCategoryIcon(category)}
+                          <span className="capitalize">{category}</span>
+                          <span className="text-muted-foreground">{percentage}%</span>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {insights?.recommendations && insights.recommendations.length > 0 && (
+              <Card className="border-border">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2 p-3">
+                  <CardTitle className="text-xs font-medium text-muted-foreground">
+                    Recommendations
+                  </CardTitle>
+                  <Lightbulb className="h-3.5 w-3.5 text-muted-foreground" />
+                </CardHeader>
+                <CardContent className="p-3 pt-0">
+                  <ul className="space-y-1.5" data-testid="recommendations-list">
+                    {insights.recommendations.map((rec, index) => (
+                      <li 
+                        key={index} 
+                        className="text-xs text-muted-foreground flex items-start gap-2"
+                        data-testid={`recommendation-${index}`}
+                      >
+                        <span className="text-primary mt-0.5">•</span>
+                        {rec}
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
+
+            {patterns?.insights && patterns.insights.length > 0 && (
+              <div className="space-y-1.5 px-1" data-testid="pattern-insights">
+                {patterns.insights.map((insight, index) => (
+                  <p 
+                    key={index} 
+                    className="text-xs text-muted-foreground"
+                    data-testid={`insight-${index}`}
+                  >
+                    {insight}
+                  </p>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 export default function TasksPage() {
   const { toast } = useToast();
   const [filter, setFilter] = useState<FilterType>("all");
@@ -403,6 +677,29 @@ export default function TasksPage() {
       dueDate: "",
     },
   });
+
+  const watchedTitle = form.watch("title");
+  const watchedPriority = form.watch("priority");
+  const watchedCategory = form.watch("category");
+  
+  const debouncedTitle = useDebounce(watchedTitle, 400);
+  
+  const { data: quickSuggestions, isLoading: suggestionsLoading } = useQuery<{ success: boolean; suggestions: QuickSuggestion[] }>({
+    queryKey: ["/api/tasks/scheduling/quick-options", debouncedTitle, watchedPriority, watchedCategory],
+    queryFn: async () => {
+      const response = await apiRequest("POST", "/api/tasks/scheduling/quick-options", {
+        title: debouncedTitle,
+        priority: watchedPriority,
+        category: watchedCategory,
+      });
+      return response.json();
+    },
+    enabled: debouncedTitle.length >= 2,
+  });
+
+  const handleSuggestionSelect = useCallback((date: string) => {
+    form.setValue("dueDate", date);
+  }, [form]);
 
   const buildQueryString = () => {
     const params = new URLSearchParams();
@@ -596,6 +893,15 @@ export default function TasksPage() {
                 )}
               />
               
+              {(debouncedTitle.length >= 2 || suggestionsLoading) && (
+                <QuickScheduleSuggestions
+                  suggestions={quickSuggestions?.suggestions || []}
+                  isLoading={suggestionsLoading}
+                  onSelect={handleSuggestionSelect}
+                  disabled={addTaskMutation.isPending}
+                />
+              )}
+              
               <div className="flex gap-2 flex-wrap">
                 <FormField
                   control={form.control}
@@ -744,6 +1050,10 @@ export default function TasksPage() {
             )}
           </div>
         </ScrollArea>
+
+        <div className="p-2 sm:p-3 md:p-4 border-t border-border shrink-0">
+          <SchedulingInsightsSection />
+        </div>
 
         <div className="p-2 sm:p-3 md:p-4 border-t border-border text-center shrink-0">
           <p className="text-[10px] sm:text-xs text-muted-foreground">
