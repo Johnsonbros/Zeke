@@ -749,11 +749,12 @@ interface ConversationMetricsSummary {
 }
 
 interface MemoryConfidenceStats {
-  totalMemories: number;
+  total: number;
   highConfidence: number;
   mediumConfidence: number;
   lowConfidence: number;
-  needingConfirmation: number;
+  needsConfirmation: number;
+  averageConfidence: number;
 }
 
 function ConversationQualityWidget({
@@ -802,11 +803,11 @@ function ConversationQualityWidget({
   const followUpRate = metrics?.avgFollowUpNeeded ?? 0;
   const trend = metrics?.recentTrend ?? "stable";
 
-  const confidenceTotal = memoryStats?.totalMemories ?? 0;
+  const confidenceTotal = memoryStats?.total ?? 0;
   const highConf = memoryStats?.highConfidence ?? 0;
   const medConf = memoryStats?.mediumConfidence ?? 0;
   const lowConf = memoryStats?.lowConfidence ?? 0;
-  const needsConfirm = memoryStats?.needingConfirmation ?? 0;
+  const needsConfirm = memoryStats?.needsConfirmation ?? 0;
 
   return (
     <Card data-testid="widget-quality-metrics">
