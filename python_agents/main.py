@@ -29,6 +29,7 @@ from .agents import (
     get_ops_planner,
     get_research_scout,
     get_safety_auditor,
+    get_limitless_analyst,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ def get_configured_conductor() -> ConductorAgent:
         conductor.register_specialist(get_ops_planner())
         conductor.register_specialist(get_research_scout())
         conductor.register_specialist(get_safety_auditor())
+        conductor.register_specialist(get_limitless_analyst())
         _specialists_registered = True
         logger.info("All specialist agents registered with conductor")
     
