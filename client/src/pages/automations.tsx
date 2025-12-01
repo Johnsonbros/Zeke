@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Plus, 
@@ -22,7 +23,17 @@ import {
   Zap,
   Sun,
   MessageSquare,
-  CheckCircle
+  CheckCircle,
+  Sparkles,
+  MapPin,
+  Send,
+  FileText,
+  ShoppingCart,
+  BellRing,
+  Lightbulb,
+  Wand2,
+  Loader2,
+  Timer
 } from "lucide-react";
 import { 
   Select,
@@ -60,15 +71,98 @@ import {
   FormLabel,
   FormDescription,
 } from "@/components/ui/form";
-import type { Reminder, Automation } from "@shared/schema";
+import type { Reminder, Automation, NLAutomation, NLTriggerType, NLActionType } from "@shared/schema";
 import { automationTypes } from "@shared/schema";
-import { format, isPast, parseISO } from "date-fns";
+import { format, isPast, parseISO, formatDistanceToNow } from "date-fns";
 
 const AUTOMATION_TYPE_CONFIG: Record<string, { label: string; icon: typeof Sun; color: string }> = {
   morning_briefing: { label: "Morning Briefing", icon: Sun, color: "text-yellow-500" },
   scheduled_sms: { label: "Scheduled SMS", icon: MessageSquare, color: "text-blue-500" },
   daily_checkin: { label: "Daily Check-in", icon: CheckCircle, color: "text-green-500" },
 };
+
+const NL_TRIGGER_TYPE_CONFIG: Record<NLTriggerType, { label: string; icon: typeof Clock; color: string }> = {
+  time: { label: "Time-based", icon: Clock, color: "text-blue-500" },
+  event: { label: "Event-based", icon: Zap, color: "text-yellow-500" },
+  location: { label: "Location-based", icon: MapPin, color: "text-green-500" },
+  keyword: { label: "Keyword-based", icon: MessageSquare, color: "text-purple-500" },
+  condition: { label: "Condition-based", icon: AlertCircle, color: "text-orange-500" },
+};
+
+const NL_ACTION_TYPE_CONFIG: Record<NLActionType, { label: string; icon: typeof Send; color: string }> = {
+  send_sms: { label: "Send SMS", icon: Send, color: "text-blue-500" },
+  create_task: { label: "Create Task", icon: FileText, color: "text-green-500" },
+  add_grocery: { label: "Add Grocery", icon: ShoppingCart, color: "text-orange-500" },
+  set_reminder: { label: "Set Reminder", icon: BellRing, color: "text-yellow-500" },
+  update_memory: { label: "Update Memory", icon: Lightbulb, color: "text-purple-500" },
+  generate_summary: { label: "Generate Summary", icon: FileText, color: "text-cyan-500" },
+  notify: { label: "Send Notification", icon: Bell, color: "text-pink-500" },
+};
+
+interface ParsedAutomationResult {
+  success: boolean;
+  automation?: {
+    name: string;
+    triggerType: NLTriggerType;
+    triggerConfig: string;
+    actionType: NLActionType;
+    actionConfig: string;
+    conditions?: string;
+    explanation: string;
+  };
+  error?: string;
+  suggestions?: string[];
+}
+
+function formatTriggerDescription(triggerType: NLTriggerType, triggerConfig: string): string {
+  try {
+    const config = JSON.parse(triggerConfig);
+    switch (triggerType) {
+      case "time":
+        return config.description || formatCronExpression(config.cronExpression);
+      case "event":
+        return `When ${config.eventType?.replace(/_/g, " ")}`;
+      case "location":
+        const locationAction = config.triggerOnArrive ? "arrive at" : "leave";
+        return `When you ${locationAction} ${config.placeName || "location"}`;
+      case "keyword":
+        return `When message contains: ${config.keywords?.join(", ")}`;
+      case "condition":
+        return `When ${config.conditionType?.replace(/_/g, " ")}`;
+      default:
+        return "Unknown trigger";
+    }
+  } catch {
+    return "Unknown trigger";
+  }
+}
+
+function formatActionDescription(actionType: NLActionType, actionConfig: string): string {
+  try {
+    const config = JSON.parse(actionConfig);
+    switch (actionType) {
+      case "send_sms":
+        const preview = config.messageTemplate?.slice(0, 50);
+        return preview ? `"${preview}${config.messageTemplate.length > 50 ? "..." : ""}"` : "Send SMS";
+      case "create_task":
+        return config.titleTemplate || "Create task";
+      case "add_grocery":
+        return `Add ${config.itemTemplate || "item"}`;
+      case "set_reminder":
+        return config.messageTemplate || "Set reminder";
+      case "generate_summary":
+        return `Generate ${config.summaryType || "summary"}`;
+      case "notify":
+        return config.titleTemplate || "Send notification";
+      case "update_memory":
+        return "Update memory";
+      default:
+        return "Unknown action";
+    }
+  } catch {
+    return "Unknown action";
+  }
+}
 
 const CRON_PRESETS = [
   { label: "Daily at 9am", value: "0 9 * * *" },
@@ -729,6 +823,115 @@ function AutomationDialog({
   );
 }
 
+function NLAutomationItem({
+  automation,
+  onToggle,
+  onDelete,
+  onTest,
+  isToggling,
+  isDeleting,
+  isTesting
+}: {
+  automation: NLAutomation;
+  onToggle: () => void;
+  onDelete: () => void;
+  onTest: () => void;
+  isToggling: boolean;
+  isDeleting: boolean;
+  isTesting: boolean;
+}) {
+  const triggerConfig = NL_TRIGGER_TYPE_CONFIG[automation.triggerType];
+  const actionConfig = NL_ACTION_TYPE_CONFIG[automation.actionType];
+  const TriggerIcon = triggerConfig.icon;
+  const ActionIcon = actionConfig.icon;
+
+  return (
+    <div
+      className={`group flex flex-col gap-3 px-3 md:px-4 py-3 rounded-lg border border-border hover-elevate transition-all ${
+        !automation.enabled ? "opacity-60" : ""
+      }`}
+      data-testid={`nl-automation-item-${automation.id}`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5">
+          <Sparkles className={`h-4 w-4 ${automation.enabled ? "text-primary" : "text-muted-foreground"}`} />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium" data-testid={`text-nl-automation-name-${automation.id}`}>
+              {automation.name}
+            </span>
+          </div>
+
+          <p className="text-xs text-muted-foreground mt-1 line-clamp-2" data-testid={`text-nl-automation-phrase-${automation.id}`}>
+            "{automation.originalPhrase}"
+          </p>
+
+          <div className="flex items-center gap-3 mt-2 flex-wrap">
+            <Badge variant="outline" className={`text-xs gap-1 ${triggerConfig.color}`}>
+              <TriggerIcon className="h-3 w-3" />
+              {formatTriggerDescription(automation.triggerType, automation.triggerConfig)}
+            </Badge>
+            <Badge variant="outline" className={`text-xs gap-1 ${actionConfig.color}`}>
+              <ActionIcon className="h-3 w-3" />
+              {actionConfig.label}
+            </Badge>
+          </div>
+
+          <div className="flex items-center gap-4 mt-2 flex-wrap">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Timer className="h-3 w-3" />
+              <span data-testid={`text-trigger-count-${automation.id}`}>
+                {automation.triggerCount} {automation.triggerCount === 1 ? "run" : "runs"}
+              </span>
+            </div>
+            {automation.lastTriggeredAt && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                <span data-testid={`text-last-triggered-${automation.id}`}>
+                  Last: {formatDistanceToNow(parseISO(automation.lastTriggeredAt), { addSuffix: true })}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={automation.enabled}
+            onCheckedChange={onToggle}
+            disabled={isToggling}
+            data-testid={`switch-nl-automation-${automation.id}`}
+          />
+
+          <Button
+            size="icon"
+            variant="ghost"
+            className="opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={onTest}
+            disabled={isTesting || !automation.enabled}
+            data-testid={`button-test-nl-automation-${automation.id}`}
+          >
+            <Play className="h-4 w-4 text-muted-foreground" />
+          </Button>
+
+          <Button
+            size="icon"
+            variant="ghost"
+            className="opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={onDelete}
+            disabled={isDeleting}
+            data-testid={`button-delete-nl-automation-${automation.id}`}
+          >
+            <Trash2 className="h-4 w-4 text-muted-foreground" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AutomationsPage() {
   const { toast } = useToast();
   
@@ -741,6 +944,10 @@ export default function AutomationsPage() {
   const [automationDialogMode, setAutomationDialogMode] = useState<"create" | "edit">("create");
   const [automationToDelete, setAutomationToDelete] = useState<Automation | null>(null);
 
+  const [nlPhrase, setNlPhrase] = useState("");
+  const [parsedResult, setParsedResult] = useState<ParsedAutomationResult | null>(null);
+  const [nlAutomationToDelete, setNlAutomationToDelete] = useState<NLAutomation | null>(null);
+
   const { data: reminders, isLoading: isLoadingReminders } = useQuery<Reminder[]>({
     queryKey: ["/api/reminders"],
   });
@@ -748,6 +955,132 @@ export default function AutomationsPage() {
   const { data: automations, isLoading: isLoadingAutomations } = useQuery<Automation[]>({
     queryKey: ["/api/automations"],
   });
+
+  const { data: nlAutomations, isLoading: isLoadingNLAutomations } = useQuery<NLAutomation[]>({
+    queryKey: ["/api/nl-automations"],
+  });
+
+  const parseNLAutomationMutation = useMutation({
+    mutationFn: async (phrase: string) => {
+      const response = await apiRequest("POST", "/api/nl-automations/parse", { phrase });
+      return response.json();
+    },
+    onSuccess: (data: ParsedAutomationResult) => {
+      setParsedResult(data);
+      if (!data.success) {
+        toast({
+          title: "Could not parse automation",
+          description: data.error || "Try rephrasing your request",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to parse",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const createNLAutomationMutation = useMutation({
+    mutationFn: async ({ phrase, parsed }: { phrase: string; parsed: ParsedAutomationResult["automation"] }) => {
+      const response = await apiRequest("POST", "/api/nl-automations", { phrase, parsed });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/nl-automations"] });
+      setNlPhrase("");
+      setParsedResult(null);
+      toast({
+        title: "Automation created",
+        description: "Your smart automation is now active",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to create automation",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const toggleNLAutomationMutation = useMutation({
+    mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
+      const response = await apiRequest("PATCH", `/api/nl-automations/${id}`, { enabled });
+      return response.json();
+    },
+    onSuccess: (data: NLAutomation) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/nl-automations"] });
+      toast({
+        title: data.enabled ? "Automation enabled" : "Automation disabled",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to toggle automation",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteNLAutomationMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/nl-automations/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/nl-automations"] });
+      setNlAutomationToDelete(null);
+      toast({
+        title: "Automation deleted",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to delete automation",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const testNLAutomationMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest("POST", `/api/nl-automations/${id}/test`);
+      return response.json();
+    },
+    onSuccess: (data: { success: boolean; message?: string }) => {
+      toast({
+        title: data.success ? "Test successful" : "Test failed",
+        description: data.message,
+        variant: data.success ? "default" : "destructive",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to test automation",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleParseNL = () => {
+    if (!nlPhrase.trim()) return;
+    setParsedResult(null);
+    parseNLAutomationMutation.mutate(nlPhrase.trim());
+  };
+
+  const handleCreateNLAutomation = () => {
+    if (!parsedResult?.automation) return;
+    createNLAutomationMutation.mutate({
+      phrase: nlPhrase.trim(),
+      parsed: parsedResult.automation,
+    });
+  };
 
   const updateReminderMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: ReminderFormValues }) => {
@@ -999,6 +1332,157 @@ export default function AutomationsPage() {
             )}
           </section>
 
+          <section data-testid="section-smart-automations">
+            <div className="flex items-center gap-2 mb-4">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold" data-testid="text-section-smart-automations">Smart Automations</h2>
+              {nlAutomations && nlAutomations.filter(a => a.enabled).length > 0 && (
+                <Badge variant="secondary" className="text-xs">
+                  {nlAutomations.filter(a => a.enabled).length} active
+                </Badge>
+              )}
+            </div>
+
+            <Card className="mb-4">
+              <CardContent className="p-4 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="nl-phrase-input">
+                    Describe your automation in plain English
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="nl-phrase-input"
+                      placeholder="e.g., Every morning at 9am, send me a task summary"
+                      value={nlPhrase}
+                      onChange={(e) => setNlPhrase(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleParseNL();
+                        }
+                      }}
+                      disabled={parseNLAutomationMutation.isPending}
+                      data-testid="input-nl-phrase"
+                    />
+                    <Button
+                      onClick={handleParseNL}
+                      disabled={!nlPhrase.trim() || parseNLAutomationMutation.isPending}
+                      data-testid="button-parse-nl"
+                    >
+                      {parseNLAutomationMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Wand2 className="h-4 w-4" />
+                      )}
+                      <span className="ml-2 hidden sm:inline">Parse</span>
+                    </Button>
+                  </div>
+                </div>
+
+                {parsedResult && parsedResult.success && parsedResult.automation && (
+                  <div className="rounded-lg border border-border p-4 space-y-3 bg-accent/10" data-testid="parsed-result">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <span className="text-sm font-medium" data-testid="text-parsed-name">
+                        {parsedResult.automation.name}
+                      </span>
+                    </div>
+                    
+                    <p className="text-sm text-muted-foreground" data-testid="text-parsed-explanation">
+                      {parsedResult.automation.explanation}
+                    </p>
+                    
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <Badge variant="outline" className={`text-xs gap-1 ${NL_TRIGGER_TYPE_CONFIG[parsedResult.automation.triggerType]?.color || ""}`}>
+                        {(() => {
+                          const TriggerIcon = NL_TRIGGER_TYPE_CONFIG[parsedResult.automation.triggerType]?.icon || Clock;
+                          return <TriggerIcon className="h-3 w-3" />;
+                        })()}
+                        {NL_TRIGGER_TYPE_CONFIG[parsedResult.automation.triggerType]?.label || parsedResult.automation.triggerType}
+                      </Badge>
+                      <Badge variant="outline" className={`text-xs gap-1 ${NL_ACTION_TYPE_CONFIG[parsedResult.automation.actionType]?.color || ""}`}>
+                        {(() => {
+                          const ActionIcon = NL_ACTION_TYPE_CONFIG[parsedResult.automation.actionType]?.icon || Zap;
+                          return <ActionIcon className="h-3 w-3" />;
+                        })()}
+                        {NL_ACTION_TYPE_CONFIG[parsedResult.automation.actionType]?.label || parsedResult.automation.actionType}
+                      </Badge>
+                    </div>
+                    
+                    <Button
+                      onClick={handleCreateNLAutomation}
+                      disabled={createNLAutomationMutation.isPending}
+                      className="w-full"
+                      data-testid="button-create-nl-automation"
+                    >
+                      {createNLAutomationMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Creating...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Create Automation
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+
+                {parsedResult && !parsedResult.success && (
+                  <div className="rounded-lg border border-destructive/50 p-4 space-y-2 bg-destructive/10" data-testid="parse-error">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-destructive" />
+                      <span className="text-sm font-medium text-destructive">Could not parse automation</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{parsedResult.error}</p>
+                    {parsedResult.suggestions && parsedResult.suggestions.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs text-muted-foreground mb-1">Try something like:</p>
+                        <ul className="text-xs text-muted-foreground list-disc list-inside">
+                          {parsedResult.suggestions.map((suggestion, i) => (
+                            <li key={i}>{suggestion}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {isLoadingNLAutomations ? (
+              <ListSkeleton />
+            ) : !nlAutomations || nlAutomations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                  <Sparkles className="h-6 w-6 text-primary" />
+                </div>
+                <p className="text-sm text-muted-foreground">No smart automations yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Use natural language above to create one</p>
+              </div>
+            ) : (
+              <div className="space-y-2" data-testid="nl-automations-list">
+                {nlAutomations.map((automation) => (
+                  <NLAutomationItem
+                    key={automation.id}
+                    automation={automation}
+                    onToggle={() => toggleNLAutomationMutation.mutate({
+                      id: automation.id,
+                      enabled: !automation.enabled,
+                    })}
+                    onDelete={() => setNlAutomationToDelete(automation)}
+                    onTest={() => testNLAutomationMutation.mutate(automation.id)}
+                    isToggling={toggleNLAutomationMutation.isPending}
+                    isDeleting={deleteNLAutomationMutation.isPending}
+                    isTesting={testNLAutomationMutation.isPending}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+
           <section>
             <div className="flex items-center gap-2 mb-4">
               <Zap className="h-5 w-5 text-primary" />
@@ -1125,6 +1609,26 @@ export default function AutomationsPage() {
             <AlertDialogAction
               onClick={() => automationToDelete && deleteAutomationMutation.mutate(automationToDelete.id)}
               data-testid="button-confirm-delete-automation"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!nlAutomationToDelete} onOpenChange={(open) => !open && setNlAutomationToDelete(null)}>
+        <AlertDialogContent data-testid="dialog-delete-nl-automation">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Smart Automation</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{nlAutomationToDelete?.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-nl-automation">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => nlAutomationToDelete && deleteNLAutomationMutation.mutate(nlAutomationToDelete.id)}
+              data-testid="button-confirm-delete-nl-automation"
             >
               Delete
             </AlertDialogAction>

@@ -253,6 +253,27 @@ import {
   initializeBatchScheduler,
   setNotificationSmsCallback,
 } from "./notificationBatcher";
+import {
+  parseNaturalLanguageAutomation,
+  convertToInsertAutomation,
+} from "./nlAutomationParser";
+import {
+  executeNLAutomation,
+  scheduleTimeAutomation,
+  stopAutomation as stopNLAutomation,
+  initializeNLAutomations,
+  setNLAutomationSmsCallback,
+  getScheduledAutomationIds,
+} from "./nlAutomationExecutor";
+import {
+  getAllNLAutomations as getAllNLAutomationsDb,
+  getNLAutomation as getNLAutomationDb,
+  createNLAutomation as createNLAutomationDb,
+  updateNLAutomation as updateNLAutomationDb,
+  deleteNLAutomation as deleteNLAutomationDb,
+  getNLAutomationLogs as getNLAutomationLogsDb,
+  getNLAutomationStats as getNLAutomationStatsDb,
+} from "./db";
 import type { EntityDomain, EntityType, InsightCategory, InsightStatus, InsightPriority } from "@shared/schema";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertContactNoteSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, insertFoodPreferenceSchema, insertDietaryRestrictionSchema, insertSavedRecipeSchema, updateSavedRecipeSchema, insertMealHistorySchema, type Automation, type InsertAutomation, getContactFullName } from "@shared/schema";
 import twilio from "twilio";
@@ -563,6 +584,51 @@ export async function registerRoutes(
     }
   });
   initializeBatchScheduler();
+
+  // Initialize NL Automation system
+  setNLAutomationSmsCallback(async (phone: string, message: string) => {
+    if (!twilioClient) {
+      console.log("[NLAutomation] Twilio not configured, cannot send SMS");
+      throw new Error("Twilio not configured");
+    }
+    
+    const formattedPhone = phone.startsWith('+') ? phone : `+1${phone}`;
+    
+    try {
+      const result = await twilioClient.messages.create({
+        body: message,
+        from: twilioFromNumber,
+        to: formattedPhone,
+      });
+      
+      logTwilioMessage({
+        direction: "outbound",
+        source: "automation",
+        fromNumber: twilioFromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        twilioSid: result.sid,
+        status: "sent",
+      });
+      
+      console.log(`[NLAutomation] SMS sent to ${formattedPhone}`);
+    } catch (error: any) {
+      logTwilioMessage({
+        direction: "outbound",
+        source: "automation",
+        fromNumber: twilioFromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        status: "failed",
+        errorCode: error.code?.toString() || "UNKNOWN",
+        errorMessage: error.message || "Unknown error",
+      });
+      
+      console.error("[NLAutomation] Failed to send SMS:", error);
+      throw error;
+    }
+  });
+  initializeNLAutomations();
   
   // Start ZEKE Context Agent for wake word detection
   setContextAgentSmsCallback(async (phone: string, message: string, source?: string) => {
@@ -5213,6 +5279,181 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Get notification batches error:", error);
       res.status(500).json({ error: error.message || "Failed to get notification batches" });
+    }
+  });
+
+  // ============================================
+  // NATURAL LANGUAGE AUTOMATION ROUTES
+  // ============================================
+
+  // GET /api/nl-automations - Get all NL automations
+  app.get("/api/nl-automations", async (req, res) => {
+    try {
+      const automations = getAllNLAutomationsDb();
+      res.json(automations);
+    } catch (error: any) {
+      console.error("Get NL automations error:", error);
+      res.status(500).json({ error: error.message || "Failed to get automations" });
+    }
+  });
+
+  // GET /api/nl-automations/stats - Get automation statistics
+  app.get("/api/nl-automations/stats", async (req, res) => {
+    try {
+      const stats = getNLAutomationStatsDb();
+      const scheduledIds = getScheduledAutomationIds();
+      res.json({ ...stats, scheduledCount: scheduledIds.length });
+    } catch (error: any) {
+      console.error("Get NL automation stats error:", error);
+      res.status(500).json({ error: error.message || "Failed to get automation stats" });
+    }
+  });
+
+  // GET /api/nl-automations/:id - Get a specific automation
+  app.get("/api/nl-automations/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const automation = getNLAutomationDb(id);
+      
+      if (!automation) {
+        return res.status(404).json({ error: "Automation not found" });
+      }
+      
+      res.json(automation);
+    } catch (error: any) {
+      console.error("Get NL automation error:", error);
+      res.status(500).json({ error: error.message || "Failed to get automation" });
+    }
+  });
+
+  // POST /api/nl-automations/parse - Parse natural language into automation
+  app.post("/api/nl-automations/parse", async (req, res) => {
+    try {
+      const { phrase } = req.body;
+      
+      if (!phrase || typeof phrase !== "string") {
+        return res.status(400).json({ error: "Phrase is required" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Parsing NL automation: "${phrase}"`);
+      
+      const result = await parseNaturalLanguageAutomation(phrase);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Parse NL automation error:", error);
+      res.status(500).json({ error: error.message || "Failed to parse automation" });
+    }
+  });
+
+  // POST /api/nl-automations - Create a new automation from parsed result
+  app.post("/api/nl-automations", async (req, res) => {
+    try {
+      const { phrase, parsed } = req.body;
+      
+      if (!phrase || !parsed) {
+        return res.status(400).json({ error: "Phrase and parsed automation are required" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Creating NL automation from: "${phrase}"`);
+      
+      const insertData = convertToInsertAutomation(phrase, parsed);
+      const automation = createNLAutomationDb(insertData);
+      
+      if (automation.triggerType === "time") {
+        scheduleTimeAutomation(automation);
+      }
+      
+      res.json({ success: true, automation });
+    } catch (error: any) {
+      console.error("Create NL automation error:", error);
+      res.status(500).json({ error: error.message || "Failed to create automation" });
+    }
+  });
+
+  // PATCH /api/nl-automations/:id - Update an automation
+  app.patch("/api/nl-automations/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Updating NL automation ${id}`);
+      
+      const automation = updateNLAutomationDb(id, updates);
+      
+      if (!automation) {
+        return res.status(404).json({ error: "Automation not found" });
+      }
+      
+      if (automation.triggerType === "time") {
+        if (automation.enabled) {
+          scheduleTimeAutomation(automation);
+        } else {
+          stopNLAutomation(id);
+        }
+      }
+      
+      res.json({ success: true, automation });
+    } catch (error: any) {
+      console.error("Update NL automation error:", error);
+      res.status(500).json({ error: error.message || "Failed to update automation" });
+    }
+  });
+
+  // DELETE /api/nl-automations/:id - Delete an automation
+  app.delete("/api/nl-automations/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Deleting NL automation ${id}`);
+      
+      stopNLAutomation(id);
+      const deleted = deleteNLAutomationDb(id);
+      
+      if (!deleted) {
+        return res.status(404).json({ error: "Automation not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete NL automation error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete automation" });
+    }
+  });
+
+  // POST /api/nl-automations/:id/test - Test an automation manually
+  app.post("/api/nl-automations/:id/test", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const automation = getNLAutomationDb(id);
+      if (!automation) {
+        return res.status(404).json({ error: "Automation not found" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Testing NL automation ${id}: ${automation.name}`);
+      
+      const result = await executeNLAutomation(automation, {
+        triggerData: { type: "manual_test", timestamp: new Date().toISOString() }
+      });
+      
+      res.json({ success: result.success, result });
+    } catch (error: any) {
+      console.error("Test NL automation error:", error);
+      res.status(500).json({ error: error.message || "Failed to test automation" });
+    }
+  });
+
+  // GET /api/nl-automations/:id/logs - Get execution logs for an automation
+  app.get("/api/nl-automations/:id/logs", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { limit = "20" } = req.query;
+      
+      const logs = getNLAutomationLogsDb(id, parseInt(limit as string) || 20);
+      res.json(logs);
+    } catch (error: any) {
+      console.error("Get NL automation logs error:", error);
+      res.status(500).json({ error: error.message || "Failed to get automation logs" });
     }
   });
   

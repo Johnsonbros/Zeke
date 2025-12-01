@@ -1461,3 +1461,155 @@ export interface InsightStats {
   byStatus: Record<InsightStatus, number>;
   byPriority: Record<InsightPriority, number>;
 }
+
+// ============================================
+// NATURAL LANGUAGE AUTOMATION SYSTEM
+// ============================================
+
+// Trigger types for NL automations
+export const nlTriggerTypes = [
+  "time",           // Cron-based triggers (e.g., "every morning at 9am")
+  "event",          // Event-based triggers (e.g., "when I complete a task")
+  "location",       // Location-based triggers (e.g., "when I arrive at home")
+  "keyword",        // Keyword triggers in messages (e.g., "when someone mentions groceries")
+  "condition"       // Condition-based triggers (e.g., "when tasks are overdue")
+] as const;
+export type NLTriggerType = typeof nlTriggerTypes[number];
+
+// Action types for NL automations
+export const nlActionTypes = [
+  "send_sms",       // Send an SMS message
+  "create_task",    // Create a new task
+  "add_grocery",    // Add item to grocery list
+  "set_reminder",   // Set a reminder
+  "update_memory",  // Update or create a memory
+  "generate_summary", // Generate a summary (tasks, calendar, etc.)
+  "notify"          // Queue a notification (uses batching system)
+] as const;
+export type NLActionType = typeof nlActionTypes[number];
+
+// Event types that can trigger automations
+export const nlEventTypes = [
+  "task_created",
+  "task_completed",
+  "task_overdue",
+  "reminder_triggered",
+  "grocery_purchased",
+  "calendar_event_soon",
+  "message_received",
+  "location_changed"
+] as const;
+export type NLEventType = typeof nlEventTypes[number];
+
+// NL Automations table - stores parsed natural language automation rules
+export const nlAutomations = sqliteTable("nl_automations", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  originalPhrase: text("original_phrase").notNull(),    // The natural language input
+  triggerType: text("trigger_type", { enum: nlTriggerTypes }).notNull(),
+  triggerConfig: text("trigger_config").notNull(),      // JSON config for trigger
+  actionType: text("action_type", { enum: nlActionTypes }).notNull(),
+  actionConfig: text("action_config").notNull(),        // JSON config for action
+  conditions: text("conditions"),                        // Optional JSON conditions
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  lastTriggeredAt: text("last_triggered_at"),
+  triggerCount: integer("trigger_count").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertNLAutomationSchema = createInsertSchema(nlAutomations).omit({
+  id: true,
+  lastTriggeredAt: true,
+  triggerCount: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateNLAutomationSchema = z.object({
+  name: z.string().min(1).optional(),
+  enabled: z.boolean().optional(),
+  triggerConfig: z.string().optional(),
+  actionConfig: z.string().optional(),
+  conditions: z.string().nullable().optional(),
+});
+
+export type InsertNLAutomation = z.infer<typeof insertNLAutomationSchema>;
+export type UpdateNLAutomation = z.infer<typeof updateNLAutomationSchema>;
+export type NLAutomation = typeof nlAutomations.$inferSelect;
+
+// Trigger config types
+export interface TimeTriggerConfig {
+  cronExpression: string;
+  timezone?: string;
+  description: string;  // Human-readable description
+}
+
+export interface EventTriggerConfig {
+  eventType: NLEventType;
+  filters?: Record<string, any>;  // Optional filters for the event
+}
+
+export interface LocationTriggerConfig {
+  placeId?: string;
+  placeName?: string;
+  triggerOnArrive?: boolean;
+  triggerOnLeave?: boolean;
+}
+
+export interface KeywordTriggerConfig {
+  keywords: string[];
+  matchAll?: boolean;  // Require all keywords to match
+  caseSensitive?: boolean;
+}
+
+export interface ConditionTriggerConfig {
+  conditionType: string;  // e.g., "tasks_overdue", "calendar_busy"
+  threshold?: number;
+  checkInterval?: string;  // Cron expression for checking
+}
+
+// Action config types
+export interface SendSmsActionConfig {
+  recipientPhone?: string;  // Optional, defaults to master admin
+  messageTemplate: string;  // Template with {{variables}}
+}
+
+export interface CreateTaskActionConfig {
+  titleTemplate: string;
+  descriptionTemplate?: string;
+  priority?: "low" | "medium" | "high";
+  category?: "work" | "personal" | "family";
+  dueDateOffset?: string;  // e.g., "+1d", "+1w"
+}
+
+export interface AddGroceryActionConfig {
+  itemTemplate: string;
+  quantity?: string;
+  category?: string;
+}
+
+export interface SetReminderActionConfig {
+  messageTemplate: string;
+  timeOffset?: string;  // e.g., "+30m", "+1h"
+}
+
+export interface NotifyActionConfig {
+  titleTemplate: string;
+  contentTemplate: string;
+  priority?: "urgent" | "high" | "normal" | "low";
+  category?: string;
+}
+
+// NL Automation execution log
+export const nlAutomationLogs = sqliteTable("nl_automation_logs", {
+  id: text("id").primaryKey(),
+  automationId: text("automation_id").notNull(),
+  triggerData: text("trigger_data"),  // JSON with trigger context
+  actionResult: text("action_result"),  // JSON with action outcome
+  success: integer("success", { mode: "boolean" }).notNull(),
+  errorMessage: text("error_message"),
+  executedAt: text("executed_at").notNull(),
+});
+
+export type NLAutomationLog = typeof nlAutomationLogs.$inferSelect;

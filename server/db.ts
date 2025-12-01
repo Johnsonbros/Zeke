@@ -1110,6 +1110,50 @@ db.exec(`
 
 console.log("Smart notification batching tables initialized");
 
+// ============================================
+// NATURAL LANGUAGE AUTOMATION SYSTEM
+// ============================================
+
+// Create nl_automations table for natural language defined automations
+db.exec(`
+  CREATE TABLE IF NOT EXISTS nl_automations (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    original_phrase TEXT NOT NULL,
+    trigger_type TEXT NOT NULL,
+    trigger_config TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    action_config TEXT NOT NULL,
+    conditions TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_triggered_at TEXT,
+    trigger_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_nl_automations_enabled ON nl_automations(enabled);
+  CREATE INDEX IF NOT EXISTS idx_nl_automations_trigger_type ON nl_automations(trigger_type);
+  CREATE INDEX IF NOT EXISTS idx_nl_automations_action_type ON nl_automations(action_type);
+`);
+
+// Create nl_automation_logs table for execution history
+db.exec(`
+  CREATE TABLE IF NOT EXISTS nl_automation_logs (
+    id TEXT PRIMARY KEY,
+    automation_id TEXT NOT NULL,
+    trigger_data TEXT,
+    action_result TEXT,
+    success INTEGER NOT NULL,
+    error_message TEXT,
+    executed_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_nl_automation_logs_automation ON nl_automation_logs(automation_id);
+  CREATE INDEX IF NOT EXISTS idx_nl_automation_logs_executed ON nl_automation_logs(executed_at);
+  CREATE INDEX IF NOT EXISTS idx_nl_automation_logs_success ON nl_automation_logs(success);
+`);
+
+console.log("Natural language automation tables initialized");
+
 // Seed initial family members if table is empty
 try {
   const existingMembers = db.prepare(`SELECT COUNT(*) as count FROM family_members`).get() as { count: number };
@@ -7088,6 +7132,306 @@ export function getNotificationQueueStats(): {
       sentToday: sentToday.count,
       byCategory: categoryMap,
       byPriority: priorityMap
+    };
+  });
+}
+
+// ============================================
+// NATURAL LANGUAGE AUTOMATION CRUD OPERATIONS
+// ============================================
+
+import type {
+  NLAutomation,
+  InsertNLAutomation,
+  UpdateNLAutomation,
+  NLAutomationLog
+} from "@shared/schema";
+
+// Row types for NL automations
+interface NLAutomationRow {
+  id: string;
+  name: string;
+  original_phrase: string;
+  trigger_type: string;
+  trigger_config: string;
+  action_type: string;
+  action_config: string;
+  conditions: string | null;
+  enabled: number;
+  last_triggered_at: string | null;
+  trigger_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface NLAutomationLogRow {
+  id: string;
+  automation_id: string;
+  trigger_data: string | null;
+  action_result: string | null;
+  success: number;
+  error_message: string | null;
+  executed_at: string;
+}
+
+// Map database row to NLAutomation type
+function mapNLAutomation(row: NLAutomationRow): NLAutomation {
+  return {
+    id: row.id,
+    name: row.name,
+    originalPhrase: row.original_phrase,
+    triggerType: row.trigger_type as NLAutomation["triggerType"],
+    triggerConfig: row.trigger_config,
+    actionType: row.action_type as NLAutomation["actionType"],
+    actionConfig: row.action_config,
+    conditions: row.conditions,
+    enabled: Boolean(row.enabled),
+    lastTriggeredAt: row.last_triggered_at,
+    triggerCount: row.trigger_count,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+// Map database row to NLAutomationLog type
+function mapNLAutomationLog(row: NLAutomationLogRow): NLAutomationLog {
+  return {
+    id: row.id,
+    automationId: row.automation_id,
+    triggerData: row.trigger_data,
+    actionResult: row.action_result,
+    success: Boolean(row.success),
+    errorMessage: row.error_message,
+    executedAt: row.executed_at
+  };
+}
+
+// CRUD: Create a new NL automation
+export function createNLAutomation(data: InsertNLAutomation): NLAutomation {
+  return wrapDbOperation("createNLAutomation", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO nl_automations (id, name, original_phrase, trigger_type, trigger_config, action_type, action_config, conditions, enabled, trigger_count, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+    `).run(
+      id,
+      data.name,
+      data.originalPhrase,
+      data.triggerType,
+      data.triggerConfig,
+      data.actionType,
+      data.actionConfig,
+      data.conditions || null,
+      data.enabled ? 1 : 0,
+      now,
+      now
+    );
+    
+    return getNLAutomation(id)!;
+  });
+}
+
+// CRUD: Get NL automation by ID
+export function getNLAutomation(id: string): NLAutomation | undefined {
+  return wrapDbOperation("getNLAutomation", () => {
+    const row = db.prepare(`SELECT * FROM nl_automations WHERE id = ?`).get(id) as NLAutomationRow | undefined;
+    return row ? mapNLAutomation(row) : undefined;
+  });
+}
+
+// CRUD: Get all NL automations
+export function getAllNLAutomations(): NLAutomation[] {
+  return wrapDbOperation("getAllNLAutomations", () => {
+    const rows = db.prepare(`SELECT * FROM nl_automations ORDER BY created_at DESC`).all() as NLAutomationRow[];
+    return rows.map(mapNLAutomation);
+  });
+}
+
+// CRUD: Get enabled NL automations
+export function getEnabledNLAutomations(): NLAutomation[] {
+  return wrapDbOperation("getEnabledNLAutomations", () => {
+    const rows = db.prepare(`SELECT * FROM nl_automations WHERE enabled = 1 ORDER BY created_at DESC`).all() as NLAutomationRow[];
+    return rows.map(mapNLAutomation);
+  });
+}
+
+// CRUD: Get NL automations by trigger type
+export function getNLAutomationsByTriggerType(triggerType: string): NLAutomation[] {
+  return wrapDbOperation("getNLAutomationsByTriggerType", () => {
+    const rows = db.prepare(`SELECT * FROM nl_automations WHERE trigger_type = ? AND enabled = 1 ORDER BY created_at DESC`).all(triggerType) as NLAutomationRow[];
+    return rows.map(mapNLAutomation);
+  });
+}
+
+// CRUD: Update NL automation
+export function updateNLAutomation(id: string, data: UpdateNLAutomation): NLAutomation | undefined {
+  return wrapDbOperation("updateNLAutomation", () => {
+    const existing = getNLAutomation(id);
+    if (!existing) return undefined;
+    
+    const now = getCurrentTimestamp();
+    const updates: string[] = ["updated_at = ?"];
+    const values: any[] = [now];
+    
+    if (data.name !== undefined) {
+      updates.push("name = ?");
+      values.push(data.name);
+    }
+    if (data.enabled !== undefined) {
+      updates.push("enabled = ?");
+      values.push(data.enabled ? 1 : 0);
+    }
+    if (data.triggerConfig !== undefined) {
+      updates.push("trigger_config = ?");
+      values.push(data.triggerConfig);
+    }
+    if (data.actionConfig !== undefined) {
+      updates.push("action_config = ?");
+      values.push(data.actionConfig);
+    }
+    if (data.conditions !== undefined) {
+      updates.push("conditions = ?");
+      values.push(data.conditions);
+    }
+    
+    values.push(id);
+    
+    db.prepare(`UPDATE nl_automations SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+    
+    return getNLAutomation(id);
+  });
+}
+
+// CRUD: Delete NL automation
+export function deleteNLAutomation(id: string): boolean {
+  return wrapDbOperation("deleteNLAutomation", () => {
+    const result = db.prepare(`DELETE FROM nl_automations WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// CRUD: Record automation trigger
+export function recordNLAutomationTrigger(automationId: string): void {
+  wrapDbOperation("recordNLAutomationTrigger", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      UPDATE nl_automations 
+      SET last_triggered_at = ?, trigger_count = trigger_count + 1, updated_at = ?
+      WHERE id = ?
+    `).run(now, now, automationId);
+  });
+}
+
+// CRUD: Create automation log entry
+export function createNLAutomationLog(data: {
+  automationId: string;
+  triggerData?: string;
+  actionResult?: string;
+  success: boolean;
+  errorMessage?: string;
+}): NLAutomationLog {
+  return wrapDbOperation("createNLAutomationLog", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO nl_automation_logs (id, automation_id, trigger_data, action_result, success, error_message, executed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.automationId,
+      data.triggerData || null,
+      data.actionResult || null,
+      data.success ? 1 : 0,
+      data.errorMessage || null,
+      now
+    );
+    
+    return getNLAutomationLog(id)!;
+  });
+}
+
+// CRUD: Get automation log by ID
+export function getNLAutomationLog(id: string): NLAutomationLog | undefined {
+  return wrapDbOperation("getNLAutomationLog", () => {
+    const row = db.prepare(`SELECT * FROM nl_automation_logs WHERE id = ?`).get(id) as NLAutomationLogRow | undefined;
+    return row ? mapNLAutomationLog(row) : undefined;
+  });
+}
+
+// CRUD: Get logs for an automation
+export function getNLAutomationLogs(automationId: string, limit: number = 20): NLAutomationLog[] {
+  return wrapDbOperation("getNLAutomationLogs", () => {
+    const rows = db.prepare(`
+      SELECT * FROM nl_automation_logs 
+      WHERE automation_id = ? 
+      ORDER BY executed_at DESC 
+      LIMIT ?
+    `).all(automationId, limit) as NLAutomationLogRow[];
+    return rows.map(mapNLAutomationLog);
+  });
+}
+
+// CRUD: Get recent automation logs (across all automations)
+export function getRecentNLAutomationLogs(limit: number = 50): NLAutomationLog[] {
+  return wrapDbOperation("getRecentNLAutomationLogs", () => {
+    const rows = db.prepare(`
+      SELECT * FROM nl_automation_logs 
+      ORDER BY executed_at DESC 
+      LIMIT ?
+    `).all(limit) as NLAutomationLogRow[];
+    return rows.map(mapNLAutomationLog);
+  });
+}
+
+// Query: Get NL automation statistics
+export function getNLAutomationStats(): {
+  total: number;
+  enabled: number;
+  disabled: number;
+  byTriggerType: Record<string, number>;
+  byActionType: Record<string, number>;
+  recentExecutions: number;
+  successRate: number;
+} {
+  return wrapDbOperation("getNLAutomationStats", () => {
+    const total = db.prepare(`SELECT COUNT(*) as count FROM nl_automations`).get() as { count: number };
+    const enabled = db.prepare(`SELECT COUNT(*) as count FROM nl_automations WHERE enabled = 1`).get() as { count: number };
+    
+    const byTrigger = db.prepare(`
+      SELECT trigger_type, COUNT(*) as count FROM nl_automations GROUP BY trigger_type
+    `).all() as Array<{ trigger_type: string; count: number }>;
+    
+    const byAction = db.prepare(`
+      SELECT action_type, COUNT(*) as count FROM nl_automations GROUP BY action_type
+    `).all() as Array<{ action_type: string; count: number }>;
+    
+    // Get executions from last 24 hours
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const recentExecutions = db.prepare(`
+      SELECT COUNT(*) as count FROM nl_automation_logs WHERE executed_at >= ?
+    `).get(yesterday) as { count: number };
+    
+    const recentSuccess = db.prepare(`
+      SELECT COUNT(*) as count FROM nl_automation_logs WHERE executed_at >= ? AND success = 1
+    `).get(yesterday) as { count: number };
+    
+    const triggerMap: Record<string, number> = {};
+    byTrigger.forEach(row => { triggerMap[row.trigger_type] = row.count; });
+    
+    const actionMap: Record<string, number> = {};
+    byAction.forEach(row => { actionMap[row.action_type] = row.count; });
+    
+    return {
+      total: total.count,
+      enabled: enabled.count,
+      disabled: total.count - enabled.count,
+      byTriggerType: triggerMap,
+      byActionType: actionMap,
+      recentExecutions: recentExecutions.count,
+      successRate: recentExecutions.count > 0 ? recentSuccess.count / recentExecutions.count : 1.0
     };
   });
 }
