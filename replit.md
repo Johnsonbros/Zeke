@@ -40,7 +40,10 @@ The user interface features a dark theme with a coral red accent and Poppins fon
   - Intent detection via `detectIntent()` to help route context appropriately
   - Enable via `USE_CONTEXT_ROUTER=true` environment variable (defaults to legacy mode for backward compatibility)
 - **Conversation Summarization System** (`server/conversationSummarizer.ts`): Compresses older conversation history into bullet summaries for token-efficient context:
+  - **Scope**: Designed for multi-turn chat conversations only; other entry points (automations, reminders, wake word commands) are single-purpose operations that construct specialized prompts without conversation history
   - Automatically summarizes conversations exceeding 30 messages using GPT-4o-mini
+  - Fire-and-forget trigger in `chat()` when conversation approaches threshold (25+ messages)
+  - Hourly cron job (`server/jobs/conversationSummarizer.ts`) backfills legacy conversations
   - Stores summaries in `conversations.summary` with `summarizedMessageCount` and `lastSummarizedAt` tracking
   - `getConversationContext()`: Returns summary + recent messages for efficient prompt building
   - `summarizeAllPendingConversations()`: Batch summarization for background processing
