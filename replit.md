@@ -36,8 +36,10 @@ The UI features a dark theme with a coral red accent and Poppins font, designed 
 - **Food Preference Intelligence System**: Tracks preferences, restrictions, and recipes, with AI-powered generation and grocery integration.
 - **Grocery List Auto-Clear**: Configurable settings for purchased items.
 - **Smart Notification Batching**: Intelligent SMS notification system that queues notifications, batches them at configurable intervals, respects quiet hours (9pm-8am default), and allows urgent notifications to bypass batching. Features a dashboard widget for status monitoring and preference controls.
+- **Natural Language Automation Builder**: Convert natural language phrases like "Remind me to check email every morning at 8am" into structured automations with intelligent parsing (GPT-4o-mini). Supports 5 trigger types (time/event/location/keyword/condition) and 7 action types (send_sms/create_task/add_grocery/set_reminder/notify/generate_summary/update_memory). Features an Automations page UI for viewing, testing, toggling, and deleting automation rules.
+- **Predictive Task Scheduling**: Analyzes task completion patterns (day of week, hour preferences, category breakdowns) to generate AI-powered scheduling suggestions. Provides quick scheduling options (Today, Tomorrow, Next Week, preferred days) and pattern insights with recommendations. Uses debounced API calls with lazy OpenAI client initialization for efficiency and security.
 
-Key capabilities include SMS communication, full CRUD for tasks, Google Calendar event management, weather updates, morning briefings, AI-powered web search, file operations, time utilities, and shared grocery list management.
+Key capabilities include SMS communication, full CRUD for tasks, Google Calendar event management, weather updates, morning briefings, AI-powered web search, file operations, time utilities, shared grocery list management, and intelligent automation rules.
 
 ## External Dependencies
 - **OpenAI API**: AI responses, agent logic, and text embeddings.
