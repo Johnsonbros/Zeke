@@ -42,6 +42,10 @@ The user interface features a dark theme with a coral red accent and Poppins fon
   - `get_lifelog_context`: Get relevant excerpts for a topic (searches last 72 hours).
   - `generate_daily_summary`: AI-powered daily conversation summary with key discussions, action items, insights.
   - `get_daily_summary`: Retrieve cached daily summary.
+  - **Voice Commands (Wake Word)**: Say "Hey ZEKE" followed by a command into the pendant. The system scans lifelogs every 5 minutes, detects commands, and executes them:
+    - `set_reminder`: "Hey ZEKE, remind me to [task] in [time]" - Creates reminder and sends SMS when due
+    - `schedule_event`: "Hey ZEKE, schedule [event] for [time]" - Creates Google Calendar event
+    - `search_info`: "Hey ZEKE, search for [topic]" - Searches web via Perplexity and sends results via SMS
 - **Limitless Analytics Dashboard**: Interactive dashboard at `/limitless` showing conversation trends, top contacts, topics, and daily summaries with recharts visualizations.
 - **Automatic People Tracking System**: Autonomously extracts and tracks relationships from lifelogs and conversations, creating/updating contacts and linking memories to individuals.
 - **Admin Profile System**: Comprehensive profile management integrated into ZEKE's context for personalized assistance.
