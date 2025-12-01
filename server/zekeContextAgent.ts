@@ -471,10 +471,11 @@ async function executeAction(
       case "get_weather": {
         try {
           const city = action.weatherDetails?.city || "Boston";
+          const state = action.weatherDetails?.state || "MA";
           const country = action.weatherDetails?.country || "US";
           const includeForecast = action.weatherDetails?.includeForecast || false;
           
-          const weather = await getCurrentWeather(city, country);
+          const weather = await getCurrentWeather(city, state, country);
           let weatherMessage = `Weather in ${weather.location}:\n`;
           weatherMessage += `${weather.temperature}°F (feels like ${weather.feelsLike}°F)\n`;
           weatherMessage += `${weather.description}\n`;
@@ -483,7 +484,7 @@ async function executeAction(
           weatherMessage += `Sunrise: ${weather.sunrise}, Sunset: ${weather.sunset}`;
           
           if (includeForecast) {
-            const forecast = await getWeatherForecast(city, country, 3);
+            const forecast = await getWeatherForecast(city, state, country, 3);
             weatherMessage += `\n\nForecast:\n${formatForecastForSms(forecast)}`;
           }
           

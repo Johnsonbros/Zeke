@@ -426,7 +426,7 @@ export function isMasterAdmin(phoneNumber: string): boolean {
 }
 
 // Automation types for recurring scheduled jobs
-export const automationTypes = ["morning_briefing", "scheduled_sms", "daily_checkin", "task_followup"] as const;
+export const automationTypes = ["morning_briefing", "scheduled_sms", "daily_checkin", "task_followup", "weather_report"] as const;
 export type AutomationType = typeof automationTypes[number];
 
 // Automations table for recurring scheduled jobs

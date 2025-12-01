@@ -9,9 +9,10 @@ import {
   getTasksDueTomorrow,
 } from "./db";
 import type { Automation, Contact } from "@shared/schema";
-import { isMasterAdmin, MASTER_ADMIN_PHONE } from "@shared/schema";
+import { isMasterAdmin, MASTER_ADMIN_PHONE, getContactFullName } from "@shared/schema";
 import { sendDailyCheckIn } from "./dailyCheckIn";
 import { generateTaskFollowUp } from "./capabilities/workflows";
+import { generateMorningWeatherReport, formatMorningWeatherReportForSms } from "./weather";
 
 const scheduledTasks: Map<string, cron.ScheduledTask> = new Map();
 
@@ -131,7 +132,7 @@ function verifyRecipientAuthorization(
         authorized: false,
         isMasterAdmin: false,
         contact,
-        reason: `Contact ${contact.name} lacks required permissions (canSetReminders: ${contact.canSetReminders}, canAccessPersonalInfo: ${contact.canAccessPersonalInfo})`,
+        reason: `Contact ${getContactFullName(contact)} lacks required permissions (canSetReminders: ${contact.canSetReminders}, canAccessPersonalInfo: ${contact.canAccessPersonalInfo})`,
       };
     
     case "scheduled_sms":
@@ -147,7 +148,23 @@ function verifyRecipientAuthorization(
         authorized: false,
         isMasterAdmin: false,
         contact,
-        reason: `Contact ${contact.name} lacks canSetReminders permission`,
+        reason: `Contact ${getContactFullName(contact)} lacks canSetReminders permission`,
+      };
+    
+    case "weather_report":
+      if (contact.canSetReminders) {
+        return {
+          authorized: true,
+          isMasterAdmin: false,
+          contact,
+          reason: "Contact authorized for weather reports",
+        };
+      }
+      return {
+        authorized: false,
+        isMasterAdmin: false,
+        contact,
+        reason: `Contact ${getContactFullName(contact)} lacks canSetReminders permission`,
       };
     
     default:
@@ -206,7 +223,7 @@ export async function executeAutomation(automation: Automation): Promise<{
         const briefing = await getMorningBriefing();
         await sendSmsCallback(automation.recipientPhone, briefing);
         
-        console.log(`[AUDIT] [${timestamp}] Morning briefing sent successfully to ${automation.recipientPhone} (authorized: ${authCheck.isMasterAdmin ? "master_admin" : authCheck.contact?.name || "contact"})`);
+        console.log(`[AUDIT] [${timestamp}] Morning briefing sent successfully to ${automation.recipientPhone} (authorized: ${authCheck.isMasterAdmin ? "master_admin" : authCheck.contact ? getContactFullName(authCheck.contact) : "contact"})`);
         return {
           success: true,
           message: `Morning briefing sent to ${automation.recipientPhone}`,
@@ -255,7 +272,7 @@ export async function executeAutomation(automation: Automation): Promise<{
         
         await sendSmsCallback(automation.recipientPhone, automation.message);
         
-        console.log(`[AUDIT] [${timestamp}] Scheduled SMS sent successfully to ${automation.recipientPhone} (authorized: ${authCheck.isMasterAdmin ? "master_admin" : authCheck.contact?.name || "contact"})`);
+        console.log(`[AUDIT] [${timestamp}] Scheduled SMS sent successfully to ${automation.recipientPhone} (authorized: ${authCheck.isMasterAdmin ? "master_admin" : authCheck.contact ? getContactFullName(authCheck.contact) : "contact"})`);
         return {
           success: true,
           message: `SMS sent to ${automation.recipientPhone}`,
@@ -311,6 +328,67 @@ export async function executeAutomation(automation: Automation): Promise<{
           success: true,
           message: `Task follow-up sent to ${recipientPhone} (${overdue.length} overdue, ${today.length} today, ${tomorrow.length} tomorrow)`,
         };
+      }
+      
+      case "weather_report": {
+        if (!automation.recipientPhone) {
+          console.log(`[AUDIT] [${timestamp}] Automation ${automation.id} failed: No recipient phone configured`);
+          return {
+            success: false,
+            message: "No recipient phone number configured",
+            error: "Missing recipientPhone",
+          };
+        }
+        
+        const authCheck = verifyRecipientAuthorization(automation.recipientPhone, automation.type);
+        console.log(`[AUDIT] [${timestamp}] Permission check for ${automation.recipientPhone}: authorized=${authCheck.authorized}, reason="${authCheck.reason}"`);
+        
+        if (!authCheck.authorized) {
+          console.log(`[AUDIT] [${timestamp}] ACCESS DENIED: Automation ${automation.id} blocked. Recipient ${automation.recipientPhone} not authorized for weather_report. Reason: ${authCheck.reason}`);
+          return {
+            success: false,
+            message: `Access denied: ${authCheck.reason}`,
+            error: "ACCESS_DENIED",
+          };
+        }
+        
+        if (!sendSmsCallback) {
+          console.log(`[AUDIT] [${timestamp}] Automation ${automation.id} failed: SMS callback not configured`);
+          return {
+            success: false,
+            message: "SMS callback not configured",
+            error: "SMS not available",
+          };
+        }
+        
+        try {
+          const settings = automation.settings ? JSON.parse(automation.settings) : {};
+          const city = settings.city || "Abington";
+          const state = settings.state || "MA";
+          const recipientName = authCheck.isMasterAdmin 
+            ? "Nate" 
+            : (authCheck.contact?.firstName || undefined);
+          
+          console.log(`[AUDIT] [${timestamp}] Generating weather report for ${city}, ${state} for ${recipientName || "recipient"}`);
+          
+          const report = await generateMorningWeatherReport(city, state, recipientName);
+          const smsMessage = formatMorningWeatherReportForSms(report);
+          
+          await sendSmsCallback(automation.recipientPhone, smsMessage);
+          
+          console.log(`[AUDIT] [${timestamp}] Weather report sent successfully to ${automation.recipientPhone}`);
+          return {
+            success: true,
+            message: `Weather report for ${city}, ${state} sent to ${automation.recipientPhone}`,
+          };
+        } catch (weatherError: any) {
+          console.error(`[AUDIT] [${timestamp}] Weather report generation failed:`, weatherError);
+          return {
+            success: false,
+            message: `Weather report failed: ${weatherError.message}`,
+            error: weatherError.message,
+          };
+        }
       }
       
       default:

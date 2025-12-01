@@ -156,15 +156,16 @@ export async function executeUtilityTool(
     }
     
     case "get_weather": {
-      const { city, country, include_forecast, forecast_days } = args as {
+      const { city, state, country, include_forecast, forecast_days } = args as {
         city?: string;
+        state?: string;
         country?: string;
         include_forecast?: boolean;
         forecast_days?: number;
       };
       
       try {
-        const weather = await getCurrentWeather(city || "Boston", country || "US");
+        const weather = await getCurrentWeather(city || "Boston", state || "MA", country || "US");
         
         const result: any = {
           current: weather,
@@ -172,7 +173,7 @@ export async function executeUtilityTool(
         };
         
         if (include_forecast) {
-          const forecast = await getWeatherForecast(city || "Boston", country || "US", forecast_days || 5);
+          const forecast = await getWeatherForecast(city || "Boston", state || "MA", country || "US", forecast_days || 5);
           result.forecast = forecast;
           result.forecast_summary = formatForecastForSms(forecast);
         }
@@ -206,7 +207,7 @@ export async function executeUtilityTool(
         briefingParts.push(`Good morning, Nate! Here's your briefing for ${dateStr}:`);
         
         try {
-          const weather = await getCurrentWeather("Boston", "US");
+          const weather = await getCurrentWeather("Boston", "MA", "US");
           briefingParts.push(`\nWeather: ${weather.temperature}°F (feels like ${weather.feelsLike}°F), ${weather.description}. Sunrise ${weather.sunrise}, Sunset ${weather.sunset}.`);
         } catch (e) {
           briefingParts.push("\nWeather: Unable to fetch weather data.");
