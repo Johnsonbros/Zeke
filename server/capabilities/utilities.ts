@@ -13,6 +13,7 @@ import {
   getPendingReminders,
 } from "../db";
 import { resolvePendingMemory, getAllPendingMemories } from "../agent";
+import { getMorningBriefingEnhancement } from "../limitless";
 
 export const utilityToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
@@ -291,6 +292,38 @@ export async function executeUtilityTool(
             }
           }
         } catch (e) {
+        }
+        
+        // Add Limitless conversation highlights from yesterday
+        try {
+          const limitlessData = await getMorningBriefingEnhancement();
+          
+          if (limitlessData.recentSummary) {
+            briefingParts.push(`\nYesterday's Conversations:`);
+            briefingParts.push(`  ${limitlessData.recentSummary.summaryTitle}`);
+            
+            // Add key highlights
+            if (limitlessData.keyHighlights.length > 0) {
+              briefingParts.push(`  Highlights: ${limitlessData.keyHighlights[0].split("] ")[1]?.substring(0, 150) || limitlessData.keyHighlights[0].substring(0, 150)}`);
+            }
+            
+            // Add pending action items from conversations
+            if (limitlessData.pendingActionItems.length > 0) {
+              const topItems = limitlessData.pendingActionItems.slice(0, 3);
+              briefingParts.push(`  Action items from conversations:`);
+              for (const item of topItems) {
+                briefingParts.push(`    ${item}`);
+              }
+            }
+            
+            // Add follow-up reminders
+            if (limitlessData.upcomingFollowUps.length > 0) {
+              briefingParts.push(`  Note: ${limitlessData.upcomingFollowUps[0]}`);
+            }
+          }
+        } catch (e) {
+          // Limitless enhancement is optional, don't fail the briefing
+          console.log("Limitless enhancement unavailable:", e);
         }
         
         briefingParts.push("\nHave a great day!");
