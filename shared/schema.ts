@@ -432,12 +432,18 @@ export interface WorkData {
   notes?: string;
 }
 
+// Family member reference with optional contact linking (for profile data)
+export interface FamilyMemberRef {
+  contactId?: string;    // Optional: links to an existing contact for rich context
+  displayName: string;   // Display name (from contact or manually entered)
+}
+
 export interface FamilyData {
   relationshipStatus?: string;
-  spouse?: string;
-  children?: string[];
-  parents?: string[];
-  siblings?: string[];
+  spouse?: FamilyMemberRef;
+  children?: FamilyMemberRef[];
+  parents?: FamilyMemberRef[];
+  siblings?: FamilyMemberRef[];
   pets?: string[];
   notes?: string;
 }

@@ -1743,6 +1743,21 @@ export async function registerRoutes(
   
   // ==================== CONTACTS API ====================
   
+  // Search contacts by name
+  app.get("/api/contacts/search", async (req, res) => {
+    try {
+      const query = req.query.q as string;
+      if (!query || query.length < 1) {
+        return res.json([]);
+      }
+      const contacts = searchContacts(query);
+      res.json(contacts);
+    } catch (error: any) {
+      console.error("Search contacts error:", error);
+      res.status(500).json({ message: "Failed to search contacts" });
+    }
+  });
+  
   // Get all contacts
   app.get("/api/contacts", async (_req, res) => {
     try {
