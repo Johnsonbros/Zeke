@@ -33,7 +33,11 @@ import {
   Check,
   ChevronRight,
   Eye,
-  Send
+  Send,
+  StickyNote,
+  Mail,
+  Bot,
+  Clock
 } from "lucide-react";
 import { 
   Select,
@@ -61,14 +65,18 @@ import {
   FormLabel,
   FormDescription,
 } from "@/components/ui/form";
-import type { Contact, Conversation, AccessLevel, TwilioMessage } from "@shared/schema";
-import { accessLevels, defaultPermissionsByLevel, MASTER_ADMIN_PHONE } from "@shared/schema";
+import type { Contact, Conversation, AccessLevel, TwilioMessage, ContactNote } from "@shared/schema";
+import { accessLevels, defaultPermissionsByLevel, MASTER_ADMIN_PHONE, getContactFullName } from "@shared/schema";
 import { format, parseISO } from "date-fns";
 
 type ContactWithStats = Contact & {
   messageCount: number;
   conversations: Conversation[];
 };
+
+function getContactDisplayName(contact: Contact): string {
+  return getContactFullName(contact);
+}
 
 const ACCESS_LEVEL_CONFIG: Record<AccessLevel, { label: string; icon: typeof Crown; color: string; description: string }> = {
   admin: { 
@@ -110,8 +118,13 @@ const ACCESS_LEVEL_CONFIG: Record<AccessLevel, { label: string; icon: typeof Cro
 };
 
 const contactFormSchema = z.object({
-  name: z.string().min(1, "Name is required"),
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  middleName: z.string().optional(),
   phoneNumber: z.string().min(10, "Valid phone number required"),
+  email: z.string().email().optional().or(z.literal("")),
+  aiAssistantPhone: z.string().optional(),
+  imageUrl: z.string().url().optional().or(z.literal("")),
   accessLevel: z.enum(accessLevels).default("unknown"),
   relationship: z.string().optional(),
   notes: z.string().optional(),
@@ -132,13 +145,10 @@ function formatPhoneDisplay(phone: string): string {
   return phone;
 }
 
-function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .map(part => part[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+function getInitials(contact: Contact): string {
+  const first = contact.firstName?.[0] || "";
+  const last = contact.lastName?.[0] || "";
+  return (first + last).toUpperCase() || "?";
 }
 
 function ContactCard({ 
@@ -163,14 +173,14 @@ function ContactCard({
       <div className="flex items-start gap-2 sm:gap-3">
         <Avatar className="h-9 w-9 sm:h-10 sm:w-10 shrink-0">
           <AvatarFallback className={`text-xs sm:text-sm ${isMasterAdmin ? "bg-primary text-primary-foreground" : "bg-accent"}`}>
-            {getInitials(contact.name)}
+            {getInitials(contact)}
           </AvatarFallback>
         </Avatar>
         
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             <span className="font-medium text-xs sm:text-sm truncate" data-testid={`text-contact-name-${contact.id}`}>
-              {contact.name}
+              {getContactDisplayName(contact)}
             </span>
             {isMasterAdmin && (
               <Badge variant="default" className="text-[10px] sm:text-xs gap-0.5 sm:gap-1">
@@ -276,7 +286,7 @@ function ContactDetailPanel({
       queryClient.invalidateQueries({ queryKey: ['/api/twilio/messages/phone', contact.phoneNumber] });
       queryClient.invalidateQueries({ queryKey: ["/api/twilio/messages"] });
       queryClient.invalidateQueries({ queryKey: ["/api/twilio/conversations"] });
-      toast({ title: "Message sent", description: `SMS sent to ${contact.name}` });
+      toast({ title: "Message sent", description: `SMS sent to ${getContactDisplayName(contact)}` });
       setMessageText("");
     },
     onError: (error: any) => {
@@ -296,8 +306,13 @@ function ContactDetailPanel({
   const form = useForm<ContactFormValues>({
     resolver: zodResolver(contactFormSchema),
     defaultValues: {
-      name: contact.name,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      middleName: contact.middleName || "",
       phoneNumber: contact.phoneNumber,
+      email: contact.email || "",
+      aiAssistantPhone: contact.aiAssistantPhone || "",
+      imageUrl: contact.imageUrl || "",
       accessLevel: contact.accessLevel,
       relationship: contact.relationship || "",
       notes: contact.notes || "",
@@ -333,7 +348,7 @@ function ContactDetailPanel({
             <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </Button>
           <div className="min-w-0">
-            <h2 className="font-semibold text-sm sm:text-base truncate">{contact.name}</h2>
+            <h2 className="font-semibold text-sm sm:text-base truncate">{getContactDisplayName(contact)}</h2>
             <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{formatPhoneDisplay(contact.phoneNumber)}</p>
           </div>
         </div>
@@ -374,6 +389,10 @@ function ContactDetailPanel({
               <User className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
               Details
             </TabsTrigger>
+            <TabsTrigger value="notes" className="flex-1 text-xs sm:text-sm gap-1 sm:gap-1.5" data-testid="tab-notes">
+              <StickyNote className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+              Notes
+            </TabsTrigger>
           </TabsList>
         </div>
         
@@ -393,7 +412,7 @@ function ContactDetailPanel({
                   <MessageSquare className="h-10 w-10 sm:h-12 sm:w-12 mx-auto text-muted-foreground opacity-50 mb-3 sm:mb-4" />
                   <p className="text-sm sm:text-base text-muted-foreground">No messages yet</p>
                   <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
-                    SMS messages with {contact.name} will appear here
+                    SMS messages with {getContactDisplayName(contact)} will appear here
                   </p>
                 </div>
               ) : (
@@ -431,7 +450,7 @@ function ContactDetailPanel({
               <Textarea
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
-                placeholder={`Send a message to ${contact.name}...`}
+                placeholder={`Send a message to ${getContactDisplayName(contact)}...`}
                 className="min-h-[60px] max-h-[120px] resize-none text-xs sm:text-sm"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -459,18 +478,27 @@ function ContactDetailPanel({
               <div className="flex items-center gap-3 sm:gap-4">
                 <Avatar className="h-12 w-12 sm:h-16 sm:w-16 shrink-0">
                   <AvatarFallback className={`text-base sm:text-xl ${isMasterAdmin ? "bg-primary text-primary-foreground" : "bg-accent"}`}>
-                    {getInitials(contact.name)}
+                    {getInitials(contact)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
                   {isEditing ? (
-                    <Input 
-                      {...form.register("name")}
-                      className="font-semibold text-base sm:text-lg mb-1"
-                      data-testid="input-edit-name"
-                    />
+                    <div className="flex gap-2 mb-1">
+                      <Input 
+                        {...form.register("firstName")}
+                        placeholder="First name"
+                        className="font-semibold text-base sm:text-lg"
+                        data-testid="input-edit-firstName"
+                      />
+                      <Input 
+                        {...form.register("lastName")}
+                        placeholder="Last name"
+                        className="font-semibold text-base sm:text-lg"
+                        data-testid="input-edit-lastName"
+                      />
+                    </div>
                   ) : (
-                    <h3 className="font-semibold text-base sm:text-lg truncate">{contact.name}</h3>
+                    <h3 className="font-semibold text-base sm:text-lg truncate">{getContactDisplayName(contact)}</h3>
                   )}
                   <div className="flex items-center gap-1 text-xs sm:text-sm text-muted-foreground">
                     <Phone className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
@@ -637,8 +665,173 @@ function ContactDetailPanel({
             </div>
           </ScrollArea>
         </TabsContent>
+        
+        <NotesTabContent contact={contact} />
       </Tabs>
     </div>
+  );
+}
+
+const NOTE_TYPE_CONFIG = {
+  interaction: { label: "Interaction", color: "text-blue-500" },
+  observation: { label: "Observation", color: "text-green-500" },
+  comment: { label: "Comment", color: "text-yellow-500" },
+  fact: { label: "Fact", color: "text-purple-500" },
+};
+
+function NotesTabContent({ contact }: { contact: ContactWithStats }) {
+  const [newNote, setNewNote] = useState("");
+  const [noteType, setNoteType] = useState<"interaction" | "observation" | "comment" | "fact">("observation");
+  const { toast } = useToast();
+  
+  const { data: notes, isLoading } = useQuery<ContactNote[]>({
+    queryKey: ['/api/contacts', contact.id, 'notes'],
+    queryFn: async () => {
+      const response = await fetch(`/api/contacts/${contact.id}/notes`);
+      if (!response.ok) throw new Error('Failed to fetch notes');
+      return response.json();
+    },
+  });
+  
+  const addNoteMutation = useMutation({
+    mutationFn: async ({ content, noteType, createdBy }: { content: string; noteType: string; createdBy: string }) => {
+      return apiRequest("POST", `/api/contacts/${contact.id}/notes`, { content, noteType, createdBy });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts', contact.id, 'notes'] });
+      toast({ title: "Note added", description: "Your observation has been saved." });
+      setNewNote("");
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to add note",
+        variant: "destructive"
+      });
+    },
+  });
+  
+  const deleteNoteMutation = useMutation({
+    mutationFn: async (noteId: string) => {
+      return apiRequest("DELETE", `/api/contacts/${contact.id}/notes/${noteId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts', contact.id, 'notes'] });
+      toast({ title: "Note deleted" });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to delete note",
+        variant: "destructive"
+      });
+    },
+  });
+  
+  const handleAddNote = () => {
+    if (!newNote.trim()) return;
+    addNoteMutation.mutate({ content: newNote.trim(), noteType, createdBy: "nate" });
+  };
+  
+  return (
+    <TabsContent value="notes" className="flex-1 m-0 min-h-0 flex flex-col">
+      <ScrollArea className="flex-1">
+        <div className="p-3 sm:p-4 space-y-4">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Select value={noteType} onValueChange={(v) => setNoteType(v as typeof noteType)}>
+                <SelectTrigger className="w-32" data-testid="select-note-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="observation">Observation</SelectItem>
+                  <SelectItem value="interaction">Interaction</SelectItem>
+                  <SelectItem value="comment">Comment</SelectItem>
+                  <SelectItem value="fact">Fact</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2 items-end">
+              <Textarea
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                placeholder="Add a note about this contact..."
+                className="min-h-[80px] resize-none text-sm"
+                data-testid="input-add-note"
+              />
+              <Button 
+                size="icon" 
+                onClick={handleAddNote}
+                disabled={!newNote.trim() || addNoteMutation.isPending}
+                data-testid="button-add-note"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium flex items-center gap-2">
+              <StickyNote className="h-4 w-4" />
+              Notes & Observations
+            </h4>
+            
+            {isLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-20 w-full rounded-lg" />
+                ))}
+              </div>
+            ) : !notes || notes.length === 0 ? (
+              <div className="text-center py-8">
+                <StickyNote className="h-10 w-10 mx-auto text-muted-foreground opacity-50 mb-3" />
+                <p className="text-sm text-muted-foreground">No notes yet</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Add observations, facts, or comments about this contact
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {notes.map((note) => {
+                  const typeConfig = NOTE_TYPE_CONFIG[note.noteType as keyof typeof NOTE_TYPE_CONFIG] || NOTE_TYPE_CONFIG.observation;
+                  return (
+                    <Card key={note.id} className="p-3 group" data-testid={`note-${note.id}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                            <Badge variant="outline" className={`text-[10px] ${typeConfig.color}`}>
+                              {typeConfig.label}
+                            </Badge>
+                            <Badge variant="secondary" className="text-[10px] gap-0.5">
+                              {note.createdBy === "zeke" ? <Bot className="h-2.5 w-2.5" /> : <User className="h-2.5 w-2.5" />}
+                              {note.createdBy === "zeke" ? "ZEKE" : "Nate"}
+                            </Badge>
+                            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                              <Clock className="h-2.5 w-2.5" />
+                              {format(parseISO(note.createdAt), "MMM d, yyyy")}
+                            </span>
+                          </div>
+                          <p className="text-sm">{note.content}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                          onClick={() => deleteNoteMutation.mutate(note.id)}
+                          data-testid={`button-delete-note-${note.id}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </ScrollArea>
+    </TabsContent>
   );
 }
 
@@ -708,8 +901,13 @@ export default function ContactsPage() {
   const addForm = useForm<ContactFormValues>({
     resolver: zodResolver(contactFormSchema),
     defaultValues: {
-      name: "",
+      firstName: "",
+      lastName: "",
+      middleName: "",
       phoneNumber: "",
+      email: "",
+      aiAssistantPhone: "",
+      imageUrl: "",
       accessLevel: "unknown",
       relationship: "",
       notes: "",
@@ -835,18 +1033,33 @@ export default function ContactsPage() {
           </DialogHeader>
           <Form {...addForm}>
             <form onSubmit={addForm.handleSubmit(handleAddContact)} className="space-y-4">
-              <FormField
-                control={addForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="John Doe" {...field} data-testid="input-add-name" />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  control={addForm.control}
+                  name="firstName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>First Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="John" {...field} data-testid="input-add-firstName" />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={addForm.control}
+                  name="lastName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Last Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Doe" {...field} data-testid="input-add-lastName" />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </div>
               
               <FormField
                 control={addForm.control}

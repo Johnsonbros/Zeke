@@ -282,6 +282,14 @@ export type InsertContact = z.infer<typeof insertContactSchema>;
 export type UpdateContact = z.infer<typeof updateContactSchema>;
 export type Contact = typeof contacts.$inferSelect;
 
+// Helper function to get full name from contact
+export function getContactFullName(contact: Contact): string {
+  const parts = [contact.firstName];
+  if (contact.middleName) parts.push(contact.middleName);
+  parts.push(contact.lastName);
+  return parts.filter(Boolean).join(" ");
+}
+
 // Default permissions by access level
 export const defaultPermissionsByLevel: Record<AccessLevel, {
   canAccessPersonalInfo: boolean;

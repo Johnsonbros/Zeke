@@ -146,7 +146,12 @@ import {
   updateRecipe,
   deleteRecipe,
   incrementRecipeCooked,
-  getMostCookedMeals
+  getMostCookedMeals,
+  createContactNote,
+  getContactNotes,
+  getContactNotesByType,
+  deleteContactNote,
+  deleteAllContactNotes
 } from "./db";
 import type { TwilioMessageSource } from "@shared/schema";
 import { generateContextualQuestion } from "./gettingToKnow";
@@ -198,7 +203,7 @@ import {
   getMorningBriefingEnhancement,
   getLimitlessSummaries,
 } from "./limitless";
-import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, insertFoodPreferenceSchema, insertDietaryRestrictionSchema, insertSavedRecipeSchema, updateSavedRecipeSchema, insertMealHistorySchema, type Automation, type InsertAutomation } from "@shared/schema";
+import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertContactNoteSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, insertFoodPreferenceSchema, insertDietaryRestrictionSchema, insertSavedRecipeSchema, updateSavedRecipeSchema, insertMealHistorySchema, type Automation, type InsertAutomation, getContactFullName } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
 import { listCalendarEvents, getTodaysEvents, getUpcomingEvents, createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, listCalendars, type CalendarEvent, type CalendarInfo } from "./googleCalendar";
@@ -259,7 +264,7 @@ function logTwilioMessage(params: {
       toNumber: params.toNumber,
       body: params.body,
       contactId: contact?.id || null,
-      contactName: contact?.name || null,
+      contactName: contact ? getContactFullName(contact) : null,
       conversationId: params.conversationId || null,
       errorCode: params.errorCode || null,
       errorMessage: params.errorMessage || null,
@@ -1894,6 +1899,94 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Get contact conversations error:", error);
       res.status(500).json({ message: "Failed to get conversations" });
+    }
+  });
+  
+  // Get notes for a contact
+  app.get("/api/contacts/:id/notes", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const contact = getContact(id);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      const noteType = req.query.type as string | undefined;
+      const notes = noteType 
+        ? getContactNotesByType(id, noteType as any)
+        : getContactNotes(id);
+      res.json(notes);
+    } catch (error: any) {
+      console.error("Get contact notes error:", error);
+      res.status(500).json({ message: "Failed to get contact notes" });
+    }
+  });
+  
+  // Create a note for a contact
+  app.post("/api/contacts/:id/notes", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const contact = getContact(id);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      const parsed = insertContactNoteSchema.safeParse({
+        ...req.body,
+        contactId: id
+      });
+      
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      const note = createContactNote(parsed.data);
+      res.json(note);
+    } catch (error: any) {
+      console.error("Create contact note error:", error);
+      res.status(500).json({ message: "Failed to create contact note" });
+    }
+  });
+  
+  // Delete a specific note
+  app.delete("/api/contacts/:id/notes/:noteId", async (req, res) => {
+    try {
+      const { id, noteId } = req.params;
+      const contact = getContact(id);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      const deleted = deleteContactNote(noteId);
+      if (!deleted) {
+        return res.status(404).json({ message: "Note not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete contact note error:", error);
+      res.status(500).json({ message: "Failed to delete contact note" });
+    }
+  });
+  
+  // Delete all notes for a contact
+  app.delete("/api/contacts/:id/notes", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const contact = getContact(id);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      const deletedCount = deleteAllContactNotes(id);
+      res.json({ success: true, deletedCount });
+    } catch (error: any) {
+      console.error("Delete all contact notes error:", error);
+      res.status(500).json({ message: "Failed to delete contact notes" });
     }
   });
   
