@@ -41,6 +41,10 @@ import {
   Coffee,
   Heart,
   MapPinned,
+  Lightbulb,
+  X,
+  Check,
+  RefreshCw,
 } from "lucide-react";
 import type { Task, GroceryItem, MemoryNote, Conversation, Message, ChatResponse } from "@shared/schema";
 import { format, isPast, isToday, parseISO, isWithinInterval, startOfDay, endOfDay } from "date-fns";
@@ -93,6 +97,26 @@ interface LocationHistory {
   accuracy?: string;
   source: string;
   createdAt: string;
+}
+
+interface Insight {
+  id: string;
+  type: string;
+  category: string;
+  title: string;
+  content: string;
+  priority: "high" | "medium" | "low";
+  confidence: number;
+  suggestedAction?: string;
+  status: "new" | "surfaced" | "snoozed" | "completed" | "dismissed";
+  createdAt: string;
+}
+
+interface InsightStats {
+  total: number;
+  byCategory: Record<string, number>;
+  byStatus: Record<string, number>;
+  byPriority: Record<string, number>;
 }
 
 type DashboardStats = {
@@ -920,6 +944,174 @@ function ConversationQualityWidget({
   );
 }
 
+function getInsightCategoryIcon(category: string) {
+  switch (category) {
+    case "task_health":
+      return ListTodo;
+    case "memory_hygiene":
+      return Brain;
+    case "calendar_load":
+      return Calendar;
+    case "cross_domain":
+      return Sparkles;
+    default:
+      return Lightbulb;
+  }
+}
+
+function ProactiveInsightsWidget({
+  insights,
+  isLoading,
+  onDismiss,
+  onComplete,
+  onSnooze,
+  onRefresh,
+  isRefreshing,
+}: {
+  insights: Insight[] | undefined;
+  isLoading: boolean;
+  onDismiss: (id: string) => void;
+  onComplete: (id: string) => void;
+  onSnooze: (id: string) => void;
+  onRefresh: () => void;
+  isRefreshing: boolean;
+}) {
+  const { toast } = useToast();
+
+  if (isLoading) {
+    return (
+      <Card className="col-span-1 sm:col-span-2" data-testid="widget-proactive-insights">
+        <CardHeader className="pb-2 sm:pb-3">
+          <Skeleton className="h-5 w-40" />
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+          <Skeleton className="h-12" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const activeInsights = insights
+    ?.filter((i) => i.status === "new" || i.status === "surfaced")
+    .sort((a, b) => {
+      const priorityOrder = { high: 0, medium: 1, low: 2 };
+      return priorityOrder[a.priority] - priorityOrder[b.priority];
+    })
+    .slice(0, 5) || [];
+
+  const getPriorityVariant = (priority: string): "destructive" | "secondary" | "default" => {
+    switch (priority) {
+      case "high":
+        return "destructive";
+      case "medium":
+        return "secondary";
+      default:
+        return "default";
+    }
+  };
+
+  return (
+    <Card className="col-span-1 sm:col-span-2" data-testid="widget-proactive-insights">
+      <CardHeader className="pb-2 sm:pb-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-primary/10">
+              <Lightbulb className="h-4 w-4 text-primary" />
+            </div>
+            <CardTitle className="text-sm sm:text-base">Proactive Insights</CardTitle>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs gap-1"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            data-testid="button-refresh-insights"
+          >
+            <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`} />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3 sm:space-y-4">
+        {activeInsights.length > 0 ? (
+          <div className="space-y-2">
+            {activeInsights.map((insight) => {
+              const CategoryIcon = getInsightCategoryIcon(insight.category);
+              return (
+                <div
+                  key={insight.id}
+                  className="flex items-start gap-2 sm:gap-3 p-2 rounded-lg border"
+                  data-testid={`insight-item-${insight.id}`}
+                >
+                  <div className="p-1.5 rounded-lg bg-accent shrink-0 mt-0.5">
+                    <CategoryIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent-foreground" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-xs sm:text-sm font-medium truncate" data-testid={`insight-title-${insight.id}`}>
+                        {insight.title}
+                      </p>
+                      <Badge
+                        variant={getPriorityVariant(insight.priority)}
+                        className="text-[9px] sm:text-[10px] shrink-0"
+                        data-testid={`insight-priority-${insight.id}`}
+                      >
+                        {insight.priority}
+                      </Badge>
+                    </div>
+                    {insight.suggestedAction && (
+                      <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 line-clamp-2" data-testid={`insight-action-${insight.id}`}>
+                        {insight.suggestedAction}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-1 mt-1.5">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => onDismiss(insight.id)}
+                        data-testid={`button-dismiss-insight-${insight.id}`}
+                      >
+                        <X className="h-3 w-3 text-muted-foreground" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => onComplete(insight.id)}
+                        data-testid={`button-complete-insight-${insight.id}`}
+                      >
+                        <Check className="h-3 w-3 text-green-500" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => onSnooze(insight.id)}
+                        data-testid={`button-snooze-insight-${insight.id}`}
+                      >
+                        <Clock className="h-3 w-3 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-6 text-muted-foreground">
+            <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            <p className="text-xs sm:text-sm" data-testid="text-no-insights">All caught up! No new insights.</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function getTimeGreeting(): string {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
@@ -992,6 +1184,44 @@ export default function DashboardPage() {
   const { data: memoryConfidence, isLoading: memoryConfLoading } = useQuery<MemoryConfidenceStats>({
     queryKey: ["/api/memory/confidence/stats"],
   });
+
+  const { data: insights, isLoading: insightsLoading } = useQuery<Insight[]>({
+    queryKey: ["/api/insights", { active: true, limit: 5 }],
+  });
+
+  const refreshInsightsMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/insights/refresh");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/insights"] });
+    },
+  });
+
+  const updateInsightMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      await apiRequest("PATCH", `/api/insights/${id}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/insights"] });
+    },
+  });
+
+  const handleDismissInsight = (id: string) => {
+    updateInsightMutation.mutate({ id, status: "dismissed" });
+  };
+
+  const handleCompleteInsight = (id: string) => {
+    updateInsightMutation.mutate({ id, status: "completed" });
+  };
+
+  const handleSnoozeInsight = (id: string) => {
+    updateInsightMutation.mutate({ id, status: "snoozed" });
+  };
+
+  const handleRefreshInsights = () => {
+    refreshInsightsMutation.mutate();
+  };
 
   const currentLocation = locationHistory?.[0];
 
@@ -1213,6 +1443,18 @@ export default function DashboardPage() {
             stats={smsStats} 
             conversations={smsConversations}
             isLoading={isSmsLoading}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
+          <ProactiveInsightsWidget
+            insights={insights}
+            isLoading={insightsLoading}
+            onDismiss={handleDismissInsight}
+            onComplete={handleCompleteInsight}
+            onSnooze={handleSnoozeInsight}
+            onRefresh={handleRefreshInsights}
+            isRefreshing={refreshInsightsMutation.isPending}
           />
         </div>
 
