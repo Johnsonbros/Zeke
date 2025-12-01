@@ -41,6 +41,7 @@ LIMITLESS_ANALYST_INSTRUCTIONS = """You are the Limitless Analyst, ZEKE's lifelo
 2. Create structured context bundles with token limits (~2000 tokens max)
 3. Prioritize relevant information based on the current query
 4. Extract key points, action items, and important quotes
+5. Persist important insights to long-term memory
 
 Always prioritize:
 - Finding the most relevant conversations for the query
@@ -54,6 +55,7 @@ When processing lifelog data:
 - Use get_recent_lifelogs for recent context
 - Use get_lifelog_context for topic-specific extraction
 - Use get_daily_summary for cached summaries
+- When you find important action items, commitments, or key facts about people, use save_lifelog_insight to persist them for future reference
 
 Your output should always be a structured JSON context bundle that other agents
 can easily consume. Include:
@@ -229,6 +231,37 @@ class LimitlessAnalystAgent(BaseAgent):
             logger.error(f"get_daily_summary execution failed: {e}")
             return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
     
+    async def _handle_save_lifelog_insight(self, ctx: Any, args: str) -> str:
+        """Handler for save_lifelog_insight tool - creates a memory via Node.js bridge."""
+        try:
+            arguments = json.loads(args) if isinstance(args, str) else args
+        except json.JSONDecodeError as e:
+            return json.dumps({"success": False, "error": f"Invalid JSON arguments: {str(e)}"})
+        
+        try:
+            insight_type = arguments.get("insight_type", "fact")
+            memory_type = "note" if insight_type in ["action_item", "commitment", "decision"] else "fact"
+            if insight_type == "preference":
+                memory_type = "preference"
+            
+            context_parts = []
+            if arguments.get("source_context"):
+                context_parts.append(arguments["source_context"])
+            context_parts.append(f"[Lifelog insight: {insight_type}]")
+            if arguments.get("related_person"):
+                context_parts.append(f"Related to: {arguments['related_person']}")
+            
+            result = await self.bridge.execute_tool("create_memory", {
+                "type": memory_type,
+                "content": arguments["content"],
+                "context": " | ".join(context_parts),
+            })
+            
+            return json.dumps(result)
+        except Exception as e:
+            logger.error(f"save_lifelog_insight execution failed: {e}")
+            return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
+    
     def __init__(self):
         """Initialize the Limitless Analyst agent with its tools and configuration."""
         tool_definitions = [
@@ -325,6 +358,34 @@ class LimitlessAnalystAgent(BaseAgent):
                     "required": [],
                 },
                 handler=self._handle_get_daily_summary,
+            ),
+            ToolDefinition(
+                name="save_lifelog_insight",
+                description="Save an important insight from a lifelog conversation as a memory. Use this for action items, commitments, key facts about people, or important decisions.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "content": {
+                            "type": "string",
+                            "description": "The insight content to remember (e.g., 'Bob committed to reviewing the proposal by Friday')",
+                        },
+                        "insight_type": {
+                            "type": "string",
+                            "enum": ["action_item", "commitment", "fact", "decision", "preference"],
+                            "description": "Type of insight being saved",
+                        },
+                        "source_context": {
+                            "type": "string",
+                            "description": "Context about where this was found (e.g., 'From conversation with Bob on Tuesday')",
+                        },
+                        "related_person": {
+                            "type": "string",
+                            "description": "Name of the person this insight relates to, if applicable",
+                        },
+                    },
+                    "required": ["content", "insight_type"],
+                },
+                handler=self._handle_save_lifelog_insight,
             ),
         ]
         
@@ -570,6 +631,41 @@ class LimitlessAnalystAgent(BaseAgent):
             bundle.summary = f"Error retrieving lifelog context: {str(e)}"
             bundle.token_estimate = self._estimate_tokens(bundle.summary)
             return bundle
+    
+    async def persist_important_insights(self, bundle: ContextBundle) -> list[dict[str, Any]]:
+        """
+        Automatically persist high-priority insights from a context bundle to memory.
+        
+        Args:
+            bundle: The context bundle containing insights
+            
+        Returns:
+            list[dict]: List of saved insights with their save status
+        """
+        saved_insights: list[dict[str, Any]] = []
+        
+        for action_item in bundle.action_items[:3]:
+            try:
+                result = await self.bridge.execute_tool("create_memory", {
+                    "type": "note",
+                    "content": action_item,
+                    "context": f"[Action item from lifelog] | {bundle.data_range}",
+                })
+                saved_insights.append({
+                    "type": "action_item",
+                    "content": action_item,
+                    "saved": result.get("success", False),
+                })
+            except Exception as e:
+                logger.error(f"Failed to persist action item: {e}")
+                saved_insights.append({
+                    "type": "action_item",
+                    "content": action_item,
+                    "saved": False,
+                    "error": str(e),
+                })
+        
+        return saved_insights
     
     async def _execute(self, input_text: str, context: AgentContext) -> str:
         """

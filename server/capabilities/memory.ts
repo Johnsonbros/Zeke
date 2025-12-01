@@ -12,6 +12,7 @@ import {
   getLimitlessSummaryByDate,
   type Lifelog,
 } from "../limitless";
+import { createMemoryWithEmbedding } from "../semanticMemory";
 
 export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
@@ -151,6 +152,32 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "create_memory",
+      description: "Create a new memory note for long-term storage. Use this to save important facts, preferences, action items, or notes about people and events.",
+      parameters: {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            enum: ["fact", "preference", "note", "summary"],
+            description: "Type of memory: fact (general facts), preference (user preferences), note (action items, commitments, decisions), summary (summaries)",
+          },
+          content: {
+            type: "string",
+            description: "The content of the memory to save",
+          },
+          context: {
+            type: "string",
+            description: "Additional context about the memory (e.g., source, related person, date)",
+          },
+        },
+        required: ["type", "content"],
+      },
+    },
+  },
 ];
 
 export const memoryToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
@@ -161,6 +188,7 @@ export const memoryToolPermissions: Record<string, (permissions: ToolPermissions
   check_limitless_status: () => true,
   generate_daily_summary: (p) => p.isAdmin,
   get_daily_summary: (p) => p.canAccessPersonalInfo,
+  create_memory: (p) => p.canAccessPersonalInfo,
 };
 
 export async function executeMemoryTool(
@@ -472,16 +500,71 @@ export async function executeMemoryTool(
       }
     }
     
+    case "create_memory": {
+      const { type, content, context } = args as {
+        type: "fact" | "preference" | "note" | "summary";
+        content: string;
+        context?: string;
+      };
+      
+      if (!type || !content) {
+        return JSON.stringify({
+          success: false,
+          error: "type and content are required",
+        });
+      }
+      
+      const validTypes = ["fact", "preference", "note", "summary"];
+      if (!validTypes.includes(type)) {
+        return JSON.stringify({
+          success: false,
+          error: `Invalid type. Must be one of: ${validTypes.join(", ")}`,
+        });
+      }
+      
+      try {
+        const result = await createMemoryWithEmbedding({
+          type,
+          content,
+          context: context || "",
+        });
+        
+        if (result.isDuplicate) {
+          return JSON.stringify({
+            success: true,
+            isDuplicate: true,
+            message: "A similar memory already exists",
+            memoryId: result.duplicateOf,
+          });
+        }
+        
+        return JSON.stringify({
+          success: true,
+          message: `Memory created: ${content.substring(0, 50)}${content.length > 50 ? "..." : ""}`,
+          memoryId: result.note.id,
+          type: result.note.type,
+        });
+      } catch (error: any) {
+        console.error("Failed to create memory:", error);
+        return JSON.stringify({
+          success: false,
+          error: error.message || "Failed to create memory",
+        });
+      }
+    }
+    
     default:
       return null;
   }
 }
 
 export const memoryToolNames = [
+  "get_lifelog_overview",
   "search_lifelogs",
   "get_recent_lifelogs",
   "get_lifelog_context",
   "check_limitless_status",
   "generate_daily_summary",
   "get_daily_summary",
+  "create_memory",
 ];
