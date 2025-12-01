@@ -10,8 +10,11 @@ import {
   clearCompletedTasks,
   getTasksDueToday,
   getOverdueTasks,
+  getSubtasks,
+  getTaskWithSubtasks,
 } from "../db";
 import type { Task } from "@shared/schema";
+import { analyzeAndBreakdownTask, calculateSubtaskDueDate } from "./workflows";
 
 export const taskToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
@@ -164,6 +167,57 @@ export const taskToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "breakdown_task",
+      description: "Analyze a complex task and automatically create subtasks for it. Use this when a task seems complex and could benefit from being broken down into smaller, actionable steps. Examples: 'Plan birthday party', 'Prepare for job interview', 'Organize home office'.",
+      parameters: {
+        type: "object",
+        properties: {
+          task_identifier: {
+            type: "string",
+            description: "The task ID or partial title to find the task to break down",
+          },
+        },
+        required: ["task_identifier"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_subtasks",
+      description: "List all subtasks for a given parent task.",
+      parameters: {
+        type: "object",
+        properties: {
+          task_identifier: {
+            type: "string",
+            description: "The parent task ID or partial title to find subtasks for",
+          },
+        },
+        required: ["task_identifier"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_task_with_subtasks",
+      description: "Get a task along with all its subtasks in a hierarchical view.",
+      parameters: {
+        type: "object",
+        properties: {
+          task_identifier: {
+            type: "string",
+            description: "The task ID or partial title to get with its subtasks",
+          },
+        },
+        required: ["task_identifier"],
+      },
+    },
+  },
 ];
 
 export const taskToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
@@ -173,6 +227,9 @@ export const taskToolPermissions: Record<string, (permissions: ToolPermissions) 
   toggle_task: (p) => p.canAccessTasks,
   delete_task: (p) => p.canAccessTasks,
   clear_completed_tasks: (p) => p.canAccessTasks,
+  breakdown_task: (p) => p.canAccessTasks,
+  list_subtasks: (p) => p.canAccessTasks,
+  get_task_with_subtasks: (p) => p.canAccessTasks,
 };
 
 export async function executeTaskTool(
@@ -422,6 +479,192 @@ export async function executeTaskTool(
       }
     }
     
+    case "breakdown_task": {
+      const { task_identifier } = args as { task_identifier: string };
+      
+      try {
+        let task = getTask(task_identifier);
+        if (!task) {
+          const allTasks = getAllTasks(true);
+          const searchLower = task_identifier.toLowerCase();
+          task = allTasks.find(t => t.title.toLowerCase().includes(searchLower));
+        }
+        
+        if (!task) {
+          return JSON.stringify({
+            success: false,
+            error: `No task matching "${task_identifier}" found`,
+          });
+        }
+        
+        const existingSubtasks = getSubtasks(task.id);
+        if (existingSubtasks.length > 0) {
+          return JSON.stringify({
+            success: false,
+            error: `Task "${task.title}" already has ${existingSubtasks.length} subtask(s). Delete existing subtasks first if you want to regenerate them.`,
+            existing_subtasks: existingSubtasks.map(st => ({
+              id: st.id,
+              title: st.title,
+              completed: st.completed,
+            })),
+          });
+        }
+        
+        const breakdown = await analyzeAndBreakdownTask(task);
+        
+        if (!breakdown.shouldBreakdown) {
+          return JSON.stringify({
+            success: true,
+            message: `Task "${task.title}" doesn't need to be broken down: ${breakdown.reason}`,
+            breakdown_created: false,
+          });
+        }
+        
+        const createdSubtasks: Task[] = [];
+        for (const suggestion of breakdown.subtasks) {
+          const subtaskDueDate = calculateSubtaskDueDate(task.dueDate, suggestion.relativeDueDays);
+          
+          const subtask = createTask({
+            title: suggestion.title,
+            description: suggestion.description,
+            priority: suggestion.priority,
+            dueDate: subtaskDueDate,
+            category: task.category,
+            parentTaskId: task.id,
+          });
+          createdSubtasks.push(subtask);
+        }
+        
+        return JSON.stringify({
+          success: true,
+          message: `Created ${createdSubtasks.length} subtask(s) for "${task.title}"`,
+          breakdown_created: true,
+          reason: breakdown.reason,
+          subtasks: createdSubtasks.map(st => ({
+            id: st.id,
+            title: st.title,
+            priority: st.priority,
+            dueDate: st.dueDate,
+          })),
+        });
+      } catch (error) {
+        console.error("Failed to breakdown task:", error);
+        return JSON.stringify({ 
+          success: false, 
+          error: `Failed to breakdown task: ${error instanceof Error ? error.message : "Unknown error"}` 
+        });
+      }
+    }
+    
+    case "list_subtasks": {
+      const { task_identifier } = args as { task_identifier: string };
+      
+      try {
+        let task = getTask(task_identifier);
+        if (!task) {
+          const allTasks = getAllTasks(true);
+          const searchLower = task_identifier.toLowerCase();
+          task = allTasks.find(t => t.title.toLowerCase().includes(searchLower));
+        }
+        
+        if (!task) {
+          return JSON.stringify({
+            success: false,
+            error: `No task matching "${task_identifier}" found`,
+          });
+        }
+        
+        const subtasks = getSubtasks(task.id);
+        
+        if (subtasks.length === 0) {
+          return JSON.stringify({
+            success: true,
+            message: `Task "${task.title}" has no subtasks`,
+            parent_task: {
+              id: task.id,
+              title: task.title,
+            },
+            subtasks: [],
+          });
+        }
+        
+        const pending = subtasks.filter(st => !st.completed);
+        const completed = subtasks.filter(st => st.completed);
+        
+        return JSON.stringify({
+          success: true,
+          parent_task: {
+            id: task.id,
+            title: task.title,
+            completed: task.completed,
+          },
+          subtasks: subtasks.map(st => ({
+            id: st.id,
+            title: st.title,
+            priority: st.priority,
+            dueDate: st.dueDate,
+            completed: st.completed,
+          })),
+          summary: `${pending.length} pending, ${completed.length} completed`,
+        });
+      } catch (error) {
+        console.error("Failed to list subtasks:", error);
+        return JSON.stringify({ success: false, error: "Failed to list subtasks" });
+      }
+    }
+    
+    case "get_task_with_subtasks": {
+      const { task_identifier } = args as { task_identifier: string };
+      
+      try {
+        let task = getTask(task_identifier);
+        if (!task) {
+          const allTasks = getAllTasks(true);
+          const searchLower = task_identifier.toLowerCase();
+          task = allTasks.find(t => t.title.toLowerCase().includes(searchLower));
+        }
+        
+        if (!task) {
+          return JSON.stringify({
+            success: false,
+            error: `No task matching "${task_identifier}" found`,
+          });
+        }
+        
+        const taskWithSubtasks = getTaskWithSubtasks(task.id);
+        
+        if (!taskWithSubtasks) {
+          return JSON.stringify({
+            success: false,
+            error: "Failed to retrieve task with subtasks",
+          });
+        }
+        
+        const formatTaskInfo = (t: Task) => ({
+          id: t.id,
+          title: t.title,
+          description: t.description,
+          priority: t.priority,
+          category: t.category,
+          dueDate: t.dueDate,
+          completed: t.completed,
+        });
+        
+        return JSON.stringify({
+          success: true,
+          task: {
+            ...formatTaskInfo(taskWithSubtasks),
+            subtasks: taskWithSubtasks.subtasks.map(formatTaskInfo),
+          },
+          subtask_count: taskWithSubtasks.subtasks.length,
+          completed_subtasks: taskWithSubtasks.subtasks.filter(st => st.completed).length,
+        });
+      } catch (error) {
+        console.error("Failed to get task with subtasks:", error);
+        return JSON.stringify({ success: false, error: "Failed to get task with subtasks" });
+      }
+    }
+    
     default:
       return null;
   }
@@ -434,4 +677,7 @@ export const taskToolNames = [
   "complete_task",
   "delete_task",
   "clear_completed_tasks",
+  "breakdown_task",
+  "list_subtasks",
+  "get_task_with_subtasks",
 ];

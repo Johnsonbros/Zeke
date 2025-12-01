@@ -143,6 +143,9 @@ export const reminders = sqliteTable("reminders", {
   createdAt: text("created_at").notNull(),
   completed: integer("completed", { mode: "boolean" }).notNull().default(false),
   placeId: text("place_id"),
+  parentReminderId: text("parent_reminder_id"),
+  sequencePosition: integer("sequence_position"),
+  sequenceTotal: integer("sequence_total"),
 });
 
 export const insertReminderSchema = createInsertSchema(reminders).omit({
@@ -163,6 +166,7 @@ export const tasks = sqliteTable("tasks", {
   category: text("category", { enum: ["work", "personal", "family"] }).notNull().default("personal"),
   completed: integer("completed", { mode: "boolean" }).notNull().default(false),
   placeId: text("place_id"),
+  parentTaskId: text("parent_task_id"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -181,6 +185,7 @@ export const updateTaskSchema = z.object({
   category: z.enum(["work", "personal", "family"]).optional(),
   completed: z.boolean().optional(),
   placeId: z.string().nullable().optional(),
+  parentTaskId: z.string().nullable().optional(),
 });
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;
@@ -309,7 +314,7 @@ export function isMasterAdmin(phoneNumber: string): boolean {
 }
 
 // Automation types for recurring scheduled jobs
-export const automationTypes = ["morning_briefing", "scheduled_sms", "daily_checkin"] as const;
+export const automationTypes = ["morning_briefing", "scheduled_sms", "daily_checkin", "task_followup"] as const;
 export type AutomationType = typeof automationTypes[number];
 
 // Automations table for recurring scheduled jobs

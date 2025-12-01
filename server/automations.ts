@@ -4,10 +4,14 @@ import {
   getAutomation,
   updateAutomationRunTimestamps,
   getContactByPhone,
+  getOverdueTasks,
+  getTasksDueToday,
+  getTasksDueTomorrow,
 } from "./db";
 import type { Automation, Contact } from "@shared/schema";
 import { isMasterAdmin, MASTER_ADMIN_PHONE } from "@shared/schema";
 import { sendDailyCheckIn } from "./dailyCheckIn";
+import { generateTaskFollowUp } from "./capabilities/workflows";
 
 const scheduledTasks: Map<string, cron.ScheduledTask> = new Map();
 
@@ -276,6 +280,37 @@ export async function executeAutomation(automation: Automation): Promise<{
             error: "sendDailyCheckIn returned false",
           };
         }
+      }
+      
+      case "task_followup": {
+        console.log(`[AUDIT] [${timestamp}] Executing task follow-up automation ${automation.id}`);
+        
+        const recipientPhone = automation.recipientPhone || MASTER_ADMIN_PHONE;
+        
+        if (!sendSmsCallback) {
+          console.log(`[AUDIT] [${timestamp}] Automation ${automation.id} failed: SMS callback not configured`);
+          return {
+            success: false,
+            message: "SMS callback not configured",
+            error: "SMS not available",
+          };
+        }
+        
+        const overdue = getOverdueTasks();
+        const today = getTasksDueToday();
+        const tomorrow = getTasksDueTomorrow();
+        
+        console.log(`[AUDIT] [${timestamp}] Task follow-up: ${overdue.length} overdue, ${today.length} today, ${tomorrow.length} tomorrow`);
+        
+        const followUp = await generateTaskFollowUp(overdue, today, tomorrow);
+        
+        await sendSmsCallback(recipientPhone, followUp.smsMessage);
+        
+        console.log(`[AUDIT] [${timestamp}] Task follow-up sent successfully to ${recipientPhone}`);
+        return {
+          success: true,
+          message: `Task follow-up sent to ${recipientPhone} (${overdue.length} overdue, ${today.length} today, ${tomorrow.length} tomorrow)`,
+        };
       }
       
       default:

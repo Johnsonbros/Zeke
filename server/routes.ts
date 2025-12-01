@@ -31,6 +31,9 @@ import {
   clearCompletedTasks,
   getTasksDueToday,
   getOverdueTasks,
+  getTasksDueTomorrow,
+  getSubtasks,
+  getTaskWithSubtasks,
   getAllContacts,
   getContact,
   getContactByPhone,
@@ -106,6 +109,8 @@ import {
   getTasksByPlace,
   getRemindersByPlace,
   getMemoriesByPlace,
+  getReminderSequence,
+  createReminder as dbCreateReminder,
   createCustomList,
   getCustomList,
   getAllCustomLists,
@@ -159,6 +164,8 @@ import {
   memoryToolNames,
   utilityToolNames,
 } from "./capabilities";
+import { createReminderSequenceData } from "./capabilities/workflows";
+import { scheduleReminderExecution } from "./capabilities/reminders";
 import { setDailyCheckInSmsCallback, initializeDailyCheckIn } from "./dailyCheckIn";
 import { startPeopleProcessor } from "./peopleProcessor";
 import { 
@@ -196,6 +203,7 @@ import twilio from "twilio";
 import { z } from "zod";
 import { listCalendarEvents, getTodaysEvents, getUpcomingEvents, createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, listCalendars, type CalendarEvent, type CalendarInfo } from "./googleCalendar";
 import { parseQuickAction } from "./quickActions";
+import { analyzeAndBreakdownTask, calculateSubtaskDueDate, suggestRelatedGroceryItems, suggestRelatedGroceryItemsBulk, generateTaskFollowUp, type TaskFollowUpResult } from "./capabilities/workflows";
 
 // Initialize Twilio client for outbound SMS
 function getTwilioClient() {
@@ -1160,6 +1168,41 @@ export async function registerRoutes(
     }
   });
   
+  // Get AI-powered grocery suggestions
+  app.post("/api/grocery/suggestions", async (req, res) => {
+    try {
+      const { item, items } = req.body as { item?: string; items?: string[] };
+      
+      if (!item && (!items || items.length === 0)) {
+        return res.status(400).json({ 
+          message: "Please provide either 'item' (single item) or 'items' (array of items) to get suggestions" 
+        });
+      }
+      
+      const currentGroceryList = getAllGroceryItems();
+      const currentItemNames = currentGroceryList.map(i => i.name);
+      
+      let result;
+      if (item) {
+        result = await suggestRelatedGroceryItems(item, currentItemNames);
+      } else if (items && items.length > 0) {
+        result = await suggestRelatedGroceryItemsBulk(items, currentItemNames);
+      }
+      
+      res.json({
+        success: true,
+        suggestions: result?.suggestions || [],
+        mealIdeas: result?.mealIdeas || [],
+        message: result?.suggestions && result.suggestions.length > 0 
+          ? `Found ${result.suggestions.length} suggestion(s) for items that go well with your groceries`
+          : "No additional suggestions at this time",
+      });
+    } catch (error: any) {
+      console.error("Get grocery suggestions error:", error);
+      res.status(500).json({ message: "Failed to get grocery suggestions" });
+    }
+  });
+  
   // === CUSTOM LISTS API ROUTES ===
   // SECURITY: These routes log access for audit purposes and validate inputs strictly.
   // For a single-user app accessed via web UI, we trust same-origin requests.
@@ -1566,6 +1609,133 @@ export async function registerRoutes(
     }
   });
   
+  // AI-powered task breakdown - analyze a task and create subtasks
+  app.post("/api/tasks/:id/breakdown", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const task = getTask(id);
+      
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      // Check if task already has subtasks
+      const existingSubtasks = getSubtasks(id);
+      if (existingSubtasks.length > 0) {
+        return res.status(400).json({ 
+          message: `Task already has ${existingSubtasks.length} subtask(s). Delete them first to regenerate.`,
+          existing_subtasks: existingSubtasks
+        });
+      }
+      
+      // Use AI to analyze and generate subtask suggestions
+      const breakdown = await analyzeAndBreakdownTask(task);
+      
+      if (!breakdown.shouldBreakdown) {
+        return res.json({
+          success: true,
+          breakdown_created: false,
+          message: `Task doesn't need to be broken down: ${breakdown.reason}`,
+          task
+        });
+      }
+      
+      // Create the subtasks
+      const createdSubtasks = [];
+      for (const suggestion of breakdown.subtasks) {
+        const subtaskDueDate = calculateSubtaskDueDate(task.dueDate, suggestion.relativeDueDays);
+        
+        const subtask = createTask({
+          title: suggestion.title,
+          description: suggestion.description,
+          priority: suggestion.priority,
+          dueDate: subtaskDueDate,
+          category: task.category,
+          parentTaskId: task.id,
+        });
+        createdSubtasks.push(subtask);
+      }
+      
+      res.json({
+        success: true,
+        breakdown_created: true,
+        message: `Created ${createdSubtasks.length} subtask(s) for "${task.title}"`,
+        reason: breakdown.reason,
+        parent_task: task,
+        subtasks: createdSubtasks
+      });
+    } catch (error: any) {
+      console.error("Task breakdown error:", error);
+      res.status(500).json({ message: "Failed to breakdown task", error: error.message });
+    }
+  });
+  
+  // Get subtasks for a task
+  app.get("/api/tasks/:id/subtasks", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const task = getTask(id);
+      
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      const subtasks = getSubtasks(id);
+      res.json({
+        parent_task: task,
+        subtasks,
+        count: subtasks.length,
+        completed: subtasks.filter(st => st.completed).length
+      });
+    } catch (error: any) {
+      console.error("Get subtasks error:", error);
+      res.status(500).json({ message: "Failed to get subtasks" });
+    }
+  });
+  
+  // Get task with all its subtasks in a hierarchical view
+  app.get("/api/tasks/:id/with-subtasks", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const taskWithSubtasks = getTaskWithSubtasks(id);
+      
+      if (!taskWithSubtasks) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      res.json(taskWithSubtasks);
+    } catch (error: any) {
+      console.error("Get task with subtasks error:", error);
+      res.status(500).json({ message: "Failed to get task with subtasks" });
+    }
+  });
+  
+  // Preview task follow-up message (what would be sent)
+  app.post("/api/tasks/followup/preview", async (_req, res) => {
+    try {
+      const overdue = getOverdueTasks();
+      const today = getTasksDueToday();
+      const tomorrow = getTasksDueTomorrow();
+      
+      const followUp = await generateTaskFollowUp(overdue, today, tomorrow);
+      
+      res.json({
+        success: true,
+        preview: followUp,
+        taskCounts: {
+          overdue: overdue.length,
+          today: today.length,
+          tomorrow: tomorrow.length,
+          total: overdue.length + today.length + tomorrow.length,
+        },
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      console.error("Task follow-up preview error:", error);
+      res.status(500).json({ message: "Failed to generate preview", error: error.message });
+    }
+  });
+  
   // ==================== CONTACTS API ====================
   
   // Get all contacts
@@ -1780,6 +1950,149 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to delete reminder" });
     }
   });
+
+  // Create reminder sequence
+  const reminderSequenceSchema = z.object({
+    message: z.string().min(1, "Message is required"),
+    event_time: z.string().refine((val) => !isNaN(new Date(val).getTime()), {
+      message: "Invalid event_time format. Use ISO 8601 format (e.g., '2024-12-25T14:00:00')"
+    }),
+    intervals: z.array(z.string()).min(1, "At least one interval is required"),
+    recipient_phone: z.string().optional(),
+  });
+
+  app.post("/api/reminders/sequence", async (req, res) => {
+    try {
+      const parsed = reminderSequenceSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Invalid request body", 
+          errors: parsed.error.errors 
+        });
+      }
+
+      const { message, event_time, intervals, recipient_phone } = parsed.data;
+      const eventTime = new Date(event_time);
+
+      const sequenceResult = createReminderSequenceData(eventTime, message, intervals);
+
+      if (!sequenceResult.success) {
+        return res.status(400).json({
+          success: false,
+          message: sequenceResult.error,
+        });
+      }
+
+      const createdReminders = [];
+      const total = sequenceResult.items.length;
+      let parentReminderId: string | null = null;
+
+      for (const item of sequenceResult.items) {
+        const reminder = dbCreateReminder({
+          message: item.message,
+          recipientPhone: recipient_phone || null,
+          conversationId: null,
+          scheduledFor: item.scheduledFor.toISOString(),
+          completed: false,
+          parentReminderId: parentReminderId,
+          sequencePosition: item.sequencePosition,
+          sequenceTotal: total,
+        });
+
+        if (!parentReminderId) {
+          parentReminderId = reminder.id;
+        }
+
+        scheduleReminderExecution(reminder.id, item.scheduledFor);
+        createdReminders.push(reminder);
+      }
+
+      const eventTimeStr = eventTime.toLocaleString("en-US", { 
+        timeZone: "America/New_York",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        weekday: "short",
+        month: "short",
+        day: "numeric"
+      });
+
+      res.json({
+        success: true,
+        parent_reminder_id: parentReminderId,
+        event_time: eventTime.toISOString(),
+        event_time_formatted: eventTimeStr,
+        reminders_created: createdReminders.length,
+        reminders: createdReminders.map(r => ({
+          id: r.id,
+          message: r.message,
+          scheduled_for: r.scheduledFor,
+          scheduled_for_formatted: new Date(r.scheduledFor).toLocaleString("en-US", {
+            timeZone: "America/New_York",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+            weekday: "short",
+            month: "short",
+            day: "numeric"
+          }),
+          sequence_position: r.sequencePosition,
+          sequence_total: r.sequenceTotal,
+        })),
+        message: `Created ${createdReminders.length} reminder(s) for "${message}". Event is at ${eventTimeStr}.`,
+      });
+    } catch (error: any) {
+      console.error("Create reminder sequence error:", error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to create reminder sequence" 
+      });
+    }
+  });
+
+  // Get reminder sequence by parent ID
+  app.get("/api/reminders/sequence/:parentId", async (req, res) => {
+    try {
+      const { parentId } = req.params;
+      const sequence = getReminderSequence(parentId);
+      
+      if (sequence.length === 0) {
+        return res.status(404).json({ 
+          success: false, 
+          message: "Reminder sequence not found" 
+        });
+      }
+
+      res.json({
+        success: true,
+        parent_reminder_id: parentId,
+        reminders: sequence.map(r => ({
+          id: r.id,
+          message: r.message,
+          scheduled_for: r.scheduledFor,
+          scheduled_for_formatted: new Date(r.scheduledFor).toLocaleString("en-US", {
+            timeZone: "America/New_York",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+            weekday: "short",
+            month: "short",
+            day: "numeric"
+          }),
+          completed: r.completed,
+          sequence_position: r.sequencePosition,
+          sequence_total: r.sequenceTotal,
+        })),
+      });
+    } catch (error: any) {
+      console.error("Get reminder sequence error:", error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to get reminder sequence" 
+      });
+    }
+  });
   
   // ==================== AUTOMATIONS API ====================
   // SECURITY NOTE: Web UI automation endpoints are trusted with admin permissions by design.
@@ -1821,7 +2134,88 @@ export async function registerRoutes(
     }
   });
   
-  // Update automation
+  // Get or create task follow-up automation (MUST be before generic /:id route)
+  app.get("/api/automations/task-followup", async (_req, res) => {
+    try {
+      const automations = getAllAutomations();
+      let taskFollowup = automations.find(a => a.type === "task_followup");
+      
+      if (!taskFollowup) {
+        taskFollowup = createAutomation({
+          name: "Daily Task Follow-up",
+          type: "task_followup",
+          cronExpression: "0 8 * * *",
+          enabled: false,
+          recipientPhone: null,
+          message: null,
+          settings: JSON.stringify({ sendEvenIfEmpty: false }),
+        });
+        console.log(`[AUDIT] [${new Date().toISOString()}] Created default task follow-up automation`);
+      }
+      
+      const overdue = getOverdueTasks();
+      const today = getTasksDueToday();
+      const tomorrow = getTasksDueTomorrow();
+      
+      res.json({
+        automation: taskFollowup,
+        taskSummary: {
+          overdue: overdue.length,
+          today: today.length,
+          tomorrow: tomorrow.length,
+          total: overdue.length + today.length + tomorrow.length,
+        },
+      });
+    } catch (error: any) {
+      console.error("Get task follow-up automation error:", error);
+      res.status(500).json({ message: "Failed to get task follow-up automation" });
+    }
+  });
+  
+  // Update task follow-up automation settings (MUST be before generic /:id route)
+  app.patch("/api/automations/task-followup", async (req, res) => {
+    try {
+      const automations = getAllAutomations();
+      let taskFollowup = automations.find(a => a.type === "task_followup");
+      
+      if (!taskFollowup) {
+        taskFollowup = createAutomation({
+          name: "Daily Task Follow-up",
+          type: "task_followup",
+          cronExpression: "0 8 * * *",
+          enabled: false,
+          recipientPhone: null,
+          message: null,
+          settings: JSON.stringify({ sendEvenIfEmpty: false }),
+        });
+      }
+      
+      const updateSchema = z.object({
+        enabled: z.boolean().optional(),
+        cronExpression: z.string().optional(),
+        settings: z.string().optional(),
+      });
+      
+      const parsed = updateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      const updated = updateAutomation(taskFollowup.id, parsed.data);
+      
+      if (updated) {
+        scheduleAutomation(updated);
+        console.log(`[AUDIT] [${new Date().toISOString()}] Updated task follow-up automation: ${JSON.stringify(parsed.data)}`);
+      }
+      
+      res.json({ automation: updated });
+    } catch (error: any) {
+      console.error("Update task follow-up automation error:", error);
+      res.status(500).json({ message: "Failed to update task follow-up automation" });
+    }
+  });
+  
+  // Update automation (generic route - must come after specific routes)
   app.patch("/api/automations/:id", async (req, res) => {
     try {
       const { id } = req.params;

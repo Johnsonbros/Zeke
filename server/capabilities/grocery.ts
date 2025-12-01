@@ -8,6 +8,7 @@ import {
   clearPurchasedGroceryItems,
   clearAllGroceryItems,
 } from "../db";
+import { suggestRelatedGroceryItems, suggestRelatedGroceryItemsBulk } from "./workflows";
 
 export const groceryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
@@ -111,6 +112,28 @@ export const groceryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "suggest_grocery_items",
+      description: "Get AI-powered suggestions for related grocery items based on an item or items being added. Uses meal planning patterns and cooking knowledge to suggest complementary items. Great for helping complete shopping lists or suggesting items that go well together.",
+      parameters: {
+        type: "object",
+        properties: {
+          item: {
+            type: "string",
+            description: "A single grocery item to get suggestions for (e.g., 'pasta', 'chicken breast'). Use this OR items, not both.",
+          },
+          items: {
+            type: "array",
+            items: { type: "string" },
+            description: "Multiple grocery items to analyze together for suggestions. Use this OR item, not both.",
+          },
+        },
+        required: [],
+      },
+    },
+  },
 ];
 
 export const groceryToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
@@ -120,6 +143,7 @@ export const groceryToolPermissions: Record<string, (permissions: ToolPermission
   remove_grocery_item: (p) => p.canAccessGrocery,
   clear_purchased_groceries: (p) => p.canAccessGrocery,
   clear_all_groceries: (p) => p.canAccessGrocery,
+  suggest_grocery_items: (p) => p.canAccessGrocery,
 };
 
 export async function executeGroceryTool(
@@ -287,6 +311,45 @@ export async function executeGroceryTool(
       }
     }
     
+    case "suggest_grocery_items": {
+      const { item, items: multipleItems } = args as { 
+        item?: string; 
+        items?: string[];
+      };
+      
+      try {
+        const currentGroceryList = getAllGroceryItems();
+        const currentItemNames = currentGroceryList.map(i => i.name);
+        
+        let result;
+        if (item) {
+          result = await suggestRelatedGroceryItems(item, currentItemNames);
+        } else if (multipleItems && multipleItems.length > 0) {
+          result = await suggestRelatedGroceryItemsBulk(multipleItems, currentItemNames);
+        } else {
+          return JSON.stringify({
+            success: false,
+            error: "Please provide either 'item' (single item) or 'items' (array of items) to get suggestions",
+          });
+        }
+        
+        return JSON.stringify({
+          success: true,
+          suggestions: result.suggestions,
+          mealIdeas: result.mealIdeas,
+          message: result.suggestions.length > 0 
+            ? `Found ${result.suggestions.length} suggestion(s) for items that go well with your groceries`
+            : "No additional suggestions at this time",
+        });
+      } catch (error) {
+        console.error("Error getting grocery suggestions:", error);
+        return JSON.stringify({ 
+          success: false, 
+          error: "Failed to generate grocery suggestions" 
+        });
+      }
+    }
+    
     default:
       return null;
   }
@@ -299,4 +362,5 @@ export const groceryToolNames = [
   "remove_grocery_item",
   "clear_purchased_groceries",
   "clear_all_groceries",
+  "suggest_grocery_items",
 ];

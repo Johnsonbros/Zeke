@@ -311,11 +311,41 @@ try {
   // Column may already exist, ignore error
 }
 
+// Add parent_task_id column to tasks table if it doesn't exist
+try {
+  db.exec(`ALTER TABLE tasks ADD COLUMN parent_task_id TEXT`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id)`);
+} catch (e) {
+  // Column may already exist, ignore error
+}
+
 // Add place_id column to reminders table if it doesn't exist  
 try {
   db.exec(`ALTER TABLE reminders ADD COLUMN place_id TEXT`);
 } catch (e) {
   // Column may already exist, ignore error
+}
+
+// Add sequence columns to reminders table if they don't exist
+try {
+  db.exec(`ALTER TABLE reminders ADD COLUMN parent_reminder_id TEXT`);
+} catch (e) {
+  // Column may already exist, ignore error
+}
+try {
+  db.exec(`ALTER TABLE reminders ADD COLUMN sequence_position INTEGER`);
+} catch (e) {
+  // Column may already exist, ignore error
+}
+try {
+  db.exec(`ALTER TABLE reminders ADD COLUMN sequence_total INTEGER`);
+} catch (e) {
+  // Column may already exist, ignore error
+}
+try {
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_reminders_parent ON reminders(parent_reminder_id)`);
+} catch (e) {
+  // Index may already exist, ignore error
 }
 
 // Add place_id column to memory_notes table if it doesn't exist
@@ -839,6 +869,9 @@ interface ReminderRow {
   created_at: string;
   completed: number;
   place_id: string | null;
+  parent_reminder_id: string | null;
+  sequence_position: number | null;
+  sequence_total: number | null;
 }
 
 interface TaskRow {
@@ -850,6 +883,7 @@ interface TaskRow {
   category: string;
   completed: number;
   place_id: string | null;
+  parent_task_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1156,6 +1190,9 @@ function mapReminder(row: ReminderRow): Reminder {
     createdAt: row.created_at,
     completed: Boolean(row.completed),
     placeId: row.place_id || null,
+    parentReminderId: row.parent_reminder_id || null,
+    sequencePosition: row.sequence_position ?? null,
+    sequenceTotal: row.sequence_total ?? null,
   };
 }
 
@@ -1775,9 +1812,21 @@ export function createReminder(data: InsertReminder): Reminder {
     const now = getCurrentTimestamp();
     
     db.prepare(`
-      INSERT INTO reminders (id, message, recipient_phone, conversation_id, scheduled_for, created_at, completed, place_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, data.message, data.recipientPhone || null, data.conversationId || null, data.scheduledFor, now, data.completed ? 1 : 0, data.placeId || null);
+      INSERT INTO reminders (id, message, recipient_phone, conversation_id, scheduled_for, created_at, completed, place_id, parent_reminder_id, sequence_position, sequence_total)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, 
+      data.message, 
+      data.recipientPhone || null, 
+      data.conversationId || null, 
+      data.scheduledFor, 
+      now, 
+      data.completed ? 1 : 0, 
+      data.placeId || null,
+      data.parentReminderId || null,
+      data.sequencePosition ?? null,
+      data.sequenceTotal ?? null
+    );
     
     return {
       id,
@@ -1788,7 +1837,21 @@ export function createReminder(data: InsertReminder): Reminder {
       createdAt: now,
       completed: data.completed || false,
       placeId: data.placeId || null,
+      parentReminderId: data.parentReminderId || null,
+      sequencePosition: data.sequencePosition ?? null,
+      sequenceTotal: data.sequenceTotal ?? null,
     };
+  });
+}
+
+export function getReminderSequence(parentId: string): Reminder[] {
+  return wrapDbOperation("getReminderSequence", () => {
+    const rows = db.prepare(`
+      SELECT * FROM reminders 
+      WHERE parent_reminder_id = ? OR id = ?
+      ORDER BY scheduled_for ASC
+    `).all(parentId, parentId) as ReminderRow[];
+    return rows.map(mapReminder);
   });
 }
 
@@ -1891,6 +1954,7 @@ function mapTask(row: TaskRow): Task {
     category: row.category as "work" | "personal" | "family",
     completed: Boolean(row.completed),
     placeId: row.place_id || null,
+    parentTaskId: row.parent_task_id || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1907,9 +1971,9 @@ export function createTask(data: InsertTask): Task {
     const completed = data.completed ?? false;
     
     db.prepare(`
-      INSERT INTO tasks (id, title, description, priority, due_date, category, completed, place_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, data.title, description, priority, data.dueDate || null, category, completed ? 1 : 0, data.placeId || null, now, now);
+      INSERT INTO tasks (id, title, description, priority, due_date, category, completed, place_id, parent_task_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.title, description, priority, data.dueDate || null, category, completed ? 1 : 0, data.placeId || null, data.parentTaskId || null, now, now);
     
     return {
       id,
@@ -1920,6 +1984,7 @@ export function createTask(data: InsertTask): Task {
       category: category as "work" | "personal" | "family",
       completed,
       placeId: data.placeId || null,
+      parentTaskId: data.parentTaskId || null,
       createdAt: now,
       updatedAt: now,
     };
@@ -1975,6 +2040,20 @@ export function getOverdueTasks(): Task[] {
       WHERE due_date < ? AND due_date IS NOT NULL AND completed = 0
       ORDER BY due_date ASC, priority DESC
     `).all(now) as TaskRow[];
+    return rows.map(mapTask);
+  });
+}
+
+export function getTasksDueTomorrow(): Task[] {
+  return wrapDbOperation("getTasksDueTomorrow", () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    const rows = db.prepare(`
+      SELECT * FROM tasks 
+      WHERE due_date LIKE ? AND completed = 0
+      ORDER BY priority DESC, created_at ASC
+    `).all(`${tomorrowStr}%`) as TaskRow[];
     return rows.map(mapTask);
   });
 }
@@ -2040,6 +2119,59 @@ export function searchTasks(query: string): Task[] {
       WHERE LOWER(title) LIKE ? OR LOWER(description) LIKE ?
       ORDER BY completed ASC, due_date ASC NULLS LAST, priority DESC
     `).all(searchTerm, searchTerm) as TaskRow[];
+    return rows.map(mapTask);
+  });
+}
+
+// Get subtasks for a parent task
+export function getSubtasks(parentTaskId: string): Task[] {
+  return wrapDbOperation("getSubtasks", () => {
+    const rows = db.prepare(`
+      SELECT * FROM tasks 
+      WHERE parent_task_id = ?
+      ORDER BY completed ASC, due_date ASC NULLS LAST, priority DESC, created_at ASC
+    `).all(parentTaskId) as TaskRow[];
+    return rows.map(mapTask);
+  });
+}
+
+// Get a task with its subtasks
+export interface TaskWithSubtasks extends Task {
+  subtasks: Task[];
+}
+
+export function getTaskWithSubtasks(taskId: string): TaskWithSubtasks | undefined {
+  return wrapDbOperation("getTaskWithSubtasks", () => {
+    const task = getTask(taskId);
+    if (!task) return undefined;
+    
+    const subtasks = getSubtasks(taskId);
+    return {
+      ...task,
+      subtasks,
+    };
+  });
+}
+
+// Get all parent tasks (tasks that have subtasks)
+export function getParentTasks(): Task[] {
+  return wrapDbOperation("getParentTasks", () => {
+    const rows = db.prepare(`
+      SELECT DISTINCT t.* FROM tasks t
+      INNER JOIN tasks st ON st.parent_task_id = t.id
+      ORDER BY t.completed ASC, t.due_date ASC NULLS LAST, t.priority DESC
+    `).all() as TaskRow[];
+    return rows.map(mapTask);
+  });
+}
+
+// Get top-level tasks only (tasks without a parent)
+export function getTopLevelTasks(includeCompleted: boolean = true): Task[] {
+  return wrapDbOperation("getTopLevelTasks", () => {
+    const query = includeCompleted
+      ? `SELECT * FROM tasks WHERE parent_task_id IS NULL ORDER BY completed ASC, due_date ASC NULLS LAST, priority DESC, created_at DESC`
+      : `SELECT * FROM tasks WHERE parent_task_id IS NULL AND completed = 0 ORDER BY due_date ASC NULLS LAST, priority DESC, created_at DESC`;
+    const rows = db.prepare(query).all() as TaskRow[];
     return rows.map(mapTask);
   });
 }

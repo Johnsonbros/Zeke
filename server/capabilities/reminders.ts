@@ -1,5 +1,6 @@
 import type OpenAI from "openai";
 import type { ToolPermissions } from "../tools";
+import type { Reminder } from "@shared/schema";
 import { 
   createReminder as dbCreateReminder,
   getReminder,
@@ -7,9 +8,11 @@ import {
   updateReminderCompleted,
   deleteReminder as dbDeleteReminder,
   getConversation,
-  getContactByPhone
+  getContactByPhone,
+  getReminderSequence
 } from "../db";
 import { isMasterAdmin } from "@shared/schema";
+import { createReminderSequenceData } from "./workflows";
 
 const activeTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
@@ -83,12 +86,43 @@ export const reminderToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "set_reminder_sequence",
+      description: "Set a sequence of reminders for an event at multiple time intervals before it happens. Use this when someone wants to be reminded at multiple times before an event (e.g., '1 week before, 1 day before, and 1 hour before').",
+      parameters: {
+        type: "object",
+        properties: {
+          message: {
+            type: "string",
+            description: "The event or reminder message (e.g., 'Mom's birthday party')",
+          },
+          event_time: {
+            type: "string",
+            description: "ISO 8601 timestamp for when the event occurs (e.g., '2024-01-15T14:30:00')",
+          },
+          intervals: {
+            type: "array",
+            items: { type: "string" },
+            description: "Array of time intervals before the event to send reminders (e.g., ['1 week', '1 day', '1 hour', '30 minutes']). Supported units: minutes, hours, days, weeks.",
+          },
+          recipient_phone: {
+            type: "string",
+            description: "Optional phone number to send SMS reminders to. If not provided, reminders go to the current conversation.",
+          },
+        },
+        required: ["message", "event_time", "intervals"],
+      },
+    },
+  },
 ];
 
 export const reminderToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
   set_reminder: (p) => p.canSetReminders,
   list_reminders: (p) => p.canSetReminders,
   cancel_reminder: (p) => p.canSetReminders,
+  set_reminder_sequence: (p) => p.canSetReminders,
 };
 
 async function executeReminder(reminderId: string) {
@@ -171,6 +205,13 @@ interface SetReminderArgs {
 
 interface CancelReminderArgs {
   reminder_id: string;
+}
+
+interface SetReminderSequenceArgs {
+  message: string;
+  event_time: string;
+  intervals: string[];
+  recipient_phone?: string;
 }
 
 interface ExecuteOptions {
@@ -264,6 +305,93 @@ export async function executeReminderTool(
       return JSON.stringify({ success: true, message: `Reminder ${reminder_id} cancelled` });
     }
     
+    case "set_reminder_sequence": {
+      const { message, event_time, intervals, recipient_phone } = args as SetReminderSequenceArgs;
+      
+      const eventTime = new Date(event_time);
+      if (isNaN(eventTime.getTime())) {
+        return JSON.stringify({ 
+          success: false, 
+          error: "Invalid event_time format. Use ISO 8601 format (e.g., '2024-12-25T14:00:00')" 
+        });
+      }
+
+      const sequenceResult = createReminderSequenceData(eventTime, message, intervals);
+      
+      if (!sequenceResult.success) {
+        return JSON.stringify({
+          success: false,
+          error: sequenceResult.error,
+        });
+      }
+
+      const createdReminders: Reminder[] = [];
+      const total = sequenceResult.items.length;
+      let parentReminderId: string | null = null;
+
+      for (const item of sequenceResult.items) {
+        const reminder = dbCreateReminder({
+          message: item.message,
+          recipientPhone: recipient_phone || null,
+          conversationId: conversationId || null,
+          scheduledFor: item.scheduledFor.toISOString(),
+          completed: false,
+          parentReminderId: parentReminderId,
+          sequencePosition: item.sequencePosition,
+          sequenceTotal: total,
+        });
+
+        if (!parentReminderId) {
+          parentReminderId = reminder.id;
+        }
+
+        const delay = item.scheduledFor.getTime() - Date.now();
+        if (delay > 0) {
+          const timeoutId = setTimeout(() => executeReminder(reminder.id), delay);
+          activeTimeouts.set(reminder.id, timeoutId);
+        }
+
+        createdReminders.push(reminder);
+      }
+
+      const reminderSummary = createdReminders.map(r => ({
+        id: r.id,
+        message: r.message,
+        scheduled_for: new Date(r.scheduledFor).toLocaleString("en-US", { 
+          timeZone: "America/New_York",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+          weekday: "short",
+          month: "short",
+          day: "numeric"
+        }),
+        sequence_position: r.sequencePosition,
+      }));
+
+      const eventTimeStr = eventTime.toLocaleString("en-US", { 
+        timeZone: "America/New_York",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        weekday: "short",
+        month: "short",
+        day: "numeric"
+      });
+
+      const target = recipient_phone ? `to ${recipient_phone}` : "in this conversation";
+      
+      return JSON.stringify({
+        success: true,
+        parent_reminder_id: parentReminderId,
+        event_time: eventTime.toISOString(),
+        event_time_formatted: eventTimeStr,
+        reminders_created: createdReminders.length,
+        reminders: reminderSummary,
+        message: `Created ${createdReminders.length} reminder(s) for "${message}" ${target}. Event is at ${eventTimeStr}.`,
+      });
+    }
+    
     default:
       return null;
   }
@@ -307,6 +435,7 @@ export const reminderToolNames = [
   "set_reminder",
   "list_reminders",
   "cancel_reminder",
+  "set_reminder_sequence",
 ];
 
 /**
