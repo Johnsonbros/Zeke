@@ -40,8 +40,8 @@ The user interface features a dark theme with a coral red accent and Poppins fon
   - **Proactive Task Follow-up**: Daily 8 AM SMS check-in with overdue/upcoming tasks and AI-generated action suggestions
   - **Multi-step Reminder Sequences**: Create linked reminders at intervals like "1 week, 1 day, 1 hour before" an event
 - **Tooling**: Integrates various AI tools for communication (SMS), task management, calendar (Google Calendar), weather, web search (Perplexity), file operations, and Limitless pendant lifelogs.
-- **Limitless Pendant Integration**: Connects to the Limitless API to access and semantically search recorded conversations from the user's wearable device. Includes:
-  - `get_lifelog_overview`: ALWAYS use first when user asks about lifelog data - shows available data across today, yesterday, and last 7 days with the most recent recording age.
+- **Limitless Pendant Integration**: Connects to the Limitless API to access and semantically search recorded conversations from the user's wearable device. The SMS agent is REQUIRED to use these tools when asked about today's activity, conversations, or anything in lifelogs. Includes:
+  - `get_lifelog_overview`: MANDATORY first call when user asks about lifelog data - shows available data across today, yesterday, and last 7 days with the most recent recording age.
   - `search_lifelogs`: Semantic + keyword search across all available lifelog data.
   - `get_recent_lifelogs`: Get conversations from last N hours (default 24, use 48-72 for broader searches).
   - `get_lifelog_context`: Get relevant excerpts for a topic (searches last 72 hours).

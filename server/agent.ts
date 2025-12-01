@@ -15,6 +15,7 @@ import {
   findNearbyPlaces,
   checkGroceryProximity,
   getLocationSettings,
+  getContactFullName,
 } from "./db";
 import { toolDefinitions, executeTool, getActiveReminders } from "./tools";
 import { 
@@ -151,7 +152,7 @@ export function getPermissionsForPhone(phoneNumber: string): UserPermissions {
       canAccessTasks: contact.canAccessTasks,
       canAccessGrocery: contact.canAccessGrocery,
       canSetReminders: contact.canSetReminders,
-      contactName: contact.name,
+      contactName: getContactFullName(contact),
       source: 'sms',
     };
   }
@@ -167,7 +168,7 @@ export function getPermissionsForPhone(phoneNumber: string): UserPermissions {
     canAccessTasks: newContact.canAccessTasks,
     canAccessGrocery: newContact.canAccessGrocery,
     canSetReminders: newContact.canSetReminders,
-    contactName: newContact.name,
+    contactName: getContactFullName(newContact),
     source: 'sms',
   };
 }
@@ -599,13 +600,24 @@ You have access to the following tools. **USE THEM - DON'T DEFLECT:**
 13. **clear_purchased_groceries** - Clear all purchased items from the list
 14. **clear_all_groceries** - Clear ALL items from the grocery list entirely (use when user says "clear the list", "got them all", or wants to start fresh)
 
-### Limitless Pendant - Lifelog Tools
-You have access to Nate's recorded conversations from his Limitless pendant. Use these to provide context-aware responses:
+### Limitless Pendant - Lifelog Tools (CRITICAL - USE THESE!)
+You have access to Nate's recorded conversations from his Limitless pendant. **ALWAYS USE THESE TOOLS when asked about today, conversations, or anything that might be in lifelogs. NEVER assume you don't have data without checking first!**
 
-15. **search_lifelogs** - Search through recorded conversations by topic, person, or content. Use semantic queries like "What did Bob say about the project?" or keyword searches.
-16. **get_recent_lifelogs** - Get recent conversations from today or the last few hours. Perfect for "What did I discuss earlier?" or context about recent events.
-17. **get_lifelog_context** - Pull relevant conversation excerpts for a specific topic. Use this BEFORE answering questions that might benefit from real-world context.
-18. **check_limitless_status** - Verify the Limitless pendant API connection is working.
+15. **get_lifelog_overview** - **ALWAYS USE THIS FIRST** when Nate asks about his day, recent conversations, or lifelog data. Shows what data is available before doing specific searches. This is your starting point!
+16. **search_lifelogs** - Search through recorded conversations by topic, person, or content. Use semantic queries like "What did Bob say about the project?" or keyword searches.
+17. **get_recent_lifelogs** - Get recent conversations from today or the last few hours. Perfect for "What did I discuss earlier?" or context about recent events.
+18. **get_lifelog_context** - Pull relevant conversation excerpts for a specific topic. Use this BEFORE answering questions that might benefit from real-world context.
+19. **generate_daily_summary** - Generate an AI-powered summary of all conversations from a specific day. Creates structured summary with key discussions, action items, and insights.
+20. **get_daily_summary** - Get a previously generated daily summary if one exists.
+21. **check_limitless_status** - Verify the Limitless pendant API connection is working.
+
+### MANDATORY Lifelog Tool Usage:
+**NEVER say "I don't have lifelog data" without FIRST calling get_lifelog_overview to check!**
+
+- **ALWAYS** call get_lifelog_overview when Nate asks: "what happened today?", "summarize my day", "what did I talk about?", "any conversations today?"
+- **ALWAYS** use search_lifelogs when Nate asks about a specific topic or person
+- **ALWAYS** use get_recent_lifelogs to check for recent activity before saying there's no data
+- **ALWAYS** use generate_daily_summary when Nate wants a recap of his day
 
 ### When to use Lifelog Tools:
 - When Nate asks about something that was discussed in a meeting or conversation
@@ -613,6 +625,7 @@ You have access to Nate's recorded conversations from his Limitless pendant. Use
 - When he asks "What did we talk about?" or "What was that thing [person] mentioned?"
 - When answering questions that might have relevant context from recorded conversations
 - To provide a more personalized, context-aware response based on his real experiences
+- **ANY question about "today", "earlier", "this morning", "my day" = CHECK LIFELOGS FIRST**
 
 ### Location Tools (GPS Access ENABLED - FULL PERMISSION)
 You have FULL access to Nate's GPS location and can manage all his saved places, lists, and location-linked items.
