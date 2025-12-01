@@ -139,6 +139,62 @@ class NodeBridge:
             response.raise_for_status()
             return response.json()
     
+    async def get_context_bundle(
+        self,
+        domain: str,
+        query: str = "",
+        route: str = "/chat",
+        conversation_id: str | None = None
+    ) -> dict[str, Any]:
+        """
+        Get a curated context bundle from the Context Router.
+        
+        The Context Router provides domain-specific, token-efficient context
+        bundles that contain relevant information for a particular domain
+        (tasks, calendar, memory, etc.).
+        
+        Args:
+            domain: The context domain to retrieve. Valid values:
+                - "global": User profile essentials, timezone, current time
+                - "memory": Semantic memories relevant to the query
+                - "tasks": Task list with priorities and due dates
+                - "calendar": Upcoming events and schedule
+                - "grocery": Grocery list items
+                - "locations": Saved places and current location
+                - "limitless": Recent Limitless pendant recordings
+                - "contacts": Contact information
+                - "profile": Full user profile details
+                - "conversation": Conversation summary and recent messages
+            query: Optional query to tailor the context (for semantic search)
+            route: Current app route for context prioritization (default: /chat)
+            conversation_id: Optional conversation ID for conversation context
+            
+        Returns:
+            dict: Context bundle with structure:
+                - success: bool
+                - bundle: {name, priority, content, tokenEstimate}
+                - error: str (if failed)
+                
+        Raises:
+            httpx.HTTPError: If the request fails
+        """
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            payload: dict[str, Any] = {
+                "domain": domain,
+                "query": query,
+                "route": route,
+            }
+            if conversation_id:
+                payload["conversationId"] = conversation_id
+                
+            response = await client.post(
+                f"{self.base_url}/api/bridge/context-bundle",
+                headers=self._get_headers(),
+                json=payload
+            )
+            response.raise_for_status()
+            return response.json()
+    
     async def health_check(self) -> dict[str, Any]:
         """
         Check the health of the Node.js API.

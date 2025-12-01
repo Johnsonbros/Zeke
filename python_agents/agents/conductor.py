@@ -642,30 +642,55 @@ Always call the classify_intent tool with your classification.""",
     
     async def enrich_context(self, message: str, context: AgentContext) -> AgentContext:
         """
-        Enrich the context with relevant memories and profile data.
+        Enrich the context with memories, profile data, and Context Router bundles.
         
-        Calls MemoryCurator to gather relevant memories for complex queries,
-        and fetches user profile data if needed.
+        This method:
+        1. Fetches curated context bundles from the Context Router (stored in metadata)
+        2. Fetches structured memory/profile data for backward compatibility
         
         Args:
             message: The user's message
             context: The current context
             
         Returns:
-            AgentContext: Enriched context with memories and profile
+            AgentContext: Enriched context with bundles and structured data
         """
+        bridge = get_bridge()
+        
         try:
-            bridge = get_bridge()
+            memory_bundle = await bridge.get_context_bundle(
+                domain="memory",
+                query=message,
+                conversation_id=context.conversation_id
+            )
+            if memory_bundle and memory_bundle.get("success"):
+                bundle_data = memory_bundle.get("bundle", {})
+                context.metadata["memory_bundle"] = {
+                    "content": bundle_data.get("content", ""),
+                    "token_estimate": bundle_data.get("tokenEstimate", 0),
+                }
             
+            global_bundle = await bridge.get_context_bundle(
+                domain="global",
+                query=message
+            )
+            if global_bundle and global_bundle.get("success"):
+                bundle_data = global_bundle.get("bundle", {})
+                context.metadata["global_bundle"] = {
+                    "content": bundle_data.get("content", ""),
+                    "token_estimate": bundle_data.get("tokenEstimate", 0),
+                }
+        except Exception as e:
+            logger.warning(f"Context bundle fetch failed (non-critical): {e}")
+        
+        try:
             memory_result = await bridge.get_memory_context(message, limit=5)
-            if memory_result and memory_result.get("success"):
+            if memory_result:
                 context.memory_context = memory_result.get("memories", {})
             
-            if not context.user_profile:
-                profile_result = await bridge.get_user_profile()
-                if profile_result and profile_result.get("success"):
-                    context.user_profile = profile_result.get("profile", {})
-            
+            profile_result = await bridge.get_user_profile()
+            if profile_result:
+                context.user_profile = profile_result.get("profile", {})
         except Exception as e:
             logger.warning(f"Context enrichment failed: {e}")
         

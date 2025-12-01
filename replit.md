@@ -19,6 +19,13 @@ ZEKE utilizes a multi-agent architecture with a Node.js + TypeScript (Express) b
 ### Multi-Agent System (Python)
 The core of ZEKE is a multi-agent system in Python, featuring specialized agents like Conductor (orchestration), Memory Curator, Comms Pilot, Ops Planner, Research Scout, Safety Auditor, and Limitless Analyst. The TypeScript backend communicates with this service, with an automatic fallback to a legacy single-agent loop if the Python service is unavailable.
 
+#### Context Router Bridge
+Python agents can request curated, domain-specific context bundles from the TypeScript Context Router via the NodeBridge:
+- **Endpoint**: `POST /api/bridge/context-bundle` with `{domain, query, route, conversationId}`
+- **Available Domains**: global, memory, tasks, calendar, grocery, locations, limitless, contacts, profile, conversation
+- **Usage**: `await bridge.get_context_bundle(domain="memory", query=message)` returns token-efficient context bundles
+- **Fallback**: ConductorAgent.enrich_context() falls back to legacy get_memory_context/get_user_profile if bundle fetch fails
+
 #### Limitless Analyst Agent
 A specialized sub-agent that preprocesses Limitless pendant lifelog data and provides curated context bundles to other agents:
 - **Context Bundles**: Creates structured, token-limited (~2000 tokens) packages containing summaries, key points, action items, people mentioned, and relevant quotes

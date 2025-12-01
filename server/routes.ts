@@ -209,6 +209,21 @@ import { z } from "zod";
 import { listCalendarEvents, getTodaysEvents, getUpcomingEvents, createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, listCalendars, type CalendarEvent, type CalendarInfo } from "./googleCalendar";
 import { parseQuickAction } from "./quickActions";
 import { analyzeAndBreakdownTask, calculateSubtaskDueDate, suggestRelatedGroceryItems, suggestRelatedGroceryItemsBulk, generateTaskFollowUp, type TaskFollowUpResult } from "./capabilities/workflows";
+import {
+  type AppContext,
+  type ContextBundle,
+  buildGlobalBundle,
+  buildMemoryBundle,
+  buildTasksBundle,
+  buildCalendarBundle,
+  buildGroceryBundle,
+  buildLocationsBundle,
+  buildLimitlessBundle,
+  buildContactsBundle,
+  buildProfileBundle,
+  buildConversationBundle,
+  DEFAULT_TOKEN_BUDGET,
+} from "./contextRouter";
 
 // Initialize Twilio client for outbound SMS
 function getTwilioClient() {
@@ -2936,6 +2951,99 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Profile fetch error:", error);
       res.status(500).json({ error: error.message || "Failed to fetch user profile" });
+    }
+  });
+
+  // POST /api/bridge/context-bundle - Get a curated context bundle for Python agents
+  // Note: ZEKE is a single-user system for Nate Johnson, so userId is always "nate"
+  app.post("/api/bridge/context-bundle", requireInternalApiKey, async (req, res) => {
+    try {
+      const { domain, query, route, conversationId } = req.body;
+      
+      if (!domain || typeof domain !== "string") {
+        return res.status(400).json({
+          success: false,
+          error: "domain is required and must be a string"
+        });
+      }
+      
+      const validDomains = [
+        "global", "memory", "tasks", "calendar", "grocery",
+        "locations", "limitless", "contacts", "profile", "conversation"
+      ];
+      
+      if (!validDomains.includes(domain)) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid domain. Must be one of: ${validDomains.join(", ")}`
+        });
+      }
+      
+      // ZEKE is a single-user system for Nate Johnson
+      const ctx: AppContext = {
+        userId: "nate",
+        currentRoute: route || "/chat",
+        userMessage: query || "",
+        conversationId: conversationId,
+        isAdmin: true,
+        now: new Date(),
+        timezone: "America/New_York",
+      };
+      
+      let bundle: ContextBundle;
+      
+      // Use appropriate token budgets per domain type
+      switch (domain) {
+        case "global":
+          // Global bundle uses its dedicated budget
+          bundle = await buildGlobalBundle(ctx);
+          break;
+        case "memory":
+          bundle = await buildMemoryBundle(ctx, DEFAULT_TOKEN_BUDGET.primary);
+          break;
+        case "tasks":
+          bundle = await buildTasksBundle(ctx, DEFAULT_TOKEN_BUDGET.primary);
+          break;
+        case "calendar":
+          bundle = await buildCalendarBundle(ctx, DEFAULT_TOKEN_BUDGET.primary);
+          break;
+        case "grocery":
+          bundle = await buildGroceryBundle(ctx, DEFAULT_TOKEN_BUDGET.secondary);
+          break;
+        case "locations":
+          bundle = await buildLocationsBundle(ctx, DEFAULT_TOKEN_BUDGET.tertiary);
+          break;
+        case "limitless":
+          bundle = await buildLimitlessBundle(ctx, DEFAULT_TOKEN_BUDGET.primary);
+          break;
+        case "contacts":
+          bundle = await buildContactsBundle(ctx, DEFAULT_TOKEN_BUDGET.secondary);
+          break;
+        case "profile":
+          bundle = await buildProfileBundle(ctx, DEFAULT_TOKEN_BUDGET.secondary);
+          break;
+        case "conversation":
+          bundle = await buildConversationBundle(ctx, DEFAULT_TOKEN_BUDGET.primary);
+          break;
+        default:
+          bundle = await buildGlobalBundle(ctx);
+      }
+      
+      res.json({
+        success: true,
+        bundle: {
+          name: bundle.name,
+          priority: bundle.priority,
+          content: bundle.content,
+          tokenEstimate: bundle.tokenEstimate,
+        }
+      });
+    } catch (error: any) {
+      console.error("Context bundle error:", error);
+      res.status(500).json({
+        success: false,
+        error: error.message || "Failed to build context bundle"
+      });
     }
   });
 
