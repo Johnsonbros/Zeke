@@ -690,6 +690,33 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_saved_recipes_rating ON saved_recipes(family_rating);
 `);
 
+// ============================================
+// LIMITLESS AI SUMMARY SYSTEM TABLES
+// ============================================
+
+// Create limitless_summaries table for AI-generated daily summaries
+db.exec(`
+  CREATE TABLE IF NOT EXISTS limitless_summaries (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL,
+    timeframe_start TEXT NOT NULL,
+    timeframe_end TEXT NOT NULL,
+    summary_title TEXT NOT NULL,
+    key_discussions TEXT NOT NULL,
+    action_items TEXT NOT NULL,
+    insights TEXT,
+    people_interacted TEXT,
+    topics_discussed TEXT,
+    lifelog_ids TEXT NOT NULL,
+    lifelog_count INTEGER NOT NULL,
+    total_duration_minutes INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_limitless_summaries_date ON limitless_summaries(date);
+  CREATE INDEX IF NOT EXISTS idx_limitless_summaries_created ON limitless_summaries(created_at);
+`);
+
 // Seed initial family members if table is empty
 try {
   const existingMembers = db.prepare(`SELECT COUNT(*) as count FROM family_members`).get() as { count: number };
@@ -1031,6 +1058,25 @@ interface SavedRecipeRow {
   family_rating: number | null;
   times_cooked: number;
   is_favorite: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Limitless summary row type
+interface LimitlessSummaryRow {
+  id: string;
+  date: string;
+  timeframe_start: string;
+  timeframe_end: string;
+  summary_title: string;
+  key_discussions: string;
+  action_items: string;
+  insights: string | null;
+  people_interacted: string | null;
+  topics_discussed: string | null;
+  lifelog_ids: string;
+  lifelog_count: number;
+  total_duration_minutes: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -4678,6 +4724,111 @@ export function searchRecipes(query: string): SavedRecipe[] {
       LIMIT 50
     `).all(searchTerm, searchTerm, searchTerm, searchTerm) as SavedRecipeRow[];
     return rows.map(mapSavedRecipe);
+  });
+}
+
+// ============================================
+// LIMITLESS SUMMARY FUNCTIONS
+// ============================================
+
+import type { LimitlessSummary, InsertLimitlessSummary } from "@shared/schema";
+
+function mapLimitlessSummary(row: LimitlessSummaryRow): LimitlessSummary {
+  return {
+    id: row.id,
+    date: row.date,
+    timeframeStart: row.timeframe_start,
+    timeframeEnd: row.timeframe_end,
+    summaryTitle: row.summary_title,
+    keyDiscussions: row.key_discussions,
+    actionItems: row.action_items,
+    insights: row.insights,
+    peopleInteracted: row.people_interacted,
+    topicsDiscussed: row.topics_discussed,
+    lifelogIds: row.lifelog_ids,
+    lifelogCount: row.lifelog_count,
+    totalDurationMinutes: row.total_duration_minutes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function getLimitlessSummaries(limit: number = 30): LimitlessSummary[] {
+  return wrapDbOperation("getLimitlessSummaries", () => {
+    const rows = db.prepare(`
+      SELECT * FROM limitless_summaries ORDER BY date DESC, created_at DESC LIMIT ?
+    `).all(limit) as LimitlessSummaryRow[];
+    return rows.map(mapLimitlessSummary);
+  });
+}
+
+export function getLimitlessSummaryByDate(date: string): LimitlessSummary | undefined {
+  return wrapDbOperation("getLimitlessSummaryByDate", () => {
+    const row = db.prepare(`
+      SELECT * FROM limitless_summaries WHERE date = ? ORDER BY created_at DESC LIMIT 1
+    `).get(date) as LimitlessSummaryRow | undefined;
+    return row ? mapLimitlessSummary(row) : undefined;
+  });
+}
+
+export function getLimitlessSummaryById(id: string): LimitlessSummary | undefined {
+  return wrapDbOperation("getLimitlessSummaryById", () => {
+    const row = db.prepare(`
+      SELECT * FROM limitless_summaries WHERE id = ?
+    `).get(id) as LimitlessSummaryRow | undefined;
+    return row ? mapLimitlessSummary(row) : undefined;
+  });
+}
+
+export function createLimitlessSummary(data: InsertLimitlessSummary): LimitlessSummary {
+  return wrapDbOperation("createLimitlessSummary", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO limitless_summaries (
+        id, date, timeframe_start, timeframe_end, summary_title,
+        key_discussions, action_items, insights, people_interacted,
+        topics_discussed, lifelog_ids, lifelog_count, total_duration_minutes,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.date,
+      data.timeframeStart,
+      data.timeframeEnd,
+      data.summaryTitle,
+      data.keyDiscussions,
+      data.actionItems,
+      data.insights || null,
+      data.peopleInteracted || null,
+      data.topicsDiscussed || null,
+      data.lifelogIds,
+      data.lifelogCount,
+      data.totalDurationMinutes || null,
+      now,
+      now
+    );
+    
+    return getLimitlessSummaryById(id)!;
+  });
+}
+
+export function deleteLimitlessSummary(id: string): boolean {
+  return wrapDbOperation("deleteLimitlessSummary", () => {
+    const result = db.prepare(`DELETE FROM limitless_summaries WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function getLimitlessSummariesInRange(startDate: string, endDate: string): LimitlessSummary[] {
+  return wrapDbOperation("getLimitlessSummariesInRange", () => {
+    const rows = db.prepare(`
+      SELECT * FROM limitless_summaries 
+      WHERE date >= ? AND date <= ?
+      ORDER BY date DESC, created_at DESC
+    `).all(startDate, endDate) as LimitlessSummaryRow[];
+    return rows.map(mapLimitlessSummary);
   });
 }
 

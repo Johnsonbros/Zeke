@@ -1001,3 +1001,85 @@ export const updateSavedRecipeSchema = z.object({
 export type InsertSavedRecipe = z.infer<typeof insertSavedRecipeSchema>;
 export type UpdateSavedRecipe = z.infer<typeof updateSavedRecipeSchema>;
 export type SavedRecipe = typeof savedRecipes.$inferSelect;
+
+// ============================================
+// LIMITLESS AI SUMMARY SYSTEM
+// ============================================
+
+// Limitless daily summaries table - stores AI-generated summaries of lifelog conversations
+export const limitlessSummaries = sqliteTable("limitless_summaries", {
+  id: text("id").primaryKey(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  timeframeStart: text("timeframe_start").notNull(),
+  timeframeEnd: text("timeframe_end").notNull(),
+  summaryTitle: text("summary_title").notNull(),
+  keyDiscussions: text("key_discussions").notNull(), // JSON array of discussion points
+  actionItems: text("action_items").notNull(), // JSON array of action items extracted
+  insights: text("insights"), // JSON array of notable insights/observations
+  peopleInteracted: text("people_interacted"), // JSON array of people mentioned/spoken to
+  topicsDiscussed: text("topics_discussed"), // JSON array of main topics
+  lifelogIds: text("lifelog_ids").notNull(), // JSON array of source lifelog IDs
+  lifelogCount: integer("lifelog_count").notNull(),
+  totalDurationMinutes: integer("total_duration_minutes"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertLimitlessSummarySchema = createInsertSchema(limitlessSummaries).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertLimitlessSummary = z.infer<typeof insertLimitlessSummarySchema>;
+export type LimitlessSummary = typeof limitlessSummaries.$inferSelect;
+
+// Parsed types for JSON fields in Limitless summaries
+export interface LimitlessDiscussionPoint {
+  title: string;
+  summary: string;
+  participants?: string[];
+  timeframe?: string;
+}
+
+export interface LimitlessActionItem {
+  task: string;
+  priority: "high" | "medium" | "low";
+  assignee?: string;
+  dueDate?: string;
+  context?: string;
+}
+
+export interface LimitlessInsight {
+  observation: string;
+  category: "decision" | "idea" | "concern" | "opportunity" | "personal" | "other";
+  importance: "high" | "medium" | "low";
+}
+
+export interface LimitlessAnalytics {
+  dateRange: {
+    start: string;
+    end: string;
+  };
+  totalConversations: number;
+  totalDurationMinutes: number;
+  averageDurationMinutes: number;
+  conversationsByDate: Array<{
+    date: string;
+    count: number;
+    durationMinutes: number;
+  }>;
+  speakerStats: Array<{
+    name: string;
+    conversationCount: number;
+    speakingTimeEstimate?: number;
+  }>;
+  topTopics: Array<{
+    topic: string;
+    frequency: number;
+  }>;
+  conversationsByHour: Array<{
+    hour: number;
+    count: number;
+  }>;
+}
