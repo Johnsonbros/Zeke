@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,6 +46,9 @@ import {
   X,
   Check,
   RefreshCw,
+  Bell,
+  BellOff,
+  Moon,
 } from "lucide-react";
 import type { Task, GroceryItem, MemoryNote, Conversation, Message, ChatResponse } from "@shared/schema";
 import { format, isPast, isToday, parseISO, isWithinInterval, startOfDay, endOfDay } from "date-fns";
@@ -117,6 +121,30 @@ interface InsightStats {
   byCategory: Record<string, number>;
   byStatus: Record<string, number>;
   byPriority: Record<string, number>;
+}
+
+interface NotificationPreferences {
+  id: string;
+  enabled: boolean;
+  batchingEnabled: boolean;
+  batchIntervalMinutes: number;
+  quietHoursEnabled: boolean;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  urgentBypassQuietHours: boolean;
+  maxBatchSize: number;
+}
+
+interface NotificationStatus {
+  stats: {
+    pending: number;
+    sentToday: number;
+    byCategory: Record<string, number>;
+    byPriority: Record<string, number>;
+  };
+  preferences: NotificationPreferences;
+  isInQuietHours: boolean;
+  schedulerActive: boolean;
 }
 
 type DashboardStats = {
@@ -959,6 +987,145 @@ function getInsightCategoryIcon(category: string) {
   }
 }
 
+function NotificationSettingsWidget({
+  status,
+  isLoading,
+  onToggleNotifications,
+  onToggleBatching,
+  onToggleQuietHours,
+  isUpdating,
+}: {
+  status: NotificationStatus | undefined;
+  isLoading: boolean;
+  onToggleNotifications: (enabled: boolean) => void;
+  onToggleBatching: (enabled: boolean) => void;
+  onToggleQuietHours: (enabled: boolean) => void;
+  isUpdating: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <Card data-testid="widget-notification-settings">
+        <CardHeader className="pb-2 sm:pb-3">
+          <Skeleton className="h-5 w-40" />
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Skeleton className="h-12" />
+          <Skeleton className="h-12" />
+          <Skeleton className="h-12" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const prefs = status?.preferences;
+  const stats = status?.stats;
+
+  return (
+    <Card data-testid="widget-notification-settings">
+      <CardHeader className="pb-2 sm:pb-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-primary/10">
+              <Bell className="h-4 w-4 text-primary" />
+            </div>
+            <CardTitle className="text-sm sm:text-base">Smart Notifications</CardTitle>
+          </div>
+          {status?.isInQuietHours && (
+            <Badge variant="secondary" className="text-[10px] flex items-center gap-1">
+              <Moon className="h-3 w-3" />
+              Quiet Hours
+            </Badge>
+          )}
+        </div>
+        <CardDescription className="text-[10px] sm:text-xs mt-1">
+          Intelligent notification batching and quiet hours
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="text-center p-2 rounded-lg bg-accent/50">
+            <p className="text-lg sm:text-xl font-semibold" data-testid="text-pending-notifications">
+              {stats?.pending || 0}
+            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Pending</p>
+          </div>
+          <div className="text-center p-2 rounded-lg bg-accent/50">
+            <p className="text-lg sm:text-xl font-semibold" data-testid="text-sent-today">
+              {stats?.sentToday || 0}
+            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Sent Today</p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between py-2 border-b">
+            <div className="flex items-center gap-2">
+              {prefs?.enabled ? (
+                <Bell className="h-3.5 w-3.5 text-primary" />
+              ) : (
+                <BellOff className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
+              <div>
+                <p className="text-xs sm:text-sm font-medium">Notifications</p>
+                <p className="text-[10px] text-muted-foreground">Enable SMS notifications</p>
+              </div>
+            </div>
+            <Switch
+              checked={prefs?.enabled ?? true}
+              onCheckedChange={onToggleNotifications}
+              disabled={isUpdating}
+              data-testid="switch-notifications-enabled"
+            />
+          </div>
+
+          <div className="flex items-center justify-between py-2 border-b">
+            <div className="flex items-center gap-2">
+              <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+              <div>
+                <p className="text-xs sm:text-sm font-medium">Batching</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Group messages ({prefs?.batchIntervalMinutes || 30} min)
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={prefs?.batchingEnabled ?? true}
+              onCheckedChange={onToggleBatching}
+              disabled={isUpdating || !prefs?.enabled}
+              data-testid="switch-batching-enabled"
+            />
+          </div>
+
+          <div className="flex items-center justify-between py-2">
+            <div className="flex items-center gap-2">
+              <Moon className="h-3.5 w-3.5 text-muted-foreground" />
+              <div>
+                <p className="text-xs sm:text-sm font-medium">Quiet Hours</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {prefs?.quietHoursStart} - {prefs?.quietHoursEnd}
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={prefs?.quietHoursEnabled ?? true}
+              onCheckedChange={onToggleQuietHours}
+              disabled={isUpdating || !prefs?.enabled}
+              data-testid="switch-quiet-hours-enabled"
+            />
+          </div>
+        </div>
+
+        {status?.schedulerActive && (
+          <p className="text-[10px] text-muted-foreground text-center flex items-center justify-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+            Scheduler active
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ProactiveInsightsWidget({
   insights,
   isLoading,
@@ -1189,6 +1356,31 @@ export default function DashboardPage() {
     queryKey: ["/api/insights?active=true&limit=5"],
   });
   const insights = insightsData?.insights;
+
+  const { data: notificationStatus, isLoading: notificationStatusLoading } = useQuery<NotificationStatus>({
+    queryKey: ["/api/notifications/status"],
+  });
+
+  const updateNotificationPrefsMutation = useMutation({
+    mutationFn: async (updates: Partial<NotificationPreferences>) => {
+      await apiRequest("PATCH", "/api/notifications/preferences", updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications/status"] });
+    },
+  });
+
+  const handleToggleNotifications = (enabled: boolean) => {
+    updateNotificationPrefsMutation.mutate({ enabled });
+  };
+
+  const handleToggleBatching = (batchingEnabled: boolean) => {
+    updateNotificationPrefsMutation.mutate({ batchingEnabled });
+  };
+
+  const handleToggleQuietHours = (quietHoursEnabled: boolean) => {
+    updateNotificationPrefsMutation.mutate({ quietHoursEnabled });
+  };
 
   const refreshInsightsMutation = useMutation({
     mutationFn: async () => {
@@ -1444,6 +1636,14 @@ export default function DashboardPage() {
             stats={smsStats} 
             conversations={smsConversations}
             isLoading={isSmsLoading}
+          />
+          <NotificationSettingsWidget
+            status={notificationStatus}
+            isLoading={notificationStatusLoading}
+            onToggleNotifications={handleToggleNotifications}
+            onToggleBatching={handleToggleBatching}
+            onToggleQuietHours={handleToggleQuietHours}
+            isUpdating={updateNotificationPrefsMutation.isPending}
           />
         </div>
 

@@ -35,6 +35,7 @@ The UI features a dark theme with a coral red accent and Poppins font, designed 
 - **Location Intelligence System**: GPS-aware system with map UI, tracking, and AI tools.
 - **Food Preference Intelligence System**: Tracks preferences, restrictions, and recipes, with AI-powered generation and grocery integration.
 - **Grocery List Auto-Clear**: Configurable settings for purchased items.
+- **Smart Notification Batching**: Intelligent SMS notification system that queues notifications, batches them at configurable intervals, respects quiet hours (9pm-8am default), and allows urgent notifications to bypass batching. Features a dashboard widget for status monitoring and preference controls.
 
 Key capabilities include SMS communication, full CRUD for tasks, Google Calendar event management, weather updates, morning briefings, AI-powered web search, file operations, time utilities, and shared grocery list management.
 

@@ -95,7 +95,14 @@ import type {
   InsightCategory,
   InsightPriority,
   InsightStatus,
-  InsightStats
+  InsightStats,
+  NotificationQueueItem,
+  InsertNotificationQueue,
+  NotificationPreferences,
+  InsertNotificationPreferences,
+  NotificationBatch,
+  NotificationCategory,
+  NotificationPriority
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -1050,6 +1057,59 @@ db.exec(`
 
 console.log("Proactive insights table initialized");
 
+// Create notification batching tables for smart notification system
+db.exec(`
+  CREATE TABLE IF NOT EXISTS notification_queue (
+    id TEXT PRIMARY KEY,
+    recipient_phone TEXT NOT NULL,
+    category TEXT NOT NULL,
+    priority TEXT NOT NULL DEFAULT 'normal',
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    source_type TEXT,
+    source_id TEXT,
+    scheduled_for TEXT,
+    sent_at TEXT,
+    batch_id TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_notification_queue_recipient ON notification_queue(recipient_phone);
+  CREATE INDEX IF NOT EXISTS idx_notification_queue_category ON notification_queue(category);
+  CREATE INDEX IF NOT EXISTS idx_notification_queue_priority ON notification_queue(priority);
+  CREATE INDEX IF NOT EXISTS idx_notification_queue_sent ON notification_queue(sent_at);
+  CREATE INDEX IF NOT EXISTS idx_notification_queue_batch ON notification_queue(batch_id);
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS notification_preferences (
+    id TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    batching_enabled INTEGER NOT NULL DEFAULT 1,
+    batch_interval_minutes INTEGER NOT NULL DEFAULT 30,
+    quiet_hours_enabled INTEGER NOT NULL DEFAULT 1,
+    quiet_hours_start TEXT NOT NULL DEFAULT '21:00',
+    quiet_hours_end TEXT NOT NULL DEFAULT '08:00',
+    urgent_bypass_quiet_hours INTEGER NOT NULL DEFAULT 1,
+    max_batch_size INTEGER NOT NULL DEFAULT 5,
+    category_preferences TEXT,
+    updated_at TEXT NOT NULL
+  );
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS notification_batches (
+    id TEXT PRIMARY KEY,
+    recipient_phone TEXT NOT NULL,
+    notification_count INTEGER NOT NULL,
+    categories TEXT NOT NULL,
+    sent_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_notification_batches_recipient ON notification_batches(recipient_phone);
+  CREATE INDEX IF NOT EXISTS idx_notification_batches_sent ON notification_batches(sent_at);
+`);
+
+console.log("Smart notification batching tables initialized");
+
 // Seed initial family members if table is empty
 try {
   const existingMembers = db.prepare(`SELECT COUNT(*) as count FROM family_members`).get() as { count: number };
@@ -1496,6 +1556,44 @@ interface InsightRow {
   expires_at: string | null;
 }
 
+// Notification batching row types
+interface NotificationQueueRow {
+  id: string;
+  recipient_phone: string;
+  category: string;
+  priority: string;
+  title: string;
+  content: string;
+  source_type: string | null;
+  source_id: string | null;
+  scheduled_for: string | null;
+  sent_at: string | null;
+  batch_id: string | null;
+  created_at: string;
+}
+
+interface NotificationPreferencesRow {
+  id: string;
+  enabled: number;
+  batching_enabled: number;
+  batch_interval_minutes: number;
+  quiet_hours_enabled: number;
+  quiet_hours_start: string;
+  quiet_hours_end: string;
+  urgent_bypass_quiet_hours: number;
+  max_batch_size: number;
+  category_preferences: string | null;
+  updated_at: string;
+}
+
+interface NotificationBatchRow {
+  id: string;
+  recipient_phone: string;
+  notification_count: number;
+  categories: string;
+  sent_at: string;
+}
+
 // Helper to map database row to Conversation type (snake_case -> camelCase)
 function mapConversation(row: ConversationRow): Conversation {
   return {
@@ -1733,6 +1831,50 @@ function mapInsight(row: InsightRow): Insight {
     dismissedAt: row.dismissed_at,
     surfacedAt: row.surfaced_at,
     expiresAt: row.expires_at,
+  };
+}
+
+// Notification batching mapper functions
+function mapNotificationQueueItem(row: NotificationQueueRow): NotificationQueueItem {
+  return {
+    id: row.id,
+    recipientPhone: row.recipient_phone,
+    category: row.category as NotificationCategory,
+    priority: row.priority as NotificationPriority,
+    title: row.title,
+    content: row.content,
+    sourceType: row.source_type,
+    sourceId: row.source_id,
+    scheduledFor: row.scheduled_for,
+    sentAt: row.sent_at,
+    batchId: row.batch_id,
+    createdAt: row.created_at,
+  };
+}
+
+function mapNotificationPreferences(row: NotificationPreferencesRow): NotificationPreferences {
+  return {
+    id: row.id,
+    enabled: Boolean(row.enabled),
+    batchingEnabled: Boolean(row.batching_enabled),
+    batchIntervalMinutes: row.batch_interval_minutes,
+    quietHoursEnabled: Boolean(row.quiet_hours_enabled),
+    quietHoursStart: row.quiet_hours_start,
+    quietHoursEnd: row.quiet_hours_end,
+    urgentBypassQuietHours: Boolean(row.urgent_bypass_quiet_hours),
+    maxBatchSize: row.max_batch_size,
+    categoryPreferences: row.category_preferences,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapNotificationBatch(row: NotificationBatchRow): NotificationBatch {
+  return {
+    id: row.id,
+    recipientPhone: row.recipient_phone,
+    notificationCount: row.notification_count,
+    categories: row.categories,
+    sentAt: row.sent_at,
   };
 }
 
@@ -6682,6 +6824,271 @@ export function cleanupExpiredInsights(): number {
       WHERE expires_at IS NOT NULL AND expires_at < ? AND status NOT IN ('completed', 'dismissed')
     `).run(now);
     return result.changes;
+  });
+}
+
+// ============================================
+// SMART NOTIFICATION BATCHING CRUD OPERATIONS
+// ============================================
+
+// CRUD: Create notification queue item
+export function createNotificationQueueItem(data: InsertNotificationQueue): NotificationQueueItem {
+  return wrapDbOperation("createNotificationQueueItem", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO notification_queue (
+        id, recipient_phone, category, priority, title, content, 
+        source_type, source_id, scheduled_for, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.recipientPhone,
+      data.category,
+      data.priority || "normal",
+      data.title,
+      data.content,
+      data.sourceType || null,
+      data.sourceId || null,
+      data.scheduledFor || null,
+      now
+    );
+    
+    return getNotificationQueueItem(id)!;
+  });
+}
+
+// CRUD: Get notification queue item by ID
+export function getNotificationQueueItem(id: string): NotificationQueueItem | undefined {
+  return wrapDbOperation("getNotificationQueueItem", () => {
+    const row = db.prepare(`SELECT * FROM notification_queue WHERE id = ?`).get(id) as NotificationQueueRow | undefined;
+    return row ? mapNotificationQueueItem(row) : undefined;
+  });
+}
+
+// CRUD: Get pending notifications for a recipient
+export function getPendingNotifications(recipientPhone: string): NotificationQueueItem[] {
+  return wrapDbOperation("getPendingNotifications", () => {
+    const rows = db.prepare(`
+      SELECT * FROM notification_queue 
+      WHERE recipient_phone = ? AND sent_at IS NULL
+      ORDER BY 
+        CASE priority
+          WHEN 'urgent' THEN 0
+          WHEN 'high' THEN 1
+          WHEN 'normal' THEN 2
+          WHEN 'low' THEN 3
+        END,
+        created_at ASC
+    `).all(recipientPhone) as NotificationQueueRow[];
+    return rows.map(mapNotificationQueueItem);
+  });
+}
+
+// CRUD: Get all pending notifications
+export function getAllPendingNotifications(): NotificationQueueItem[] {
+  return wrapDbOperation("getAllPendingNotifications", () => {
+    const rows = db.prepare(`
+      SELECT * FROM notification_queue 
+      WHERE sent_at IS NULL
+      ORDER BY recipient_phone, 
+        CASE priority
+          WHEN 'urgent' THEN 0
+          WHEN 'high' THEN 1
+          WHEN 'normal' THEN 2
+          WHEN 'low' THEN 3
+        END,
+        created_at ASC
+    `).all() as NotificationQueueRow[];
+    return rows.map(mapNotificationQueueItem);
+  });
+}
+
+// CRUD: Mark notification as sent
+export function markNotificationSent(id: string, batchId: string): NotificationQueueItem | undefined {
+  return wrapDbOperation("markNotificationSent", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      UPDATE notification_queue SET sent_at = ?, batch_id = ? WHERE id = ?
+    `).run(now, batchId, id);
+    return getNotificationQueueItem(id);
+  });
+}
+
+// CRUD: Delete notification queue item
+export function deleteNotificationQueueItem(id: string): boolean {
+  return wrapDbOperation("deleteNotificationQueueItem", () => {
+    const result = db.prepare(`DELETE FROM notification_queue WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// CRUD: Clear old sent notifications (older than specified days)
+export function clearOldNotifications(daysOld: number): number {
+  return wrapDbOperation("clearOldNotifications", () => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - daysOld);
+    const result = db.prepare(`
+      DELETE FROM notification_queue WHERE sent_at IS NOT NULL AND sent_at < ?
+    `).run(cutoff.toISOString());
+    return result.changes;
+  });
+}
+
+// CRUD: Get or create notification preferences
+export function getNotificationPreferences(): NotificationPreferences {
+  return wrapDbOperation("getNotificationPreferences", () => {
+    const row = db.prepare(`SELECT * FROM notification_preferences LIMIT 1`).get() as NotificationPreferencesRow | undefined;
+    if (row) {
+      return mapNotificationPreferences(row);
+    }
+    
+    // Create default preferences if none exist
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      INSERT INTO notification_preferences (id, updated_at)
+      VALUES (?, ?)
+    `).run(id, now);
+    
+    return getNotificationPreferences();
+  });
+}
+
+// CRUD: Update notification preferences
+export function updateNotificationPreferences(data: Partial<InsertNotificationPreferences>): NotificationPreferences {
+  return wrapDbOperation("updateNotificationPreferences", () => {
+    const existing = getNotificationPreferences();
+    const now = getCurrentTimestamp();
+    
+    const updates: string[] = ["updated_at = ?"];
+    const values: (string | number | null)[] = [now];
+    
+    if (data.enabled !== undefined) {
+      updates.push("enabled = ?");
+      values.push(data.enabled ? 1 : 0);
+    }
+    if (data.batchingEnabled !== undefined) {
+      updates.push("batching_enabled = ?");
+      values.push(data.batchingEnabled ? 1 : 0);
+    }
+    if (data.batchIntervalMinutes !== undefined) {
+      updates.push("batch_interval_minutes = ?");
+      values.push(data.batchIntervalMinutes);
+    }
+    if (data.quietHoursEnabled !== undefined) {
+      updates.push("quiet_hours_enabled = ?");
+      values.push(data.quietHoursEnabled ? 1 : 0);
+    }
+    if (data.quietHoursStart !== undefined) {
+      updates.push("quiet_hours_start = ?");
+      values.push(data.quietHoursStart);
+    }
+    if (data.quietHoursEnd !== undefined) {
+      updates.push("quiet_hours_end = ?");
+      values.push(data.quietHoursEnd);
+    }
+    if (data.urgentBypassQuietHours !== undefined) {
+      updates.push("urgent_bypass_quiet_hours = ?");
+      values.push(data.urgentBypassQuietHours ? 1 : 0);
+    }
+    if (data.maxBatchSize !== undefined) {
+      updates.push("max_batch_size = ?");
+      values.push(data.maxBatchSize);
+    }
+    if (data.categoryPreferences !== undefined) {
+      updates.push("category_preferences = ?");
+      values.push(data.categoryPreferences);
+    }
+    
+    values.push(existing.id);
+    db.prepare(`UPDATE notification_preferences SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+    
+    return getNotificationPreferences();
+  });
+}
+
+// CRUD: Create notification batch record
+export function createNotificationBatch(recipientPhone: string, notificationIds: string[], categories: string[]): NotificationBatch {
+  return wrapDbOperation("createNotificationBatch", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO notification_batches (id, recipient_phone, notification_count, categories, sent_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, recipientPhone, notificationIds.length, JSON.stringify(categories), now);
+    
+    // Mark all notifications as sent with this batch ID
+    for (const notificationId of notificationIds) {
+      markNotificationSent(notificationId, id);
+    }
+    
+    return getNotificationBatch(id)!;
+  });
+}
+
+// CRUD: Get notification batch by ID
+export function getNotificationBatch(id: string): NotificationBatch | undefined {
+  return wrapDbOperation("getNotificationBatch", () => {
+    const row = db.prepare(`SELECT * FROM notification_batches WHERE id = ?`).get(id) as NotificationBatchRow | undefined;
+    return row ? mapNotificationBatch(row) : undefined;
+  });
+}
+
+// CRUD: Get recent batches for recipient
+export function getRecentBatches(recipientPhone: string, limit: number = 10): NotificationBatch[] {
+  return wrapDbOperation("getRecentBatches", () => {
+    const rows = db.prepare(`
+      SELECT * FROM notification_batches 
+      WHERE recipient_phone = ? 
+      ORDER BY sent_at DESC 
+      LIMIT ?
+    `).all(recipientPhone, limit) as NotificationBatchRow[];
+    return rows.map(mapNotificationBatch);
+  });
+}
+
+// Query: Get notification queue statistics
+export function getNotificationQueueStats(): {
+  pending: number;
+  sentToday: number;
+  byCategory: Record<string, number>;
+  byPriority: Record<string, number>;
+} {
+  return wrapDbOperation("getNotificationQueueStats", () => {
+    const pending = db.prepare(`
+      SELECT COUNT(*) as count FROM notification_queue WHERE sent_at IS NULL
+    `).get() as { count: number };
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const sentToday = db.prepare(`
+      SELECT COUNT(*) as count FROM notification_queue WHERE sent_at >= ?
+    `).get(today.toISOString()) as { count: number };
+    
+    const byCategory = db.prepare(`
+      SELECT category, COUNT(*) as count FROM notification_queue WHERE sent_at IS NULL GROUP BY category
+    `).all() as Array<{ category: string; count: number }>;
+    
+    const byPriority = db.prepare(`
+      SELECT priority, COUNT(*) as count FROM notification_queue WHERE sent_at IS NULL GROUP BY priority
+    `).all() as Array<{ priority: string; count: number }>;
+    
+    const categoryMap: Record<string, number> = {};
+    byCategory.forEach(row => { categoryMap[row.category] = row.count; });
+    
+    const priorityMap: Record<string, number> = {};
+    byPriority.forEach(row => { priorityMap[row.priority] = row.count; });
+    
+    return {
+      pending: pending.count,
+      sentToday: sentToday.count,
+      byCategory: categoryMap,
+      byPriority: priorityMap
+    };
   });
 }
 

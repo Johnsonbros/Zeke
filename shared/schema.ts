@@ -609,7 +609,9 @@ export const twilioMessageSources = [
   "automation",        // Scheduled automations
   "daily_checkin",     // Daily check-in system
   "web_ui",            // Direct send from web UI
-  "reply"              // Reply to incoming SMS
+  "reply",             // Reply to incoming SMS
+  "context_agent",     // ZEKE Context Agent voice commands
+  "notification_batch" // Smart notification batching system
 ] as const;
 export type TwilioMessageSource = typeof twilioMessageSources[number];
 
@@ -638,6 +640,95 @@ export const insertTwilioMessageSchema = createInsertSchema(twilioMessages).omit
 
 export type InsertTwilioMessage = z.infer<typeof insertTwilioMessageSchema>;
 export type TwilioMessage = typeof twilioMessages.$inferSelect;
+
+// ============================================
+// SMART NOTIFICATION BATCHING SYSTEM
+// ============================================
+
+// Notification priority levels
+export const notificationPriorities = ["urgent", "high", "normal", "low"] as const;
+export type NotificationPriority = typeof notificationPriorities[number];
+
+// Notification categories for grouping
+export const notificationCategories = [
+  "reminder",
+  "task",
+  "calendar",
+  "insight",
+  "grocery",
+  "message",
+  "alert",
+  "system"
+] as const;
+export type NotificationCategory = typeof notificationCategories[number];
+
+// Notification queue table for pending notifications
+export const notificationQueue = sqliteTable("notification_queue", {
+  id: text("id").primaryKey(),
+  recipientPhone: text("recipient_phone").notNull(),
+  category: text("category", { enum: notificationCategories }).notNull(),
+  priority: text("priority", { enum: notificationPriorities }).notNull().default("normal"),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  sourceType: text("source_type"),
+  sourceId: text("source_id"),
+  scheduledFor: text("scheduled_for"),
+  sentAt: text("sent_at"),
+  batchId: text("batch_id"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertNotificationQueueSchema = createInsertSchema(notificationQueue).omit({
+  id: true,
+  sentAt: true,
+  batchId: true,
+  createdAt: true,
+});
+
+export type InsertNotificationQueue = z.infer<typeof insertNotificationQueueSchema>;
+export type NotificationQueueItem = typeof notificationQueue.$inferSelect;
+
+// Notification preferences table for batch windows
+export const notificationPreferences = sqliteTable("notification_preferences", {
+  id: text("id").primaryKey(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  batchingEnabled: integer("batching_enabled", { mode: "boolean" }).notNull().default(true),
+  batchIntervalMinutes: integer("batch_interval_minutes").notNull().default(30),
+  quietHoursEnabled: integer("quiet_hours_enabled", { mode: "boolean" }).notNull().default(true),
+  quietHoursStart: text("quiet_hours_start").notNull().default("21:00"),
+  quietHoursEnd: text("quiet_hours_end").notNull().default("08:00"),
+  urgentBypassQuietHours: integer("urgent_bypass_quiet_hours", { mode: "boolean" }).notNull().default(true),
+  maxBatchSize: integer("max_batch_size").notNull().default(5),
+  categoryPreferences: text("category_preferences"),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertNotificationPreferencesSchema = createInsertSchema(notificationPreferences).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertNotificationPreferences = z.infer<typeof insertNotificationPreferencesSchema>;
+export type NotificationPreferences = typeof notificationPreferences.$inferSelect;
+
+// Category-specific preferences stored as JSON
+export interface CategoryPreference {
+  category: NotificationCategory;
+  enabled: boolean;
+  priority: NotificationPriority;
+  batchable: boolean;
+}
+
+// Notification batch record for tracking sent batches
+export const notificationBatches = sqliteTable("notification_batches", {
+  id: text("id").primaryKey(),
+  recipientPhone: text("recipient_phone").notNull(),
+  notificationCount: integer("notification_count").notNull(),
+  categories: text("categories").notNull(),
+  sentAt: text("sent_at").notNull(),
+});
+
+export type NotificationBatch = typeof notificationBatches.$inferSelect;
 
 // ============================================
 // LOCATION INTELLIGENCE SYSTEM

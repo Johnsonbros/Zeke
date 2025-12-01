@@ -236,8 +236,23 @@ import {
   snoozeInsight,
   completeInsight,
   getInsightStats,
+  getNotificationPreferences as getNotificationPreferencesDb,
+  updateNotificationPreferences as updateNotificationPreferencesDb,
+  getPendingNotifications as getPendingNotificationsDb,
+  getAllPendingNotifications as getAllPendingNotificationsDb,
+  deleteNotificationQueueItem as deleteNotificationQueueItemDb,
+  getRecentBatches as getRecentBatchesDb,
 } from "./db";
 import { generateAllInsights } from "./insightsGenerator";
+import {
+  queueNotification,
+  processPendingNotifications,
+  processAllPendingNotifications,
+  getQueueStatus,
+  updateBatchInterval,
+  initializeBatchScheduler,
+  setNotificationSmsCallback,
+} from "./notificationBatcher";
 import type { EntityDomain, EntityType, InsightCategory, InsightStatus, InsightPriority } from "@shared/schema";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertContactNoteSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, insertFoodPreferenceSchema, insertDietaryRestrictionSchema, insertSavedRecipeSchema, updateSavedRecipeSchema, insertMealHistorySchema, type Automation, type InsertAutomation, getContactFullName } from "@shared/schema";
 import twilio from "twilio";
@@ -503,6 +518,51 @@ export async function registerRoutes(
   
   // Start background people extraction from lifelogs
   startPeopleProcessor();
+  
+  // Initialize smart notification batching
+  setNotificationSmsCallback(async (phone: string, message: string) => {
+    if (!twilioClient) {
+      console.log("[NotificationBatcher] Twilio not configured, cannot send SMS");
+      throw new Error("Twilio not configured");
+    }
+    
+    const formattedPhone = phone.startsWith('+') ? phone : `+1${phone}`;
+    
+    try {
+      const result = await twilioClient.messages.create({
+        body: message,
+        from: twilioFromNumber,
+        to: formattedPhone,
+      });
+      
+      logTwilioMessage({
+        direction: "outbound",
+        source: "notification_batch",
+        fromNumber: twilioFromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        twilioSid: result.sid,
+        status: "sent",
+      });
+      
+      console.log(`[NotificationBatcher] SMS sent to ${formattedPhone}`);
+    } catch (error: any) {
+      logTwilioMessage({
+        direction: "outbound",
+        source: "notification_batch",
+        fromNumber: twilioFromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        status: "failed",
+        errorCode: error.code?.toString() || "UNKNOWN",
+        errorMessage: error.message || "Unknown error",
+      });
+      
+      console.error("[NotificationBatcher] Failed to send SMS:", error);
+      throw error;
+    }
+  });
+  initializeBatchScheduler();
   
   // Start ZEKE Context Agent for wake word detection
   setContextAgentSmsCallback(async (phone: string, message: string, source?: string) => {
@@ -5005,6 +5065,154 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Refresh insights error:", error);
       res.status(500).json({ error: error.message || "Failed to generate insights" });
+    }
+  });
+
+  // ============================================
+  // SMART NOTIFICATION BATCHING ROUTES
+  // ============================================
+
+  // GET /api/notifications/status - Get queue status and preferences
+  app.get("/api/notifications/status", async (req, res) => {
+    try {
+      const status = getQueueStatus();
+      res.json(status);
+    } catch (error: any) {
+      console.error("Get notification status error:", error);
+      res.status(500).json({ error: error.message || "Failed to get notification status" });
+    }
+  });
+
+  // GET /api/notifications/preferences - Get notification preferences
+  app.get("/api/notifications/preferences", async (req, res) => {
+    try {
+      const preferences = getNotificationPreferencesDb();
+      res.json(preferences);
+    } catch (error: any) {
+      console.error("Get notification preferences error:", error);
+      res.status(500).json({ error: error.message || "Failed to get notification preferences" });
+    }
+  });
+
+  // PATCH /api/notifications/preferences - Update notification preferences
+  app.patch("/api/notifications/preferences", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Updating notification preferences`);
+      
+      const updates = req.body;
+      const preferences = updateNotificationPreferencesDb(updates);
+      
+      // If batch interval changed, restart the scheduler
+      if (updates.batchIntervalMinutes !== undefined) {
+        updateBatchInterval(updates.batchIntervalMinutes);
+      }
+      
+      res.json({ success: true, preferences });
+    } catch (error: any) {
+      console.error("Update notification preferences error:", error);
+      res.status(500).json({ error: error.message || "Failed to update notification preferences" });
+    }
+  });
+
+  // GET /api/notifications/queue - Get pending notifications
+  app.get("/api/notifications/queue", async (req, res) => {
+    try {
+      const { phone } = req.query;
+      
+      let pending;
+      if (phone && typeof phone === "string") {
+        pending = getPendingNotificationsDb(phone);
+      } else {
+        pending = getAllPendingNotificationsDb();
+      }
+      
+      res.json(pending);
+    } catch (error: any) {
+      console.error("Get notification queue error:", error);
+      res.status(500).json({ error: error.message || "Failed to get notification queue" });
+    }
+  });
+
+  // POST /api/notifications/queue - Add notification to queue
+  app.post("/api/notifications/queue", async (req, res) => {
+    try {
+      const { recipientPhone, category, priority, title, content, sourceType, sourceId } = req.body;
+      
+      if (!recipientPhone || !category || !title || !content) {
+        return res.status(400).json({ error: "recipientPhone, category, title, and content are required" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Queueing notification for ${recipientPhone}`);
+      
+      const notification = await queueNotification({
+        recipientPhone,
+        category,
+        priority: priority || "normal",
+        title,
+        content,
+        sourceType,
+        sourceId
+      });
+      
+      res.json({ success: true, notification });
+    } catch (error: any) {
+      console.error("Queue notification error:", error);
+      res.status(500).json({ error: error.message || "Failed to queue notification" });
+    }
+  });
+
+  // DELETE /api/notifications/queue/:id - Remove notification from queue
+  app.delete("/api/notifications/queue/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Deleting notification ${id}`);
+      
+      const deleted = deleteNotificationQueueItemDb(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Notification not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete notification error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete notification" });
+    }
+  });
+
+  // POST /api/notifications/process - Manually process pending notifications
+  app.post("/api/notifications/process", async (req, res) => {
+    try {
+      const { phone } = req.body;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Processing pending notifications`);
+      
+      let sent;
+      if (phone) {
+        sent = await processPendingNotifications(phone);
+      } else {
+        sent = await processAllPendingNotifications();
+      }
+      
+      res.json({ success: true, sent });
+    } catch (error: any) {
+      console.error("Process notifications error:", error);
+      res.status(500).json({ error: error.message || "Failed to process notifications" });
+    }
+  });
+
+  // GET /api/notifications/batches - Get recent batch history
+  app.get("/api/notifications/batches", async (req, res) => {
+    try {
+      const { phone, limit = "10" } = req.query;
+      
+      if (!phone || typeof phone !== "string") {
+        return res.status(400).json({ error: "Phone number required" });
+      }
+      
+      const batches = getRecentBatchesDb(phone, parseInt(limit as string) || 10);
+      res.json(batches);
+    } catch (error: any) {
+      console.error("Get notification batches error:", error);
+      res.status(500).json({ error: error.message || "Failed to get notification batches" });
     }
   });
   
