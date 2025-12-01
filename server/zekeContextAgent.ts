@@ -34,6 +34,8 @@ import { createTask, createGroceryItem, createReminder } from "./db";
 import { scheduleReminderExecution } from "./capabilities/reminders";
 import { executeCalendarTool } from "./capabilities/calendar";
 import { executeSearchTool } from "./capabilities/search";
+import { executeUtilityTool } from "./capabilities/utilities";
+import { getCurrentWeather, getWeatherForecast, formatWeatherForSms, formatForecastForSms } from "./weather";
 import type { WakeWordCommand, ContextAgentSettings } from "@shared/schema";
 import { MASTER_ADMIN_PHONE } from "@shared/schema";
 
@@ -463,6 +465,99 @@ async function executeAction(
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : "Unknown error";
           return { success: false, message: `Search error: ${errorMsg}` };
+        }
+      }
+      
+      case "get_weather": {
+        try {
+          const city = action.weatherDetails?.city || "Boston";
+          const country = action.weatherDetails?.country || "US";
+          const includeForecast = action.weatherDetails?.includeForecast || false;
+          
+          const weather = await getCurrentWeather(city, country);
+          let weatherMessage = `Weather in ${weather.location}:\n`;
+          weatherMessage += `${weather.temperature}°F (feels like ${weather.feelsLike}°F)\n`;
+          weatherMessage += `${weather.description}\n`;
+          weatherMessage += `Humidity: ${weather.humidity}%\n`;
+          weatherMessage += `Wind: ${weather.windSpeed} mph\n`;
+          weatherMessage += `Sunrise: ${weather.sunrise}, Sunset: ${weather.sunset}`;
+          
+          if (includeForecast) {
+            const forecast = await getWeatherForecast(city, country, 3);
+            weatherMessage += `\n\nForecast:\n${formatForecastForSms(forecast)}`;
+          }
+          
+          if (sendSmsCallback) {
+            await sendSmsCallback(`+1${MASTER_ADMIN_PHONE}`, weatherMessage, "context_agent");
+          }
+          
+          return { 
+            success: true, 
+            message: `Weather info sent via SMS: ${weather.temperature}°F, ${weather.description}` 
+          };
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : "Unknown error";
+          return { success: false, message: `Weather error: ${errorMsg}` };
+        }
+      }
+      
+      case "get_time": {
+        try {
+          const now = new Date();
+          const timeStr = now.toLocaleString("en-US", {
+            timeZone: "America/New_York",
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          });
+          
+          const timeMessage = `Current time: ${timeStr} (Eastern Time)`;
+          
+          if (sendSmsCallback) {
+            await sendSmsCallback(`+1${MASTER_ADMIN_PHONE}`, timeMessage, "context_agent");
+          }
+          
+          return { 
+            success: true, 
+            message: `Time info sent via SMS: ${timeStr}` 
+          };
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : "Unknown error";
+          return { success: false, message: `Time error: ${errorMsg}` };
+        }
+      }
+      
+      case "get_briefing": {
+        try {
+          // Use the utility tool to get the full morning briefing
+          const result = await executeUtilityTool(
+            "get_morning_briefing",
+            { 
+              send_sms: true, 
+              phone_number: `+1${MASTER_ADMIN_PHONE}` 
+            },
+            { sendSmsCallback }
+          );
+          
+          if (result) {
+            const parsed = JSON.parse(result);
+            if (parsed.success) {
+              return { 
+                success: true, 
+                message: `Morning briefing sent via SMS` 
+              };
+            } else {
+              return { success: false, message: parsed.error || "Failed to generate briefing" };
+            }
+          }
+          return { success: false, message: "No response from briefing tool" };
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : "Unknown error";
+          return { success: false, message: `Briefing error: ${errorMsg}` };
         }
       }
       

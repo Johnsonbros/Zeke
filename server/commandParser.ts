@@ -30,6 +30,9 @@ export type ActionType =
   | "add_grocery_item"
   | "schedule_event"
   | "search_info"
+  | "get_weather"
+  | "get_time"
+  | "get_briefing"
   | "unknown";
 
 export interface ParsedAction {
@@ -59,6 +62,11 @@ export interface ParsedAction {
     allDay?: boolean;
   } | null;
   searchQuery: string | null;
+  weatherDetails: {
+    city?: string;
+    country?: string;
+    includeForecast?: boolean;
+  } | null;
   originalCommand: string;
   reasoning: string;
 }
@@ -79,12 +87,16 @@ AVAILABLE ACTIONS:
 3. add_task - Add a to-do item (requires task title)
 4. add_grocery_item - Add item to grocery list (requires item name)
 5. schedule_event - Schedule a calendar event (requires event details)
-6. search_info - Look up information (requires search query)
-7. unknown - Command unclear or not actionable
+6. search_info - Look up information via web search (requires search query)
+7. get_weather - Get current weather and/or forecast (can specify city, defaults to Boston)
+8. get_time - Get current time/date
+9. get_briefing - Get a morning briefing with weather, calendar, and tasks
+10. unknown - Command unclear or not actionable
 
 CONTEXT:
 - You're Nate's digital twin and personal assistant
 - Nate is CEO of Johnson Bros. Plumbing & Drain Cleaning
+- Nate lives in Boston, MA (default location for weather)
 - His family: wife Shakita, daughters Aurora and Carolina
 - Common contacts: family members, coworkers, clients
 
@@ -94,6 +106,10 @@ IMPORTANT GUIDELINES:
 3. Extract the actual message content, not just that a message should be sent
 4. For reminders, try to parse relative times like "in an hour" or "tomorrow morning"
 5. Be helpful and assume good intent - if the command seems actionable, try to parse it
+6. Questions about weather like "what's the weather", "how's it outside", "is it going to rain" should use get_weather
+7. Questions asking for time like "what time is it" should use get_time
+8. Requests for a summary of the day, "what's on my schedule", "give me a briefing" should use get_briefing
+9. For complex informational questions that aren't weather/time, use search_info
 
 Respond with a JSON object containing:
 {
@@ -106,6 +122,7 @@ Respond with a JSON object containing:
   "groceryItem": { "name": "...", "quantity": "...", "category": "..." } or null,
   "eventDetails": { "title": "...", "startTime": "<ISO datetime>", "endTime": "<ISO datetime or null>", "location": "...", "description": "...", "allDay": false } or null,
   "searchQuery": "<query if search_info, null otherwise>",
+  "weatherDetails": { "city": "<city name or null for Boston>", "country": "<country code or null for US>", "includeForecast": <true if asking about future weather, false otherwise> } or null,
   "reasoning": "<brief explanation of your interpretation>"
 }`;
 
@@ -169,6 +186,7 @@ Parse this command and determine what action ZEKE should take.`;
       groceryItem: parsed.groceryItem || null,
       eventDetails: parsed.eventDetails || null,
       searchQuery: parsed.searchQuery || null,
+      weatherDetails: parsed.weatherDetails || null,
       originalCommand: command.rawCommand,
       reasoning: parsed.reasoning || "",
     };
@@ -276,6 +294,15 @@ export function validateAction(action: ParsedAction): { valid: boolean; reason?:
       if (!action.searchQuery) {
         return { valid: false, reason: "No search query specified" };
       }
+      return { valid: true };
+
+    case "get_weather":
+      return { valid: true };
+
+    case "get_time":
+      return { valid: true };
+
+    case "get_briefing":
       return { valid: true };
 
     case "unknown":

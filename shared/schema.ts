@@ -742,6 +742,9 @@ export const wakeWordActionTypes = [
   "add_grocery_item",
   "schedule_event",
   "search_info",
+  "get_weather",
+  "get_time",
+  "get_briefing",
   "unknown"
 ] as const;
 export type WakeWordActionType = typeof wakeWordActionTypes[number];

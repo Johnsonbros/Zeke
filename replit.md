@@ -48,9 +48,15 @@ The user interface features a dark theme with a coral red accent and Poppins fon
   - `generate_daily_summary`: AI-powered daily conversation summary with key discussions, action items, insights.
   - `get_daily_summary`: Retrieve cached daily summary.
   - **Voice Commands (Wake Word)**: Say "Hey ZEKE" followed by a command into the pendant. The system scans lifelogs every 5 minutes, detects commands, and executes them:
+    - `send_message`: "Hey ZEKE, tell [person] [message]" - Sends SMS to the contact
     - `set_reminder`: "Hey ZEKE, remind me to [task] in [time]" - Creates reminder and sends SMS when due
+    - `add_task`: "Hey ZEKE, add a task to [task description]" - Creates a task
+    - `add_grocery_item`: "Hey ZEKE, add [item] to the grocery list" - Adds item to grocery list
     - `schedule_event`: "Hey ZEKE, schedule [event] for [time]" - Creates Google Calendar event
     - `search_info`: "Hey ZEKE, search for [topic]" - Searches web via Perplexity and sends results via SMS
+    - `get_weather`: "Hey ZEKE, what's the weather today?" - Gets current weather and sends via SMS
+    - `get_time`: "Hey ZEKE, what time is it?" - Gets current time and sends via SMS
+    - `get_briefing`: "Hey ZEKE, give me a briefing" - Gets full morning briefing (weather, calendar, tasks) via SMS
 - **Limitless Analytics Dashboard**: Interactive dashboard at `/limitless` showing conversation trends, top contacts, topics, and daily summaries with recharts visualizations.
 - **Automatic People Tracking System**: Autonomously extracts and tracks relationships from lifelogs and conversations, creating/updating contacts and linking memories to individuals.
 - **Enhanced Contacts System**: Comprehensive contact management with:

@@ -35,10 +35,15 @@ const WAKE_WORD_PATTERNS = [
   /\bzeke\s*,?\s+remind\b/i,
   /\bzeke\s*,?\s+add\b/i,
   /\bzeke\s*,?\s+set\b/i,
+  /\bzeke\s*,?\s+what\b/i,
+  /\bzeke\s*,?\s+how\b/i,
+  /\bzeke\s*,?\s+give\s+me\b/i,
+  /\bzeke\s*,?\s+get\b/i,
+  /\bzeke\s*,?\s+check\b/i,
 ];
 
 // Master pattern to find any wake word
-const MASTER_WAKE_PATTERN = /\b(?:hey|hi|yo|okay|ok)\s+zeke\b|\bzeke\s*,?\s*(?:can\s+you|please|I\s+need\s+you\s+to|tell|text|message|remind|add|set)\b/i;
+const MASTER_WAKE_PATTERN = /\b(?:hey|hi|yo|okay|ok)\s+zeke\b|\bzeke\s*,?\s*(?:can\s+you|please|I\s+need\s+you\s+to|tell|text|message|remind|add|set|what|how|give\s+me|get|check)\b/i;
 
 /**
  * Detect wake word commands in a single piece of text
@@ -203,12 +208,23 @@ export function isActionableCommand(command: string): boolean {
     /^find\b/i,
     /^look\s+up\b/i,
     /^what\b.*\b(is|are|time|weather)\b/i,
+    /^what's\b/i,
     /^who\b/i,
     /^where\b/i,
     /^when\b/i,
     /^can\s+you\b/i,
     /^please\b/i,
     /^I\s+need\s+you\s+to\b/i,
+    /^how\b.*\b(is|are|the|weather|outside)\b/i,
+    /^how's\b/i,
+    /^get\s+(me|the)\b/i,
+    /^give\s+me\b/i,
+    /^is\s+it\b.*\b(going|gonna|raining|sunny|cold|hot|warm)\b/i,
+    /\bweather\b/i,
+    /\bforecast\b/i,
+    /\bbriefing\b/i,
+    /\bschedule\b/i,
+    /\btime\s+is\s+it\b/i,
   ];
   
   return actionIndicators.some(pattern => pattern.test(command.trim()));
