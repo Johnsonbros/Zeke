@@ -15,6 +15,7 @@ import {
 } from "../db";
 import type { Task } from "@shared/schema";
 import { analyzeAndBreakdownTask, calculateSubtaskDueDate } from "./workflows";
+import { onTaskCreated } from "../entityExtractor";
 
 export const taskToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
@@ -253,6 +254,10 @@ export async function executeTaskTool(
           priority: priority || "medium",
           dueDate: due_date || null,
           category: category || "personal",
+        });
+        
+        onTaskCreated(task).catch(err => {
+          console.error("[TaskTool] Entity extraction failed:", err);
         });
         
         let message = `Added task: "${title}"`;

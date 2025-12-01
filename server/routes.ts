@@ -221,7 +221,15 @@ import {
   getMemoryWithConfidence,
   confirmMemory,
   contradictMemory,
+  getEntity,
+  getEntityWithReferences,
+  getRelatedEntities,
+  getEntitiesForItem,
+  getItemsRelatedToEntity,
+  findEntitiesByLabel,
+  getEntitiesByType,
 } from "./db";
+import type { EntityDomain, EntityType } from "@shared/schema";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertContactNoteSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, insertFoodPreferenceSchema, insertDietaryRestrictionSchema, insertSavedRecipeSchema, updateSavedRecipeSchema, insertMealHistorySchema, type Automation, type InsertAutomation, getContactFullName } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
@@ -243,6 +251,7 @@ import {
   buildConversationBundle,
   DEFAULT_TOKEN_BUDGET,
 } from "./contextRouter";
+import { onTaskCreated } from "./entityExtractor";
 
 // Initialize Twilio client for outbound SMS
 function getTwilioClient() {
@@ -1555,6 +1564,11 @@ export async function registerRoutes(
       }
       
       const task = createTask(parsed.data);
+      
+      onTaskCreated(task).catch(err => {
+        console.error("[Routes] Entity extraction for task failed:", err);
+      });
+      
       res.json(task);
     } catch (error: any) {
       console.error("Create task error:", error);
@@ -1693,6 +1707,10 @@ export async function registerRoutes(
           parentTaskId: task.id,
         });
         createdSubtasks.push(subtask);
+        
+        onTaskCreated(subtask).catch(err => {
+          console.error("[Routes] Entity extraction for subtask failed:", err);
+        });
       }
       
       res.json({
@@ -4653,6 +4671,209 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Record memory usage error:", error);
       res.status(500).json({ error: error.message || "Failed to record memory usage" });
+    }
+  });
+
+  // === ENTITY AND CROSS-DOMAIN CONTEXT API ===
+
+  // GET /api/entities/search - Search entities by label and optional type
+  app.get("/api/entities/search", async (req, res) => {
+    try {
+      const q = req.query.q as string;
+      const type = req.query.type as EntityType | undefined;
+      
+      if (!q || q.trim().length === 0) {
+        return res.status(400).json({ error: "Search query 'q' is required" });
+      }
+      
+      let entities = findEntitiesByLabel(q.trim());
+      
+      if (type) {
+        const validTypes: EntityType[] = ["person", "location", "topic", "date"];
+        if (!validTypes.includes(type)) {
+          return res.status(400).json({ 
+            error: `Invalid type. Must be one of: ${validTypes.join(", ")}` 
+          });
+        }
+        entities = entities.filter(e => e.type === type);
+      }
+      
+      res.json({
+        query: q,
+        type: type || "all",
+        count: entities.length,
+        entities
+      });
+    } catch (error: any) {
+      console.error("Entity search error:", error);
+      res.status(500).json({ error: error.message || "Failed to search entities" });
+    }
+  });
+
+  // GET /api/entities/:id - Get entity by ID with its references
+  app.get("/api/entities/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const entityWithRefs = getEntityWithReferences(id);
+      
+      if (!entityWithRefs) {
+        return res.status(404).json({ error: "Entity not found" });
+      }
+      
+      res.json(entityWithRefs);
+    } catch (error: any) {
+      console.error("Get entity error:", error);
+      res.status(500).json({ error: error.message || "Failed to get entity" });
+    }
+  });
+
+  // GET /api/entities/:id/related - Get entities related to a given entity (via links)
+  app.get("/api/entities/:id/related", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const entity = getEntity(id);
+      if (!entity) {
+        return res.status(404).json({ error: "Entity not found" });
+      }
+      
+      const relatedEntities = getRelatedEntities(id);
+      
+      res.json(relatedEntities);
+    } catch (error: any) {
+      console.error("Get related entities error:", error);
+      res.status(500).json({ error: error.message || "Failed to get related entities" });
+    }
+  });
+
+  // GET /api/cross-domain/:domain/:itemId - Get all entities referenced by a specific item
+  app.get("/api/cross-domain/:domain/:itemId", async (req, res) => {
+    try {
+      const { domain, itemId } = req.params;
+      
+      const validDomains: EntityDomain[] = ["memory", "task", "conversation", "contact", "place"];
+      if (!validDomains.includes(domain as EntityDomain)) {
+        return res.status(400).json({ 
+          error: `Invalid domain. Must be one of: ${validDomains.join(", ")}` 
+        });
+      }
+      
+      const entities = getEntitiesForItem(domain as EntityDomain, itemId);
+      
+      res.json({
+        domain,
+        itemId,
+        count: entities.length,
+        entities
+      });
+    } catch (error: any) {
+      console.error("Get cross-domain entities error:", error);
+      res.status(500).json({ error: error.message || "Failed to get cross-domain entities" });
+    }
+  });
+
+  // GET /api/cross-domain/:domain/:itemId/related-items - Get items from other domains that share entities
+  app.get("/api/cross-domain/:domain/:itemId/related-items", async (req, res) => {
+    try {
+      const { domain, itemId } = req.params;
+      
+      const validDomains: EntityDomain[] = ["memory", "task", "conversation", "contact", "place"];
+      if (!validDomains.includes(domain as EntityDomain)) {
+        return res.status(400).json({ 
+          error: `Invalid domain. Must be one of: ${validDomains.join(", ")}` 
+        });
+      }
+      
+      const entities = getEntitiesForItem(domain as EntityDomain, itemId);
+      
+      if (entities.length === 0) {
+        return res.json({
+          domain,
+          itemId,
+          sharedEntities: [],
+          relatedItems: {},
+          totalRelatedItems: 0
+        });
+      }
+      
+      const relatedItemsMap: Record<EntityDomain, Array<{
+        itemId: string;
+        confidence: string;
+        context: string | null;
+        sharedEntityIds: string[];
+        relevanceScore: number;
+      }>> = {
+        memory: [],
+        task: [],
+        conversation: [],
+        contact: [],
+        place: []
+      };
+      
+      const itemEntityMap = new Map<string, { 
+        confidences: number[]; 
+        entityIds: string[]; 
+        context: string | null;
+        domain: EntityDomain;
+      }>();
+      
+      for (const entity of entities) {
+        const items = getItemsRelatedToEntity(entity.id);
+        
+        for (const item of items) {
+          if (item.domain === domain && item.itemId === itemId) {
+            continue;
+          }
+          
+          const key = `${item.domain}:${item.itemId}`;
+          const existing = itemEntityMap.get(key);
+          
+          if (existing) {
+            existing.confidences.push(parseFloat(item.confidence));
+            existing.entityIds.push(entity.id);
+          } else {
+            itemEntityMap.set(key, {
+              confidences: [parseFloat(item.confidence)],
+              entityIds: [entity.id],
+              context: item.context,
+              domain: item.domain
+            });
+          }
+        }
+      }
+      
+      for (const [key, data] of itemEntityMap.entries()) {
+        const [itemDomain, relatedItemId] = key.split(":");
+        const avgConfidence = data.confidences.reduce((a, b) => a + b, 0) / data.confidences.length;
+        const entityCount = data.entityIds.length;
+        const relevanceScore = avgConfidence * (1 + Math.log(entityCount + 1));
+        
+        relatedItemsMap[data.domain].push({
+          itemId: relatedItemId,
+          confidence: avgConfidence.toFixed(2),
+          context: data.context,
+          sharedEntityIds: data.entityIds,
+          relevanceScore: parseFloat(relevanceScore.toFixed(3))
+        });
+      }
+      
+      for (const domainKey of Object.keys(relatedItemsMap) as EntityDomain[]) {
+        relatedItemsMap[domainKey].sort((a, b) => b.relevanceScore - a.relevanceScore);
+      }
+      
+      const totalRelatedItems = Object.values(relatedItemsMap)
+        .reduce((sum, items) => sum + items.length, 0);
+      
+      res.json({
+        domain,
+        itemId,
+        sharedEntities: entities.map(e => ({ id: e.id, type: e.type, label: e.label })),
+        relatedItems: relatedItemsMap,
+        totalRelatedItems
+      });
+    } catch (error: any) {
+      console.error("Get related items error:", error);
+      res.status(500).json({ error: error.message || "Failed to get related items" });
     }
   });
   

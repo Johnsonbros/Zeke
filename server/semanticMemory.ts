@@ -18,6 +18,7 @@ import {
   type MemoryWithEmbedding,
   type ScoredMemory
 } from "./embeddings";
+import { onMemoryCreated } from "./entityExtractor";
 import type { MemoryNote, InsertMemoryNote } from "@shared/schema";
 
 export interface SemanticMemoryNote extends MemoryNote {
@@ -96,6 +97,11 @@ export async function createMemoryWithEmbedding(
     }
 
     console.log(`Created memory with embedding: [${note.type}] ${note.content.substring(0, 50)}...`);
+    
+    onMemoryCreated(note).catch(err => {
+      console.error("[SemanticMemory] Entity extraction failed:", err);
+    });
+    
     return { note, isDuplicate: false, wasCreated: true };
   } catch (error) {
     console.error("Error creating memory with embedding, falling back to basic:", error);
@@ -128,6 +134,10 @@ export async function createMemoryWithEmbedding(
         console.log(`Memory superseded (fallback): "${oldNote.content}" -> "${note.content}"`);
       }
     }
+    
+    onMemoryCreated(note).catch(err => {
+      console.error("[SemanticMemory] Entity extraction failed (fallback):", err);
+    });
     
     return { note, isDuplicate: false, wasCreated: true };
   }
