@@ -341,8 +341,8 @@ function ContactDetailPanel({
   };
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between p-3 sm:p-4 gap-2 border-b border-border">
+    <div className="h-full flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between p-3 sm:p-4 gap-2 border-b border-border shrink-0">
         <div className="flex items-center gap-2 sm:gap-3">
           <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" onClick={onClose} data-testid="button-close-detail">
             <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
@@ -378,8 +378,8 @@ function ContactDetailPanel({
         </div>
       </div>
       
-      <Tabs defaultValue="messages" className="flex-1 flex flex-col min-h-0">
-        <div className="p-2 sm:p-3 border-b border-border">
+      <Tabs defaultValue="messages" className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="p-2 sm:p-3 border-b border-border shrink-0">
           <TabsList className="w-full h-8 sm:h-9">
             <TabsTrigger value="messages" className="flex-1 text-xs sm:text-sm gap-1 sm:gap-1.5" data-testid="tab-messages">
               <MessageSquare className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
@@ -396,8 +396,8 @@ function ContactDetailPanel({
           </TabsList>
         </div>
         
-        <TabsContent value="messages" className="flex-1 m-0 min-h-0 flex flex-col">
-          <ScrollArea className="flex-1">
+        <TabsContent value="messages" className="flex-1 m-0 min-h-0 flex flex-col overflow-hidden">
+          <ScrollArea className="flex-1 h-full min-h-[300px] sm:min-h-[400px]">
             <div className="p-2 sm:p-3">
               {isLoadingMessages ? (
                 <div className="space-y-2 sm:space-y-3">
@@ -1013,7 +1013,7 @@ export default function ContactsPage() {
       </div>
       
       {selectedContact && (
-        <div className="flex-1 w-full md:max-w-md lg:max-w-lg border-l border-border">
+        <div className="flex-1 w-full md:max-w-md lg:max-w-lg border-l border-border h-full overflow-hidden">
           <ContactDetailPanel
             contact={selectedContact}
             onClose={() => setSelectedContactId(null)}
