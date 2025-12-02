@@ -3884,8 +3884,6 @@ export function getTwilioConversationPhones(): Array<{
       WITH RankedMessages AS (
         SELECT 
           CASE WHEN direction = 'inbound' THEN from_number ELSE to_number END as phone_number,
-          contact_id,
-          contact_name,
           body as last_message,
           created_at as last_message_at,
           ROW_NUMBER() OVER (
@@ -3907,13 +3905,20 @@ export function getTwilioConversationPhones(): Array<{
       )
       SELECT 
         rm.phone_number,
-        rm.contact_id,
-        rm.contact_name,
+        c.id as contact_id,
+        CASE 
+          WHEN c.first_name IS NOT NULL AND c.last_name IS NOT NULL 
+            THEN c.first_name || ' ' || c.last_name
+          WHEN c.first_name IS NOT NULL 
+            THEN c.first_name
+          ELSE NULL 
+        END as contact_name,
         rm.last_message,
         rm.last_message_at,
         mc.message_count
       FROM RankedMessages rm
       JOIN MessageCounts mc ON rm.phone_number = mc.phone_number
+      LEFT JOIN contacts c ON rm.phone_number = c.phone_number
       WHERE rm.rn = 1
       ORDER BY rm.last_message_at DESC
     `).all(

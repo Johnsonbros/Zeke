@@ -198,7 +198,7 @@ function MessageBubble({ message }: { message: TwilioMessage }) {
           </span>
           
           <span className="text-[10px] text-muted-foreground">
-            {format(parseISO(message.createdAt), "h:mm a")}
+            {format(parseISO(message.createdAt), "MMM d, h:mm a")}
           </span>
         </div>
         
@@ -215,10 +215,12 @@ function MessageBubble({ message }: { message: TwilioMessage }) {
 
 function ConversationPanel({ 
   phone, 
+  contactName,
   onClose,
   onSendMessage
 }: { 
   phone: string;
+  contactName: string | null;
   onClose: () => void;
   onSendMessage: (to: string, message: string) => void;
 }) {
@@ -250,7 +252,10 @@ function ConversationPanel({
             <X className="h-4 w-4" />
           </Button>
           <div>
-            <h2 className="font-semibold">{formatPhoneDisplay(phone)}</h2>
+            <h2 className="font-semibold">{contactName || formatPhoneDisplay(phone)}</h2>
+            {contactName && (
+              <p className="text-xs text-muted-foreground">{formatPhoneDisplay(phone)}</p>
+            )}
             <p className="text-xs text-muted-foreground">{messages?.length || 0} messages</p>
           </div>
         </div>
@@ -351,6 +356,8 @@ export default function TwilioLogPage() {
     sendMutation.mutate({ to, message });
   };
 
+  const selectedConversation = conversations?.find(c => c.phoneNumber === selectedPhone);
+
   return (
     <div className="flex h-screen bg-background">
       <div className={`${selectedPhone ? "hidden md:flex" : "flex"} flex-col flex-1 border-r border-border`}>
@@ -426,6 +433,7 @@ export default function TwilioLogPage() {
         <div className="flex-1 md:flex hidden flex-col">
           <ConversationPanel
             phone={selectedPhone}
+            contactName={selectedConversation?.contactName || null}
             onClose={() => setSelectedPhone(null)}
             onSendMessage={handleSendMessage}
           />
@@ -436,6 +444,7 @@ export default function TwilioLogPage() {
         <div className="fixed inset-0 z-50 md:hidden bg-background">
           <ConversationPanel
             phone={selectedPhone}
+            contactName={selectedConversation?.contactName || null}
             onClose={() => setSelectedPhone(null)}
             onSendMessage={handleSendMessage}
           />
