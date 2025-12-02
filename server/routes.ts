@@ -4914,6 +4914,29 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/limitless/recent - Test endpoint for recent lifelogs from API
+  app.get("/api/limitless/recent", async (req, res) => {
+    try {
+      const hours = parseInt(req.query.hours as string) || 4;
+      const limit = parseInt(req.query.limit as string) || 10;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Testing Limitless API: fetching ${limit} lifelogs from last ${hours} hours`);
+      const lifelogs = await getRecentLifelogs(hours, limit);
+      res.json({
+        count: lifelogs.length,
+        hours,
+        lifelogs: lifelogs.map(l => ({
+          id: l.id,
+          title: l.title,
+          startTime: l.startTime,
+          endTime: l.endTime,
+        })),
+      });
+    } catch (error: any) {
+      console.error("Get recent lifelogs error:", error);
+      res.status(500).json({ error: error.message || "Failed to get recent lifelogs" });
+    }
+  });
+
   // POST /api/limitless/generate-summary - Manually trigger summary generation for a date
   app.post("/api/limitless/generate-summary", async (req, res) => {
     try {

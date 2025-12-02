@@ -17,6 +17,30 @@ import type { LimitlessSummary, InsertLimitlessSummary } from "@shared/schema";
 const LIMITLESS_API_BASE = "https://api.limitless.ai";
 const TIMEZONE = "America/New_York";
 
+/**
+ * Format a Date object as a timezone-naive string for Limitless API
+ * The API expects "YYYY-MM-DD HH:mm:SS" format WITHOUT timezone offset.
+ * The timezone parameter tells the API how to interpret these naive timestamps.
+ */
+function formatForLimitlessApi(date: Date): string {
+  // Format in the target timezone (America/New_York)
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  
+  const parts = formatter.formatToParts(date);
+  const getPart = (type: string) => parts.find(p => p.type === type)?.value || '00';
+  
+  return `${getPart('year')}-${getPart('month')}-${getPart('day')} ${getPart('hour')}:${getPart('minute')}:${getPart('second')}`;
+}
+
 // OpenAI client for summary generation
 let openai: OpenAI | null = null;
 
@@ -209,8 +233,8 @@ export async function getRecentLifelogs(hours = 24, limit = 20): Promise<Lifelog
   const startTime = new Date(now.getTime() - hours * 60 * 60 * 1000);
   
   const response = await getLifelogs({
-    start: startTime.toISOString(), // Keep full ISO timestamp with Z suffix for UTC
-    end: now.toISOString(),
+    start: formatForLimitlessApi(startTime), // Format in target timezone for API
+    end: formatForLimitlessApi(now),
     limit,
     direction: "desc",
   });
@@ -308,8 +332,8 @@ export async function getLifelogContext(
     // Search for relevant lifelogs within the time range
     const lifelogs = await searchLifelogs(query, {
       limit: maxResults,
-      start: startTime.toISOString(), // Keep full ISO timestamp with Z suffix for UTC
-      end: now.toISOString(),
+      start: formatForLimitlessApi(startTime), // Format in target timezone for API
+      end: formatForLimitlessApi(now),
     });
     
     if (lifelogs.length === 0) {
