@@ -1,7 +1,10 @@
 /**
  * Voice Pipeline - Main Entry Point
  * 
- * Orchestrates the Limitless audio → STT → text → ZEKE command pipeline.
+ * Orchestrates the Limitless lifelog → transcript → ZEKE command pipeline.
+ * Uses the Limitless API's transcripts directly when available, which is
+ * more reliable than real-time audio streaming.
+ * 
  * Provides a clean API for starting/stopping the voice pipeline and
  * checking its status.
  */
@@ -11,13 +14,10 @@ import {
   LimitlessListener, 
   getLimitlessListener, 
   isVoicePipelineAvailable,
-  type AudioChunk 
+  type TranscriptChunk 
 } from "./limitlessListener";
 import { 
-  Transcriber, 
-  getTranscriber, 
   isTranscriptionAvailable,
-  type TranscriptionResult 
 } from "./transcriber";
 import { 
   UtteranceStream, 
@@ -38,7 +38,8 @@ export interface VoicePipelineStatus {
   transcriptionConfigured: boolean;
   listenerStatus?: {
     running: boolean;
-    lastEndMs: number;
+    lastPollTime: string;
+    processedCount: number;
     consecutiveErrors: number;
   };
   streamStatus?: {
@@ -53,7 +54,6 @@ export interface VoicePipelineStatus {
 
 // Pipeline state
 let listener: LimitlessListener | null = null;
-let transcriber: Transcriber | null = null;
 let utteranceStream: UtteranceStream | null = null;
 let isInitialized = false;
 let commandsProcessed = 0;
@@ -63,11 +63,11 @@ let lastCommandAt: number | null = null;
  * Initialize the voice pipeline components
  * 
  * This sets up the chain:
- *   LimitlessListener → Transcriber → UtteranceStream → VoiceCommandHandler
+ *   LimitlessListener → UtteranceStream → VoiceCommandHandler
  * 
- * Graceful degradation: If Limitless is configured but transcription is not,
- * the pipeline will still initialize but voice capture will be disabled.
- * This allows the status endpoint to work and report the missing configuration.
+ * The new approach uses Limitless API transcripts directly instead of
+ * streaming raw audio and transcribing with Whisper. This is more reliable
+ * since the Limitless API doesn't support true real-time audio streaming.
  */
 export function initializeVoicePipeline(): boolean {
   if (isInitialized) {
@@ -82,18 +82,7 @@ export function initializeVoicePipeline(): boolean {
     return false;
   }
 
-  // Check if transcription is available - warn but continue if not
-  if (!isTranscriptionAvailable()) {
-    log("Voice pipeline limited - OPENAI_API_KEY not configured for transcription", "voice");
-    log("Voice capture disabled until transcription is configured", "voice");
-    isInitialized = true;  // Mark as initialized so status endpoint works
-    return true;  // Still "successful" - pipeline is in degraded mode
-  }
-
   log("Initializing voice pipeline...", "voice");
-
-  // Initialize transcriber
-  transcriber = getTranscriber();
 
   // Initialize utterance stream with command handler
   utteranceStream = new UtteranceStream({
@@ -105,6 +94,7 @@ export function initializeVoicePipeline(): boolean {
         if (result.success) {
           commandsProcessed++;
           lastCommandAt = Date.now();
+          log(`Voice command processed: "${utterance.text.substring(0, 50)}..."`, "voice");
         }
       } catch (error: any) {
         log(`Voice command processing failed: ${error.message}`, "voice");
@@ -115,19 +105,25 @@ export function initializeVoicePipeline(): boolean {
     },
   });
 
-  // Initialize Limitless listener with audio → transcription chain
+  // Initialize Limitless listener with transcript handler
   listener = new LimitlessListener({
-    onAudioChunk: async (chunk: AudioChunk) => {
+    pollIntervalMs: 10000,  // Poll every 10 seconds
+    lookbackMinutes: 5,     // Look back 5 minutes for new lifelogs
+    onTranscript: async (chunk: TranscriptChunk) => {
       try {
-        // Transcribe the audio chunk
-        const result = await transcriber!.transcribeChunk(chunk);
+        log(`New transcript from lifelog ${chunk.lifelogId}: "${chunk.text.substring(0, 50)}..."`, "voice");
         
-        if (result && result.text) {
-          // Feed transcription to utterance stream
-          utteranceStream!.feed(result);
-        }
+        // Feed transcript to utterance stream for wake word detection
+        // Create a TranscriptionResult-compatible object
+        const now = Date.now();
+        utteranceStream!.feed({
+          text: chunk.text,
+          startMs: now,
+          endMs: now,
+          durationMs: 0,
+        });
       } catch (error: any) {
-        log(`Audio processing error: ${error.message}`, "voice");
+        log(`Transcript processing error: ${error.message}`, "voice");
       }
     },
     onError: (error: Error) => {
@@ -190,7 +186,7 @@ export function stopVoicePipeline(): void {
 export function getVoicePipelineStatus(): VoicePipelineStatus {
   const limitlessConfigured = isVoicePipelineAvailable();
   const transcriptionConfigured = isTranscriptionAvailable();
-  const available = limitlessConfigured && transcriptionConfigured;
+  const available = limitlessConfigured;  // Transcription not required with new approach
 
   return {
     available,

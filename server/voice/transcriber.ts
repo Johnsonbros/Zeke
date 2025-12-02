@@ -8,7 +8,13 @@
 
 import OpenAI from "openai";
 import { log } from "../logger";
-import type { AudioChunk } from "./limitlessListener";
+
+// AudioChunk for direct audio transcription (used when downloading lifelog audio)
+export interface AudioChunk {
+  startMs: number;
+  endMs: number;
+  data: Buffer;
+}
 
 export interface TranscriptionResult {
   text: string;

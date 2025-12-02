@@ -1,75 +1,102 @@
 /**
- * Limitless Audio Listener
+ * Limitless Lifelog Listener
  * 
- * Continuously polls the Limitless API for pendant audio and feeds chunks
- * to the transcription pipeline. Implements rate limiting, backoff on 429,
- * and graceful error handling.
+ * Polls the Limitless API for new lifelogs (pendant recordings) and extracts
+ * transcribed text for voice command processing. Uses the official /v1/lifelogs
+ * endpoint which provides transcripts after audio syncs through phone to cloud.
  * 
- * API: GET /v1/download-audio?audioSource=pendant&startMs=X&endMs=Y
+ * This approach is more reliable than real-time audio streaming since the
+ * Limitless API doesn't support true real-time audio access.
+ * 
+ * API: GET /v1/lifelogs
  * Constraints:
  *   - Max 180 requests/min (~3/sec)
- *   - startMs < endMs
- *   - Time window ≤ 2 hours
- *   - On 429: back off using retryAfter header
- *   - On 404: no audio for window, advance timestamps
+ *   - Audio syncs: Pendant → Phone (Bluetooth) → Cloud
+ *   - Transcripts available after cloud processing
  */
 
 import { log } from "../logger";
+import { getLifelogs, type Lifelog, type ContentNode } from "../limitless";
 
-export interface AudioChunk {
-  startMs: number;
-  endMs: number;
-  data: Buffer;
+const TIMEZONE = "America/New_York";
+
+/**
+ * Format a Date object as a timezone-naive string for Limitless API
+ */
+function formatForLimitlessApi(date: Date): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  
+  const parts = formatter.formatToParts(date);
+  const getPart = (type: string) => parts.find(p => p.type === type)?.value || '00';
+  
+  return `${getPart('year')}-${getPart('month')}-${getPart('day')} ${getPart('hour')}:${getPart('minute')}:${getPart('second')}`;
 }
 
-export type AudioHandler = (chunk: AudioChunk) => Promise<void>;
+export interface TranscriptChunk {
+  lifelogId: string;
+  text: string;
+  speakerName?: string | null;
+  startTime: string;
+  endTime: string;
+}
+
+export type TranscriptHandler = (chunk: TranscriptChunk) => Promise<void>;
 
 export interface LimitlessListenerConfig {
-  apiBaseUrl?: string;
-  apiKey?: string;
   pollIntervalMs?: number;
-  onAudioChunk: AudioHandler;
+  onTranscript: TranscriptHandler;
   onError?: (error: Error) => void;
+  lookbackMinutes?: number;
 }
 
-const DEFAULT_API_BASE_URL = "https://api.limitless.ai";
-const DEFAULT_POLL_INTERVAL_MS = 800;
-const MAX_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours max
-const MIN_WINDOW_MS = 100; // Minimum window to request
+const DEFAULT_POLL_INTERVAL_MS = 10000; // Poll every 10 seconds (lifelogs have delay anyway)
+const DEFAULT_LOOKBACK_MINUTES = 5; // Look back 5 minutes for new lifelogs
+const MAX_PROCESSED_IDS = 1000; // Keep track of last 1000 processed IDs
 
 export class LimitlessListener {
-  private apiBaseUrl: string;
-  private apiKey: string;
   private pollIntervalMs: number;
-  private onAudioChunk: AudioHandler;
+  private lookbackMinutes: number;
+  private onTranscript: TranscriptHandler;
   private onError: (error: Error) => void;
   
-  private lastEndMs: number;
+  private processedIds: Set<string> = new Set();
+  private watermarkTime: Date;  // Tracks the latest processed lifelog end time
+  private lastPollTime: Date;
   private isRunning: boolean = false;
   private pollTimer: NodeJS.Timeout | null = null;
   private backoffUntil: number = 0;
   private consecutiveErrors: number = 0;
 
   constructor(config: LimitlessListenerConfig) {
-    this.apiBaseUrl = config.apiBaseUrl || process.env.LIMITLESS_API_BASE_URL || DEFAULT_API_BASE_URL;
-    this.apiKey = config.apiKey || process.env.LIMITLESS_API_KEY || "";
-    this.pollIntervalMs = config.pollIntervalMs || parseInt(process.env.LIMITLESS_POLL_INTERVAL_MS || String(DEFAULT_POLL_INTERVAL_MS), 10);
-    this.onAudioChunk = config.onAudioChunk;
-    this.onError = config.onError || ((error) => log(`Limitless error: ${error.message}`, "voice"));
+    this.pollIntervalMs = config.pollIntervalMs || 
+      parseInt(process.env.LIMITLESS_POLL_INTERVAL_MS || String(DEFAULT_POLL_INTERVAL_MS), 10);
+    this.lookbackMinutes = config.lookbackMinutes || DEFAULT_LOOKBACK_MINUTES;
+    this.onTranscript = config.onTranscript;
+    this.onError = config.onError || ((error) => log(`LimitlessListener error: ${error.message}`, "voice"));
     
-    // Initialize lastEndMs to now - 1 second (start capturing from recent audio)
-    this.lastEndMs = Date.now() - 1000;
+    // Initialize watermark to lookback period ago
+    this.watermarkTime = new Date(Date.now() - this.lookbackMinutes * 60 * 1000);
+    this.lastPollTime = new Date();
   }
 
   /**
    * Check if the Limitless API key is configured
    */
   isConfigured(): boolean {
-    return !!this.apiKey;
+    return !!process.env.LIMITLESS_API_KEY;
   }
 
   /**
-   * Start the audio polling loop
+   * Start the lifelog polling loop
    */
   start(): void {
     if (!this.isConfigured()) {
@@ -83,15 +110,16 @@ export class LimitlessListener {
     }
 
     this.isRunning = true;
-    this.lastEndMs = Date.now() - 1000;
+    this.lastPollTime = new Date(Date.now() - this.lookbackMinutes * 60 * 1000);
     this.consecutiveErrors = 0;
+    this.processedIds.clear();
     
-    log(`Starting Limitless listener (poll interval: ${this.pollIntervalMs}ms)`, "voice");
+    log(`Starting Limitless listener (poll interval: ${this.pollIntervalMs}ms, lookback: ${this.lookbackMinutes}min)`, "voice");
     this.schedulePoll();
   }
 
   /**
-   * Stop the audio polling loop
+   * Stop the polling loop
    */
   stop(): void {
     if (!this.isRunning) {
@@ -111,10 +139,19 @@ export class LimitlessListener {
   /**
    * Get current listener status
    */
-  getStatus(): { running: boolean; lastEndMs: number; consecutiveErrors: number; backoffUntil: number } {
+  getStatus(): { 
+    running: boolean; 
+    lastPollTime: string; 
+    watermarkTime: string;
+    processedCount: number;
+    consecutiveErrors: number; 
+    backoffUntil: number;
+  } {
     return {
       running: this.isRunning,
-      lastEndMs: this.lastEndMs,
+      lastPollTime: this.lastPollTime.toISOString(),
+      watermarkTime: this.watermarkTime.toISOString(),
+      processedCount: this.processedIds.size,
       consecutiveErrors: this.consecutiveErrors,
       backoffUntil: this.backoffUntil,
     };
@@ -140,7 +177,7 @@ export class LimitlessListener {
   }
 
   /**
-   * Perform a single poll for audio
+   * Perform a single poll for new lifelogs
    */
   private async poll(): Promise<void> {
     if (!this.isRunning) {
@@ -148,40 +185,73 @@ export class LimitlessListener {
     }
 
     try {
-      const now = Date.now();
-      const startMs = this.lastEndMs;
-      let endMs = now;
+      // Use watermark to query only newer lifelogs
+      // Subtract 30 seconds from watermark to create small overlap for safety
+      const queryStartTime = new Date(this.watermarkTime.getTime() - 30000);
+      const formattedStart = formatForLimitlessApi(queryStartTime);
+      
+      const response = await getLifelogs({
+        start: formattedStart,
+        limit: 20,
+        direction: "asc",  // Oldest first to process in order
+        includeContents: true,
+        includeMarkdown: false,
+      });
 
-      // Ensure window doesn't exceed 2 hours
-      if (endMs - startMs > MAX_WINDOW_MS) {
-        endMs = startMs + MAX_WINDOW_MS;
-        log(`Capping audio window to 2 hours`, "voice");
-      }
+      const lifelogs = response.data.lifelogs || [];
+      
+      // Track newest lifelog end time to advance watermark
+      let newestEndTime = this.watermarkTime;
+      
+      // Process new lifelogs (ones we haven't seen)
+      for (const lifelog of lifelogs) {
+        if (this.processedIds.has(lifelog.id)) {
+          // Already processed, but still track end time for watermark
+          const lifelogEnd = new Date(lifelog.endTime);
+          if (lifelogEnd > newestEndTime) {
+            newestEndTime = lifelogEnd;
+          }
+          continue;
+        }
 
-      // Skip if window is too small
-      if (endMs - startMs < MIN_WINDOW_MS) {
-        this.schedulePoll();
-        return;
-      }
+        // Extract transcript text from contents
+        const transcripts = this.extractTranscripts(lifelog);
+        
+        if (transcripts.length > 0) {
+          log(`Processing lifelog ${lifelog.id}: ${transcripts.length} transcript chunk(s)`, "voice");
+        }
+        
+        for (const transcript of transcripts) {
+          try {
+            await this.onTranscript(transcript);
+          } catch (handlerError: any) {
+            log(`Transcript handler error: ${handlerError.message}`, "voice");
+          }
+        }
 
-      const audioData = await this.fetchAudio(startMs, endMs);
-
-      if (audioData) {
-        const chunk: AudioChunk = {
-          startMs,
-          endMs,
-          data: audioData,
-        };
-
-        try {
-          await this.onAudioChunk(chunk);
-        } catch (handlerError: any) {
-          log(`Audio chunk handler error: ${handlerError.message}`, "voice");
+        // Mark as processed
+        this.processedIds.add(lifelog.id);
+        
+        // Track end time for watermark
+        const lifelogEnd = new Date(lifelog.endTime);
+        if (lifelogEnd > newestEndTime) {
+          newestEndTime = lifelogEnd;
+        }
+        
+        // Cleanup old IDs to prevent memory growth
+        if (this.processedIds.size > MAX_PROCESSED_IDS) {
+          const idsArray = Array.from(this.processedIds);
+          const toRemove = idsArray.slice(0, idsArray.length - MAX_PROCESSED_IDS / 2);
+          toRemove.forEach(id => this.processedIds.delete(id));
         }
       }
+      
+      // Advance watermark to the newest processed lifelog end time
+      if (newestEndTime > this.watermarkTime) {
+        this.watermarkTime = newestEndTime;
+      }
 
-      // Advance timestamp regardless of whether audio was returned
-      this.lastEndMs = endMs;
+      this.lastPollTime = new Date();
       this.consecutiveErrors = 0;
 
     } catch (error: any) {
@@ -189,8 +259,8 @@ export class LimitlessListener {
       this.onError(error);
       
       // Apply exponential backoff for repeated errors
-      if (this.consecutiveErrors > 5) {
-        const backoffMs = Math.min(30000, 1000 * Math.pow(2, this.consecutiveErrors - 5));
+      if (this.consecutiveErrors > 3) {
+        const backoffMs = Math.min(60000, 5000 * Math.pow(2, this.consecutiveErrors - 3));
         this.backoffUntil = Date.now() + backoffMs;
         log(`Backing off for ${backoffMs}ms after ${this.consecutiveErrors} consecutive errors`, "voice");
       }
@@ -200,54 +270,40 @@ export class LimitlessListener {
   }
 
   /**
-   * Fetch audio from the Limitless API
+   * Extract transcript text from lifelog contents
    */
-  private async fetchAudio(startMs: number, endMs: number): Promise<Buffer | null> {
-    const url = new URL(`${this.apiBaseUrl}/v1/download-audio`);
-    url.searchParams.set("audioSource", "pendant");
-    url.searchParams.set("startMs", String(startMs));
-    url.searchParams.set("endMs", String(endMs));
+  private extractTranscripts(lifelog: Lifelog): TranscriptChunk[] {
+    const transcripts: TranscriptChunk[] = [];
+    
+    // Process content nodes recursively
+    const processNode = (node: ContentNode) => {
+      // Handle different content types
+      if (node.type === "blockquote" || node.type === "paragraph") {
+        if (node.content && node.content.trim()) {
+          transcripts.push({
+            lifelogId: lifelog.id,
+            text: node.content.trim(),
+            speakerName: node.speakerName,
+            startTime: node.startTime || lifelog.startTime,
+            endTime: node.endTime || lifelog.endTime,
+          });
+        }
+      }
+      
+      // Process children recursively
+      if (node.children) {
+        for (const child of node.children) {
+          processNode(child);
+        }
+      }
+    };
 
-    const response = await fetch(url.toString(), {
-      method: "GET",
-      headers: {
-        "X-API-KEY": this.apiKey,
-        "Accept": "audio/ogg",
-      },
-      signal: AbortSignal.timeout(10000), // 10 second timeout
-    });
-
-    if (response.status === 429) {
-      // Rate limited - parse retryAfter header
-      const retryAfter = response.headers.get("Retry-After");
-      const retryMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : 60000;
-      this.backoffUntil = Date.now() + retryMs;
-      log(`Rate limited by Limitless API, backing off ${retryMs}ms`, "voice");
-      throw new Error(`Rate limited, retry after ${retryMs}ms`);
+    // Process all top-level content nodes
+    for (const node of lifelog.contents || []) {
+      processNode(node);
     }
 
-    if (response.status === 404) {
-      // No audio available for this window - this is normal
-      return null;
-    }
-
-    if (!response.ok) {
-      throw new Error(`Limitless API error: ${response.status} ${response.statusText}`);
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    return Buffer.from(arrayBuffer);
-  }
-
-  /**
-   * Build the URL for a specific time window (useful for testing)
-   */
-  static buildAudioUrl(baseUrl: string, startMs: number, endMs: number): string {
-    const url = new URL(`${baseUrl}/v1/download-audio`);
-    url.searchParams.set("audioSource", "pendant");
-    url.searchParams.set("startMs", String(startMs));
-    url.searchParams.set("endMs", String(endMs));
-    return url.toString();
+    return transcripts;
   }
 }
 
@@ -262,6 +318,16 @@ export function getLimitlessListener(config?: LimitlessListenerConfig): Limitles
     listenerInstance = new LimitlessListener(config);
   }
   return listenerInstance;
+}
+
+/**
+ * Reset the listener instance (for testing)
+ */
+export function resetLimitlessListener(): void {
+  if (listenerInstance) {
+    listenerInstance.stop();
+    listenerInstance = null;
+  }
 }
 
 /**
