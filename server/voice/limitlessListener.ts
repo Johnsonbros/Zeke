@@ -50,6 +50,43 @@ export interface TranscriptChunk {
 }
 
 export type TranscriptHandler = (chunk: TranscriptChunk) => Promise<void>;
+export type LifelogHandler = (lifelog: Lifelog) => Promise<void>;
+
+// Global lifelog handlers for real-time processing
+const lifelogHandlers: LifelogHandler[] = [];
+
+/**
+ * Register a callback to receive raw lifelogs as they are processed.
+ * Used by the Limitless processor for real-time meeting/action item extraction.
+ */
+export function registerLifelogHandler(handler: LifelogHandler): void {
+  lifelogHandlers.push(handler);
+  log(`Registered lifelog handler (total: ${lifelogHandlers.length})`, "voice");
+}
+
+/**
+ * Unregister a lifelog handler
+ */
+export function unregisterLifelogHandler(handler: LifelogHandler): void {
+  const index = lifelogHandlers.indexOf(handler);
+  if (index !== -1) {
+    lifelogHandlers.splice(index, 1);
+    log(`Unregistered lifelog handler (remaining: ${lifelogHandlers.length})`, "voice");
+  }
+}
+
+/**
+ * Notify all registered lifelog handlers
+ */
+async function notifyLifelogHandlers(lifelog: Lifelog): Promise<void> {
+  for (const handler of lifelogHandlers) {
+    try {
+      await handler(lifelog);
+    } catch (error: any) {
+      log(`Lifelog handler error: ${error.message}`, "voice");
+    }
+  }
+}
 
 export interface LimitlessListenerConfig {
   pollIntervalMs?: number;
@@ -228,6 +265,9 @@ export class LimitlessListener {
             log(`Transcript handler error: ${handlerError.message}`, "voice");
           }
         }
+
+        // Notify lifelog handlers for real-time processing (meetings, action items)
+        await notifyLifelogHandlers(lifelog);
 
         // Mark as processed
         this.processedIds.add(lifelog.id);

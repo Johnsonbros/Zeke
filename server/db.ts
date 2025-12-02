@@ -102,7 +102,13 @@ import type {
   InsertNotificationPreferences,
   NotificationBatch,
   NotificationCategory,
-  NotificationPriority
+  NotificationPriority,
+  Meeting,
+  InsertMeeting,
+  LifelogActionItem,
+  InsertLifelogActionItem,
+  LimitlessAnalyticsDaily,
+  InsertLimitlessAnalyticsDaily
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -1192,6 +1198,76 @@ db.exec(`
 `);
 
 console.log("Natural language automation tables initialized");
+
+// ============================================
+// LIMITLESS ENHANCED FEATURES TABLES
+// ============================================
+
+// Create meetings table for multi-speaker conversation tracking
+db.exec(`
+  CREATE TABLE IF NOT EXISTS meetings (
+    id TEXT PRIMARY KEY,
+    lifelog_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL,
+    participants TEXT NOT NULL,
+    topics TEXT,
+    summary TEXT,
+    action_items TEXT,
+    is_important INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_meetings_lifelog ON meetings(lifelog_id);
+  CREATE INDEX IF NOT EXISTS idx_meetings_start_time ON meetings(start_time);
+  CREATE INDEX IF NOT EXISTS idx_meetings_important ON meetings(is_important);
+`);
+
+// Create lifelog_action_items table for extracted commitments
+db.exec(`
+  CREATE TABLE IF NOT EXISTS lifelog_action_items (
+    id TEXT PRIMARY KEY,
+    lifelog_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    assignee TEXT,
+    due_date TEXT,
+    priority TEXT DEFAULT 'medium',
+    status TEXT DEFAULT 'pending',
+    source_quote TEXT,
+    source_offset_ms INTEGER,
+    linked_task_id TEXT,
+    linked_contact_id TEXT,
+    processed_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_lifelog_action_items_lifelog ON lifelog_action_items(lifelog_id);
+  CREATE INDEX IF NOT EXISTS idx_lifelog_action_items_status ON lifelog_action_items(status);
+  CREATE INDEX IF NOT EXISTS idx_lifelog_action_items_assignee ON lifelog_action_items(assignee);
+`);
+
+// Create limitless_analytics_daily table for pre-aggregated analytics
+db.exec(`
+  CREATE TABLE IF NOT EXISTS limitless_analytics_daily (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL UNIQUE,
+    total_conversations INTEGER NOT NULL DEFAULT 0,
+    total_duration_minutes INTEGER NOT NULL DEFAULT 0,
+    unique_speakers INTEGER NOT NULL DEFAULT 0,
+    speaker_stats TEXT NOT NULL,
+    topic_stats TEXT NOT NULL,
+    hour_distribution TEXT NOT NULL,
+    meeting_count INTEGER NOT NULL DEFAULT 0,
+    action_items_extracted INTEGER NOT NULL DEFAULT 0,
+    starred_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_limitless_analytics_daily_date ON limitless_analytics_daily(date);
+`);
+
+console.log("Limitless enhanced features tables initialized");
 
 // Seed initial family members if table is empty
 try {
@@ -8193,6 +8269,420 @@ export function getNLAutomationStats(): {
       recentExecutions: recentExecutions.count,
       successRate: recentExecutions.count > 0 ? recentSuccess.count / recentExecutions.count : 1.0
     };
+  });
+}
+
+// ============================================
+// LIMITLESS ENHANCED FEATURES - MEETINGS
+// ============================================
+
+interface MeetingRow {
+  id: string;
+  lifelog_id: string;
+  title: string;
+  start_time: string;
+  end_time: string;
+  duration_minutes: number;
+  participants: string;
+  topics: string | null;
+  summary: string | null;
+  action_items: string | null;
+  is_important: number;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapMeeting(row: MeetingRow): Meeting {
+  return {
+    id: row.id,
+    lifelogId: row.lifelog_id,
+    title: row.title,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    durationMinutes: row.duration_minutes,
+    participants: row.participants,
+    topics: row.topics,
+    summary: row.summary,
+    actionItems: row.action_items,
+    isImportant: Boolean(row.is_important),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function createMeeting(data: InsertMeeting): Meeting {
+  return wrapDbOperation("createMeeting", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO meetings (id, lifelog_id, title, start_time, end_time, duration_minutes, participants, topics, summary, action_items, is_important, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.lifelogId,
+      data.title,
+      data.startTime,
+      data.endTime,
+      data.durationMinutes,
+      data.participants,
+      data.topics || null,
+      data.summary || null,
+      data.actionItems || null,
+      data.isImportant ? 1 : 0,
+      now,
+      now
+    );
+    
+    return getMeeting(id)!;
+  });
+}
+
+export function getMeeting(id: string): Meeting | undefined {
+  return wrapDbOperation("getMeeting", () => {
+    const row = db.prepare(`SELECT * FROM meetings WHERE id = ?`).get(id) as MeetingRow | undefined;
+    return row ? mapMeeting(row) : undefined;
+  });
+}
+
+export function getMeetingByLifelogId(lifelogId: string): Meeting | undefined {
+  return wrapDbOperation("getMeetingByLifelogId", () => {
+    const row = db.prepare(`SELECT * FROM meetings WHERE lifelog_id = ?`).get(lifelogId) as MeetingRow | undefined;
+    return row ? mapMeeting(row) : undefined;
+  });
+}
+
+export function getAllMeetings(limit: number = 50): Meeting[] {
+  return wrapDbOperation("getAllMeetings", () => {
+    const rows = db.prepare(`
+      SELECT * FROM meetings 
+      ORDER BY start_time DESC 
+      LIMIT ?
+    `).all(limit) as MeetingRow[];
+    return rows.map(mapMeeting);
+  });
+}
+
+export function getMeetingsInRange(startDate: string, endDate: string): Meeting[] {
+  return wrapDbOperation("getMeetingsInRange", () => {
+    const rows = db.prepare(`
+      SELECT * FROM meetings 
+      WHERE start_time >= ? AND start_time <= ?
+      ORDER BY start_time DESC
+    `).all(startDate, endDate) as MeetingRow[];
+    return rows.map(mapMeeting);
+  });
+}
+
+export function getMeetingsByDate(date: string): Meeting[] {
+  return wrapDbOperation("getMeetingsByDate", () => {
+    const rows = db.prepare(`
+      SELECT * FROM meetings 
+      WHERE date(start_time) = date(?)
+      ORDER BY start_time DESC
+    `).all(date) as MeetingRow[];
+    return rows.map(mapMeeting);
+  });
+}
+
+export function getImportantMeetings(limit: number = 20): Meeting[] {
+  return wrapDbOperation("getImportantMeetings", () => {
+    const rows = db.prepare(`
+      SELECT * FROM meetings 
+      WHERE is_important = 1
+      ORDER BY start_time DESC 
+      LIMIT ?
+    `).all(limit) as MeetingRow[];
+    return rows.map(mapMeeting);
+  });
+}
+
+export function updateMeeting(id: string, updates: Partial<InsertMeeting>): Meeting | undefined {
+  return wrapDbOperation("updateMeeting", () => {
+    const meeting = getMeeting(id);
+    if (!meeting) return undefined;
+    
+    const now = getCurrentTimestamp();
+    const fields: string[] = [];
+    const values: any[] = [];
+    
+    if (updates.title !== undefined) { fields.push("title = ?"); values.push(updates.title); }
+    if (updates.summary !== undefined) { fields.push("summary = ?"); values.push(updates.summary); }
+    if (updates.topics !== undefined) { fields.push("topics = ?"); values.push(updates.topics); }
+    if (updates.actionItems !== undefined) { fields.push("action_items = ?"); values.push(updates.actionItems); }
+    if (updates.isImportant !== undefined) { fields.push("is_important = ?"); values.push(updates.isImportant ? 1 : 0); }
+    
+    if (fields.length === 0) return meeting;
+    
+    fields.push("updated_at = ?");
+    values.push(now, id);
+    
+    db.prepare(`UPDATE meetings SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+    return getMeeting(id);
+  });
+}
+
+export function deleteMeeting(id: string): boolean {
+  return wrapDbOperation("deleteMeeting", () => {
+    const result = db.prepare(`DELETE FROM meetings WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// ============================================
+// LIMITLESS ENHANCED FEATURES - ACTION ITEMS
+// ============================================
+
+interface LifelogActionItemRow {
+  id: string;
+  lifelog_id: string;
+  content: string;
+  assignee: string | null;
+  due_date: string | null;
+  priority: string;
+  status: string;
+  source_quote: string | null;
+  source_offset_ms: number | null;
+  linked_task_id: string | null;
+  linked_contact_id: string | null;
+  processed_at: string;
+  created_at: string;
+}
+
+function mapLifelogActionItem(row: LifelogActionItemRow): LifelogActionItem {
+  return {
+    id: row.id,
+    lifelogId: row.lifelog_id,
+    content: row.content,
+    assignee: row.assignee,
+    dueDate: row.due_date,
+    priority: row.priority as "high" | "medium" | "low",
+    status: row.status as "pending" | "created_task" | "dismissed",
+    sourceQuote: row.source_quote,
+    sourceOffsetMs: row.source_offset_ms,
+    linkedTaskId: row.linked_task_id,
+    linkedContactId: row.linked_contact_id,
+    processedAt: row.processed_at,
+    createdAt: row.created_at,
+  };
+}
+
+export function createLifelogActionItem(data: InsertLifelogActionItem): LifelogActionItem {
+  return wrapDbOperation("createLifelogActionItem", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO lifelog_action_items (id, lifelog_id, content, assignee, due_date, priority, status, source_quote, source_offset_ms, linked_task_id, linked_contact_id, processed_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.lifelogId,
+      data.content,
+      data.assignee || null,
+      data.dueDate || null,
+      data.priority || "medium",
+      data.status || "pending",
+      data.sourceQuote || null,
+      data.sourceOffsetMs || null,
+      data.linkedTaskId || null,
+      data.linkedContactId || null,
+      data.processedAt,
+      now
+    );
+    
+    return getLifelogActionItem(id)!;
+  });
+}
+
+export function getLifelogActionItem(id: string): LifelogActionItem | undefined {
+  return wrapDbOperation("getLifelogActionItem", () => {
+    const row = db.prepare(`SELECT * FROM lifelog_action_items WHERE id = ?`).get(id) as LifelogActionItemRow | undefined;
+    return row ? mapLifelogActionItem(row) : undefined;
+  });
+}
+
+export function getLifelogActionItemsByLifelog(lifelogId: string): LifelogActionItem[] {
+  return wrapDbOperation("getLifelogActionItemsByLifelog", () => {
+    const rows = db.prepare(`
+      SELECT * FROM lifelog_action_items 
+      WHERE lifelog_id = ? 
+      ORDER BY created_at DESC
+    `).all(lifelogId) as LifelogActionItemRow[];
+    return rows.map(mapLifelogActionItem);
+  });
+}
+
+export function getPendingLifelogActionItems(limit: number = 50): LifelogActionItem[] {
+  return wrapDbOperation("getPendingLifelogActionItems", () => {
+    const rows = db.prepare(`
+      SELECT * FROM lifelog_action_items 
+      WHERE status = 'pending'
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(limit) as LifelogActionItemRow[];
+    return rows.map(mapLifelogActionItem);
+  });
+}
+
+export function getAllLifelogActionItems(limit: number = 100): LifelogActionItem[] {
+  return wrapDbOperation("getAllLifelogActionItems", () => {
+    const rows = db.prepare(`
+      SELECT * FROM lifelog_action_items 
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(limit) as LifelogActionItemRow[];
+    return rows.map(mapLifelogActionItem);
+  });
+}
+
+export function updateLifelogActionItem(id: string, updates: { status?: string; linkedTaskId?: string; linkedContactId?: string }): LifelogActionItem | undefined {
+  return wrapDbOperation("updateLifelogActionItem", () => {
+    const item = getLifelogActionItem(id);
+    if (!item) return undefined;
+    
+    const fields: string[] = [];
+    const values: any[] = [];
+    
+    if (updates.status !== undefined) { fields.push("status = ?"); values.push(updates.status); }
+    if (updates.linkedTaskId !== undefined) { fields.push("linked_task_id = ?"); values.push(updates.linkedTaskId); }
+    if (updates.linkedContactId !== undefined) { fields.push("linked_contact_id = ?"); values.push(updates.linkedContactId); }
+    
+    if (fields.length === 0) return item;
+    
+    values.push(id);
+    db.prepare(`UPDATE lifelog_action_items SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+    return getLifelogActionItem(id);
+  });
+}
+
+export function checkActionItemExists(lifelogId: string, sourceOffsetMs: number): boolean {
+  return wrapDbOperation("checkActionItemExists", () => {
+    const row = db.prepare(`
+      SELECT 1 FROM lifelog_action_items 
+      WHERE lifelog_id = ? AND source_offset_ms = ?
+    `).get(lifelogId, sourceOffsetMs);
+    return Boolean(row);
+  });
+}
+
+// ============================================
+// LIMITLESS ENHANCED FEATURES - DAILY ANALYTICS
+// ============================================
+
+interface LimitlessAnalyticsDailyRow {
+  id: string;
+  date: string;
+  total_conversations: number;
+  total_duration_minutes: number;
+  unique_speakers: number;
+  speaker_stats: string;
+  topic_stats: string;
+  hour_distribution: string;
+  meeting_count: number;
+  action_items_extracted: number;
+  starred_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapLimitlessAnalyticsDaily(row: LimitlessAnalyticsDailyRow): LimitlessAnalyticsDaily {
+  return {
+    id: row.id,
+    date: row.date,
+    totalConversations: row.total_conversations,
+    totalDurationMinutes: row.total_duration_minutes,
+    uniqueSpeakers: row.unique_speakers,
+    speakerStats: row.speaker_stats,
+    topicStats: row.topic_stats,
+    hourDistribution: row.hour_distribution,
+    meetingCount: row.meeting_count,
+    actionItemsExtracted: row.action_items_extracted,
+    starredCount: row.starred_count,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function createOrUpdateLimitlessAnalyticsDaily(data: InsertLimitlessAnalyticsDaily): LimitlessAnalyticsDaily {
+  return wrapDbOperation("createOrUpdateLimitlessAnalyticsDaily", () => {
+    const existing = getLimitlessAnalyticsByDate(data.date);
+    const now = getCurrentTimestamp();
+    
+    if (existing) {
+      db.prepare(`
+        UPDATE limitless_analytics_daily 
+        SET total_conversations = ?, total_duration_minutes = ?, unique_speakers = ?,
+            speaker_stats = ?, topic_stats = ?, hour_distribution = ?,
+            meeting_count = ?, action_items_extracted = ?, starred_count = ?, updated_at = ?
+        WHERE id = ?
+      `).run(
+        data.totalConversations,
+        data.totalDurationMinutes,
+        data.uniqueSpeakers,
+        data.speakerStats,
+        data.topicStats,
+        data.hourDistribution,
+        data.meetingCount,
+        data.actionItemsExtracted,
+        data.starredCount,
+        now,
+        existing.id
+      );
+      return getLimitlessAnalyticsByDate(data.date)!;
+    }
+    
+    const id = uuidv4();
+    db.prepare(`
+      INSERT INTO limitless_analytics_daily (id, date, total_conversations, total_duration_minutes, unique_speakers, speaker_stats, topic_stats, hour_distribution, meeting_count, action_items_extracted, starred_count, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.date,
+      data.totalConversations,
+      data.totalDurationMinutes,
+      data.uniqueSpeakers,
+      data.speakerStats,
+      data.topicStats,
+      data.hourDistribution,
+      data.meetingCount,
+      data.actionItemsExtracted,
+      data.starredCount,
+      now,
+      now
+    );
+    
+    return getLimitlessAnalyticsByDate(data.date)!;
+  });
+}
+
+export function getLimitlessAnalyticsByDate(date: string): LimitlessAnalyticsDaily | undefined {
+  return wrapDbOperation("getLimitlessAnalyticsByDate", () => {
+    const row = db.prepare(`SELECT * FROM limitless_analytics_daily WHERE date = ?`).get(date) as LimitlessAnalyticsDailyRow | undefined;
+    return row ? mapLimitlessAnalyticsDaily(row) : undefined;
+  });
+}
+
+export function getLimitlessAnalyticsInRange(startDate: string, endDate: string): LimitlessAnalyticsDaily[] {
+  return wrapDbOperation("getLimitlessAnalyticsInRange", () => {
+    const rows = db.prepare(`
+      SELECT * FROM limitless_analytics_daily 
+      WHERE date >= ? AND date <= ?
+      ORDER BY date DESC
+    `).all(startDate, endDate) as LimitlessAnalyticsDailyRow[];
+    return rows.map(mapLimitlessAnalyticsDaily);
+  });
+}
+
+export function getRecentLimitlessAnalytics(days: number = 7): LimitlessAnalyticsDaily[] {
+  return wrapDbOperation("getRecentLimitlessAnalytics", () => {
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const rows = db.prepare(`
+      SELECT * FROM limitless_analytics_daily 
+      WHERE date >= ?
+      ORDER BY date DESC
+    `).all(startDate) as LimitlessAnalyticsDailyRow[];
+    return rows.map(mapLimitlessAnalyticsDaily);
   });
 }
 

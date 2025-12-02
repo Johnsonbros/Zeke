@@ -1713,3 +1713,128 @@ export const nlAutomationLogs = sqliteTable("nl_automation_logs", {
 });
 
 export type NLAutomationLog = typeof nlAutomationLogs.$inferSelect;
+
+// ============================================
+// LIMITLESS ENHANCED FEATURES
+// ============================================
+
+// Meetings table - tracks multi-speaker conversations detected as meetings
+export const meetings = sqliteTable("meetings", {
+  id: text("id").primaryKey(),
+  lifelogId: text("lifelog_id").notNull(),
+  title: text("title").notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
+  durationMinutes: integer("duration_minutes").notNull(),
+  participants: text("participants").notNull(), // JSON array of speaker names
+  topics: text("topics"), // JSON array of detected topics
+  summary: text("summary"), // AI-generated meeting summary
+  actionItems: text("action_items"), // JSON array of action items
+  isImportant: integer("is_important", { mode: "boolean" }).default(false),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertMeetingSchema = createInsertSchema(meetings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertMeeting = z.infer<typeof insertMeetingSchema>;
+export type Meeting = typeof meetings.$inferSelect;
+
+// Parsed types for meetings JSON fields
+export interface MeetingParticipant {
+  name: string;
+  speakerIdentifier?: "user" | null;
+  speakingTimeEstimate?: number;
+}
+
+export interface MeetingActionItem {
+  task: string;
+  assignee?: string;
+  dueDate?: string;
+  priority: "high" | "medium" | "low";
+  sourceQuote?: string;
+  createdTaskId?: string; // Link to tasks table if auto-created
+}
+
+// Lifelog action items table - commitments detected during real-time processing
+export const lifelogActionItems = sqliteTable("lifelog_action_items", {
+  id: text("id").primaryKey(),
+  lifelogId: text("lifelog_id").notNull(),
+  content: text("content").notNull(),
+  assignee: text("assignee"), // Who committed to do this
+  dueDate: text("due_date"),
+  priority: text("priority", { enum: ["high", "medium", "low"] }).default("medium"),
+  status: text("status", { enum: ["pending", "created_task", "dismissed"] }).default("pending"),
+  sourceQuote: text("source_quote"), // Original transcript excerpt
+  sourceOffsetMs: integer("source_offset_ms"), // Position in the recording
+  linkedTaskId: text("linked_task_id"), // Created task ID if auto-created
+  linkedContactId: text("linked_contact_id"), // Linked contact if assignee matched
+  processedAt: text("processed_at").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertLifelogActionItemSchema = createInsertSchema(lifelogActionItems).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertLifelogActionItem = z.infer<typeof insertLifelogActionItemSchema>;
+export type LifelogActionItem = typeof lifelogActionItems.$inferSelect;
+
+// Limitless analytics daily table - pre-aggregated daily analytics
+export const limitlessAnalyticsDaily = sqliteTable("limitless_analytics_daily", {
+  id: text("id").primaryKey(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  totalConversations: integer("total_conversations").notNull().default(0),
+  totalDurationMinutes: integer("total_duration_minutes").notNull().default(0),
+  uniqueSpeakers: integer("unique_speakers").notNull().default(0),
+  speakerStats: text("speaker_stats").notNull(), // JSON: {name: string, count: number, durationMinutes: number}[]
+  topicStats: text("topic_stats").notNull(), // JSON: {topic: string, frequency: number}[]
+  hourDistribution: text("hour_distribution").notNull(), // JSON: {hour: number, count: number}[]
+  meetingCount: integer("meeting_count").notNull().default(0),
+  actionItemsExtracted: integer("action_items_extracted").notNull().default(0),
+  starredCount: integer("starred_count").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertLimitlessAnalyticsDailySchema = createInsertSchema(limitlessAnalyticsDaily).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertLimitlessAnalyticsDaily = z.infer<typeof insertLimitlessAnalyticsDailySchema>;
+export type LimitlessAnalyticsDaily = typeof limitlessAnalyticsDaily.$inferSelect;
+
+// Parsed types for analytics JSON fields
+export interface SpeakerStat {
+  name: string;
+  count: number;
+  durationMinutes: number;
+}
+
+export interface TopicStat {
+  topic: string;
+  frequency: number;
+}
+
+export interface HourDistributionItem {
+  hour: number;
+  count: number;
+}
+
+// Limitless digest preferences
+export interface LimitlessDigestPreferences {
+  enabled: boolean;
+  phoneNumber?: string;
+  sendTime: string; // HH:MM format, defaults to "20:00"
+  includeSummary: boolean;
+  includeActionItems: boolean;
+  includeTopPeople: boolean;
+  maxSmsLength: number; // Character limit, defaults to 700
+}

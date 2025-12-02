@@ -222,7 +222,10 @@ export function resetVoicePipeline(): void {
 // Export all components for direct access if needed
 export { 
   LimitlessListener, 
-  isVoicePipelineAvailable 
+  isVoicePipelineAvailable,
+  registerLifelogHandler,
+  unregisterLifelogHandler,
+  type LifelogHandler
 } from "./limitlessListener";
 export { 
   WhisperTranscriber, 

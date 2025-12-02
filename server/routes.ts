@@ -163,6 +163,10 @@ import {
   getLifelogLocationsInRange,
   getLifelogsByActivity,
   analyzeLocationPatterns,
+  getAllMeetings,
+  getMeetingsByDate,
+  getPendingLifelogActionItems,
+  getAllLifelogActionItems,
 } from "./db";
 import type { TwilioMessageSource } from "@shared/schema";
 import { generateContextualQuestion } from "./gettingToKnow";
@@ -4967,6 +4971,285 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Generate Limitless summary error:", error);
       res.status(500).json({ error: error.message || "Failed to generate summary" });
+    }
+  });
+
+  // ============================================
+  // LIMITLESS ENHANCED FEATURES API
+  // ============================================
+  
+  // Daily Digest API routes
+  const { 
+    getLimitlessDigestPreferences, 
+    updateLimitlessDigestPreferences, 
+    sendDailyDigest,
+    configureDigest,
+    getDigestStatus 
+  } = await import("./limitlessDigest");
+  
+  // Meeting Intelligence API routes
+  const { 
+    processLifelogAsMeeting, 
+    processLifelogsForMeetings 
+  } = await import("./jobs/limitlessMeetings");
+  
+  // Action Item Extractor API routes
+  const { 
+    processLifelogForActionItems, 
+    processLifelogsForActionItems 
+  } = await import("./jobs/limitlessActionItems");
+  
+  // Analytics API routes
+  const { 
+    runDailyAnalyticsAggregation, 
+    getWeeklyTrends 
+  } = await import("./jobs/limitlessAnalytics");
+  
+  // Conversation Search API routes
+  const { 
+    searchConversations, 
+    answerConversationQuestion 
+  } = await import("./jobs/limitlessSearch");
+  
+  // GET /api/limitless/digest/status - Get digest configuration status
+  app.get("/api/limitless/digest/status", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Getting Limitless digest status`);
+      const status = getDigestStatus();
+      const prefs = getLimitlessDigestPreferences();
+      res.json({ ...status, preferences: prefs });
+    } catch (error: any) {
+      console.error("Get digest status error:", error);
+      res.status(500).json({ error: error.message || "Failed to get digest status" });
+    }
+  });
+  
+  // POST /api/limitless/digest/configure - Configure the daily digest
+  app.post("/api/limitless/digest/configure", async (req, res) => {
+    try {
+      const { phoneNumber, sendTime } = req.body;
+      
+      if (!phoneNumber) {
+        return res.status(400).json({ error: "Phone number is required" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Configuring Limitless digest for ${phoneNumber} at ${sendTime || "20:00"}`);
+      const prefs = configureDigest(phoneNumber, sendTime || "20:00");
+      res.json({ success: true, preferences: prefs });
+    } catch (error: any) {
+      console.error("Configure digest error:", error);
+      res.status(500).json({ error: error.message || "Failed to configure digest" });
+    }
+  });
+  
+  // PATCH /api/limitless/digest/preferences - Update digest preferences
+  app.patch("/api/limitless/digest/preferences", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Updating Limitless digest preferences`);
+      const prefs = updateLimitlessDigestPreferences(req.body);
+      res.json({ success: true, preferences: prefs });
+    } catch (error: any) {
+      console.error("Update digest preferences error:", error);
+      res.status(500).json({ error: error.message || "Failed to update digest preferences" });
+    }
+  });
+  
+  // POST /api/limitless/digest/send - Manually trigger a digest send
+  app.post("/api/limitless/digest/send", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Manually triggering Limitless digest`);
+      const result = await sendDailyDigest();
+      res.json(result);
+    } catch (error: any) {
+      console.error("Send digest error:", error);
+      res.status(500).json({ error: error.message || "Failed to send digest" });
+    }
+  });
+  
+  // GET /api/limitless/meetings - Get all meetings
+  app.get("/api/limitless/meetings", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Fetching Limitless meetings (limit: ${limit})`);
+      const meetings = getAllMeetings(limit);
+      res.json(meetings);
+    } catch (error: any) {
+      console.error("Get meetings error:", error);
+      res.status(500).json({ error: error.message || "Failed to get meetings" });
+    }
+  });
+  
+  // GET /api/limitless/meetings/date/:date - Get meetings for a specific date
+  app.get("/api/limitless/meetings/date/:date", async (req, res) => {
+    try {
+      const { date } = req.params;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Fetching Limitless meetings for ${date}`);
+      const meetings = getMeetingsByDate(date);
+      res.json(meetings);
+    } catch (error: any) {
+      console.error("Get meetings by date error:", error);
+      res.status(500).json({ error: error.message || "Failed to get meetings" });
+    }
+  });
+  
+  // GET /api/limitless/action-items - Get extracted action items
+  app.get("/api/limitless/action-items", async (req, res) => {
+    try {
+      const status = req.query.status as string;
+      const limit = parseInt(req.query.limit as string) || 50;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Fetching Limitless action items (status: ${status || "all"}, limit: ${limit})`);
+      
+      let items;
+      if (status === "pending") {
+        items = getPendingLifelogActionItems(limit);
+      } else {
+        items = getAllLifelogActionItems(limit);
+      }
+      res.json(items);
+    } catch (error: any) {
+      console.error("Get action items error:", error);
+      res.status(500).json({ error: error.message || "Failed to get action items" });
+    }
+  });
+  
+  // POST /api/limitless/action-items/extract - Extract action items from recent lifelogs
+  app.post("/api/limitless/action-items/extract", async (req, res) => {
+    try {
+      const { autoCreateTasks = true, hours = 4 } = req.body;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Extracting action items from last ${hours} hours`);
+      
+      const lifelogs = await getRecentLifelogs(hours);
+      const result = await processLifelogsForActionItems(lifelogs, autoCreateTasks);
+      res.json({ success: true, ...result });
+    } catch (error: any) {
+      console.error("Extract action items error:", error);
+      res.status(500).json({ error: error.message || "Failed to extract action items" });
+    }
+  });
+  
+  // GET /api/limitless/weekly-trends - Get weekly conversation trends
+  app.get("/api/limitless/weekly-trends", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Fetching weekly trends`);
+      const trends = getWeeklyTrends();
+      res.json(trends);
+    } catch (error: any) {
+      console.error("Get weekly trends error:", error);
+      res.status(500).json({ error: error.message || "Failed to get weekly trends" });
+    }
+  });
+  
+  // POST /api/limitless/analytics/aggregate - Manually run analytics aggregation
+  app.post("/api/limitless/analytics/aggregate", async (req, res) => {
+    try {
+      const { hours = 24 } = req.body;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Running analytics aggregation for last ${hours} hours`);
+      
+      const lifelogs = await getRecentLifelogs(hours);
+      const result = await runDailyAnalyticsAggregation(lifelogs);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Run analytics aggregation error:", error);
+      res.status(500).json({ error: error.message || "Failed to run analytics" });
+    }
+  });
+  
+  // GET /api/limitless/search - Search conversations
+  app.get("/api/limitless/search", async (req, res) => {
+    try {
+      const query = req.query.q as string;
+      const limit = parseInt(req.query.limit as string) || 10;
+      
+      if (!query) {
+        return res.status(400).json({ error: "Query is required" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Searching conversations: "${query}"`);
+      
+      const lifelogs = await getRecentLifelogs(72); // Search last 3 days
+      const result = await searchConversations(lifelogs, query, limit);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Search conversations error:", error);
+      res.status(500).json({ error: error.message || "Failed to search conversations" });
+    }
+  });
+  
+  // POST /api/limitless/ask - Ask a question about conversations
+  app.post("/api/limitless/ask", async (req, res) => {
+    try {
+      const { question, hours = 72 } = req.body;
+      
+      if (!question) {
+        return res.status(400).json({ error: "Question is required" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Answering question about conversations: "${question}"`);
+      
+      const lifelogs = await getRecentLifelogs(hours);
+      const result = await answerConversationQuestion(lifelogs, question);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Answer question error:", error);
+      res.status(500).json({ error: error.message || "Failed to answer question" });
+    }
+  });
+  
+  // POST /api/limitless/meetings/detect - Detect meetings from recent lifelogs
+  app.post("/api/limitless/meetings/detect", async (req, res) => {
+    try {
+      const { hours = 4 } = req.body;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Detecting meetings from last ${hours} hours`);
+      
+      const lifelogs = await getRecentLifelogs(hours);
+      const result = await processLifelogsForMeetings(lifelogs);
+      res.json({ success: true, ...result });
+    } catch (error: any) {
+      console.error("Detect meetings error:", error);
+      res.status(500).json({ error: error.message || "Failed to detect meetings" });
+    }
+  });
+  
+  // Limitless Processor API routes
+  const { 
+    getProcessorStatus, 
+    processRecentLifelogs, 
+    updateProcessorConfig 
+  } = await import("./jobs/limitlessProcessor");
+  
+  // GET /api/limitless/processor/status - Get processor status
+  app.get("/api/limitless/processor/status", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Getting Limitless processor status`);
+      const status = getProcessorStatus();
+      res.json(status);
+    } catch (error: any) {
+      console.error("Get processor status error:", error);
+      res.status(500).json({ error: error.message || "Failed to get processor status" });
+    }
+  });
+  
+  // POST /api/limitless/processor/run - Manually run the processor
+  app.post("/api/limitless/processor/run", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Manually running Limitless processor`);
+      const result = await processRecentLifelogs();
+      res.json({ success: true, ...result });
+    } catch (error: any) {
+      console.error("Run processor error:", error);
+      res.status(500).json({ error: error.message || "Failed to run processor" });
+    }
+  });
+  
+  // PATCH /api/limitless/processor/config - Update processor configuration
+  app.patch("/api/limitless/processor/config", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Updating Limitless processor config`);
+      const config = updateProcessorConfig(req.body);
+      res.json({ success: true, config });
+    } catch (error: any) {
+      console.error("Update processor config error:", error);
+      res.status(500).json({ error: error.message || "Failed to update processor config" });
     }
   });
 

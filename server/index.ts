@@ -7,6 +7,8 @@ import { log } from "./logger";
 import { initializeGroceryAutoClear } from "./jobs/groceryAutoClear";
 import { initializeConversationSummarizer } from "./jobs/conversationSummarizer";
 import { initializeVoicePipeline, startVoicePipeline, isVoicePipelineAvailable } from "./voice";
+import { initializeLimitlessDigest } from "./limitlessDigest";
+import { initializeLimitlessProcessor } from "./jobs/limitlessProcessor";
 
 export { log };
 
@@ -85,6 +87,11 @@ app.use((req, res, next) => {
   } else {
     log("Voice pipeline not available - LIMITLESS_API_KEY not configured", "startup");
   }
+  
+  // Initialize Limitless enhanced features (daily digest + processor)
+  initializeLimitlessDigest();
+  initializeLimitlessProcessor();
+  log("Limitless enhanced features initialized", "startup");
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
