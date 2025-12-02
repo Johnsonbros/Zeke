@@ -7,7 +7,7 @@ export const conversations = sqliteTable("conversations", {
   id: text("id").primaryKey(),
   title: text("title").notNull().default("New Conversation"),
   phoneNumber: text("phone_number"),
-  source: text("source", { enum: ["web", "sms"] }).notNull().default("web"),
+  source: text("source", { enum: ["web", "sms", "voice"] }).notNull().default("web"),
   mode: text("mode", { enum: ["chat", "getting_to_know"] }).notNull().default("chat"),
   summary: text("summary"),
   summarizedMessageCount: integer("summarized_message_count").default(0),
@@ -31,7 +31,7 @@ export const messages = sqliteTable("messages", {
   conversationId: text("conversation_id").notNull().references(() => conversations.id),
   role: text("role", { enum: ["user", "assistant"] }).notNull(),
   content: text("content").notNull(),
-  source: text("source", { enum: ["web", "sms"] }).notNull().default("web"),
+  source: text("source", { enum: ["web", "sms", "voice"] }).notNull().default("web"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -160,7 +160,7 @@ export type Preference = typeof preferences.$inferSelect;
 export const chatRequestSchema = z.object({
   message: z.string().min(1),
   conversationId: z.string().optional(),
-  source: z.enum(["web", "sms"]).default("web"),
+  source: z.enum(["web", "sms", "voice"]).default("web"),
 });
 
 export type ChatRequest = z.infer<typeof chatRequestSchema>;

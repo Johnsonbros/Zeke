@@ -27,6 +27,15 @@ The UI features a dark theme with a coral red accent and Poppins font, designed 
 - **Reminders & Automations**: Scheduled jobs for recurring tasks and intelligent workflow automations like AI Task Breakdown, Smart Grocery Suggestions, and Proactive Task Follow-up.
 - **Tooling**: Integrates various AI tools for communication (SMS), task management, calendar, weather, web search, file operations, and Limitless pendant lifelogs.
 - **Limitless Pendant Integration**: Connects to the Limitless API for accessing and semantically searching recorded conversations, with specific tools for lifelog data and voice commands for common actions. An Analytics Dashboard provides insights from this data.
+- **Real-Time Voice Pipeline**: Near real-time voice input from Limitless Pendant audio that feeds into ZEKE's agent system:
+  - **LimitlessListener** (`server/voice/limitlessListener.ts`): Polls `/v1/download-audio` endpoint every ~800ms for Opus OGG audio chunks with rate limiting (180 req/min max), 429 backoff, and timestamp tracking
+  - **WhisperTranscriber** (`server/voice/transcriber.ts`): Pluggable transcription layer using OpenAI Whisper API for speech-to-text
+  - **UtteranceStream** (`server/voice/utteranceStream.ts`): Accumulates partial transcriptions, detects ~1s silence as sentence boundaries, and handles ZEKE wake word detection/stripping
+  - **VoiceCommandHandler** (`server/voice/voiceCommandHandler.ts`): Processes detected utterances through the same agent pipeline as SMS/web
+  - Voice uses the SAME brain as SMS/web - no separate voice logic
+  - Wake word required: Commands must start with "ZEKE" (case-insensitive) to be processed
+  - Graceful degradation: Works normally if LIMITLESS_API_KEY not configured
+  - API endpoints: `GET /api/voice/status`, `POST /api/voice/start`, `POST /api/voice/stop`, `POST /internal/voice-command`
 - **Limitless-GPS Deep Integration**: Unified location-aware conversation retrieval system that:
   - Correlates lifelog timestamps with GPS location history to determine where each conversation happened
   - Automatically enriches new memories with location context when timestamp matches GPS data

@@ -6,6 +6,7 @@ import { startPythonAgents, waitForPythonAgents } from "./python-agents";
 import { log } from "./logger";
 import { initializeGroceryAutoClear } from "./jobs/groceryAutoClear";
 import { initializeConversationSummarizer } from "./jobs/conversationSummarizer";
+import { initializeVoicePipeline, isVoicePipelineAvailable } from "./voice";
 
 export { log };
 
@@ -68,6 +69,16 @@ app.use((req, res, next) => {
   
   initializeGroceryAutoClear();
   initializeConversationSummarizer();
+  
+  // Initialize voice pipeline if API keys are configured
+  if (isVoicePipelineAvailable()) {
+    const voiceInitialized = initializeVoicePipeline();
+    if (voiceInitialized) {
+      log("Voice pipeline initialized and ready", "startup");
+    }
+  } else {
+    log("Voice pipeline not available - LIMITLESS_API_KEY not configured", "startup");
+  }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

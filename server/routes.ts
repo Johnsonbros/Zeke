@@ -224,6 +224,14 @@ import {
   getToolMetrics,
 } from "./metricsCollector";
 import {
+  startVoicePipeline,
+  stopVoicePipeline,
+  getVoicePipelineStatus,
+  isVoicePipelineRunning,
+  validateVoiceCommandRequest,
+  processVoiceCommand,
+} from "./voice";
+import {
   getConversationQualityStats,
   getOverallQualityStats,
   getMemoryConfidenceStats,
@@ -5848,6 +5856,74 @@ export async function registerRoutes(
       res.status(500).json({ error: error.message || "Failed to get automation logs" });
     }
   });
+
+  // ============================================
+  // VOICE PIPELINE ENDPOINTS
+  // ============================================
+
+  // GET /api/voice/status - Get voice pipeline status
+  app.get("/api/voice/status", async (_req, res) => {
+    try {
+      const status = getVoicePipelineStatus();
+      res.json(status);
+    } catch (error: any) {
+      console.error("Get voice status error:", error);
+      res.status(500).json({ error: error.message || "Failed to get voice status" });
+    }
+  });
+
+  // POST /api/voice/start - Start the voice pipeline
+  app.post("/api/voice/start", async (_req, res) => {
+    try {
+      const success = startVoicePipeline();
+      res.json({ success, status: getVoicePipelineStatus() });
+    } catch (error: any) {
+      console.error("Start voice pipeline error:", error);
+      res.status(500).json({ error: error.message || "Failed to start voice pipeline" });
+    }
+  });
+
+  // POST /api/voice/stop - Stop the voice pipeline
+  app.post("/api/voice/stop", async (_req, res) => {
+    try {
+      stopVoicePipeline();
+      res.json({ success: true, status: getVoicePipelineStatus() });
+    } catch (error: any) {
+      console.error("Stop voice pipeline error:", error);
+      res.status(500).json({ error: error.message || "Failed to stop voice pipeline" });
+    }
+  });
+
+  // POST /internal/voice-command - Process a voice command (internal use)
+  // This endpoint is used by the voice pipeline to send commands to ZEKE
+  app.post("/internal/voice-command", async (req, res) => {
+    try {
+      const validatedRequest = validateVoiceCommandRequest(req.body);
+      
+      if (!validatedRequest) {
+        return res.status(400).json({ error: "Invalid voice command request" });
+      }
+
+      console.log(`[Voice Command] Received: "${validatedRequest.text.substring(0, 50)}..." from ${validatedRequest.source}`);
+
+      // Convert to utterance format and process
+      const result = await processVoiceCommand({
+        text: validatedRequest.text,
+        rawText: validatedRequest.rawText,
+        startedAt: validatedRequest.startedAt,
+        endedAt: validatedRequest.endedAt,
+        hasWakeWord: true, // Assumed true for direct API calls
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Voice command error:", error);
+      res.status(500).json({ error: error.message || "Failed to process voice command" });
+    }
+  });
+
+  // Note: Voice pipeline is initialized in server/index.ts at startup
+  // Use POST /api/voice/start to begin listening
   
   return httpServer;
 }
