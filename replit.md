@@ -36,6 +36,7 @@ The UI features a dark theme with a coral red accent and Poppins font, designed 
   - Graceful degradation: Works normally if LIMITLESS_API_KEY not configured
   - API endpoints: `GET /api/voice/status`, `POST /api/voice/start`, `POST /api/voice/stop`, `POST /internal/voice-command`
   - **Latency note**: Due to Limitless API limitations (audio syncs Pendant → Phone → Cloud before transcripts available), expected latency is 1-5 minutes rather than real-time
+  - **Troubleshooting**: If voice commands aren't being detected, check: (1) Is the Limitless app running on the phone? (2) Is the pendant turned on? (3) Is there a network connection for cloud sync?
 - **Limitless-GPS Deep Integration**: Unified location-aware conversation retrieval system that:
   - Correlates lifelog timestamps with GPS location history to determine where each conversation happened
   - Automatically enriches new memories with location context when timestamp matches GPS data
