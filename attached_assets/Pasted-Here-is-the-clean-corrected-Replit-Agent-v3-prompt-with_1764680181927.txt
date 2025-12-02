@@ -1,0 +1,215 @@
+Here is the clean, corrected Replit Agent v3 prompt with zero mentions of Housecall Pro, streamlined and ready to paste directly into Replit.
+
+⸻
+
+🔥 Replit Agent v3 Prompt (Voice Pipeline Only – Clean Version)
+
+You are Replit Agent 3 working on an existing project called ZEKE, a personal AI assistant for a single user (Nate).
+Your job is to add a near real-time voice input pipeline using Limitless Pendant audio, and wire it cleanly into ZEKE’s existing “brain” so voice becomes a first-class input channel alongside SMS and web chat.
+
+Your sole mission:
+Make ZEKE the most powerful and useful AI assistant possible with a real-time(ish) voice interface.
+
+⸻
+
+High-Level Requirements
+	1.	Build a Limitless audio → STT → text → ZEKE command pipeline that runs continuously in the background and feels close to real-time (~1–2 seconds delay).
+	2.	Integrate voice commands into ZEKE using the same agent + tools logic already used for SMS/Web.
+No separate “voice logic brain.”
+	3.	Keep code modular, safe, incremental, and well-documented.
+
+⸻
+
+Safety & Operational Constraints
+
+DO NOT
+	•	Delete or rename large directories.
+	•	Drop or truncate databases.
+	•	Perform destructive cleanups.
+There have been real-world incidents of code agents wiping production data—avoid any action resembling that.
+
+ALWAYS
+	•	Add new modules instead of rewriting core ones.
+	•	Summarize major changes before applying them.
+	•	Keep all voice pipeline code isolated and pluggable.
+
+⸻
+
+Step 1 – Understand ZEKE’s Current Input Path
+	1.	Scan the repo to find:
+	•	Main server entrypoint.
+	•	Where SMS/web messages are processed.
+	•	How a “user message” is represented internally.
+	2.	Create docs/voice_pipeline_notes.md summarizing:
+	•	How text currently enters ZEKE.
+	•	How voice text will reuse that same path.
+
+Do not modify code in this step. Just document.
+
+⸻
+
+Step 2 – Add the Limitless Voice Ingest Service
+
+Create a new module:
+	•	Python: voice/limitless_listener.py
+	•	TS/Node: src/voice/limitlessListener.ts
+
+It will:
+
+2.1 Environment Variables
+
+Add support for:
+
+LIMITLESS_API_BASE_URL (default: https://api.limitless.ai)
+LIMITLESS_API_KEY
+LIMITLESS_POLL_INTERVAL_MS (default: 800)
+
+Document them in README.
+
+2.2 Polling Logic
+
+Use the endpoint:
+
+GET /v1/download-audio?audioSource=pendant&startMs=X&endMs=Y
+
+Constraints from YAML:
+	•	Accepts Opus OGG audio.
+	•	Requires startMs < endMs.
+	•	Time window ≤ 2 hours.
+	•	Max rate: 180 requests/min (~3/sec).
+	•	On 429: back off using retryAfter.
+	•	On 404: no audio for the window, just advance timestamps.
+
+Implement:
+	•	Maintain lastEndMs.
+	•	On startup: lastEndMs = now - 1000ms.
+	•	Every interval:
+	•	startMs = lastEndMs
+	•	endMs = now
+	•	Fetch audio
+	•	Push chunk to STT queue if exists
+	•	Advance lastEndMs = endMs
+
+2.3 Listener Interface
+
+Example:
+
+interface AudioChunk {
+  startMs: number;
+  endMs: number;
+  data: Buffer;
+}
+
+type AudioHandler = (chunk: AudioChunk) => Promise<void>;
+
+Listener runs in the background, feeding STT.
+
+⸻
+
+Step 3 – Add a Pluggable Transcription Layer
+
+Add Transcriber interface:
+
+interface Transcriber {
+  transcribeChunk(chunk: AudioChunk): Promise<string>;
+}
+
+Implement a first version using OpenAI Whisper API:
+	•	Accept raw audio/ogg bytes.
+	•	Use a lightweight model (e.g., gpt-4o-mini-transcribe or similar).
+	•	Return a transcript string.
+
+This must be modular so we can later swap in Deepgram or local Whisper.
+
+⸻
+
+Step 4 – Add Utterance Detection & Wake Word Logic
+
+Create UtteranceStream:
+
+Responsibilities:
+	•	Accumulate partial text for continuous chunks.
+	•	Track last text time.
+	•	When silence > ~1000ms → treat collected text as a complete utterance.
+	•	Require the wake word “ZEKE” (case-insensitive) to treat the message as a command.
+	•	Strip wake word before sending to ZEKE.
+
+Example interface:
+
+type UtteranceHandler = (utterance: {
+  text: string;
+  rawText: string;
+  startedAt: number;
+  endedAt: number;
+}) => Promise<void>;
+
+Add a timer that calls tick() every ~200ms.
+
+⸻
+
+Step 5 – Add Internal Voice → ZEKE Command Endpoint
+
+Create an internal route or function:
+
+POST /internal/voice-command
+
+Body example:
+
+{
+  "text": "remind me to call Nick at 5 PM",
+  "rawText": "ZEKE remind me to call Nick at 5 PM",
+  "source": "limitless_pendant",
+  "startedAt": 1733153822333,
+  "endedAt": 1733153828123
+}
+
+This handler should:
+	1.	Convert the text into the SAME message format used by SMS/web inputs.
+	2.	Feed it into the existing ZEKE agent and tools.
+	3.	Log basic metadata (optional).
+
+Do NOT create a separate agent for voice. Voice uses the same brain.
+
+⸻
+
+Step 6 – Wire Everything Together
+
+In the main server startup:
+	1.	Initialize Transcriber.
+	2.	Initialize UtteranceStream.
+	3.	Initialize LimitlessListener with:
+	•	Audio handler: transcribe → stream partial text.
+	4.	Start:
+	•	Listener loop
+	•	Utterance tick timer
+	5.	Ensure ZEKE still runs fine if Limitless is not configured (fail gracefully).
+
+⸻
+
+Step 7 – Documentation and Tests
+	1.	Update README: “Limitless Voice Integration”
+	2.	Add unit tests for:
+	•	Utterance segmentation
+	•	Wake word handling
+	•	Poller URL construction
+	3.	Add inline comments and docs/voice_pipeline_notes.md.
+
+⸻
+
+Process Rules for the Agent
+	•	Break work into small steps.
+	•	Implement, test, then move to next step.
+	•	Do NOT modify unrelated systems.
+	•	Always explain major changes before applying them.
+
+⸻
+
+End Goal
+
+ZEKE should be able to hear Nate through the Limitless Pendant, transcribe the audio in near real-time, detect a full command, strip the wake word, and feed it into the normal agent → tools pipeline—making voice a seamless, powerful input method.
+
+⸻
+
+If you’d like, I can also give you:
+	•	A compact “super-short version” for the prompt,
+	•	Or a version optimized for Replit Projects (their newer agent mode).
