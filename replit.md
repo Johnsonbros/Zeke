@@ -27,6 +27,14 @@ The UI features a dark theme with a coral red accent and Poppins font, designed 
 - **Reminders & Automations**: Scheduled jobs for recurring tasks and intelligent workflow automations like AI Task Breakdown, Smart Grocery Suggestions, and Proactive Task Follow-up.
 - **Tooling**: Integrates various AI tools for communication (SMS), task management, calendar, weather, web search, file operations, and Limitless pendant lifelogs.
 - **Limitless Pendant Integration**: Connects to the Limitless API for accessing and semantically searching recorded conversations, with specific tools for lifelog data and voice commands for common actions. An Analytics Dashboard provides insights from this data.
+- **Limitless-GPS Deep Integration**: Unified location-aware conversation retrieval system that:
+  - Correlates lifelog timestamps with GPS location history to determine where each conversation happened
+  - Automatically enriches new memories with location context when timestamp matches GPS data
+  - Provides unified timeline API (`/api/location/timeline`) merging location history with lifelog data chronologically
+  - Includes LocationTimelineWidget dashboard component showing combined location + conversation history with activity badges
+  - Supports sophisticated activity pattern detection analyzing GPS patterns for meeting detection (stationary during 9am-5pm), transit patterns (stop-and-go movement), and commute identification
+  - Extended activity types in schema: "meeting", "transit" added to existing "stationary", "walking", "driving", "running", "cycling", "commuting", "unknown"
+  - Pattern analysis endpoint (`/api/location/patterns`) provides insights on commute patterns, frequent locations, and activity distribution
 - **Automatic People Tracking System**: Autonomously extracts and tracks relationships, updating contacts and linking memories.
 - **Enhanced Contacts System**: Comprehensive contact management with detailed information, notes, and family member linking.
 - **Admin Profile System**: Integrated profile management with context for personalized assistance.
