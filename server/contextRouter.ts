@@ -32,12 +32,17 @@ import {
   getTask,
   getSavedPlace,
   getContact,
+  getLifelogsAtPlace,
+  getLifelogsNearLocation,
+  getRecentLifelogLocations,
+  correlateLifelogWithLocation,
+  getLifelogLocationContexts,
 } from "./db";
 import { getSmartMemoryContext } from "./semanticMemory";
 import { getRecentLifelogs, getLifelogOverview } from "./limitless";
 import { getUpcomingEvents } from "./googleCalendar";
 import { getConversationContext } from "./conversationSummarizer";
-import type { GroceryItem, Task, Contact, MemoryNote, Message, Entity, EntityDomain } from "@shared/schema";
+import type { GroceryItem, Task, Contact, MemoryNote, Message, Entity, EntityDomain, LifelogLocation, ActivityType } from "@shared/schema";
 
 /**
  * Application context available to the router
@@ -505,7 +510,7 @@ export async function buildGroceryBundle(ctx: AppContext, maxTokens: number): Pr
 }
 
 /**
- * Build the locations context bundle
+ * Build the locations context bundle (enhanced with lifelog correlation)
  */
 export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
   const parts: string[] = [];
@@ -526,10 +531,39 @@ export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): 
       parts.push(`## Current Location\nLat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)} (${ageStr})`);
       
       // Check nearby places (requires numeric lat/lng)
-      const nearbyPlaces = findNearbyPlaces(lat, lng, 0.5);
+      const nearbyPlaces = findNearbyPlaces(lat, lng, 500);
       if (nearbyPlaces.length > 0) {
-        const placeList = nearbyPlaces.slice(0, 3).map(p => `- ${p.name} (${p.category || "place"})`).join("\n");
+        const closestPlace = nearbyPlaces[0];
+        const placeList = nearbyPlaces.slice(0, 3).map(p => 
+          `- ${p.name} (${p.category || "place"}, ${Math.round(p.distance)}m away)`
+        ).join("\n");
         parts.push(`### Nearby Saved Places\n${placeList}`);
+        
+        // Get past conversations at this location
+        const lifelogsAtPlace = getLifelogsAtPlace(closestPlace.id);
+        if (lifelogsAtPlace.length > 0) {
+          const recentLifelogs = lifelogsAtPlace.slice(0, 5);
+          const lifelogList = recentLifelogs.map((ll: LifelogLocation) => {
+            const date = new Date(ll.lifelogStartTime);
+            const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+            const timeStr = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+            return `- "${ll.lifelogTitle}" (${dateStr} at ${timeStr})`;
+          }).join("\n");
+          parts.push(`### Past Conversations at ${closestPlace.name}\n${lifelogList}`);
+        }
+      }
+      
+      // Also check for nearby lifelogs (even if not at a saved place)
+      const nearbyLifelogs = getLifelogsNearLocation(lat, lng, 500);
+      if (nearbyLifelogs.length > 0 && nearbyPlaces.length === 0) {
+        // Only show if not already showing place-specific lifelogs
+        const recentNearby = nearbyLifelogs.slice(0, 3);
+        const nearbyList = recentNearby.map((ll: LifelogLocation & { distance: number }) => {
+          const date = new Date(ll.lifelogStartTime);
+          const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          return `- "${ll.lifelogTitle}" (${dateStr}, ${Math.round(ll.distance)}m away)`;
+        }).join("\n");
+        parts.push(`### Past Conversations Nearby\n${nearbyList}`);
       }
       
       // Check grocery proximity - returns an array of nearby grocery stores
@@ -549,6 +583,19 @@ export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): 
       const starredList = starred.slice(0, 5).map(p => `- ${p.name} (${p.category || "starred"})`).join("\n");
       parts.push(`### Favorite Places\n${starredList}`);
     }
+    
+    // Recent location-tagged conversations
+    const recentLocatedLifelogs = getRecentLifelogLocations(5);
+    const withPlaces = recentLocatedLifelogs.filter((ll: LifelogLocation) => ll.savedPlaceName);
+    if (withPlaces.length > 0) {
+      const locatedList = withPlaces.slice(0, 3).map((ll: LifelogLocation) => {
+        const date = new Date(ll.lifelogStartTime);
+        const timeStr = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+        const activity = formatActivityType(ll.activityType as ActivityType);
+        return `- "${ll.lifelogTitle}" at ${ll.savedPlaceName} (${timeStr}${activity ? `, ${activity}` : ""})`;
+      }).join("\n");
+      parts.push(`### Recent Location-Tagged Conversations\n${locatedList}`);
+    }
   } catch (error) {
     console.error("Error building locations bundle:", error);
   }
@@ -563,7 +610,25 @@ export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): 
 }
 
 /**
- * Build the Limitless/lifelog context bundle
+ * Format activity type for human-readable display
+ */
+function formatActivityType(activity: ActivityType | undefined): string {
+  if (!activity || activity === "unknown") return "";
+  const labels: Record<ActivityType, string> = {
+    "stationary": "stationary",
+    "walking": "walking",
+    "driving": "driving",
+    "commuting": "commuting",
+    "at_home": "at home",
+    "at_work": "at work",
+    "at_known_place": "at location",
+    "unknown": "",
+  };
+  return labels[activity] || "";
+}
+
+/**
+ * Build the Limitless/lifelog context bundle (enhanced with location context)
  */
 export async function buildLimitlessBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
   const parts: string[] = [];
@@ -581,17 +646,70 @@ export async function buildLimitlessBundle(ctx: AppContext, maxTokens: number): 
       }
       
       // If the user message seems to be asking about conversations, search
-      const lifelogKeywords = ["today", "earlier", "conversation", "said", "talked", "meeting", "discussed", "mentioned"];
+      const lifelogKeywords = ["today", "earlier", "conversation", "said", "talked", "meeting", "discussed", "mentioned", "where"];
       const hasLifelogIntent = lifelogKeywords.some(k => ctx.userMessage.toLowerCase().includes(k));
+      
+      // Check if asking about location-specific conversations
+      const locationKeywords = ["where", "place", "location", "at the", "when i was at"];
+      const hasLocationIntent = locationKeywords.some(k => ctx.userMessage.toLowerCase().includes(k));
       
       if (hasLifelogIntent && overview.today.count > 0) {
         // Get recent lifelogs
-        const recent = await getRecentLifelogs(24, 3);
+        const recent = await getRecentLifelogs(24, 5);
         if (recent && recent.length > 0) {
-          const recentList = recent.map((l: any) => 
-            `- "${l.title}" at ${new Date(l.startTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`
-          ).join("\n");
+          // Get location context for these lifelogs
+          const lifelogIds = recent.map((l: any) => l.id);
+          const locationContexts = getLifelogLocationContexts(lifelogIds);
+          
+          // Build a map for quick lookup
+          const locationMap = new Map(locationContexts.map(lc => [lc.lifelogId, lc]));
+          
+          const recentList = recent.map((l: any) => {
+            const timeStr = new Date(l.startTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+            const locCtx = locationMap.get(l.id);
+            
+            // Build location string if available
+            let locationStr = "";
+            if (locCtx && locCtx.location) {
+              if (locCtx.location.placeName) {
+                locationStr = ` at ${locCtx.location.placeName}`;
+              }
+              const activity = formatActivityType(locCtx.activity);
+              if (activity) {
+                locationStr += ` (${activity})`;
+              }
+            }
+            
+            return `- "${l.title}" at ${timeStr}${locationStr}`;
+          }).join("\n");
           parts.push(`### Recent Conversations\n${recentList}`);
+          
+          // If user is asking about location-specific conversations
+          if (hasLocationIntent) {
+            // Get location-tagged lifelogs with places
+            const locatedLifelogs = getRecentLifelogLocations(10)
+              .filter((ll: LifelogLocation) => ll.savedPlaceName);
+            
+            if (locatedLifelogs.length > 0) {
+              // Group by place
+              const byPlace = new Map<string, LifelogLocation[]>();
+              for (const ll of locatedLifelogs) {
+                const placeName = ll.savedPlaceName || "Unknown";
+                if (!byPlace.has(placeName)) {
+                  byPlace.set(placeName, []);
+                }
+                byPlace.get(placeName)!.push(ll);
+              }
+              
+              const placesList = Array.from(byPlace.entries())
+                .slice(0, 3)
+                .map(([place, lifelogs]) => {
+                  const titles = lifelogs.slice(0, 2).map(ll => `"${ll.lifelogTitle}"`).join(", ");
+                  return `- **${place}**: ${titles}${lifelogs.length > 2 ? ` (+${lifelogs.length - 2} more)` : ""}`;
+                }).join("\n");
+              parts.push(`### Conversations by Location\n${placesList}`);
+            }
+          }
         }
       }
     } else {

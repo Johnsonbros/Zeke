@@ -151,7 +151,18 @@ import {
   getContactNotes,
   getContactNotesByType,
   deleteContactNote,
-  deleteAllContactNotes
+  deleteAllContactNotes,
+  getLifelogsAtPlace,
+  getLifelogsNearLocation,
+  getRecentLifelogLocations,
+  correlateLifelogWithLocation,
+  getLifelogLocationContexts,
+  buildUnifiedTimeline,
+  getLifelogLocation,
+  getLifelogLocationByLifelogId,
+  getLifelogLocationsInRange,
+  getLifelogsByActivity,
+  analyzeLocationPatterns,
 } from "./db";
 import type { TwilioMessageSource } from "@shared/schema";
 import { generateContextualQuestion } from "./gettingToKnow";
@@ -202,6 +213,7 @@ import {
   getConversationAnalytics,
   getMorningBriefingEnhancement,
   getLimitlessSummaries,
+  getRecentLifelogs,
 } from "./limitless";
 import {
   recordConversationSignal,
@@ -274,7 +286,7 @@ import {
   getNLAutomationLogs as getNLAutomationLogsDb,
   getNLAutomationStats as getNLAutomationStatsDb,
 } from "./db";
-import type { EntityDomain, EntityType, InsightCategory, InsightStatus, InsightPriority } from "@shared/schema";
+import type { EntityDomain, EntityType, InsightCategory, InsightStatus, InsightPriority, ActivityType } from "@shared/schema";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertContactNoteSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, insertFoodPreferenceSchema, insertDietaryRestrictionSchema, insertSavedRecipeSchema, updateSavedRecipeSchema, insertMealHistorySchema, type Automation, type InsertAutomation, getContactFullName } from "@shared/schema";
 import twilio from "twilio";
 import { z } from "zod";
@@ -375,6 +387,42 @@ const sendSmsSchema = z.object({
   to: z.string().min(10, "Phone number required"),
   message: z.string().min(1, "Message required"),
 });
+
+// Helper to build a location context summary for proactive surfacing
+function buildLocationContextSummary(
+  closestPlace: { id: string; name: string; category: string; distance: number } | null,
+  lifelogs: any[],
+  nearbyGrocery: { place: { id: string; name: string }; distance: number } | null
+): string {
+  const parts: string[] = [];
+  
+  if (closestPlace) {
+    if (closestPlace.category === "home") {
+      parts.push(`You're at home (${closestPlace.name})`);
+    } else if (closestPlace.category === "work") {
+      parts.push(`You're at work (${closestPlace.name})`);
+    } else {
+      parts.push(`You're near ${closestPlace.name} (${Math.round(closestPlace.distance)}m away)`);
+    }
+  }
+  
+  if (lifelogs.length > 0) {
+    const recentConvo = lifelogs[0];
+    const date = new Date(recentConvo.lifelogStartTime);
+    const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    parts.push(`Last conversation here: "${recentConvo.lifelogTitle}" on ${dateStr}`);
+    
+    if (lifelogs.length > 1) {
+      parts.push(`${lifelogs.length - 1} more conversation(s) recorded at this location`);
+    }
+  }
+  
+  if (nearbyGrocery) {
+    parts.push(`Near grocery store: ${nearbyGrocery.place.name} (${Math.round(nearbyGrocery.distance)}m)`);
+  }
+  
+  return parts.length > 0 ? parts.join(". ") + "." : "No location context available.";
+}
 
 // Schema for updating reminders
 const updateReminderSchema = z.object({
@@ -4040,6 +4088,262 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("[Overland] Status check error:", error);
       res.status(500).json({ error: error.message || "Failed to check status" });
+    }
+  });
+
+  // === Lifelog-Location Correlation Routes ===
+
+  // GET /api/location/lifelogs - Get recent lifelogs with location data
+  app.get("/api/location/lifelogs", (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const activity = req.query.activity as ActivityType | undefined;
+      
+      let lifelogs;
+      if (activity && activity !== "unknown") {
+        lifelogs = getLifelogsByActivity(activity).slice(0, limit);
+      } else {
+        lifelogs = getRecentLifelogLocations(limit);
+      }
+      
+      res.json(lifelogs);
+    } catch (error: any) {
+      console.error("Get lifelog locations error:", error);
+      res.status(500).json({ error: error.message || "Failed to get lifelog locations" });
+    }
+  });
+
+  // GET /api/location/lifelogs/nearby - Get lifelogs near current location
+  app.get("/api/location/lifelogs/nearby", (req, res) => {
+    try {
+      const radiusMeters = parseInt(req.query.radius as string) || 500;
+      
+      // Get current location
+      const currentLocation = getLatestLocation();
+      if (!currentLocation) {
+        return res.status(404).json({ error: "No current location available" });
+      }
+      
+      const lat = parseFloat(currentLocation.latitude);
+      const lng = parseFloat(currentLocation.longitude);
+      
+      const nearbyLifelogs = getLifelogsNearLocation(lat, lng, radiusMeters);
+      
+      res.json({
+        currentLocation: {
+          latitude: lat,
+          longitude: lng,
+          accuracy: currentLocation.accuracy,
+          updatedAt: currentLocation.createdAt
+        },
+        radiusMeters,
+        lifelogs: nearbyLifelogs
+      });
+    } catch (error: any) {
+      console.error("Get nearby lifelogs error:", error);
+      res.status(500).json({ error: error.message || "Failed to get nearby lifelogs" });
+    }
+  });
+
+  // GET /api/location/places/:id/lifelogs - Get lifelogs at a specific place
+  app.get("/api/location/places/:id/lifelogs", (req, res) => {
+    try {
+      const place = getSavedPlace(req.params.id);
+      if (!place) {
+        return res.status(404).json({ error: "Place not found" });
+      }
+      
+      const lifelogs = getLifelogsAtPlace(req.params.id);
+      
+      res.json({
+        place: {
+          id: place.id,
+          name: place.name,
+          category: place.category
+        },
+        lifelogs
+      });
+    } catch (error: any) {
+      console.error("Get place lifelogs error:", error);
+      res.status(500).json({ error: error.message || "Failed to get lifelogs for place" });
+    }
+  });
+
+  // GET /api/location/timeline - Get unified timeline combining location and lifelogs
+  app.get("/api/location/timeline", (req, res) => {
+    try {
+      const startDate = req.query.startDate as string || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const endDate = req.query.endDate as string || new Date().toISOString();
+      
+      const timeline = buildUnifiedTimeline(startDate, endDate);
+      
+      res.json({
+        startDate,
+        endDate,
+        entries: timeline
+      });
+    } catch (error: any) {
+      console.error("Get timeline error:", error);
+      res.status(500).json({ error: error.message || "Failed to build timeline" });
+    }
+  });
+
+  // POST /api/location/lifelogs/correlate - Trigger correlation of recent lifelogs with GPS
+  app.post("/api/location/lifelogs/correlate", async (req, res) => {
+    try {
+      const hours = parseInt(req.query.hours as string) || 24;
+      
+      // Get recent lifelogs from Limitless
+      const recentLifelogs = await getRecentLifelogs(hours, 50);
+      
+      if (!recentLifelogs || recentLifelogs.length === 0) {
+        return res.json({ 
+          success: true, 
+          message: "No recent lifelogs to correlate", 
+          correlated: 0 
+        });
+      }
+      
+      const correlatedResults = [];
+      
+      for (const lifelog of recentLifelogs) {
+        try {
+          const result = correlateLifelogWithLocation(
+            lifelog.id,
+            lifelog.title,
+            lifelog.startTime,
+            lifelog.endTime
+          );
+          
+          if (result) {
+            correlatedResults.push({
+              lifelogId: lifelog.id,
+              title: lifelog.title,
+              locationCorrelated: !!result.startLatitude,
+              placeName: result.savedPlaceName,
+              activity: result.activityType
+            });
+          }
+        } catch (err) {
+          console.error(`[Correlate] Error processing lifelog ${lifelog.id}:`, err);
+        }
+      }
+      
+      res.json({
+        success: true,
+        message: `Correlated ${correlatedResults.length} lifelogs`,
+        correlated: correlatedResults.length,
+        results: correlatedResults
+      });
+    } catch (error: any) {
+      console.error("Correlate lifelogs error:", error);
+      res.status(500).json({ error: error.message || "Failed to correlate lifelogs" });
+    }
+  });
+
+  // GET /api/location/lifelogs/:id - Get a specific lifelog's location data
+  app.get("/api/location/lifelogs/:id", (req, res) => {
+    try {
+      const lifelogLocation = getLifelogLocationByLifelogId(req.params.id);
+      if (!lifelogLocation) {
+        return res.status(404).json({ error: "Lifelog location data not found" });
+      }
+      res.json(lifelogLocation);
+    } catch (error: any) {
+      console.error("Get lifelog location error:", error);
+      res.status(500).json({ error: error.message || "Failed to get lifelog location" });
+    }
+  });
+
+  // GET /api/location/patterns - Analyze location patterns and routines
+  app.get("/api/location/patterns", (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      const patterns = analyzeLocationPatterns(days);
+      
+      res.json({
+        analyzedDays: days,
+        frequentPlaces: patterns.frequentPlaces,
+        commutePatternsDetected: patterns.commutePatternsDetected,
+        typicalHomeHours: patterns.typicalHomeHours,
+        typicalWorkHours: patterns.typicalWorkHours,
+        summary: {
+          totalFrequentPlaces: patterns.frequentPlaces.length,
+          hasCommutePattern: patterns.commutePatternsDetected,
+          avgHomeHoursPerDay: patterns.typicalHomeHours.length,
+          avgWorkHoursPerDay: patterns.typicalWorkHours.length,
+        }
+      });
+    } catch (error: any) {
+      console.error("Analyze patterns error:", error);
+      res.status(500).json({ error: error.message || "Failed to analyze patterns" });
+    }
+  });
+
+  // GET /api/location/context - Get location-aware context for current position
+  app.get("/api/location/context", async (req, res) => {
+    try {
+      const currentLocation = getLatestLocation();
+      if (!currentLocation) {
+        return res.json({ 
+          hasLocation: false,
+          message: "No location data available" 
+        });
+      }
+      
+      const lat = parseFloat(currentLocation.latitude);
+      const lng = parseFloat(currentLocation.longitude);
+      const radiusMeters = parseInt(req.query.radius as string) || 500;
+      
+      // Get nearby saved places
+      const nearbyPlaces = findNearbyPlaces(lat, lng, radiusMeters);
+      const closestPlace = nearbyPlaces.length > 0 ? nearbyPlaces[0] : null;
+      
+      // Get lifelogs at this location
+      let relevantLifelogs;
+      if (closestPlace) {
+        relevantLifelogs = getLifelogsAtPlace(closestPlace.id).slice(0, 5);
+      } else {
+        relevantLifelogs = getLifelogsNearLocation(lat, lng, radiusMeters).slice(0, 5);
+      }
+      
+      // Check grocery proximity
+      const groceryProximity = checkGroceryProximity(lat, lng);
+      const nearbyGrocery = groceryProximity.length > 0 ? groceryProximity[0] : null;
+      
+      res.json({
+        hasLocation: true,
+        currentLocation: {
+          latitude: lat,
+          longitude: lng,
+          accuracy: currentLocation.accuracy,
+          updatedAt: currentLocation.createdAt
+        },
+        closestPlace: closestPlace ? {
+          id: closestPlace.id,
+          name: closestPlace.name,
+          category: closestPlace.category,
+          distance: closestPlace.distance
+        } : null,
+        nearbyGroceryStore: nearbyGrocery ? {
+          place: {
+            id: nearbyGrocery.place.id,
+            name: nearbyGrocery.place.name
+          },
+          distance: nearbyGrocery.distance
+        } : null,
+        pastConversations: relevantLifelogs.map(ll => ({
+          id: ll.lifelogId,
+          title: ll.lifelogTitle,
+          startTime: ll.lifelogStartTime,
+          activity: ll.activityType,
+          placeName: ll.savedPlaceName
+        })),
+        contextSummary: buildLocationContextSummary(closestPlace, relevantLifelogs, nearbyGrocery)
+      });
+    } catch (error: any) {
+      console.error("Get location context error:", error);
+      res.status(500).json({ error: error.message || "Failed to get location context" });
     }
   });
 

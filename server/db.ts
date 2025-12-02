@@ -688,6 +688,45 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_proximity_alerts_acknowledged ON proximity_alerts(acknowledged);
 `);
 
+// ============================================
+// LIFELOG-LOCATION CORRELATION SYSTEM
+// ============================================
+
+// Create lifelog_locations table for correlating lifelogs with GPS data
+db.exec(`
+  CREATE TABLE IF NOT EXISTS lifelog_locations (
+    id TEXT PRIMARY KEY,
+    lifelog_id TEXT NOT NULL UNIQUE,
+    lifelog_title TEXT NOT NULL,
+    lifelog_start_time TEXT NOT NULL,
+    lifelog_end_time TEXT NOT NULL,
+    start_latitude TEXT,
+    start_longitude TEXT,
+    start_accuracy TEXT,
+    end_latitude TEXT,
+    end_longitude TEXT,
+    end_accuracy TEXT,
+    saved_place_id TEXT,
+    saved_place_name TEXT,
+    saved_place_category TEXT,
+    activity_type TEXT DEFAULT 'unknown',
+    total_distance_meters TEXT,
+    average_speed TEXT,
+    dwell_time_minutes TEXT,
+    location_confidence TEXT DEFAULT 'medium',
+    correlated_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (saved_place_id) REFERENCES saved_places(id) ON DELETE SET NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_lifelog_locations_lifelog ON lifelog_locations(lifelog_id);
+  CREATE INDEX IF NOT EXISTS idx_lifelog_locations_place ON lifelog_locations(saved_place_id);
+  CREATE INDEX IF NOT EXISTS idx_lifelog_locations_start_time ON lifelog_locations(lifelog_start_time);
+  CREATE INDEX IF NOT EXISTS idx_lifelog_locations_activity ON lifelog_locations(activity_type);
+  CREATE INDEX IF NOT EXISTS idx_lifelog_locations_correlated ON lifelog_locations(correlated_at);
+`);
+
+console.log("Lifelog-location correlation table initialized");
+
 // Create wake_word_commands table for ZEKE context agent
 db.exec(`
   CREATE TABLE IF NOT EXISTS wake_word_commands (
@@ -4494,6 +4533,722 @@ export function checkGroceryProximity(lat: number, lon: number): Array<{ place: 
     }
     
     return nearbyGroceryPlaces.sort((a, b) => a.distance - b.distance);
+  });
+}
+
+// ============================================
+// LIFELOG-LOCATION CORRELATION FUNCTIONS
+// ============================================
+
+import type {
+  LifelogLocation,
+  InsertLifelogLocation,
+  ActivityType,
+  LifelogLocationContext,
+  TimelineEntry,
+} from "@shared/schema";
+
+interface LifelogLocationRow {
+  id: string;
+  lifelog_id: string;
+  lifelog_title: string;
+  lifelog_start_time: string;
+  lifelog_end_time: string;
+  start_latitude: string | null;
+  start_longitude: string | null;
+  start_accuracy: string | null;
+  end_latitude: string | null;
+  end_longitude: string | null;
+  end_accuracy: string | null;
+  saved_place_id: string | null;
+  saved_place_name: string | null;
+  saved_place_category: string | null;
+  activity_type: string | null;
+  total_distance_meters: string | null;
+  average_speed: string | null;
+  dwell_time_minutes: string | null;
+  location_confidence: string | null;
+  correlated_at: string;
+  created_at: string;
+}
+
+function mapLifelogLocation(row: LifelogLocationRow): LifelogLocation {
+  return {
+    id: row.id,
+    lifelogId: row.lifelog_id,
+    lifelogTitle: row.lifelog_title,
+    lifelogStartTime: row.lifelog_start_time,
+    lifelogEndTime: row.lifelog_end_time,
+    startLatitude: row.start_latitude,
+    startLongitude: row.start_longitude,
+    startAccuracy: row.start_accuracy,
+    endLatitude: row.end_latitude,
+    endLongitude: row.end_longitude,
+    endAccuracy: row.end_accuracy,
+    savedPlaceId: row.saved_place_id,
+    savedPlaceName: row.saved_place_name,
+    savedPlaceCategory: row.saved_place_category,
+    activityType: (row.activity_type as ActivityType) || "unknown",
+    totalDistanceMeters: row.total_distance_meters,
+    averageSpeed: row.average_speed,
+    dwellTimeMinutes: row.dwell_time_minutes,
+    locationConfidence: row.location_confidence,
+    correlatedAt: row.correlated_at,
+    createdAt: row.created_at,
+  };
+}
+
+// Create or update a lifelog-location correlation
+export function upsertLifelogLocation(data: InsertLifelogLocation): LifelogLocation {
+  return wrapDbOperation("upsertLifelogLocation", () => {
+    const existing = db.prepare(`SELECT id FROM lifelog_locations WHERE lifelog_id = ?`).get(data.lifelogId) as { id: string } | undefined;
+    const now = new Date().toISOString();
+    
+    if (existing) {
+      db.prepare(`
+        UPDATE lifelog_locations SET
+          lifelog_title = ?,
+          lifelog_start_time = ?,
+          lifelog_end_time = ?,
+          start_latitude = ?,
+          start_longitude = ?,
+          start_accuracy = ?,
+          end_latitude = ?,
+          end_longitude = ?,
+          end_accuracy = ?,
+          saved_place_id = ?,
+          saved_place_name = ?,
+          saved_place_category = ?,
+          activity_type = ?,
+          total_distance_meters = ?,
+          average_speed = ?,
+          dwell_time_minutes = ?,
+          location_confidence = ?,
+          correlated_at = ?
+        WHERE id = ?
+      `).run(
+        data.lifelogTitle,
+        data.lifelogStartTime,
+        data.lifelogEndTime,
+        data.startLatitude || null,
+        data.startLongitude || null,
+        data.startAccuracy || null,
+        data.endLatitude || null,
+        data.endLongitude || null,
+        data.endAccuracy || null,
+        data.savedPlaceId || null,
+        data.savedPlaceName || null,
+        data.savedPlaceCategory || null,
+        data.activityType || "unknown",
+        data.totalDistanceMeters || null,
+        data.averageSpeed || null,
+        data.dwellTimeMinutes || null,
+        data.locationConfidence || "medium",
+        now,
+        existing.id
+      );
+      return getLifelogLocation(existing.id)!;
+    }
+    
+    const id = uuidv4();
+    db.prepare(`
+      INSERT INTO lifelog_locations (
+        id, lifelog_id, lifelog_title, lifelog_start_time, lifelog_end_time,
+        start_latitude, start_longitude, start_accuracy,
+        end_latitude, end_longitude, end_accuracy,
+        saved_place_id, saved_place_name, saved_place_category,
+        activity_type, total_distance_meters, average_speed, dwell_time_minutes,
+        location_confidence, correlated_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.lifelogId,
+      data.lifelogTitle,
+      data.lifelogStartTime,
+      data.lifelogEndTime,
+      data.startLatitude || null,
+      data.startLongitude || null,
+      data.startAccuracy || null,
+      data.endLatitude || null,
+      data.endLongitude || null,
+      data.endAccuracy || null,
+      data.savedPlaceId || null,
+      data.savedPlaceName || null,
+      data.savedPlaceCategory || null,
+      data.activityType || "unknown",
+      data.totalDistanceMeters || null,
+      data.averageSpeed || null,
+      data.dwellTimeMinutes || null,
+      data.locationConfidence || "medium",
+      now,
+      now
+    );
+    
+    return getLifelogLocation(id)!;
+  });
+}
+
+// Get a lifelog location by ID
+export function getLifelogLocation(id: string): LifelogLocation | undefined {
+  return wrapDbOperation("getLifelogLocation", () => {
+    const row = db.prepare(`SELECT * FROM lifelog_locations WHERE id = ?`).get(id) as LifelogLocationRow | undefined;
+    return row ? mapLifelogLocation(row) : undefined;
+  });
+}
+
+// Get lifelog location by lifelog ID
+export function getLifelogLocationByLifelogId(lifelogId: string): LifelogLocation | undefined {
+  return wrapDbOperation("getLifelogLocationByLifelogId", () => {
+    const row = db.prepare(`SELECT * FROM lifelog_locations WHERE lifelog_id = ?`).get(lifelogId) as LifelogLocationRow | undefined;
+    return row ? mapLifelogLocation(row) : undefined;
+  });
+}
+
+// Get all lifelog locations for a date range
+export function getLifelogLocationsInRange(startDate: string, endDate: string): LifelogLocation[] {
+  return wrapDbOperation("getLifelogLocationsInRange", () => {
+    const rows = db.prepare(`
+      SELECT * FROM lifelog_locations 
+      WHERE lifelog_start_time >= ? AND lifelog_start_time <= ?
+      ORDER BY lifelog_start_time DESC
+    `).all(startDate, endDate) as LifelogLocationRow[];
+    return rows.map(mapLifelogLocation);
+  });
+}
+
+// Get lifelogs at or near a specific place
+export function getLifelogsAtPlace(placeId: string): LifelogLocation[] {
+  return wrapDbOperation("getLifelogsAtPlace", () => {
+    const rows = db.prepare(`
+      SELECT * FROM lifelog_locations 
+      WHERE saved_place_id = ?
+      ORDER BY lifelog_start_time DESC
+    `).all(placeId) as LifelogLocationRow[];
+    return rows.map(mapLifelogLocation);
+  });
+}
+
+// Get lifelogs near a location (within radius)
+export function getLifelogsNearLocation(lat: number, lon: number, radiusMeters: number = 500): Array<LifelogLocation & { distance: number }> {
+  return wrapDbOperation("getLifelogsNearLocation", () => {
+    const allLocations = db.prepare(`
+      SELECT * FROM lifelog_locations 
+      WHERE start_latitude IS NOT NULL AND start_longitude IS NOT NULL
+      ORDER BY lifelog_start_time DESC
+    `).all() as LifelogLocationRow[];
+    
+    const nearbyLifelogs: Array<LifelogLocation & { distance: number }> = [];
+    
+    for (const row of allLocations) {
+      if (row.start_latitude && row.start_longitude) {
+        const distance = calculateDistance(lat, lon, parseFloat(row.start_latitude), parseFloat(row.start_longitude));
+        if (distance <= radiusMeters) {
+          nearbyLifelogs.push({ ...mapLifelogLocation(row), distance });
+        }
+      }
+    }
+    
+    return nearbyLifelogs.sort((a, b) => a.distance - b.distance);
+  });
+}
+
+// Get lifelogs by activity type
+export function getLifelogsByActivity(activityType: ActivityType): LifelogLocation[] {
+  return wrapDbOperation("getLifelogsByActivity", () => {
+    const rows = db.prepare(`
+      SELECT * FROM lifelog_locations 
+      WHERE activity_type = ?
+      ORDER BY lifelog_start_time DESC
+    `).all(activityType) as LifelogLocationRow[];
+    return rows.map(mapLifelogLocation);
+  });
+}
+
+// Get recent lifelog locations
+export function getRecentLifelogLocations(limit: number = 20): LifelogLocation[] {
+  return wrapDbOperation("getRecentLifelogLocations", () => {
+    const rows = db.prepare(`
+      SELECT * FROM lifelog_locations 
+      ORDER BY lifelog_start_time DESC
+      LIMIT ?
+    `).all(limit) as LifelogLocationRow[];
+    return rows.map(mapLifelogLocation);
+  });
+}
+
+// Enhanced activity detection from GPS patterns
+interface ActivityDetectionParams {
+  avgSpeedMetersPerMin: number;
+  totalDistanceMeters: number;
+  durationMinutes: number;
+  timestamp: string;
+  placeCategory?: string;
+  locationHistory: LocationHistory[];
+}
+
+export function detectActivityFromGpsPattern(params: ActivityDetectionParams): ActivityType {
+  const {
+    avgSpeedMetersPerMin,
+    totalDistanceMeters,
+    durationMinutes,
+    timestamp,
+    placeCategory,
+    locationHistory,
+  } = params;
+
+  // 1. If at a known place, use place-based detection
+  if (placeCategory) {
+    if (placeCategory === "home") return "at_home";
+    if (placeCategory === "work") return "at_work";
+    return "at_known_place";
+  }
+
+  // 2. Parse timestamp for time-of-day analysis
+  const date = new Date(timestamp);
+  const hour = date.getHours();
+  const dayOfWeek = date.getDay();
+  const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+  const isBusinessHours = hour >= 8 && hour < 18;
+  const isCommuteTime = (hour >= 7 && hour < 9) || (hour >= 16 && hour < 19);
+
+  // 3. Calculate movement variance (stationarity indicator)
+  let movementVariance = 0;
+  if (locationHistory.length >= 3) {
+    const speeds: number[] = [];
+    for (let i = 1; i < locationHistory.length; i++) {
+      const prev = locationHistory[i - 1];
+      const curr = locationHistory[i];
+      const dist = calculateDistance(
+        parseFloat(prev.latitude),
+        parseFloat(prev.longitude),
+        parseFloat(curr.latitude),
+        parseFloat(curr.longitude)
+      );
+      const timeDiff = (new Date(curr.createdAt).getTime() - new Date(prev.createdAt).getTime()) / 1000 / 60;
+      if (timeDiff > 0) {
+        speeds.push(dist / timeDiff);
+      }
+    }
+    if (speeds.length > 0) {
+      const mean = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+      movementVariance = speeds.reduce((sum, s) => sum + Math.pow(s - mean, 2), 0) / speeds.length;
+    }
+  }
+
+  // 4. Speed-based classification with nuanced thresholds
+  const STATIONARY_THRESHOLD = 2;     // < 2 m/min = essentially not moving
+  const WALKING_MIN = 2;              // > 2 m/min
+  const WALKING_MAX = 100;            // < 100 m/min (~6 km/h)
+  const RUNNING_MAX = 250;            // < 250 m/min (~15 km/h)
+  const DRIVING_MIN = 250;            // > 250 m/min
+
+  // Very low movement - stationary
+  if (avgSpeedMetersPerMin < STATIONARY_THRESHOLD) {
+    // Stationary during business hours on weekdays = likely a meeting
+    if (isWeekday && isBusinessHours && durationMinutes >= 15 && durationMinutes <= 120) {
+      return "meeting";
+    }
+    return "stationary";
+  }
+
+  // Moderate movement - walking or running
+  if (avgSpeedMetersPerMin >= WALKING_MIN && avgSpeedMetersPerMin < RUNNING_MAX) {
+    // High variance suggests stop-and-go (like shopping)
+    if (movementVariance > 500) {
+      return "walking"; // Could be shopping, browsing, etc.
+    }
+    return "walking";
+  }
+
+  // High speed movement - driving
+  if (avgSpeedMetersPerMin >= DRIVING_MIN) {
+    // During commute hours = likely commuting
+    if (isWeekday && isCommuteTime) {
+      return "commuting";
+    }
+    return "driving";
+  }
+
+  // Medium-high speed - could be transit, biking, or car
+  if (avgSpeedMetersPerMin >= WALKING_MAX && avgSpeedMetersPerMin < DRIVING_MIN) {
+    // Check for stop-and-go pattern typical of transit
+    if (movementVariance > 1000) {
+      return "transit";
+    }
+    // During commute hours = likely commuting
+    if (isWeekday && isCommuteTime) {
+      return "commuting";
+    }
+    return "driving";
+  }
+
+  return "unknown";
+}
+
+// Analyze location patterns to identify regular visits and routines
+export function analyzeLocationPatterns(days: number = 30): {
+  frequentPlaces: Array<{
+    placeId: string;
+    placeName: string;
+    visitCount: number;
+    avgDurationMinutes: number;
+    commonDays: number[];
+    commonHours: number[];
+  }>;
+  commutePatternsDetected: boolean;
+  typicalHomeHours: number[];
+  typicalWorkHours: number[];
+} {
+  return wrapDbOperation("analyzeLocationPatterns", () => {
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const endDate = new Date().toISOString();
+    
+    const lifelogLocs = getLifelogLocationsInRange(startDate, endDate);
+    
+    // Group by place
+    const placeVisits: Map<string, {
+      placeId: string;
+      placeName: string;
+      visits: Array<{
+        dayOfWeek: number;
+        hour: number;
+        durationMinutes: number;
+      }>;
+    }> = new Map();
+    
+    let homeHours: number[] = [];
+    let workHours: number[] = [];
+    
+    for (const loc of lifelogLocs) {
+      if (!loc.savedPlaceId) continue;
+      
+      const date = new Date(loc.lifelogStartTime);
+      const dayOfWeek = date.getDay();
+      const hour = date.getHours();
+      const duration = parseFloat(loc.dwellTimeMinutes || "0");
+      
+      const existing = placeVisits.get(loc.savedPlaceId);
+      if (existing) {
+        existing.visits.push({ dayOfWeek, hour, durationMinutes: duration });
+      } else {
+        placeVisits.set(loc.savedPlaceId, {
+          placeId: loc.savedPlaceId,
+          placeName: loc.savedPlaceName || "Unknown",
+          visits: [{ dayOfWeek, hour, durationMinutes: duration }],
+        });
+      }
+      
+      // Track home/work hours
+      if (loc.savedPlaceCategory === "home") {
+        homeHours.push(hour);
+      } else if (loc.savedPlaceCategory === "work") {
+        workHours.push(hour);
+      }
+    }
+    
+    // Analyze each place
+    const frequentPlaces = Array.from(placeVisits.values())
+      .map(place => {
+        const visitCount = place.visits.length;
+        const avgDuration = place.visits.reduce((sum, v) => sum + v.durationMinutes, 0) / visitCount;
+        
+        // Find common days
+        const dayCount: number[] = [0, 0, 0, 0, 0, 0, 0];
+        place.visits.forEach(v => dayCount[v.dayOfWeek]++);
+        const commonDays = dayCount
+          .map((count, day) => ({ day, count }))
+          .filter(d => d.count >= visitCount * 0.3)
+          .map(d => d.day);
+        
+        // Find common hours
+        const hourCount: number[] = new Array(24).fill(0);
+        place.visits.forEach(v => hourCount[v.hour]++);
+        const commonHours = hourCount
+          .map((count, hour) => ({ hour, count }))
+          .filter(h => h.count >= visitCount * 0.2)
+          .map(h => h.hour);
+        
+        return {
+          placeId: place.placeId,
+          placeName: place.placeName,
+          visitCount,
+          avgDurationMinutes: Math.round(avgDuration),
+          commonDays,
+          commonHours,
+        };
+      })
+      .filter(p => p.visitCount >= 2)
+      .sort((a, b) => b.visitCount - a.visitCount);
+    
+    // Detect commute patterns (regular weekday visits to work)
+    const workPlace = frequentPlaces.find(p => 
+      p.commonDays.some(d => d >= 1 && d <= 5) && // weekday visits
+      p.commonHours.some(h => h >= 8 && h < 18)   // business hours
+    );
+    const commutePatternsDetected = !!workPlace && workPlace.visitCount >= 5;
+    
+    // Deduplicate and find typical hours
+    const typicalHomeHours = [...new Set(homeHours)].sort((a, b) => a - b);
+    const typicalWorkHours = [...new Set(workHours)].sort((a, b) => a - b);
+    
+    return {
+      frequentPlaces,
+      commutePatternsDetected,
+      typicalHomeHours,
+      typicalWorkHours,
+    };
+  });
+}
+
+// Correlate a lifelog with GPS location data
+export function correlateLifelogWithLocation(
+  lifelogId: string,
+  lifelogTitle: string,
+  startTime: string,
+  endTime: string
+): LifelogLocation | null {
+  return wrapDbOperation("correlateLifelogWithLocation", () => {
+    // Find GPS data around the lifelog time window
+    const startDate = new Date(startTime);
+    const endDate = new Date(endTime);
+    
+    // Extend window slightly to catch nearby GPS points
+    const windowStart = new Date(startDate.getTime() - 5 * 60 * 1000).toISOString(); // 5 min before
+    const windowEnd = new Date(endDate.getTime() + 5 * 60 * 1000).toISOString(); // 5 min after
+    
+    const locationHistory = getLocationHistoryInRange(windowStart, windowEnd);
+    
+    if (locationHistory.length === 0) {
+      // No GPS data available, create entry with no location
+      return upsertLifelogLocation({
+        lifelogId,
+        lifelogTitle,
+        lifelogStartTime: startTime,
+        lifelogEndTime: endTime,
+        locationConfidence: "low",
+        activityType: "unknown",
+      });
+    }
+    
+    // Sort by time
+    const sorted = [...locationHistory].sort((a, b) => 
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+    
+    // Get location closest to start time
+    const startLocation = sorted.reduce((closest, loc) => {
+      const locTime = new Date(loc.createdAt).getTime();
+      const targetTime = startDate.getTime();
+      const closestTime = new Date(closest.createdAt).getTime();
+      return Math.abs(locTime - targetTime) < Math.abs(closestTime - targetTime) ? loc : closest;
+    }, sorted[0]);
+    
+    // Get location closest to end time
+    const endLocation = sorted.reduce((closest, loc) => {
+      const locTime = new Date(loc.createdAt).getTime();
+      const targetTime = endDate.getTime();
+      const closestTime = new Date(closest.createdAt).getTime();
+      return Math.abs(locTime - targetTime) < Math.abs(closestTime - targetTime) ? loc : closest;
+    }, sorted[sorted.length - 1]);
+    
+    // Calculate total distance traveled during lifelog
+    let totalDistance = 0;
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1];
+      const curr = sorted[i];
+      totalDistance += calculateDistance(
+        parseFloat(prev.latitude),
+        parseFloat(prev.longitude),
+        parseFloat(curr.latitude),
+        parseFloat(curr.longitude)
+      );
+    }
+    
+    // Calculate dwell time (time spent stationary)
+    const durationMinutes = (endDate.getTime() - startDate.getTime()) / 1000 / 60;
+    
+    // Calculate average speed (meters per minute)
+    const avgSpeed = durationMinutes > 0 ? totalDistance / durationMinutes : 0;
+    
+    // Check if at a known place first
+    const startLat = parseFloat(startLocation.latitude);
+    const startLon = parseFloat(startLocation.longitude);
+    const nearbyPlaces = findNearbyPlaces(startLat, startLon, 200);
+    
+    let savedPlaceId: string | undefined;
+    let savedPlaceName: string | undefined;
+    let savedPlaceCategory: string | undefined;
+    
+    if (nearbyPlaces.length > 0) {
+      const closestPlace = nearbyPlaces[0];
+      savedPlaceId = closestPlace.id;
+      savedPlaceName = closestPlace.name;
+      savedPlaceCategory = closestPlace.category;
+    }
+    
+    // Use enhanced activity detection
+    const activityType = detectActivityFromGpsPattern({
+      avgSpeedMetersPerMin: avgSpeed,
+      totalDistanceMeters: totalDistance,
+      durationMinutes,
+      timestamp: startTime,
+      placeCategory: savedPlaceCategory,
+      locationHistory: sorted,
+    })
+    
+    // Determine confidence
+    let confidence: "low" | "medium" | "high" = "medium";
+    const startAccuracy = parseFloat(startLocation.accuracy || "100");
+    if (startAccuracy < 20) {
+      confidence = "high";
+    } else if (startAccuracy > 100) {
+      confidence = "low";
+    }
+    
+    return upsertLifelogLocation({
+      lifelogId,
+      lifelogTitle,
+      lifelogStartTime: startTime,
+      lifelogEndTime: endTime,
+      startLatitude: startLocation.latitude,
+      startLongitude: startLocation.longitude,
+      startAccuracy: startLocation.accuracy,
+      endLatitude: endLocation.latitude,
+      endLongitude: endLocation.longitude,
+      endAccuracy: endLocation.accuracy,
+      savedPlaceId,
+      savedPlaceName,
+      savedPlaceCategory,
+      activityType,
+      totalDistanceMeters: String(Math.round(totalDistance)),
+      averageSpeed: String(Math.round(avgSpeed * 100) / 100),
+      dwellTimeMinutes: String(Math.round(durationMinutes)),
+      locationConfidence: confidence,
+    });
+  });
+}
+
+// Build unified timeline combining location history and lifelogs
+export function buildUnifiedTimeline(startDate: string, endDate: string): TimelineEntry[] {
+  return wrapDbOperation("buildUnifiedTimeline", () => {
+    const timeline: TimelineEntry[] = [];
+    
+    // Get location history
+    const locations = getLocationHistoryInRange(startDate, endDate);
+    
+    // Get lifelog locations
+    const lifelogLocs = getLifelogLocationsInRange(startDate, endDate);
+    
+    // Add location points
+    for (const loc of locations) {
+      const nearbyPlaces = findNearbyPlaces(
+        parseFloat(loc.latitude),
+        parseFloat(loc.longitude),
+        100
+      );
+      
+      timeline.push({
+        id: loc.id,
+        type: "location",
+        timestamp: loc.createdAt,
+        location: {
+          latitude: parseFloat(loc.latitude),
+          longitude: parseFloat(loc.longitude),
+          placeName: nearbyPlaces[0]?.name,
+          placeCategory: nearbyPlaces[0]?.category,
+        },
+      });
+    }
+    
+    // Add lifelog entries (may be combined with location)
+    for (const ll of lifelogLocs) {
+      // Check if there's a location entry close to this lifelog
+      const existingIdx = timeline.findIndex(t => {
+        if (t.type !== "location") return false;
+        const timeDiff = Math.abs(
+          new Date(t.timestamp).getTime() - new Date(ll.lifelogStartTime).getTime()
+        );
+        return timeDiff < 5 * 60 * 1000; // Within 5 minutes
+      });
+      
+      if (existingIdx >= 0 && ll.startLatitude) {
+        // Combine with existing location entry
+        timeline[existingIdx].type = "combined";
+        timeline[existingIdx].endTimestamp = ll.lifelogEndTime;
+        timeline[existingIdx].lifelog = {
+          id: ll.lifelogId,
+          title: ll.lifelogTitle,
+        };
+        timeline[existingIdx].activity = ll.activityType as ActivityType;
+      } else {
+        // Add as separate lifelog entry
+        timeline.push({
+          id: ll.id,
+          type: ll.startLatitude ? "combined" : "lifelog",
+          timestamp: ll.lifelogStartTime,
+          endTimestamp: ll.lifelogEndTime,
+          location: ll.startLatitude ? {
+            latitude: parseFloat(ll.startLatitude),
+            longitude: parseFloat(ll.startLongitude!),
+            placeName: ll.savedPlaceName || undefined,
+            placeCategory: ll.savedPlaceCategory || undefined,
+          } : undefined,
+          lifelog: {
+            id: ll.lifelogId,
+            title: ll.lifelogTitle,
+          },
+          activity: ll.activityType as ActivityType,
+        });
+      }
+    }
+    
+    // Sort by timestamp
+    return timeline.sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  });
+}
+
+// Get location context for multiple lifelogs (for context injection)
+export function getLifelogLocationContexts(lifelogIds: string[]): LifelogLocationContext[] {
+  return wrapDbOperation("getLifelogLocationContexts", () => {
+    if (lifelogIds.length === 0) return [];
+    
+    const placeholders = lifelogIds.map(() => "?").join(",");
+    const rows = db.prepare(`
+      SELECT * FROM lifelog_locations 
+      WHERE lifelog_id IN (${placeholders})
+    `).all(...lifelogIds) as LifelogLocationRow[];
+    
+    return rows.map(row => {
+      const ll = mapLifelogLocation(row);
+      return {
+        lifelogId: ll.lifelogId,
+        lifelogTitle: ll.lifelogTitle,
+        startTime: ll.lifelogStartTime,
+        endTime: ll.lifelogEndTime,
+        location: ll.startLatitude ? {
+          latitude: parseFloat(ll.startLatitude),
+          longitude: parseFloat(ll.startLongitude!),
+          placeName: ll.savedPlaceName || undefined,
+          placeCategory: ll.savedPlaceCategory || undefined,
+        } : null,
+        activity: ll.activityType as ActivityType,
+        confidence: (ll.locationConfidence as "low" | "medium" | "high") || "medium",
+      };
+    });
+  });
+}
+
+// Delete old lifelog location correlations (for cleanup)
+export function deleteOldLifelogLocations(olderThanDays: number): number {
+  return wrapDbOperation("deleteOldLifelogLocations", () => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - olderThanDays);
+    const result = db.prepare(`
+      DELETE FROM lifelog_locations WHERE created_at < ?
+    `).run(cutoff.toISOString());
+    return result.changes;
   });
 }
 

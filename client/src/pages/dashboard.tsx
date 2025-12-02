@@ -791,6 +791,166 @@ function LocationWidget({
   );
 }
 
+interface TimelineEntry {
+  id: string;
+  type: "location" | "lifelog" | "combined";
+  timestamp: string;
+  endTimestamp?: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+    placeName?: string;
+    placeCategory?: string;
+  };
+  lifelog?: {
+    id: string;
+    title: string;
+    speakers?: string[];
+    summary?: string;
+  };
+  activity?: string;
+}
+
+interface TimelineResponse {
+  startDate: string;
+  endDate: string;
+  entries: TimelineEntry[];
+}
+
+function LocationTimelineWidget({
+  isLoading,
+}: {
+  isLoading: boolean;
+}) {
+  const { data: timeline } = useQuery<TimelineResponse>({
+    queryKey: ["/api/location/timeline", { days: 1 }],
+    refetchInterval: 60000,
+  });
+
+  const entries = timeline?.entries || [];
+  const recentEntries = entries.slice(0, 8);
+
+  const getTimelineIcon = (entry: TimelineEntry) => {
+    if (entry.type === "lifelog" || entry.lifelog) {
+      return <MessageSquare className="h-3 w-3" />;
+    }
+    if (entry.type === "combined") {
+      return <Navigation className="h-3 w-3" />;
+    }
+    switch (entry.location?.placeCategory) {
+      case "home": return <Home className="h-3 w-3" />;
+      case "work": return <Briefcase className="h-3 w-3" />;
+      case "restaurant": return <Coffee className="h-3 w-3" />;
+      case "healthcare": return <Heart className="h-3 w-3" />;
+      default: return <MapPin className="h-3 w-3" />;
+    }
+  };
+
+  const getTimelineColor = (entry: TimelineEntry) => {
+    if (entry.type === "lifelog") return "bg-blue-500/20 text-blue-500";
+    if (entry.type === "combined") return "bg-purple-500/20 text-purple-500";
+    switch (entry.location?.placeCategory) {
+      case "home": return "bg-green-500/20 text-green-500";
+      case "work": return "bg-blue-500/20 text-blue-500";
+      case "restaurant": return "bg-pink-500/20 text-pink-500";
+      case "healthcare": return "bg-red-500/20 text-red-500";
+      default: return "bg-gray-500/20 text-gray-500";
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <Card data-testid="widget-location-timeline">
+        <CardHeader className="pb-2 sm:pb-3">
+          <Skeleton className="h-5 w-40" />
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-12" />
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card data-testid="widget-location-timeline">
+      <CardHeader className="pb-2 sm:pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-primary/10">
+              <Clock className="h-4 w-4 text-primary" />
+            </div>
+            <CardTitle className="text-sm sm:text-base">Location Timeline</CardTitle>
+          </div>
+          <Link href="/location">
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" data-testid="button-view-timeline">
+              <ArrowRight className="h-3 w-3" />
+            </Button>
+          </Link>
+        </div>
+        <CardDescription className="text-[10px] sm:text-xs mt-1">
+          Combined location and conversation history
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {recentEntries.length > 0 ? (
+          <ScrollArea className="h-[200px] pr-3">
+            <div className="space-y-2">
+              {recentEntries.map((entry, index) => (
+                <div 
+                  key={`${entry.type}-${entry.timestamp}-${index}`}
+                  className="flex items-start gap-2 p-2 rounded-lg border hover-elevate"
+                  data-testid={`timeline-entry-${index}`}
+                >
+                  <div className={`p-1.5 rounded-full shrink-0 ${getTimelineColor(entry)}`}>
+                    {getTimelineIcon(entry)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-medium truncate">
+                        {entry.lifelog 
+                          ? entry.lifelog.title 
+                          : entry.location?.placeName || "Location Update"}
+                      </p>
+                      {entry.lifelog && entry.location?.placeName && (
+                        <Badge variant="outline" className="text-[8px] h-4 px-1 shrink-0">
+                          {entry.location.placeName}
+                        </Badge>
+                      )}
+                    </div>
+                    {entry.lifelog?.summary && (
+                      <p className="text-[10px] text-muted-foreground line-clamp-2 mt-0.5">
+                        {entry.lifelog.summary}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] text-muted-foreground">
+                        {format(new Date(entry.timestamp), "h:mm a")}
+                      </span>
+                      {entry.activity && entry.activity !== "unknown" && (
+                        <Badge variant="secondary" className="text-[8px] h-4 px-1">
+                          {entry.activity}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        ) : (
+          <div className="text-center py-6 text-muted-foreground">
+            <Clock className="h-6 w-6 mx-auto mb-1.5 opacity-50" />
+            <p className="text-xs sm:text-sm">No recent activity</p>
+            <p className="text-[10px] mt-1">Location and conversation data will appear here</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 interface ConversationMetricsSummary {
   totalConversations: number;
   avgToolSuccessRate: number;
@@ -1659,19 +1819,14 @@ export default function DashboardPage() {
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
           <LocationWidget
             places={savedPlaces}
             currentLocation={currentLocation}
             isLoading={isLocationLoading}
           />
-          <FeatureCard
-            title="Location Intelligence"
-            description="Track places and get location-aware assistance"
-            icon={MapPin}
-            href="/location"
-            badge={{ text: `${savedPlaces?.length || 0} places` }}
-            action="View map"
+          <LocationTimelineWidget
+            isLoading={isLocationLoading}
           />
         </div>
       </div>

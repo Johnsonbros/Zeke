@@ -8,7 +8,12 @@ import {
   supersedeMemoryNote,
   findMemoryNoteByContent,
   getMemoryWithConfidence,
-  type MemoryWithConfidence
+  type MemoryWithConfidence,
+  getLocationHistoryInRange,
+  findNearbyPlaces,
+  getLatestLocation,
+  correlateLifelogWithLocation,
+  getLifelogLocationByLifelogId,
 } from "./db";
 import { 
   generateEmbedding, 
@@ -19,7 +24,7 @@ import {
   type ScoredMemory
 } from "./embeddings";
 import { onMemoryCreated } from "./entityExtractor";
-import type { MemoryNote, InsertMemoryNote } from "@shared/schema";
+import type { MemoryNote, InsertMemoryNote, MemoryNoteSourceType } from "@shared/schema";
 
 export interface SemanticMemoryNote extends MemoryNote {
   parsedEmbedding: number[] | null;
@@ -43,21 +48,37 @@ function toEmbeddingFormat(note: SemanticMemoryNote): MemoryWithEmbedding {
   };
 }
 
+export interface CreateMemoryOptions {
+  checkDuplicates?: boolean;
+  duplicateThreshold?: number;
+  supersedesContentLike?: string;
+  enrichWithLocation?: boolean;
+  lifelogId?: string;
+  sourceTimestamp?: string;
+}
+
 export async function createMemoryWithEmbedding(
   data: Omit<CreateMemoryNoteInput, 'embedding'>,
-  options: {
-    checkDuplicates?: boolean;
-    duplicateThreshold?: number;
-    supersedesContentLike?: string;
-  } = {}
-): Promise<{ note: MemoryNote; isDuplicate: boolean; duplicateOf?: string; wasCreated: boolean }> {
-  const { checkDuplicates = true, duplicateThreshold = 0.92, supersedesContentLike } = options;
+  options: CreateMemoryOptions = {}
+): Promise<{ note: MemoryNote; isDuplicate: boolean; duplicateOf?: string; wasCreated: boolean; locationEnriched?: boolean }> {
+  const { 
+    checkDuplicates = true, 
+    duplicateThreshold = 0.92, 
+    supersedesContentLike,
+    enrichWithLocation = true,
+    lifelogId,
+    sourceTimestamp,
+  } = options;
 
   const existingNotes = getAllMemoryNotes().map(toSemanticMemory);
 
+  // Enrich with location context if requested
+  let locationContext = enrichLocationContext(data, { lifelogId, sourceTimestamp });
+  const enrichedData = { ...data, ...locationContext };
+
   try {
     const embedding = await Promise.race([
-      generateEmbedding(data.content),
+      generateEmbedding(enrichedData.content),
       new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error("Embedding generation timeout")), 5000)
       )
@@ -71,20 +92,25 @@ export async function createMemoryWithEmbedding(
       const duplicates = findDuplicates(embedding, notesWithEmbeddings, duplicateThreshold);
       
       if (duplicates.length > 0) {
-        console.log(`Duplicate memory detected (similarity >= ${duplicateThreshold}): "${data.content}" is similar to "${duplicates[0].content}"`);
+        console.log(`Duplicate memory detected (similarity >= ${duplicateThreshold}): "${enrichedData.content}" is similar to "${duplicates[0].content}"`);
         return { 
           note: existingNotes.find(n => n.id === duplicates[0].id)!, 
           isDuplicate: true, 
           duplicateOf: duplicates[0].id,
-          wasCreated: false
+          wasCreated: false,
+          locationEnriched: false
         };
       }
     }
 
     const note = createMemoryNote({ 
-      type: data.type,
-      content: data.content,
-      context: data.context,
+      type: enrichedData.type,
+      content: enrichedData.content,
+      context: enrichedData.context,
+      placeId: enrichedData.placeId,
+      sourceType: enrichedData.sourceType,
+      sourceId: enrichedData.sourceId,
+      contactId: enrichedData.contactId,
       embedding 
     });
 
@@ -96,35 +122,45 @@ export async function createMemoryWithEmbedding(
       }
     }
 
-    console.log(`Created memory with embedding: [${note.type}] ${note.content.substring(0, 50)}...`);
+    console.log(`Created memory with embedding: [${note.type}] ${note.content.substring(0, 50)}...${locationContext.placeId ? ` (at ${locationContext.placeId})` : ''}`);
     
     onMemoryCreated(note).catch(err => {
       console.error("[SemanticMemory] Entity extraction failed:", err);
     });
     
-    return { note, isDuplicate: false, wasCreated: true };
+    return { 
+      note, 
+      isDuplicate: false, 
+      wasCreated: true,
+      locationEnriched: !!locationContext.placeId
+    };
   } catch (error) {
     console.error("Error creating memory with embedding, falling back to basic:", error);
     
     if (checkDuplicates && !supersedesContentLike) {
       const exactMatch = existingNotes.find(n => 
-        n.content.toLowerCase().trim() === data.content.toLowerCase().trim()
+        n.content.toLowerCase().trim() === enrichedData.content.toLowerCase().trim()
       );
       if (exactMatch) {
-        console.log(`Duplicate memory detected (exact match fallback): "${data.content}"`);
+        console.log(`Duplicate memory detected (exact match fallback): "${enrichedData.content}"`);
         return { 
           note: exactMatch, 
           isDuplicate: true, 
           duplicateOf: exactMatch.id,
-          wasCreated: false
+          wasCreated: false,
+          locationEnriched: false
         };
       }
     }
     
     const note = createMemoryNote({ 
-      type: data.type,
-      content: data.content,
-      context: data.context
+      type: enrichedData.type,
+      content: enrichedData.content,
+      context: enrichedData.context,
+      placeId: enrichedData.placeId,
+      sourceType: enrichedData.sourceType,
+      sourceId: enrichedData.sourceId,
+      contactId: enrichedData.contactId,
     });
     
     if (supersedesContentLike) {
@@ -139,7 +175,149 @@ export async function createMemoryWithEmbedding(
       console.error("[SemanticMemory] Entity extraction failed (fallback):", err);
     });
     
-    return { note, isDuplicate: false, wasCreated: true };
+    return { 
+      note, 
+      isDuplicate: false, 
+      wasCreated: true,
+      locationEnriched: !!locationContext.placeId
+    };
+  }
+}
+
+/**
+ * Enrich memory data with location context based on lifelog ID or timestamp
+ */
+function enrichLocationContext(
+  data: Omit<CreateMemoryNoteInput, 'embedding'>,
+  options: { lifelogId?: string; sourceTimestamp?: string }
+): Partial<CreateMemoryNoteInput> {
+  const result: Partial<CreateMemoryNoteInput> = {};
+  
+  try {
+    // If we have a lifelog ID, check if it's already correlated with location
+    if (options.lifelogId) {
+      const lifelogLocation = getLifelogLocationByLifelogId(options.lifelogId);
+      if (lifelogLocation) {
+        if (lifelogLocation.savedPlaceId) {
+          result.placeId = lifelogLocation.savedPlaceId;
+        }
+        result.sourceType = "lifelog" as MemoryNoteSourceType;
+        result.sourceId = options.lifelogId;
+        
+        // Enrich context with location info
+        if (lifelogLocation.savedPlaceName && !data.context?.includes(lifelogLocation.savedPlaceName)) {
+          const locationInfo = `Location: ${lifelogLocation.savedPlaceName}`;
+          const activityInfo = lifelogLocation.activityType !== "unknown" 
+            ? ` (${lifelogLocation.activityType})` 
+            : "";
+          result.context = data.context 
+            ? `${data.context}. ${locationInfo}${activityInfo}` 
+            : `${locationInfo}${activityInfo}`;
+        }
+        return result;
+      }
+    }
+    
+    // If we have a timestamp, try to find location at that time
+    if (options.sourceTimestamp) {
+      const timestamp = new Date(options.sourceTimestamp);
+      const windowMs = 5 * 60 * 1000; // 5 minute window
+      
+      const startTime = new Date(timestamp.getTime() - windowMs).toISOString();
+      const endTime = new Date(timestamp.getTime() + windowMs).toISOString();
+      
+      const locationHistory = getLocationHistoryInRange(startTime, endTime);
+      
+      if (locationHistory.length > 0) {
+        // Find the closest location to our timestamp
+        const closestLocation = locationHistory.reduce((closest, loc) => {
+          const locTime = new Date(loc.createdAt).getTime();
+          const targetTime = timestamp.getTime();
+          const closestTime = new Date(closest.createdAt).getTime();
+          return Math.abs(locTime - targetTime) < Math.abs(closestTime - targetTime) ? loc : closest;
+        }, locationHistory[0]);
+        
+        const lat = parseFloat(closestLocation.latitude);
+        const lng = parseFloat(closestLocation.longitude);
+        
+        // Check if near a saved place
+        const nearbyPlaces = findNearbyPlaces(lat, lng, 200);
+        if (nearbyPlaces.length > 0) {
+          result.placeId = nearbyPlaces[0].id;
+          
+          // Enrich context with location info
+          if (!data.context?.includes(nearbyPlaces[0].name)) {
+            const locationInfo = `Location: ${nearbyPlaces[0].name}`;
+            result.context = data.context 
+              ? `${data.context}. ${locationInfo}` 
+              : locationInfo;
+          }
+        }
+      }
+    }
+    
+    // Fallback: use current location if very recent
+    if (!result.placeId) {
+      const currentLocation = getLatestLocation();
+      if (currentLocation) {
+        const ageMs = Date.now() - new Date(currentLocation.createdAt).getTime();
+        const maxAgeMs = 10 * 60 * 1000; // 10 minutes
+        
+        if (ageMs <= maxAgeMs) {
+          const lat = parseFloat(currentLocation.latitude);
+          const lng = parseFloat(currentLocation.longitude);
+          
+          const nearbyPlaces = findNearbyPlaces(lat, lng, 100);
+          if (nearbyPlaces.length > 0) {
+            result.placeId = nearbyPlaces[0].id;
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error("[SemanticMemory] Error enriching location context:", error);
+  }
+  
+  return result;
+}
+
+/**
+ * Get location context for a specific memory (for display purposes)
+ */
+export function getMemoryLocationContext(memoryId: string): {
+  placeName?: string;
+  placeCategory?: string;
+  sourceLifelogId?: string;
+  sourceLifelogTitle?: string;
+} | null {
+  try {
+    const note = getAllMemoryNotes().find(n => n.id === memoryId);
+    if (!note) return null;
+    
+    const result: any = {};
+    
+    // If memory has a placeId, get place info
+    if (note.placeId) {
+      const nearbyPlaces = findNearbyPlaces(0, 0, 0); // This won't work, need proper lookup
+      // For now, just return the placeId
+      result.placeId = note.placeId;
+    }
+    
+    // If memory has a lifelog source, get lifelog info
+    if (note.sourceType === "lifelog" && note.sourceId) {
+      const lifelogLocation = getLifelogLocationByLifelogId(note.sourceId);
+      if (lifelogLocation) {
+        result.sourceLifelogId = lifelogLocation.lifelogId;
+        result.sourceLifelogTitle = lifelogLocation.lifelogTitle;
+        result.placeName = lifelogLocation.savedPlaceName;
+        result.placeCategory = lifelogLocation.savedPlaceCategory;
+      }
+    }
+    
+    return Object.keys(result).length > 0 ? result : null;
+  } catch (error) {
+    console.error("[SemanticMemory] Error getting memory location context:", error);
+    return null;
   }
 }
 

@@ -897,6 +897,106 @@ export const insertProximityAlertSchema = createInsertSchema(proximityAlerts).om
 export type InsertProximityAlert = z.infer<typeof insertProximityAlertSchema>;
 export type ProximityAlert = typeof proximityAlerts.$inferSelect;
 
+// ============================================
+// LIFELOG-LOCATION CORRELATION SYSTEM
+// ============================================
+
+// Activity types inferred from GPS patterns
+export const activityTypes = [
+  "stationary",      // Not moving (general)
+  "meeting",         // Stationary during business hours - likely in a meeting
+  "walking",         // Slow movement - walking around
+  "driving",         // Fast movement in vehicle
+  "commuting",       // Regular commute patterns
+  "transit",         // Public transit with stop-and-go patterns
+  "at_home",         // At home location
+  "at_work",         // At work location
+  "at_known_place",  // At a saved place
+  "unknown"          // Cannot determine
+] as const;
+export type ActivityType = typeof activityTypes[number];
+
+// Lifelog-location correlation table
+export const lifelogLocations = sqliteTable("lifelog_locations", {
+  id: text("id").primaryKey(),
+  lifelogId: text("lifelog_id").notNull(),
+  lifelogTitle: text("lifelog_title").notNull(),
+  lifelogStartTime: text("lifelog_start_time").notNull(),
+  lifelogEndTime: text("lifelog_end_time").notNull(),
+  // Location at start of lifelog
+  startLatitude: text("start_latitude"),
+  startLongitude: text("start_longitude"),
+  startAccuracy: text("start_accuracy"),
+  // Location at end of lifelog (may have moved)
+  endLatitude: text("end_latitude"),
+  endLongitude: text("end_longitude"),
+  endAccuracy: text("end_accuracy"),
+  // Matched saved place (if any)
+  savedPlaceId: text("saved_place_id"),
+  savedPlaceName: text("saved_place_name"),
+  savedPlaceCategory: text("saved_place_category"),
+  // Inferred activity based on GPS patterns
+  activityType: text("activity_type", { enum: activityTypes }).default("unknown"),
+  // GPS pattern metrics
+  totalDistanceMeters: text("total_distance_meters"),
+  averageSpeed: text("average_speed"),
+  dwellTimeMinutes: text("dwell_time_minutes"),
+  // Metadata
+  locationConfidence: text("location_confidence").default("medium"), // low, medium, high
+  correlatedAt: text("correlated_at").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertLifelogLocationSchema = createInsertSchema(lifelogLocations).omit({
+  id: true,
+  correlatedAt: true,
+  createdAt: true,
+});
+
+export type InsertLifelogLocation = z.infer<typeof insertLifelogLocationSchema>;
+export type LifelogLocation = typeof lifelogLocations.$inferSelect;
+
+// Location context for a lifelog (used in context injection)
+export interface LifelogLocationContext {
+  lifelogId: string;
+  lifelogTitle: string;
+  startTime: string;
+  endTime: string;
+  location: {
+    latitude: number;
+    longitude: number;
+    placeName?: string;
+    placeCategory?: string;
+    address?: string;
+  } | null;
+  activity: ActivityType;
+  confidence: "low" | "medium" | "high";
+}
+
+// Unified timeline entry combining location and lifelogs
+export interface TimelineEntry {
+  id: string;
+  type: "location" | "lifelog" | "combined";
+  timestamp: string;
+  endTimestamp?: string;
+  // Location data
+  location?: {
+    latitude: number;
+    longitude: number;
+    placeName?: string;
+    placeCategory?: string;
+  };
+  // Lifelog data
+  lifelog?: {
+    id: string;
+    title: string;
+    speakers?: string[];
+    summary?: string;
+  };
+  // Activity inference
+  activity?: ActivityType;
+}
+
 // Grocery item priority levels for smart reminders
 export const groceryPriorities = ["low", "medium", "high", "urgent"] as const;
 export type GroceryPriority = typeof groceryPriorities[number];
