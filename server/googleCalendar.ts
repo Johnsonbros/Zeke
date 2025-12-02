@@ -160,7 +160,10 @@ export async function getTodaysEvents(): Promise<CalendarEvent[]> {
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   
-  const result = await listCalendarEvents(startOfDay, endOfDay, 50);
+  const calendars = await listCalendars();
+  const allCalendarIds = calendars.map(c => c.id);
+  
+  const result = await listCalendarEvents(startOfDay, endOfDay, 50, allCalendarIds);
   return result.events;
 }
 
@@ -168,7 +171,10 @@ export async function getUpcomingEvents(days: number = 7): Promise<CalendarEvent
   const now = new Date();
   const endDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
   
-  const result = await listCalendarEvents(now, endDate, 50);
+  const calendars = await listCalendars();
+  const allCalendarIds = calendars.map(c => c.id);
+  
+  const result = await listCalendarEvents(now, endDate, 50, allCalendarIds);
   return result.events;
 }
 
