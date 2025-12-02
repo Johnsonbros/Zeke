@@ -209,8 +209,8 @@ export async function getRecentLifelogs(hours = 24, limit = 20): Promise<Lifelog
   const startTime = new Date(now.getTime() - hours * 60 * 60 * 1000);
   
   const response = await getLifelogs({
-    start: startTime.toISOString().slice(0, 19), // Remove timezone for API
-    end: now.toISOString().slice(0, 19),
+    start: startTime.toISOString(), // Keep full ISO timestamp with Z suffix for UTC
+    end: now.toISOString(),
     limit,
     direction: "desc",
   });
@@ -308,8 +308,8 @@ export async function getLifelogContext(
     // Search for relevant lifelogs within the time range
     const lifelogs = await searchLifelogs(query, {
       limit: maxResults,
-      start: startTime.toISOString().slice(0, 19),
-      end: now.toISOString().slice(0, 19),
+      start: startTime.toISOString(), // Keep full ISO timestamp with Z suffix for UTC
+      end: now.toISOString(),
     });
     
     if (lifelogs.length === 0) {
