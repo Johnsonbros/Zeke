@@ -40,17 +40,19 @@ POST http://127.0.0.1:5001/api/agents/chat
 
 ## Voice Pipeline Integration
 
-### Architecture
+### Architecture (Updated)
 ```
-Limitless Pendant Audio
+Limitless Pendant Recording
     ↓
-[LimitlessListener] - Polls /v1/download-audio every ~800ms
+[Pendant → Phone sync via Bluetooth]
     ↓
-AudioChunk { startMs, endMs, data: Buffer (Opus OGG) }
+[Phone → Cloud sync via Internet]
     ↓
-[Transcriber] - OpenAI Whisper API
+Lifelog with transcript available in Limitless API
     ↓
-Partial transcript text
+[LimitlessListener] - Polls /v1/lifelogs every 10 seconds
+    ↓
+TranscriptChunk { lifelogId, text, speakerName, startTime, endTime }
     ↓
 [UtteranceStream] - Accumulates text, detects silence (~1s gap)
     ↓
@@ -60,6 +62,8 @@ POST /internal/voice-command
     ↓
 Same path as SMS/web → Python agents → Response
 ```
+
+**Note**: The Limitless API does not support real-time audio streaming. Audio must sync from Pendant → Phone → Cloud before transcripts are available. Expected latency is 1-5 minutes.
 
 ### Voice Entry Point
 
@@ -89,26 +93,58 @@ This endpoint:
 
 3. **Graceful Degradation**: If Limitless is not configured (missing API key), ZEKE runs normally without voice.
 
-4. **Rate Limiting**: Limitless API allows max 180 requests/min (~3/sec). Polling interval is 800ms with exponential backoff on 429.
+4. **Polling Interval**: 10 seconds between polls (lifelogs have inherent delay anyway). Exponential backoff on errors.
 
 5. **Silence Detection**: ~1000ms of silence marks the end of an utterance. This allows natural speaking pauses without prematurely cutting off commands.
+
+6. **Watermark Tracking**: The listener maintains a watermark timestamp to only fetch new lifelogs, preventing duplicate processing.
 
 ## Environment Variables
 
 ```
-LIMITLESS_API_BASE_URL    # Default: https://api.limitless.ai
-LIMITLESS_API_KEY         # Required for voice pipeline
-LIMITLESS_POLL_INTERVAL_MS # Default: 800
-OPENAI_API_KEY            # Required for Whisper transcription (already exists)
+LIMITLESS_API_BASE_URL     # Default: https://api.limitless.ai
+LIMITLESS_API_KEY          # Required for voice pipeline
+LIMITLESS_POLL_INTERVAL_MS # Default: 10000 (10 seconds)
+OPENAI_API_KEY             # Required for AI processing (already exists)
 ```
+
+## Troubleshooting
+
+If voice commands aren't being detected, check the following:
+
+### 1. Is the Limitless app running on the phone?
+The pendant syncs audio to the phone via Bluetooth. If the app isn't running, recordings won't sync.
+
+### 2. Is the pendant turned on?
+The pendant must be powered on and within Bluetooth range of the phone.
+
+### 3. Is there a network connection for cloud sync?
+After audio syncs to the phone, the Limitless app uploads it to the cloud. Without internet, transcripts won't appear in the API.
+
+### 4. Check the voice pipeline status
+```bash
+curl http://localhost:5000/api/voice/status
+```
+Look for:
+- `running: true` - Pipeline is active
+- `consecutiveErrors: 0` - No API errors
+- `processedCount` - Number of lifelogs processed
+- `watermarkTime` - Last processed timestamp
+
+### 5. Check if lifelogs exist in Limitless API
+If the status shows no errors but commands aren't processed, verify recordings appear in the Limitless cloud (via the phone app or API).
+
+### 6. Expected latency
+Due to the sync chain (Pendant → Phone → Cloud), expect 1-5 minutes between speaking and command processing. This is a Limitless API limitation, not a ZEKE issue.
 
 ## File Structure
 
 ```
 server/voice/
-├── limitlessListener.ts   # Audio polling from Limitless API
-├── transcriber.ts         # Whisper-based speech-to-text
+├── limitlessListener.ts   # Polls /v1/lifelogs for new transcripts
+├── transcriber.ts         # Transcription interface (uses Limitless transcripts)
 ├── utteranceStream.ts     # Silence detection & wake word handling
+├── voiceCommandHandler.ts # Processes commands through agent pipeline
 └── index.ts               # Pipeline orchestration & exports
 ```
 
@@ -128,6 +164,7 @@ The existing `server/wakeWordDetector.ts` already handles wake word detection fo
 
 ## Notes
 
-- Audio format: Opus OGG (as per Limitless API)
-- Whisper model: gpt-4o-mini-transcribe or similar lightweight model
-- Timestamp tracking: lastEndMs advances monotonically to avoid reprocessing audio
+- Transcripts are provided by the Limitless API (no separate Whisper transcription needed)
+- Watermark tracking: Uses lifelog endTime to track processed recordings
+- The voice pipeline auto-starts on server boot
+- Commands are processed through the same Python multi-agent pipeline as SMS/web
