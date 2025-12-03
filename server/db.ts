@@ -112,6 +112,35 @@ import type {
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
+// Import cache invalidation functions (lazy loaded to avoid circular dependencies)
+let cacheInvalidation: typeof import("./cacheInvalidation") | null = null;
+async function getCacheInvalidation() {
+  if (!cacheInvalidation) {
+    cacheInvalidation = await import("./cacheInvalidation");
+  }
+  return cacheInvalidation;
+}
+
+// Helper to invalidate cache after mutations (fire and forget)
+function invalidateTaskCache() {
+  getCacheInvalidation().then(m => m.onTaskChange()).catch(() => {});
+}
+function invalidateMemoryCache() {
+  getCacheInvalidation().then(m => m.onMemoryChange()).catch(() => {});
+}
+function invalidateGroceryCache() {
+  getCacheInvalidation().then(m => m.onGroceryChange()).catch(() => {});
+}
+function invalidateContactCache() {
+  getCacheInvalidation().then(m => m.onContactChange()).catch(() => {});
+}
+function invalidateLocationCache() {
+  getCacheInvalidation().then(m => m.onLocationChange()).catch(() => {});
+}
+function invalidateProfileCache() {
+  getCacheInvalidation().then(m => m.onProfileChange()).catch(() => {});
+}
+
 // Initialize SQLite database
 const db = new Database("zeke.db");
 db.pragma("foreign_keys = ON");
@@ -2212,7 +2241,7 @@ export type CreateMemoryNoteInput = Omit<InsertMemoryNote, 'embedding'> & { embe
 
 // Memory notes operations
 export function createMemoryNote(data: CreateMemoryNoteInput): MemoryNote {
-  return wrapDbOperation("createMemoryNote", () => {
+  const result = wrapDbOperation("createMemoryNote", () => {
     const id = uuidv4();
     const now = getCurrentTimestamp();
     const context = data.context || "";
@@ -2239,6 +2268,8 @@ export function createMemoryNote(data: CreateMemoryNoteInput): MemoryNote {
       updatedAt: now 
     };
   });
+  invalidateMemoryCache();
+  return result;
 }
 
 export function getMemoryNote(id: string): MemoryNote | undefined {
@@ -2271,7 +2302,7 @@ export function getMemoryNotesByType(type: string, includeSuperseded: boolean = 
 }
 
 export function updateMemoryNote(id: string, data: Partial<Pick<MemoryNote, "content" | "context">>): MemoryNote | undefined {
-  return wrapDbOperation("updateMemoryNote", () => {
+  const result = wrapDbOperation("updateMemoryNote", () => {
     const existing = getMemoryNote(id);
     if (!existing) return undefined;
     
@@ -2285,6 +2316,8 @@ export function updateMemoryNote(id: string, data: Partial<Pick<MemoryNote, "con
     
     return getMemoryNote(id);
   });
+  if (result) invalidateMemoryCache();
+  return result;
 }
 
 export function updateMemoryNoteEmbedding(id: string, embedding: number[]): boolean {
@@ -2323,10 +2356,12 @@ export function searchMemoryNotes(query: string): MemoryNote[] {
 }
 
 export function deleteMemoryNote(id: string): boolean {
-  return wrapDbOperation("deleteMemoryNote", () => {
-    const result = db.prepare(`DELETE FROM memory_notes WHERE id = ?`).run(id);
-    return result.changes > 0;
+  const result = wrapDbOperation("deleteMemoryNote", () => {
+    const dbResult = db.prepare(`DELETE FROM memory_notes WHERE id = ?`).run(id);
+    return dbResult.changes > 0;
   });
+  if (result) invalidateMemoryCache();
+  return result;
 }
 
 // Preferences operations
@@ -2444,7 +2479,7 @@ function mapGroceryItem(row: GroceryItemRow): GroceryItem {
 
 // Grocery item operations
 export function createGroceryItem(data: InsertGroceryItem): GroceryItem {
-  return wrapDbOperation("createGroceryItem", () => {
+  const result = wrapDbOperation("createGroceryItem", () => {
     const id = uuidv4();
     const now = getCurrentTimestamp();
     const quantity = data.quantity || "1";
@@ -2469,6 +2504,8 @@ export function createGroceryItem(data: InsertGroceryItem): GroceryItem {
       updatedAt: now,
     };
   });
+  invalidateGroceryCache();
+  return result;
 }
 
 export function getAllGroceryItems(): GroceryItem[] {
@@ -2490,7 +2527,7 @@ export function getGroceryItem(id: string): GroceryItem | undefined {
 }
 
 export function updateGroceryItem(id: string, data: Partial<Omit<GroceryItem, "id" | "createdAt" | "updatedAt">>): GroceryItem | undefined {
-  return wrapDbOperation("updateGroceryItem", () => {
+  const result = wrapDbOperation("updateGroceryItem", () => {
     const existing = getGroceryItem(id);
     if (!existing) return undefined;
     
@@ -2509,10 +2546,12 @@ export function updateGroceryItem(id: string, data: Partial<Omit<GroceryItem, "i
     
     return getGroceryItem(id);
   });
+  if (result) invalidateGroceryCache();
+  return result;
 }
 
 export function toggleGroceryItemPurchased(id: string): GroceryItem | undefined {
-  return wrapDbOperation("toggleGroceryItemPurchased", () => {
+  const result = wrapDbOperation("toggleGroceryItemPurchased", () => {
     const existing = getGroceryItem(id);
     if (!existing) return undefined;
     
@@ -2526,13 +2565,17 @@ export function toggleGroceryItemPurchased(id: string): GroceryItem | undefined 
     
     return getGroceryItem(id);
   });
+  if (result) invalidateGroceryCache();
+  return result;
 }
 
 export function deleteGroceryItem(id: string): boolean {
-  return wrapDbOperation("deleteGroceryItem", () => {
-    const result = db.prepare(`DELETE FROM grocery_items WHERE id = ?`).run(id);
-    return result.changes > 0;
+  const result = wrapDbOperation("deleteGroceryItem", () => {
+    const dbResult = db.prepare(`DELETE FROM grocery_items WHERE id = ?`).run(id);
+    return dbResult.changes > 0;
   });
+  if (result) invalidateGroceryCache();
+  return result;
 }
 
 export function clearPurchasedGroceryItems(): number {
@@ -2748,7 +2791,7 @@ function mapTask(row: TaskRow): Task {
 
 // Task operations
 export function createTask(data: InsertTask): Task {
-  return wrapDbOperation("createTask", () => {
+  const result = wrapDbOperation("createTask", () => {
     const id = uuidv4();
     const now = getCurrentTimestamp();
     const description = data.description || "";
@@ -2775,6 +2818,8 @@ export function createTask(data: InsertTask): Task {
       updatedAt: now,
     };
   });
+  invalidateTaskCache();
+  return result;
 }
 
 export function getTask(id: string): Task | undefined {
@@ -2845,7 +2890,7 @@ export function getTasksDueTomorrow(): Task[] {
 }
 
 export function updateTask(id: string, data: UpdateTask): Task | undefined {
-  return wrapDbOperation("updateTask", () => {
+  const result = wrapDbOperation("updateTask", () => {
     const existing = getTask(id);
     if (!existing) return undefined;
     
@@ -2865,10 +2910,12 @@ export function updateTask(id: string, data: UpdateTask): Task | undefined {
     
     return getTask(id);
   });
+  if (result) invalidateTaskCache();
+  return result;
 }
 
 export function toggleTaskCompleted(id: string): Task | undefined {
-  return wrapDbOperation("toggleTaskCompleted", () => {
+  const result = wrapDbOperation("toggleTaskCompleted", () => {
     const existing = getTask(id);
     if (!existing) return undefined;
     
@@ -2881,13 +2928,17 @@ export function toggleTaskCompleted(id: string): Task | undefined {
     
     return getTask(id);
   });
+  if (result) invalidateTaskCache();
+  return result;
 }
 
 export function deleteTask(id: string): boolean {
-  return wrapDbOperation("deleteTask", () => {
-    const result = db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id);
-    return result.changes > 0;
+  const result = wrapDbOperation("deleteTask", () => {
+    const dbResult = db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id);
+    return dbResult.changes > 0;
   });
+  if (result) invalidateTaskCache();
+  return result;
 }
 
 export function clearCompletedTasks(): number {
@@ -3017,7 +3068,7 @@ export function isAutoGeneratedPhone(phone: string): boolean {
 
 // Contact operations
 export function createContact(data: InsertContact): Contact {
-  return wrapDbOperation("createContact", () => {
+  const result = wrapDbOperation("createContact", () => {
     const id = uuidv4();
     const now = getCurrentTimestamp();
     const normalizedPhone = normalizePhoneNumber(data.phoneNumber);
@@ -3089,6 +3140,8 @@ export function createContact(data: InsertContact): Contact {
       updatedAt: now,
     };
   });
+  invalidateContactCache();
+  return result;
 }
 
 export function getContact(id: string): Contact | undefined {
@@ -3129,7 +3182,7 @@ export function getContactsByAccessLevel(level: AccessLevel): Contact[] {
 }
 
 export function updateContact(id: string, data: UpdateContact): Contact | undefined {
-  return wrapDbOperation("updateContact", () => {
+  const result = wrapDbOperation("updateContact", () => {
     const existing = getContact(id);
     if (!existing) return undefined;
     
@@ -3179,13 +3232,17 @@ export function updateContact(id: string, data: UpdateContact): Contact | undefi
     
     return getContact(id);
   });
+  if (result) invalidateContactCache();
+  return result;
 }
 
 export function deleteContact(id: string): boolean {
-  return wrapDbOperation("deleteContact", () => {
-    const result = db.prepare(`DELETE FROM contacts WHERE id = ?`).run(id);
-    return result.changes > 0;
+  const result = wrapDbOperation("deleteContact", () => {
+    const dbResult = db.prepare(`DELETE FROM contacts WHERE id = ?`).run(id);
+    return dbResult.changes > 0;
   });
+  if (result) invalidateContactCache();
+  return result;
 }
 
 // Contact Notes CRUD operations

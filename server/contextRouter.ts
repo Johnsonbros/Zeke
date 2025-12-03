@@ -11,6 +11,11 @@
  * - Layer A: Global context (always included) - user profile, timezone, preferences
  * - Layer B: Route-aware bundles (mode-aware) - tasks, calendar, locations, etc.
  * - Layer C: On-demand retrieval (RAG) - semantic search for specific queries
+ * 
+ * Performance:
+ * - Uses contextCache for frequently-accessed bundles
+ * - Reduces database queries per conversation turn
+ * - Automatic cache invalidation when data changes
  */
 
 import {
@@ -42,6 +47,7 @@ import { getSmartMemoryContext } from "./semanticMemory";
 import { getRecentLifelogs, getLifelogOverview } from "./limitless";
 import { getUpcomingEvents } from "./googleCalendar";
 import { getConversationContext } from "./conversationSummarizer";
+import { contextCache, CACHE_TTL, createCacheKey } from "./contextCache";
 import type { GroceryItem, Task, Contact, MemoryNote, Message, Entity, EntityDomain, LifelogLocation, ActivityType } from "@shared/schema";
 
 /**
@@ -191,6 +197,7 @@ export function truncateToTokens(text: string, maxTokens: number): string {
 /**
  * Build the global context bundle (Layer A)
  * Always included in every request
+ * Uses caching for profile data
  */
 export async function buildGlobalBundle(ctx: AppContext): Promise<ContextBundle> {
   const parts: string[] = [];
@@ -209,9 +216,14 @@ export async function buildGlobalBundle(ctx: AppContext): Promise<ContextBundle>
   });
   parts.push(`## Current Time\n${timeString} (${ctx.timezone})`);
   
-  // Load user profile sections
+  // Load user profile sections (cached)
   try {
-    const profileSections = getAllProfileSections();
+    const cacheKey = createCacheKey("profile", "all");
+    const profileSections = await contextCache.getOrCompute(
+      cacheKey,
+      () => getAllProfileSections(),
+      { ttlMs: CACHE_TTL.profile, domain: "profile" }
+    );
     if (profileSections.length > 0) {
       const basicInfo = profileSections.find(s => s.section === "basic_info");
       const work = profileSections.find(s => s.section === "work");
@@ -274,12 +286,13 @@ export async function buildGlobalBundle(ctx: AppContext): Promise<ContextBundle>
 /**
  * Build the memory context bundle
  * Includes semantic search results relevant to the query
+ * Uses caching for recent memories to reduce DB queries
  */
 export async function buildMemoryBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
   const parts: string[] = [];
   
   try {
-    // Get semantic memory context for the query
+    // Get semantic memory context for the query (not cached - depends on query)
     const memoryContext = await getSmartMemoryContext(ctx.userMessage);
     if (memoryContext && memoryContext.length > 0) {
       parts.push(`## Relevant Memories\n${memoryContext}`);
@@ -287,7 +300,13 @@ export async function buildMemoryBundle(ctx: AppContext, maxTokens: number): Pro
     
     // Get recent important memories if query-based search returned little
     if (parts.length === 0 || estimateTokens(parts.join("\n")) < 200) {
-      const allNotes = getAllMemoryNotes();
+      // Cache recent memories to reduce DB queries
+      const cacheKey = createCacheKey("memory", "recent");
+      const allNotes = await contextCache.getOrCompute(
+        cacheKey,
+        () => getAllMemoryNotes(),
+        { ttlMs: CACHE_TTL.memory, domain: "memory" }
+      );
       const recentNotes = allNotes
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .slice(0, 5);
@@ -312,12 +331,19 @@ export async function buildMemoryBundle(ctx: AppContext, maxTokens: number): Pro
 
 /**
  * Build the tasks context bundle
+ * Uses caching to reduce database queries
  */
 export async function buildTasksBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
   const parts: string[] = [];
   
   try {
-    const allTasks = getAllTasks();
+    // Cache tasks data to reduce DB queries per conversation turn
+    const cacheKey = createCacheKey("tasks", "all");
+    const allTasks = await contextCache.getOrCompute(
+      cacheKey,
+      () => getAllTasks(),
+      { ttlMs: CACHE_TTL.tasks, domain: "tasks" }
+    );
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
@@ -401,13 +427,19 @@ export async function buildTasksBundle(ctx: AppContext, maxTokens: number): Prom
 
 /**
  * Build the calendar context bundle
+ * Uses caching to reduce API calls to Google Calendar
  */
 export async function buildCalendarBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
   const parts: string[] = [];
   
   try {
-    // Get upcoming events for the next 3 days
-    const events = await getUpcomingEvents(10);
+    // Cache calendar events to reduce Google Calendar API calls
+    const cacheKey = createCacheKey("calendar", "upcoming");
+    const events = await contextCache.getOrCompute(
+      cacheKey,
+      () => getUpcomingEvents(10),
+      { ttlMs: CACHE_TTL.calendar, domain: "calendar" }
+    );
     
     if (events && events.length > 0) {
       const today = new Date();
@@ -467,12 +499,19 @@ export async function buildCalendarBundle(ctx: AppContext, maxTokens: number): P
 
 /**
  * Build the grocery context bundle
+ * Uses caching to reduce database queries
  */
 export async function buildGroceryBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
   const parts: string[] = [];
   
   try {
-    const items = getAllGroceryItems();
+    // Cache grocery items to reduce DB queries
+    const cacheKey = createCacheKey("grocery", "all");
+    const items = await contextCache.getOrCompute(
+      cacheKey,
+      () => getAllGroceryItems(),
+      { ttlMs: CACHE_TTL.grocery, domain: "grocery" }
+    );
     const toBuy = items.filter((i: GroceryItem) => !i.purchased);
     const purchased = items.filter((i: GroceryItem) => i.purchased);
     
@@ -731,12 +770,19 @@ export async function buildLimitlessBundle(ctx: AppContext, maxTokens: number): 
 
 /**
  * Build the contacts context bundle
+ * Uses caching to reduce database queries
  */
 export async function buildContactsBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
   const parts: string[] = [];
   
   try {
-    const contacts = getAllContacts();
+    // Cache contacts to reduce DB queries
+    const cacheKey = createCacheKey("contacts", "all");
+    const contacts = await contextCache.getOrCompute(
+      cacheKey,
+      () => getAllContacts(),
+      { ttlMs: CACHE_TTL.contacts, domain: "contacts" }
+    );
     
     // Summary
     parts.push(`## Contacts\nTotal: ${contacts.length}`);

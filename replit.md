@@ -20,6 +20,12 @@ The core is a multi-agent system in Python, with specialized agents like Conduct
 
 The UI features a dark theme with a coral red accent and Poppins font, designed as a dashboard-first interface with a global sidebar navigation. Key technical implementations include:
 - **Context Router System**: An intelligent, multi-layered context assembly system replacing monolithic prompt building, using token-budgeted bundles for efficiency.
+- **Context Bundle Caching** (`server/contextCache.ts`, `server/cacheInvalidation.ts`): High-performance in-memory caching layer that reduces database queries per conversation turn:
+  - LRU cache with TTL-based expiration (tasks: 30s, calendar: 60s, memory: 2min, contacts: 5min, profile: 10min)
+  - Domain-specific invalidation hooks integrated into database CRUD operations (tasks, grocery, memory, contacts)
+  - Automatic cache invalidation on mutations via lazy-loaded helpers to avoid circular dependencies
+  - Statistics tracking (hits, misses, evictions, invalidations, prefetches) for performance monitoring
+  - API endpoint: `GET /api/cache/stats` returns hit rate and cache metrics
 - **Conversation Summarization System**: Automatically compresses older conversation history into bullet summaries using GPT-4o-mini for token-efficient context.
 - **Memory Model**: Optimized for a single user, storing long-term memory with semantic search (OpenAI `text-embedding-3-small`), and features a confidence scoring system that tracks memory reliability.
 - **Conversation Quality Metrics**: Tracks tool calls, outcomes, durations, and quality signals, with an AI Quality Metrics Dashboard Widget for visualization.

@@ -746,6 +746,27 @@ export async function registerRoutes(
     res.json({ status: "healthy", service: "zeke-node" });
   });
   
+  // Cache statistics endpoint for monitoring
+  app.get("/api/cache/stats", async (_req, res) => {
+    try {
+      const { contextCache } = await import("./contextCache");
+      const stats = contextCache.getStats();
+      res.json({
+        size: stats.size,
+        hits: stats.hits,
+        misses: stats.misses,
+        evictions: stats.evictions,
+        invalidations: stats.invalidations,
+        prefetches: stats.prefetches,
+        hitRate: (stats.hitRate * 100).toFixed(1) + '%',
+        total: stats.hits + stats.misses
+      });
+    } catch (error) {
+      console.error("[CacheStats] Error:", error);
+      res.status(500).json({ error: "Failed to get cache stats" });
+    }
+  });
+  
   // Chat endpoint - sends message and gets AI response
   app.post("/api/chat", async (req, res) => {
     try {
