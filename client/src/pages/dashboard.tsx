@@ -1446,6 +1446,29 @@ function getTimeGreeting(): string {
   return "Good evening";
 }
 
+function SystemDateTime() {
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="flex items-center gap-2 text-muted-foreground" data-testid="system-datetime">
+      <Clock className="h-4 w-4" />
+      <span className="text-xs sm:text-sm font-medium">
+        {format(currentTime, "EEEE, MMM d, yyyy")}
+      </span>
+      <span className="text-xs sm:text-sm font-mono tabular-nums">
+        {format(currentTime, "h:mm:ss a")}
+      </span>
+    </div>
+  );
+}
+
 function DashboardChatWidget() {
   return (
     <Link href="/chat">
@@ -1619,9 +1642,12 @@ export default function DashboardPage() {
     <div className="h-full overflow-auto">
       <div className="max-w-6xl mx-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
         <div className="space-y-1">
-          <h1 className="text-xl sm:text-2xl font-semibold" data-testid="text-greeting">
-            {getTimeGreeting()}, Nate
-          </h1>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-semibold" data-testid="text-greeting">
+              {getTimeGreeting()}, Nate
+            </h1>
+            <SystemDateTime />
+          </div>
           <p className="text-muted-foreground text-xs sm:text-sm">
             Here's what's happening with ZEKE today
           </p>
