@@ -32,6 +32,22 @@ function parseTimeExpression(timeStr: string): Date | null {
     return now;
   }
 
+  if (lowerTime === "noon") {
+    const result = new Date(now);
+    result.setHours(12, 0, 0, 0);
+    if (result <= now) {
+      result.setDate(result.getDate() + 1);
+    }
+    return result;
+  }
+
+  if (lowerTime === "midnight") {
+    const result = new Date(now);
+    result.setHours(0, 0, 0, 0);
+    result.setDate(result.getDate() + 1);
+    return result;
+  }
+
   if (lowerTime === "tomorrow") {
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -43,6 +59,33 @@ function parseTimeExpression(timeStr: string): Date | null {
     const tonight = new Date(now);
     tonight.setHours(20, 0, 0, 0);
     return tonight;
+  }
+
+  if (lowerTime === "this afternoon" || lowerTime === "afternoon") {
+    const result = new Date(now);
+    result.setHours(14, 0, 0, 0);
+    if (result <= now) {
+      result.setDate(result.getDate() + 1);
+    }
+    return result;
+  }
+
+  if (lowerTime === "this evening" || lowerTime === "evening") {
+    const result = new Date(now);
+    result.setHours(18, 0, 0, 0);
+    if (result <= now) {
+      result.setDate(result.getDate() + 1);
+    }
+    return result;
+  }
+
+  if (lowerTime === "this morning" || lowerTime === "morning") {
+    const result = new Date(now);
+    result.setHours(8, 0, 0, 0);
+    if (result <= now) {
+      result.setDate(result.getDate() + 1);
+    }
+    return result;
   }
 
   const inMatch = lowerTime.match(/^in\s+(\d+)\s+(minute|minutes|min|mins|hour|hours|hr|hrs|day|days)$/i);
@@ -97,6 +140,18 @@ function parseTimeExpression(timeStr: string): Date | null {
     const result = new Date(now);
     result.setDate(result.getDate() + 1);
     result.setHours(hours, minutes, 0, 0);
+    return result;
+  }
+
+  const tomorrowNoonMatch = lowerTime.match(/^tomorrow\s+(?:at\s+)?(noon|midnight)$/i);
+  if (tomorrowNoonMatch) {
+    const result = new Date(now);
+    result.setDate(result.getDate() + 1);
+    if (tomorrowNoonMatch[1].toLowerCase() === "noon") {
+      result.setHours(12, 0, 0, 0);
+    } else {
+      result.setHours(0, 0, 0, 0);
+    }
     return result;
   }
 
@@ -180,6 +235,10 @@ function handleRemindCommand(content: string): QuickActionResult {
   if (trimmed.toLowerCase().startsWith("me ")) {
     trimmed = trimmed.substring(3).trim();
   }
+  
+  if (trimmed.toLowerCase().startsWith("to ")) {
+    trimmed = trimmed.substring(3).trim();
+  }
 
   if (!trimmed) {
     return {
@@ -192,10 +251,22 @@ function handleRemindCommand(content: string): QuickActionResult {
 
   const timePatterns = [
     /^(tomorrow(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?)\s+(.+)$/i,
+    /^(tomorrow\s+(?:at\s+)?(?:noon|midnight))\s+(.+)$/i,
     /^(tonight)\s+(.+)$/i,
     /^(in\s+\d+\s+(?:minute|minutes|min|mins|hour|hours|hr|hrs|day|days))\s+(.+)$/i,
     /^(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s+(.+)$/i,
+    /^(noon|midnight|morning|afternoon|evening)\s+(.+)$/i,
     /^(now)\s+(.+)$/i,
+  ];
+
+  const endTimePatterns = [
+    /^(.+)\s+at\s+(noon|midnight)$/i,
+    /^(.+)\s+at\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)$/i,
+    /^(.+)\s+at\s+(\d{1,2})$/i,
+    /^(.+)\s+(tomorrow(?:\s+(?:at\s+)?(?:\d{1,2}(?::\d{2})?\s*(?:am|pm)?|noon|midnight))?)$/i,
+    /^(.+)\s+(tonight)$/i,
+    /^(.+)\s+(in\s+\d+\s+(?:minute|minutes|min|mins|hour|hours|hr|hrs|day|days))$/i,
+    /^(.+)\s+(this\s+(?:morning|afternoon|evening))$/i,
   ];
 
   let timeStr: string | null = null;
@@ -207,6 +278,17 @@ function handleRemindCommand(content: string): QuickActionResult {
       timeStr = match[1];
       message = match[2];
       break;
+    }
+  }
+
+  if (!timeStr || !message) {
+    for (const pattern of endTimePatterns) {
+      const match = trimmed.match(pattern);
+      if (match) {
+        message = match[1];
+        timeStr = match[2];
+        break;
+      }
     }
   }
 
@@ -232,7 +314,7 @@ function handleRemindCommand(content: string): QuickActionResult {
       isQuickAction: true,
       type: "remind",
       params: { timeStr, message },
-      response: `Couldn't parse time "${timeStr}". Try: 9am, tomorrow, in 2 hours`,
+      response: `Couldn't parse time "${timeStr}". Try: 9am, noon, tomorrow, in 2 hours`,
     };
   }
 
