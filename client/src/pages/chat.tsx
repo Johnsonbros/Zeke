@@ -200,6 +200,9 @@ function generateSmartPrompts(
   if (hour >= 5 && hour < 11) {
     prompts.push({ text: "Give me my morning briefing", icon: Calendar });
   }
+  if (hour >= 19 || hour < 2) {
+    prompts.push({ text: "Give me my evening debrief", icon: Clock });
+  }
   if (overdueCount > 0) {
     prompts.push({ text: `I have ${overdueCount} overdue item${overdueCount > 1 ? 's' : ''} to deal with`, icon: AlertCircle });
   }
@@ -213,6 +216,9 @@ function generateSmartPrompts(
   }
   if (hour >= 15 && hour < 20 && prompts.length < 3) {
     prompts.push({ text: "Check the grocery list", icon: ListTodo });
+  }
+  if (hour >= 10 && hour < 15 && prompts.length < 3) {
+    prompts.push({ text: "Plan my week", icon: ListTodo });
   }
   if (hour >= 21 || hour < 5) {
     prompts.push({ text: "Add something to my notes", icon: Clock });
