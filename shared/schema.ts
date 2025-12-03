@@ -898,6 +898,88 @@ export type InsertProximityAlert = z.infer<typeof insertProximityAlertSchema>;
 export type ProximityAlert = typeof proximityAlerts.$inferSelect;
 
 // ============================================
+// LOCATION STATE TRACKING FOR CHECK-INS
+// ============================================
+
+// Location states for tracking user's current location context
+export const locationStates = [
+  "unknown",          // Initial state or no recent data
+  "stationary",       // At a location, not moving
+  "moving",           // In transit between locations
+  "arrived",          // Just arrived at a location
+  "departed"          // Just left a location
+] as const;
+export type LocationState = typeof locationStates[number];
+
+// Location state table - tracks current location context for proactive check-ins
+export const locationStateTracking = sqliteTable("location_state_tracking", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().default("default"), // For multi-user support
+  // Current location
+  currentLatitude: text("current_latitude"),
+  currentLongitude: text("current_longitude"),
+  currentAccuracy: text("current_accuracy"),
+  currentLocationTimestamp: text("current_location_timestamp"),
+  // Current place context
+  currentPlaceId: text("current_place_id"),
+  currentPlaceName: text("current_place_name"),
+  currentPlaceCategory: text("current_place_category"),
+  arrivedAt: text("arrived_at"), // When user arrived at current place
+  // Previous location for departure tracking
+  previousPlaceId: text("previous_place_id"),
+  previousPlaceName: text("previous_place_name"),
+  previousPlaceCategory: text("previous_place_category"),
+  departedAt: text("departed_at"), // When user left previous place
+  // State tracking
+  locationState: text("location_state", { enum: locationStates }).notNull().default("unknown"),
+  lastStateChange: text("last_state_change").notNull(),
+  // Check-in tracking
+  lastCheckInAt: text("last_check_in_at"),
+  lastCheckInPlaceId: text("last_check_in_place_id"),
+  lastCheckInMessage: text("last_check_in_message"),
+  checkInCount: integer("check_in_count").notNull().default(0),
+  // Throttling
+  checkInsToday: integer("check_ins_today").notNull().default(0),
+  lastCheckInDate: text("last_check_in_date"), // YYYY-MM-DD for daily reset
+  // Metadata
+  updatedAt: text("updated_at").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertLocationStateTrackingSchema = createInsertSchema(locationStateTracking).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateLocationStateTrackingSchema = z.object({
+  currentLatitude: z.string().optional(),
+  currentLongitude: z.string().optional(),
+  currentAccuracy: z.string().optional(),
+  currentLocationTimestamp: z.string().optional(),
+  currentPlaceId: z.string().nullable().optional(),
+  currentPlaceName: z.string().nullable().optional(),
+  currentPlaceCategory: z.string().nullable().optional(),
+  arrivedAt: z.string().nullable().optional(),
+  previousPlaceId: z.string().nullable().optional(),
+  previousPlaceName: z.string().nullable().optional(),
+  previousPlaceCategory: z.string().nullable().optional(),
+  departedAt: z.string().nullable().optional(),
+  locationState: z.enum(locationStates).optional(),
+  lastStateChange: z.string().optional(),
+  lastCheckInAt: z.string().nullable().optional(),
+  lastCheckInPlaceId: z.string().nullable().optional(),
+  lastCheckInMessage: z.string().nullable().optional(),
+  checkInCount: z.number().optional(),
+  checkInsToday: z.number().optional(),
+  lastCheckInDate: z.string().nullable().optional(),
+});
+
+export type InsertLocationStateTracking = z.infer<typeof insertLocationStateTrackingSchema>;
+export type UpdateLocationStateTracking = z.infer<typeof updateLocationStateTrackingSchema>;
+export type LocationStateTracking = typeof locationStateTracking.$inferSelect;
+
+// ============================================
 // LIFELOG-LOCATION CORRELATION SYSTEM
 // ============================================
 

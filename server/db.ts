@@ -44,6 +44,10 @@ import type {
   InsertLocationSettings,
   ProximityAlert,
   InsertProximityAlert,
+  LocationStateTracking,
+  InsertLocationStateTracking,
+  UpdateLocationStateTracking,
+  LocationState,
   PlaceCategory,
   CustomList,
   InsertCustomList,
@@ -4150,6 +4154,208 @@ export function deleteOldLocationHistory(retentionDays: number): number {
       DELETE FROM location_history WHERE created_at < ?
     `).run(cutoffDate.toISOString());
     return result.changes;
+  });
+}
+
+// ============================================
+// LOCATION STATE TRACKING FOR CHECK-INS
+// ============================================
+
+// Get or create location state for a user
+export function getOrCreateLocationState(userId: string = "default"): LocationStateTracking {
+  return wrapDbOperation("getOrCreateLocationState", () => {
+    let state = db.prepare(`
+      SELECT * FROM location_state_tracking WHERE user_id = ?
+    `).get(userId) as LocationStateTracking | undefined;
+
+    if (!state) {
+      const id = uuidv4();
+      const now = getCurrentTimestamp();
+      db.prepare(`
+        INSERT INTO location_state_tracking (
+          id, user_id, location_state, last_state_change, updated_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `).run(id, userId, "unknown", now, now, now);
+
+      state = db.prepare(`
+        SELECT * FROM location_state_tracking WHERE id = ?
+      `).get(id) as LocationStateTracking;
+    }
+
+    return state;
+  });
+}
+
+// Update location state
+export function updateLocationState(
+  userId: string = "default",
+  updates: UpdateLocationStateTracking
+): LocationStateTracking {
+  return wrapDbOperation("updateLocationState", () => {
+    const current = getOrCreateLocationState(userId);
+    const now = getCurrentTimestamp();
+
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (updates.currentLatitude !== undefined) {
+      fields.push("current_latitude = ?");
+      values.push(updates.currentLatitude);
+    }
+    if (updates.currentLongitude !== undefined) {
+      fields.push("current_longitude = ?");
+      values.push(updates.currentLongitude);
+    }
+    if (updates.currentAccuracy !== undefined) {
+      fields.push("current_accuracy = ?");
+      values.push(updates.currentAccuracy);
+    }
+    if (updates.currentLocationTimestamp !== undefined) {
+      fields.push("current_location_timestamp = ?");
+      values.push(updates.currentLocationTimestamp);
+    }
+    if (updates.currentPlaceId !== undefined) {
+      fields.push("current_place_id = ?");
+      values.push(updates.currentPlaceId);
+    }
+    if (updates.currentPlaceName !== undefined) {
+      fields.push("current_place_name = ?");
+      values.push(updates.currentPlaceName);
+    }
+    if (updates.currentPlaceCategory !== undefined) {
+      fields.push("current_place_category = ?");
+      values.push(updates.currentPlaceCategory);
+    }
+    if (updates.arrivedAt !== undefined) {
+      fields.push("arrived_at = ?");
+      values.push(updates.arrivedAt);
+    }
+    if (updates.previousPlaceId !== undefined) {
+      fields.push("previous_place_id = ?");
+      values.push(updates.previousPlaceId);
+    }
+    if (updates.previousPlaceName !== undefined) {
+      fields.push("previous_place_name = ?");
+      values.push(updates.previousPlaceName);
+    }
+    if (updates.previousPlaceCategory !== undefined) {
+      fields.push("previous_place_category = ?");
+      values.push(updates.previousPlaceCategory);
+    }
+    if (updates.departedAt !== undefined) {
+      fields.push("departed_at = ?");
+      values.push(updates.departedAt);
+    }
+    if (updates.locationState !== undefined) {
+      fields.push("location_state = ?");
+      values.push(updates.locationState);
+    }
+    if (updates.lastStateChange !== undefined) {
+      fields.push("last_state_change = ?");
+      values.push(updates.lastStateChange);
+    }
+    if (updates.lastCheckInAt !== undefined) {
+      fields.push("last_check_in_at = ?");
+      values.push(updates.lastCheckInAt);
+    }
+    if (updates.lastCheckInPlaceId !== undefined) {
+      fields.push("last_check_in_place_id = ?");
+      values.push(updates.lastCheckInPlaceId);
+    }
+    if (updates.lastCheckInMessage !== undefined) {
+      fields.push("last_check_in_message = ?");
+      values.push(updates.lastCheckInMessage);
+    }
+    if (updates.checkInCount !== undefined) {
+      fields.push("check_in_count = ?");
+      values.push(updates.checkInCount);
+    }
+    if (updates.checkInsToday !== undefined) {
+      fields.push("check_ins_today = ?");
+      values.push(updates.checkInsToday);
+    }
+    if (updates.lastCheckInDate !== undefined) {
+      fields.push("last_check_in_date = ?");
+      values.push(updates.lastCheckInDate);
+    }
+
+    fields.push("updated_at = ?");
+    values.push(now);
+    values.push(current.id);
+
+    db.prepare(`
+      UPDATE location_state_tracking
+      SET ${fields.join(", ")}
+      WHERE id = ?
+    `).run(...values);
+
+    return db.prepare(`
+      SELECT * FROM location_state_tracking WHERE id = ?
+    `).get(current.id) as LocationStateTracking;
+  });
+}
+
+// Record a check-in
+export function recordCheckIn(
+  userId: string = "default",
+  placeId: string | null,
+  message: string
+): LocationStateTracking {
+  return wrapDbOperation("recordCheckIn", () => {
+    const state = getOrCreateLocationState(userId);
+    const now = getCurrentTimestamp();
+    const today = now.split("T")[0]; // YYYY-MM-DD
+
+    // Reset daily counter if it's a new day
+    const checkInsToday = state.lastCheckInDate === today ? state.checkInsToday + 1 : 1;
+
+    return updateLocationState(userId, {
+      lastCheckInAt: now,
+      lastCheckInPlaceId: placeId,
+      lastCheckInMessage: message,
+      checkInCount: state.checkInCount + 1,
+      checkInsToday,
+      lastCheckInDate: today,
+    });
+  });
+}
+
+// Check if check-in is allowed (throttling logic)
+export function shouldAllowCheckIn(
+  userId: string = "default",
+  maxCheckInsPerDay: number = 10,
+  minIntervalMinutes: number = 30
+): { allowed: boolean; reason?: string } {
+  return wrapDbOperation("shouldAllowCheckIn", () => {
+    const state = getOrCreateLocationState(userId);
+    const now = new Date();
+    const today = now.toISOString().split("T")[0];
+
+    // Reset daily counter if it's a new day
+    const checkInsToday = state.lastCheckInDate === today ? state.checkInsToday : 0;
+
+    // Check daily limit
+    if (checkInsToday >= maxCheckInsPerDay) {
+      return {
+        allowed: false,
+        reason: `Daily check-in limit reached (${maxCheckInsPerDay})`
+      };
+    }
+
+    // Check minimum interval
+    if (state.lastCheckInAt) {
+      const lastCheckIn = new Date(state.lastCheckInAt);
+      const minutesSinceLastCheckIn = (now.getTime() - lastCheckIn.getTime()) / (1000 * 60);
+
+      if (minutesSinceLastCheckIn < minIntervalMinutes) {
+        return {
+          allowed: false,
+          reason: `Too soon since last check-in (${Math.round(minutesSinceLastCheckIn)}m ago, need ${minIntervalMinutes}m)`
+        };
+      }
+    }
+
+    return { allowed: true };
   });
 }
 

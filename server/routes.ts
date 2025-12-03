@@ -4397,6 +4397,67 @@ export async function registerRoutes(
     }
   });
 
+  // === Location Check-In Monitor Routes ===
+
+  // GET /api/location/checkin/status - Get location check-in monitor status
+  app.get("/api/location/checkin/status", (req, res) => {
+    try {
+      const { getMonitorStatus } = require("./locationCheckInMonitor");
+      const status = getMonitorStatus();
+      const locationState = getOrCreateLocationState();
+
+      res.json({
+        monitor: status,
+        currentState: {
+          locationState: locationState.locationState,
+          currentPlace: locationState.currentPlaceName,
+          arrivedAt: locationState.arrivedAt,
+          lastCheckIn: locationState.lastCheckInAt,
+          checkInsToday: locationState.checkInsToday,
+          totalCheckIns: locationState.checkInCount,
+        },
+      });
+    } catch (error: any) {
+      console.error("Get check-in monitor status error:", error);
+      res.status(500).json({ error: error.message || "Failed to get monitor status" });
+    }
+  });
+
+  // POST /api/location/checkin/start - Start the location check-in monitor
+  app.post("/api/location/checkin/start", (req, res) => {
+    try {
+      const { startLocationCheckInMonitor } = require("./locationCheckInMonitor");
+      startLocationCheckInMonitor();
+      res.json({ success: true, message: "Location check-in monitor started" });
+    } catch (error: any) {
+      console.error("Start check-in monitor error:", error);
+      res.status(500).json({ error: error.message || "Failed to start monitor" });
+    }
+  });
+
+  // POST /api/location/checkin/stop - Stop the location check-in monitor
+  app.post("/api/location/checkin/stop", (req, res) => {
+    try {
+      const { stopLocationCheckInMonitor } = require("./locationCheckInMonitor");
+      stopLocationCheckInMonitor();
+      res.json({ success: true, message: "Location check-in monitor stopped" });
+    } catch (error: any) {
+      console.error("Stop check-in monitor error:", error);
+      res.status(500).json({ error: error.message || "Failed to stop monitor" });
+    }
+  });
+
+  // GET /api/location/checkin/state - Get current location state
+  app.get("/api/location/checkin/state", (req, res) => {
+    try {
+      const locationState = getOrCreateLocationState();
+      res.json(locationState);
+    } catch (error: any) {
+      console.error("Get location state error:", error);
+      res.status(500).json({ error: error.message || "Failed to get location state" });
+    }
+  });
+
   // === ZEKE Context Agent Routes ===
   
   // GET /api/context-agent/status - Get current context agent status
