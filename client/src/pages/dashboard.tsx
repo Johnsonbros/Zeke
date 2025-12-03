@@ -1525,6 +1525,7 @@ export default function DashboardPage() {
 
   const { data: locationHistory, isLoading: locationHistoryLoading } = useQuery<LocationHistory[]>({
     queryKey: ["/api/location/history"],
+    refetchInterval: 30000,
   });
 
   const { data: conversationMetrics, isLoading: metricsLoading } = useQuery<ConversationMetricsSummary>({
