@@ -13,6 +13,72 @@ import { isMasterAdmin, MASTER_ADMIN_PHONE, getContactFullName } from "@shared/s
 import { sendDailyCheckIn } from "./dailyCheckIn";
 import { generateTaskFollowUp } from "./capabilities/workflows";
 import { generateAIWeatherBriefing, setWeatherAlertCallback, startWeatherMonitoring } from "./capabilities/weather";
+import { listCalendars, listCalendarEvents, CalendarEvent } from "./googleCalendar";
+import { format } from "date-fns";
+
+interface WeatherAutomationSettings {
+  city?: string;
+  state?: string;
+  includeCalendar?: {
+    calendarNames?: string[];
+    maxEvents?: number;
+  };
+}
+
+function formatCalendarEventsForSms(events: CalendarEvent[]): string {
+  if (events.length === 0) {
+    return "";
+  }
+  
+  const lines: string[] = ["\n\nToday's Events:"];
+  
+  for (const event of events) {
+    let eventLine = "- ";
+    if (event.allDay) {
+      eventLine += `${event.summary} (all day)`;
+    } else {
+      const startTime = format(new Date(event.start), "h:mm a");
+      eventLine += `${startTime}: ${event.summary}`;
+    }
+    if (event.location) {
+      eventLine += ` @ ${event.location.split(",")[0]}`;
+    }
+    lines.push(eventLine);
+  }
+  
+  return lines.join("\n");
+}
+
+async function getFilteredCalendarEvents(
+  calendarNames: string[],
+  maxEvents: number = 10
+): Promise<CalendarEvent[]> {
+  try {
+    const calendars = await listCalendars();
+    
+    const matchingCalendarIds = calendars
+      .filter(cal => calendarNames.some(name => 
+        cal.summary.toLowerCase().includes(name.toLowerCase())
+      ))
+      .map(cal => cal.id);
+    
+    if (matchingCalendarIds.length === 0) {
+      console.log(`[Automations] No calendars found matching: ${calendarNames.join(", ")}`);
+      return [];
+    }
+    
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    
+    const result = await listCalendarEvents(todayStart, todayEnd, maxEvents, matchingCalendarIds);
+    
+    return result.events.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+  } catch (error: any) {
+    console.error("[Automations] Failed to fetch calendar events:", error);
+    return [];
+  }
+}
 
 const scheduledTasks: Map<string, cron.ScheduledTask> = new Map();
 
@@ -372,13 +438,26 @@ export async function executeAutomation(automation: Automation): Promise<{
         }
         
         try {
-          const settings = automation.settings ? JSON.parse(automation.settings) : {};
+          const settings: WeatherAutomationSettings = automation.settings ? JSON.parse(automation.settings) : {};
           const city = settings.city || "Abington";
           const state = settings.state || "MA";
           
           console.log(`[AUDIT] [${timestamp}] Generating AI weather briefing for ${city}, ${state}`);
           
-          const weatherBriefing = await generateAIWeatherBriefing(city, state);
+          let weatherBriefing = await generateAIWeatherBriefing(city, state);
+          
+          if (settings.includeCalendar?.calendarNames && settings.includeCalendar.calendarNames.length > 0) {
+            console.log(`[AUDIT] [${timestamp}] Fetching calendar events for: ${settings.includeCalendar.calendarNames.join(", ")}`);
+            const calendarEvents = await getFilteredCalendarEvents(
+              settings.includeCalendar.calendarNames,
+              settings.includeCalendar.maxEvents || 5
+            );
+            const calendarSection = formatCalendarEventsForSms(calendarEvents);
+            if (calendarSection) {
+              weatherBriefing += calendarSection;
+              console.log(`[AUDIT] [${timestamp}] Added ${calendarEvents.length} calendar events to briefing`);
+            }
+          }
           
           await sendSmsCallback(automation.recipientPhone, weatherBriefing);
           
