@@ -6,10 +6,23 @@ import {
   createNLAutomationLog,
   createTask,
   createGroceryItem,
-  getNLAutomation
+  getNLAutomation,
+  getLatestLocation,
+  getSavedPlace,
+  getOverdueTasks,
+  getTasksDueToday,
+  calculateDistance
 } from "./db";
 import { queueNotification } from "./notificationBatcher";
-import type { NLAutomation, TimeTriggerConfig, EventTriggerConfig, NLEventType } from "@shared/schema";
+import type {
+  NLAutomation,
+  TimeTriggerConfig,
+  EventTriggerConfig,
+  LocationTriggerConfig,
+  ConditionTriggerConfig,
+  KeywordTriggerConfig,
+  NLEventType
+} from "@shared/schema";
 import { MASTER_ADMIN_PHONE } from "@shared/schema";
 
 const scheduledTasks: Map<string, cron.ScheduledTask> = new Map();
@@ -436,9 +449,214 @@ function matchesFilters(data: any, filters: Record<string, any>): boolean {
   return true;
 }
 
+// ============================================
+// LOCATION-BASED TRIGGER EVALUATION
+// ============================================
+
+let lastKnownLocationCheck: { latitude: number; longitude: number } | null = null;
+
+export async function evaluateLocationTriggers(): Promise<void> {
+  const locationAutomations = getNLAutomationsByTriggerType("location");
+  if (locationAutomations.length === 0) return;
+
+  const currentLocation = getLatestLocation();
+  if (!currentLocation) {
+    console.log("[NLAutomationExecutor] No location data available for trigger evaluation");
+    return;
+  }
+
+  const lat = parseFloat(currentLocation.latitude);
+  const lng = parseFloat(currentLocation.longitude);
+
+  // Check if location has changed significantly (> 50 meters) since last check
+  if (lastKnownLocationCheck) {
+    const distance = calculateDistance(
+      lastKnownLocationCheck.latitude,
+      lastKnownLocationCheck.longitude,
+      lat,
+      lng
+    );
+
+    if (distance < 50) {
+      // Location hasn't changed significantly, skip evaluation
+      return;
+    }
+  }
+
+  lastKnownLocationCheck = { latitude: lat, longitude: lng };
+
+  for (const automation of locationAutomations) {
+    try {
+      const config: LocationTriggerConfig = JSON.parse(automation.triggerConfig);
+
+      let shouldTrigger = false;
+      let placeInfo = { name: "", category: "" };
+
+      if (config.placeId) {
+        const place = getSavedPlace(config.placeId);
+        if (!place) continue;
+
+        const placeLat = parseFloat(place.latitude);
+        const placeLng = parseFloat(place.longitude);
+        const distance = calculateDistance(lat, lng, placeLat, placeLng);
+        const threshold = place.proximityRadiusMeters || 200;
+
+        placeInfo = { name: place.name, category: place.category };
+
+        // Check if entering or leaving proximity
+        const isNearby = distance <= threshold;
+        const wasNearby = await wasNearLocation(automation.id, config.placeId);
+
+        if (config.triggerOnArrive && isNearby && !wasNearby) {
+          shouldTrigger = true;
+          await recordLocationState(automation.id, config.placeId, true);
+        } else if (config.triggerOnLeave && !isNearby && wasNearby) {
+          shouldTrigger = true;
+          await recordLocationState(automation.id, config.placeId, false);
+        }
+      } else if (config.placeName) {
+        // TODO: Search for place by name if placeId not provided
+        placeInfo.name = config.placeName;
+      }
+
+      if (shouldTrigger) {
+        console.log(`[NLAutomationExecutor] Location trigger fired for: ${automation.name}`);
+        await executeNLAutomation(automation, {
+          triggerData: {
+            type: "location",
+            placeName: placeInfo.name,
+            placeCategory: placeInfo.category,
+            arrivalOrDeparture: config.triggerOnArrive ? "arrival" : "departure",
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
+    } catch (error) {
+      console.error(`[NLAutomationExecutor] Error evaluating location automation ${automation.id}:`, error);
+    }
+  }
+}
+
+// Track location state per automation to detect enter/leave events
+const locationStates = new Map<string, boolean>();
+
+async function wasNearLocation(automationId: string, placeId: string): Promise<boolean> {
+  const key = `${automationId}:${placeId}`;
+  return locationStates.get(key) || false;
+}
+
+async function recordLocationState(automationId: string, placeId: string, isNear: boolean): Promise<void> {
+  const key = `${automationId}:${placeId}`;
+  locationStates.set(key, isNear);
+}
+
+// ============================================
+// CONDITION-BASED TRIGGER EVALUATION
+// ============================================
+
+export async function evaluateConditionTriggers(): Promise<void> {
+  const conditionAutomations = getNLAutomationsByTriggerType("condition");
+
+  for (const automation of conditionAutomations) {
+    try {
+      const config: ConditionTriggerConfig = JSON.parse(automation.triggerConfig);
+
+      let conditionMet = false;
+
+      switch (config.conditionType) {
+        case "tasks_overdue": {
+          const overdueTasks = getOverdueTasks();
+          const threshold = config.threshold || 1;
+          conditionMet = overdueTasks.length >= threshold;
+
+          if (conditionMet) {
+            console.log(`[NLAutomationExecutor] Condition trigger fired: ${overdueTasks.length} overdue tasks`);
+            await executeNLAutomation(automation, {
+              triggerData: {
+                conditionType: "tasks_overdue",
+                overdueCount: overdueTasks.length,
+                timestamp: new Date().toISOString()
+              }
+            });
+          }
+          break;
+        }
+
+        case "tasks_due_today": {
+          const dueTodayTasks = getTasksDueToday();
+          const threshold = config.threshold || 1;
+          conditionMet = dueTodayTasks.length >= threshold;
+
+          if (conditionMet) {
+            console.log(`[NLAutomationExecutor] Condition trigger fired: ${dueTodayTasks.length} tasks due today`);
+            await executeNLAutomation(automation, {
+              triggerData: {
+                conditionType: "tasks_due_today",
+                dueCount: dueTodayTasks.length,
+                timestamp: new Date().toISOString()
+              }
+            });
+          }
+          break;
+        }
+
+        // Add more condition types as needed
+        default:
+          console.warn(`[NLAutomationExecutor] Unknown condition type: ${config.conditionType}`);
+      }
+    } catch (error) {
+      console.error(`[NLAutomationExecutor] Error evaluating condition automation ${automation.id}:`, error);
+    }
+  }
+}
+
+// ============================================
+// KEYWORD-BASED TRIGGER EVALUATION
+// ============================================
+
+export async function evaluateKeywordTriggers(message: string, conversationId?: string): Promise<void> {
+  const keywordAutomations = getNLAutomationsByTriggerType("keyword");
+
+  for (const automation of keywordAutomations) {
+    try {
+      const config: KeywordTriggerConfig = JSON.parse(automation.triggerConfig);
+
+      const messageLower = config.caseSensitive ? message : message.toLowerCase();
+      const keywords = config.caseSensitive
+        ? config.keywords
+        : config.keywords.map(k => k.toLowerCase());
+
+      let matched = false;
+
+      if (config.matchAll) {
+        // All keywords must be present
+        matched = keywords.every(keyword => messageLower.includes(keyword));
+      } else {
+        // Any keyword can trigger
+        matched = keywords.some(keyword => messageLower.includes(keyword));
+      }
+
+      if (matched) {
+        console.log(`[NLAutomationExecutor] Keyword trigger fired for: ${automation.name}`);
+        await executeNLAutomation(automation, {
+          triggerData: {
+            type: "keyword",
+            matchedKeywords: keywords.filter(k => messageLower.includes(k)),
+            message,
+            conversationId,
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
+    } catch (error) {
+      console.error(`[NLAutomationExecutor] Error evaluating keyword automation ${automation.id}:`, error);
+    }
+  }
+}
+
 export function initializeNLAutomations(): void {
   console.log("[NLAutomationExecutor] Initializing NL automations...");
-  
+
   const automations = getEnabledNLAutomations();
   let scheduledCount = 0;
 
@@ -446,10 +664,36 @@ export function initializeNLAutomations(): void {
     if (automation.triggerType === "time") {
       scheduleTimeAutomation(automation);
       scheduledCount++;
+    } else if (automation.triggerType === "condition") {
+      // Schedule condition checks
+      const config: ConditionTriggerConfig = JSON.parse(automation.triggerConfig);
+      const checkInterval = config.checkInterval || "0 */4 * * *"; // Default: every 4 hours
+
+      if (cron.validate(checkInterval)) {
+        const task = cron.schedule(
+          checkInterval,
+          async () => {
+            await evaluateConditionTriggers();
+          },
+          { timezone: "America/New_York" }
+        );
+        scheduledTasks.set(`condition:${automation.id}`, task);
+        scheduledCount++;
+      }
     }
   }
 
-  console.log(`[NLAutomationExecutor] Initialized ${scheduledCount} time-based automation(s)`);
+  // Schedule periodic location check (every 5 minutes)
+  const locationCheckTask = cron.schedule(
+    "*/5 * * * *",
+    async () => {
+      await evaluateLocationTriggers();
+    },
+    { timezone: "America/New_York" }
+  );
+  scheduledTasks.set("location-check", locationCheckTask);
+
+  console.log(`[NLAutomationExecutor] Initialized ${scheduledCount} automation(s) with scheduled triggers`);
 }
 
 export function getScheduledAutomationIds(): string[] {
