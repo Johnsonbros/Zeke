@@ -198,18 +198,18 @@ function StatCard({
 
   return (
     <Link href={href}>
-      <Card className={`hover-elevate cursor-pointer transition-all ${variantClasses[variant]}`} data-testid={`stat-card-${title.toLowerCase().replace(/\s+/g, "-")}`}>
-        <CardContent className="p-3 sm:p-4">
-          <div className="flex items-center justify-between gap-2 sm:gap-4">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs sm:text-sm text-muted-foreground truncate">{title}</p>
-              <p className="text-xl sm:text-2xl font-semibold mt-0.5 sm:mt-1" data-testid={`stat-value-${title.toLowerCase().replace(/\s+/g, "-")}`}>{value}</p>
+      <Card className={`hover-elevate cursor-pointer transition-all min-h-[100px] sm:min-h-[110px] ${variantClasses[variant]}`} data-testid={`stat-card-${title.toLowerCase().replace(/\s+/g, "-")}`}>
+        <CardContent className="p-4 sm:p-5 h-full">
+          <div className="flex items-center justify-between gap-3 h-full">
+            <div className="flex-1 min-w-0 flex flex-col justify-center">
+              <p className="text-sm sm:text-base text-muted-foreground truncate font-medium">{title}</p>
+              <p className="text-2xl sm:text-3xl font-semibold mt-1" data-testid={`stat-value-${title.toLowerCase().replace(/\s+/g, "-")}`}>{value}</p>
               {subtitle && (
-                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">{subtitle}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-1 truncate">{subtitle}</p>
               )}
             </div>
-            <div className="p-2 sm:p-3 rounded-lg bg-primary/10 shrink-0">
-              <Icon className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+            <div className="p-3 sm:p-3.5 rounded-xl bg-primary/10 shrink-0">
+              <Icon className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
             </div>
           </div>
         </CardContent>
@@ -235,30 +235,30 @@ function FeatureCard({
 }) {
   return (
     <Link href={href}>
-      <Card className="hover-elevate cursor-pointer h-full" data-testid={`feature-card-${title.toLowerCase().replace(/\s+/g, "-")}`}>
-        <CardContent className="p-3 sm:p-4 h-full flex flex-col">
-          <div className="flex items-start gap-2 sm:gap-3">
-            <div className="p-1.5 sm:p-2 rounded-lg bg-accent shrink-0">
-              <Icon className="h-4 w-4 sm:h-5 sm:w-5 text-accent-foreground" />
+      <Card className="hover-elevate cursor-pointer h-full min-h-[100px]" data-testid={`feature-card-${title.toLowerCase().replace(/\s+/g, "-")}`}>
+        <CardContent className="p-4 sm:p-5 h-full flex flex-col">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-xl bg-accent shrink-0">
+              <Icon className="h-5 w-5 text-accent-foreground" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
-                <h3 className="font-medium text-xs sm:text-sm">{title}</h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-semibold text-sm sm:text-base">{title}</h3>
                 {badge && (
-                  <Badge variant={badge.variant || "secondary"} className="text-[9px] sm:text-[10px]">
+                  <Badge variant={badge.variant || "secondary"} className="text-[10px] sm:text-xs">
                     {badge.text}
                   </Badge>
                 )}
               </div>
-              <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 line-clamp-2">
+              <p className="text-xs sm:text-sm text-muted-foreground mt-1 line-clamp-2">
                 {description}
               </p>
             </div>
           </div>
           {action && (
-            <div className="flex items-center gap-1 text-[10px] sm:text-xs text-primary mt-2 sm:mt-3 pt-2 sm:pt-3 border-t">
+            <div className="flex items-center gap-1 text-xs sm:text-sm text-primary mt-3 pt-3 border-t font-medium">
               <span>{action}</span>
-              <ArrowRight className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+              <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </div>
           )}
         </CardContent>
@@ -1457,13 +1457,16 @@ function SystemDateTime() {
   }, []);
 
   return (
-    <div className="flex items-center gap-2 text-muted-foreground" data-testid="system-datetime">
-      <Clock className="h-4 w-4" />
-      <span className="text-xs sm:text-sm font-medium">
+    <div className="flex items-center gap-2 text-muted-foreground flex-wrap" data-testid="system-datetime">
+      <Clock className="h-4 w-4 sm:h-5 sm:w-5" />
+      <span className="text-sm sm:text-base font-medium hidden sm:inline">
         {format(currentTime, "EEEE, MMM d, yyyy")}
       </span>
-      <span className="text-xs sm:text-sm font-mono tabular-nums">
-        {format(currentTime, "h:mm:ss a")}
+      <span className="text-sm sm:text-base font-medium sm:hidden">
+        {format(currentTime, "MMM d")}
+      </span>
+      <span className="text-sm sm:text-base font-mono tabular-nums">
+        {format(currentTime, "h:mm a")}
       </span>
     </div>
   );
@@ -1641,15 +1644,15 @@ export default function DashboardPage() {
 
   return (
     <div className="h-full overflow-auto">
-      <div className="max-w-6xl mx-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
-        <div className="space-y-1">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <h1 className="text-xl sm:text-2xl font-semibold" data-testid="text-greeting">
+      <div className="max-w-6xl mx-auto p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-7 md:space-y-8">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight" data-testid="text-greeting">
               {getTimeGreeting()}, Nate
             </h1>
             <SystemDateTime />
           </div>
-          <p className="text-muted-foreground text-xs sm:text-sm">
+          <p className="text-muted-foreground text-sm sm:text-base">
             Here's what's happening with ZEKE today
           </p>
         </div>

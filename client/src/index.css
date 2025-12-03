@@ -173,17 +173,59 @@
   html {
     /* Prevent iOS zoom on input focus */
     touch-action: manipulation;
+    /* Enable smooth scrolling */
+    scroll-behavior: smooth;
+    /* Better font rendering on mobile */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
     /* Prevent overscroll bounce on iOS */
     overscroll-behavior: none;
+    /* Improve tap highlight on mobile */
+    -webkit-tap-highlight-color: transparent;
   }
 
-  /* Safe area inset for iOS devices */
+  /* Safe area insets for iOS devices with notches */
+  .safe-area-inset-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
   .safe-area-inset-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .safe-area-inset-left {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+
+  .safe-area-inset-right {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  /* Minimum touch target size for accessibility (44x44px Apple HIG, 48x48px Material) */
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .touch-target-lg {
+    min-width: 48px;
+    min-height: 48px;
+  }
+
+  /* Improved focus visibility for keyboard navigation */
+  *:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* Prevent text selection on buttons and interactive elements */
+  button, [role="button"] {
+    -webkit-user-select: none;
+    user-select: none;
   }
 }
 
@@ -219,6 +261,97 @@
     content: attr(data-placeholder);
     color: hsl(var(--muted-foreground));
     pointer-events: none;
+  }
+
+  /* Mobile-first spacing utilities */
+  .mobile-container {
+    @apply px-4 sm:px-6 md:px-8;
+  }
+
+  .mobile-section {
+    @apply py-4 sm:py-6 md:py-8;
+  }
+
+  .mobile-gap {
+    @apply gap-3 sm:gap-4 md:gap-6;
+  }
+
+  .mobile-gap-sm {
+    @apply gap-2 sm:gap-3 md:gap-4;
+  }
+
+  /* Mobile-optimized text sizes (minimum 16px to prevent iOS zoom) */
+  .text-mobile-xs {
+    @apply text-xs sm:text-sm;
+  }
+
+  .text-mobile-sm {
+    @apply text-sm sm:text-base;
+  }
+
+  .text-mobile-base {
+    @apply text-base sm:text-lg;
+  }
+
+  .text-mobile-lg {
+    @apply text-lg sm:text-xl;
+  }
+
+  .text-mobile-xl {
+    @apply text-xl sm:text-2xl;
+  }
+
+  /* Thumb-friendly zones (bottom 1/3 of screen on mobile) */
+  .thumb-zone {
+    @apply fixed bottom-0 left-0 right-0 pb-safe z-50;
+  }
+
+  /* Better mobile scrolling */
+  .scroll-smooth {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Mobile card optimizations */
+  .mobile-card {
+    @apply rounded-lg sm:rounded-xl;
+    @apply p-3 sm:p-4 md:p-6;
+  }
+
+  /* Responsive grid layouts */
+  .mobile-grid-1 {
+    @apply grid grid-cols-1;
+  }
+
+  .mobile-grid-2 {
+    @apply grid grid-cols-1 sm:grid-cols-2;
+  }
+
+  .mobile-grid-3 {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3;
+  }
+
+  .mobile-grid-4 {
+    @apply grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4;
+  }
+
+  /* Better tap targets for interactive elements */
+  .tap-target {
+    @apply min-h-[44px] min-w-[44px] flex items-center justify-center;
+  }
+
+  .tap-target-lg {
+    @apply min-h-[48px] min-w-[48px] flex items-center justify-center;
   }
 
   /* .no-default-hover-elevate/no-default-active-elevate is an escape hatch so consumers of
