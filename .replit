@@ -108,4 +108,3 @@ integrations = ["javascript_openai:1.0.0", "google-calendar:1.0.0"]
 INTERNAL_BRIDGE_KEY = "zeke-internal-bridge-2025"
 
 [userenv.shared]
-OVERLAND_ACCESS_TOKEN = "8b0b84f7aff8f988f40579c87ddcd90a122e7e715df2b36a5b9659c2de038042"
