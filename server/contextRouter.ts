@@ -48,6 +48,12 @@ import { getRecentLifelogs, getLifelogOverview } from "./limitless";
 import { getUpcomingEvents } from "./googleCalendar";
 import { getConversationContext } from "./conversationSummarizer";
 import { contextCache, CACHE_TTL, createCacheKey } from "./contextCache";
+import { 
+  queryKnowledgeGraph, 
+  buildGraphContextBundle,
+  findBridgingEntities,
+  getKnowledgeGraphStats 
+} from "./knowledgeGraph";
 import type { GroceryItem, Task, Contact, MemoryNote, Message, Entity, EntityDomain, LifelogLocation, ActivityType } from "@shared/schema";
 
 /**
@@ -112,12 +118,12 @@ export const DEFAULT_TOKEN_BUDGET: TokenBudget = {
 export const ROUTE_BUNDLES: Record<string, RouteConfig> = {
   "/": {
     primary: ["tasks", "calendar"],
-    secondary: ["memory", "grocery"],
+    secondary: ["memory", "grocery", "knowledgegraph"],
     tertiary: ["locations"],
   },
   "/chat": {
     primary: ["memory", "conversation"],
-    secondary: ["tasks", "calendar", "limitless"],
+    secondary: ["tasks", "calendar", "limitless", "knowledgegraph"],
     tertiary: ["locations", "contacts"],
   },
   "/tasks": {
@@ -132,12 +138,12 @@ export const ROUTE_BUNDLES: Record<string, RouteConfig> = {
   },
   "/memory": {
     primary: ["memory"],
-    secondary: ["contacts", "limitless"],
+    secondary: ["contacts", "limitless", "knowledgegraph"],
     tertiary: ["tasks"],
   },
   "/contacts": {
     primary: ["contacts"],
-    secondary: ["memory", "sms"],
+    secondary: ["memory", "sms", "knowledgegraph"],
     tertiary: ["calendar"],
   },
   "/automations": {
@@ -152,7 +158,7 @@ export const ROUTE_BUNDLES: Record<string, RouteConfig> = {
   },
   "/limitless": {
     primary: ["limitless"],
-    secondary: ["memory", "contacts"],
+    secondary: ["memory", "contacts", "knowledgegraph"],
     tertiary: ["tasks"],
   },
   "/locations": {
@@ -167,13 +173,13 @@ export const ROUTE_BUNDLES: Record<string, RouteConfig> = {
   },
   "/profile": {
     primary: ["profile"],
-    secondary: ["memory", "contacts"],
+    secondary: ["memory", "contacts", "knowledgegraph"],
     tertiary: ["tasks"],
   },
   // SMS fallback - used when route is unknown (SMS conversations)
   "sms": {
     primary: ["memory", "conversation"],
-    secondary: ["tasks", "calendar", "grocery", "limitless"],
+    secondary: ["tasks", "calendar", "grocery", "limitless", "knowledgegraph"],
     tertiary: ["locations", "contacts"],
   },
 };
@@ -964,6 +970,46 @@ export async function buildProfileBundle(ctx: AppContext, maxTokens: number): Pr
 }
 
 /**
+ * Build knowledge graph context bundle
+ * 
+ * This uses graph traversal and semantic search to find connected context
+ * across all domains. It provides:
+ * - Related entities discovered via graph traversal
+ * - Cross-domain connections showing how entities bridge domains
+ * - Relevant items from multiple domains based on graph relationships
+ */
+export async function buildKnowledgeGraphBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
+  try {
+    // Use the user message to query the knowledge graph
+    const graphContext = await buildGraphContextBundle(ctx.userMessage, maxTokens);
+    
+    if (!graphContext || graphContext.trim().length === 0) {
+      return {
+        name: "knowledgegraph",
+        priority: "secondary",
+        content: "",
+        tokenEstimate: 0,
+      };
+    }
+    
+    return {
+      name: "knowledgegraph",
+      priority: "secondary",
+      content: graphContext,
+      tokenEstimate: estimateTokens(graphContext),
+    };
+  } catch (error) {
+    console.error("Error building knowledge graph bundle:", error);
+    return {
+      name: "knowledgegraph",
+      priority: "secondary",
+      content: "",
+      tokenEstimate: 0,
+    };
+  }
+}
+
+/**
  * Build cross-domain context bundle (Layer C - on-demand context)
  * 
  * This bundle finds entities referenced in the current conversation and
@@ -1132,6 +1178,7 @@ const BUNDLE_BUILDERS: Record<string, (ctx: AppContext, maxTokens: number) => Pr
   food: buildFoodBundle,
   profile: buildProfileBundle,
   conversation: buildConversationBundle,
+  knowledgegraph: buildKnowledgeGraphBundle,
 };
 
 /**

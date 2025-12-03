@@ -321,6 +321,18 @@ import {
   DEFAULT_TOKEN_BUDGET,
 } from "./contextRouter";
 import { onTaskCreated } from "./entityExtractor";
+import { 
+  queryKnowledgeGraph, 
+  traverseGraph, 
+  getEntityNeighborhood, 
+  getCrossDomainConnections,
+  findBridgingEntities,
+  findShortestPath,
+  getPersonContext,
+  analyzeTemporalPatterns,
+  getKnowledgeGraphStats,
+  type GraphTraversalOptions
+} from "./knowledgeGraph";
 import {
   analyzeTaskPatterns,
   getSchedulingSuggestion,
@@ -5736,6 +5748,210 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Get related items error:", error);
       res.status(500).json({ error: error.message || "Failed to get related items" });
+    }
+  });
+
+  // === KNOWLEDGE GRAPH API ===
+
+  // GET /api/graph/query - Query the knowledge graph with natural language
+  app.get("/api/graph/query", async (req, res) => {
+    try {
+      const query = req.query.q as string;
+      const maxDepth = req.query.maxDepth ? parseInt(req.query.maxDepth as string) : 2;
+      const maxNodes = req.query.maxNodes ? parseInt(req.query.maxNodes as string) : 30;
+      
+      if (!query || query.trim().length === 0) {
+        return res.status(400).json({ error: "Query 'q' is required" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Knowledge Graph: Query "${query}" (depth: ${maxDepth}, nodes: ${maxNodes})`);
+      
+      const result = await queryKnowledgeGraph(query, { maxDepth, maxNodes });
+      
+      res.json({
+        query,
+        ...result
+      });
+    } catch (error: any) {
+      console.error("Knowledge graph query error:", error);
+      res.status(500).json({ error: error.message || "Failed to query knowledge graph" });
+    }
+  });
+
+  // GET /api/graph/traverse/:entityId - Traverse graph from entity
+  app.get("/api/graph/traverse/:entityId", async (req, res) => {
+    try {
+      const { entityId } = req.params;
+      const maxDepth = req.query.maxDepth ? parseInt(req.query.maxDepth as string) : 3;
+      const maxNodes = req.query.maxNodes ? parseInt(req.query.maxNodes as string) : 50;
+      const minScore = req.query.minScore ? parseFloat(req.query.minScore as string) : 0.1;
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Knowledge Graph: Traverse from ${entityId}`);
+      
+      const entity = getEntity(entityId);
+      if (!entity) {
+        return res.status(404).json({ error: "Entity not found" });
+      }
+      
+      const nodes = traverseGraph(entityId, { maxDepth, maxNodes, minScore });
+      
+      res.json({
+        startEntity: entity,
+        nodes,
+        count: nodes.length
+      });
+    } catch (error: any) {
+      console.error("Graph traversal error:", error);
+      res.status(500).json({ error: error.message || "Failed to traverse graph" });
+    }
+  });
+
+  // GET /api/graph/neighborhood/:entityId - Get entity neighborhood with edges
+  app.get("/api/graph/neighborhood/:entityId", async (req, res) => {
+    try {
+      const { entityId } = req.params;
+      const maxDepth = req.query.maxDepth ? parseInt(req.query.maxDepth as string) : 2;
+      const maxNodes = req.query.maxNodes ? parseInt(req.query.maxNodes as string) : 30;
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Knowledge Graph: Neighborhood for ${entityId}`);
+      
+      const neighborhood = getEntityNeighborhood(entityId, { maxDepth, maxNodes });
+      
+      if (!neighborhood) {
+        return res.status(404).json({ error: "Entity not found" });
+      }
+      
+      res.json(neighborhood);
+    } catch (error: any) {
+      console.error("Get neighborhood error:", error);
+      res.status(500).json({ error: error.message || "Failed to get entity neighborhood" });
+    }
+  });
+
+  // GET /api/graph/connections/:entityId - Get cross-domain connections for entity
+  app.get("/api/graph/connections/:entityId", async (req, res) => {
+    try {
+      const { entityId } = req.params;
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Knowledge Graph: Connections for ${entityId}`);
+      
+      const connections = getCrossDomainConnections(entityId);
+      
+      if (!connections) {
+        return res.status(404).json({ error: "Entity not found" });
+      }
+      
+      res.json(connections);
+    } catch (error: any) {
+      console.error("Get connections error:", error);
+      res.status(500).json({ error: error.message || "Failed to get cross-domain connections" });
+    }
+  });
+
+  // GET /api/graph/bridging - Find entities that bridge multiple domains
+  app.get("/api/graph/bridging", async (req, res) => {
+    try {
+      const minDomains = req.query.minDomains ? parseInt(req.query.minDomains as string) : 2;
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Knowledge Graph: Finding bridging entities (minDomains: ${minDomains})`);
+      
+      const bridging = findBridgingEntities(minDomains);
+      
+      res.json({
+        minDomains,
+        count: bridging.length,
+        entities: bridging
+      });
+    } catch (error: any) {
+      console.error("Find bridging entities error:", error);
+      res.status(500).json({ error: error.message || "Failed to find bridging entities" });
+    }
+  });
+
+  // GET /api/graph/path - Find shortest path between two entities
+  app.get("/api/graph/path", async (req, res) => {
+    try {
+      const fromId = req.query.from as string;
+      const toId = req.query.to as string;
+      const maxDepth = req.query.maxDepth ? parseInt(req.query.maxDepth as string) : 5;
+      
+      if (!fromId || !toId) {
+        return res.status(400).json({ error: "Both 'from' and 'to' entity IDs are required" });
+      }
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Knowledge Graph: Finding path from ${fromId} to ${toId}`);
+      
+      const path = findShortestPath(fromId, toId, maxDepth);
+      
+      if (!path) {
+        return res.json({ 
+          found: false, 
+          message: "No path found between entities",
+          from: fromId,
+          to: toId
+        });
+      }
+      
+      res.json({
+        found: true,
+        path,
+        length: path.length
+      });
+    } catch (error: any) {
+      console.error("Find path error:", error);
+      res.status(500).json({ error: error.message || "Failed to find path" });
+    }
+  });
+
+  // GET /api/graph/person/:contactId - Get full context for a person
+  app.get("/api/graph/person/:contactId", async (req, res) => {
+    try {
+      const { contactId } = req.params;
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Knowledge Graph: Person context for ${contactId}`);
+      
+      const context = getPersonContext(contactId);
+      
+      res.json(context);
+    } catch (error: any) {
+      console.error("Get person context error:", error);
+      res.status(500).json({ error: error.message || "Failed to get person context" });
+    }
+  });
+
+  // GET /api/graph/temporal - Analyze temporal patterns
+  app.get("/api/graph/temporal", async (req, res) => {
+    try {
+      const type = req.query.type as EntityType | undefined;
+      const days = req.query.days ? parseInt(req.query.days as string) : 30;
+      
+      console.log(`[AUDIT] [${new Date().toISOString()}] Knowledge Graph: Temporal patterns (type: ${type || "all"}, days: ${days})`);
+      
+      const patterns = analyzeTemporalPatterns(type, days);
+      
+      res.json({
+        type: type || "all",
+        days,
+        count: patterns.length,
+        patterns
+      });
+    } catch (error: any) {
+      console.error("Analyze temporal patterns error:", error);
+      res.status(500).json({ error: error.message || "Failed to analyze temporal patterns" });
+    }
+  });
+
+  // GET /api/graph/stats - Get knowledge graph statistics
+  app.get("/api/graph/stats", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Knowledge Graph: Fetching statistics`);
+      
+      const stats = getKnowledgeGraphStats();
+      
+      res.json(stats);
+    } catch (error: any) {
+      console.error("Get graph stats error:", error);
+      res.status(500).json({ error: error.message || "Failed to get graph statistics" });
     }
   });
 
