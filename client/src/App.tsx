@@ -21,6 +21,7 @@ import ContextAgentPage from "@/pages/context-agent";
 import ListsPage from "@/pages/lists";
 import MealsPage from "@/pages/meals";
 import LimitlessPage from "@/pages/limitless";
+import KnowledgeGraphPage from "@/pages/knowledge-graph";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 
@@ -42,6 +43,7 @@ function Router() {
       <Route path="/location" component={LocationPage} />
       <Route path="/context-agent" component={ContextAgentPage} />
       <Route path="/limitless" component={LimitlessPage} />
+      <Route path="/knowledge-graph" component={KnowledgeGraphPage} />
       <Route component={NotFound} />
     </Switch>
   );

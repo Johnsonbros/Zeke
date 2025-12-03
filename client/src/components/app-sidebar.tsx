@@ -45,6 +45,7 @@ import {
   List,
   Utensils,
   Mic,
+  Network,
 } from "lucide-react";
 import type { Conversation } from "@shared/schema";
 import { format } from "date-fns";
@@ -132,6 +133,12 @@ const mainNavItems = [
     icon: Mic,
     href: "/limitless",
     description: "AI conversation insights",
+  },
+  {
+    title: "Knowledge Graph",
+    icon: Network,
+    href: "/knowledge-graph",
+    description: "Explore entity connections",
   },
 ];
 
