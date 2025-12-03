@@ -483,6 +483,12 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
+  // Initialize Twilio client and phone number for use throughout routes
+  const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN 
+    ? getTwilioClient() 
+    : null;
+  const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER || null;
+  
   // Set up SMS callback for tools (reminders and send_sms tool)
   setSendSmsCallback(async (phone: string, message: string, source?: string) => {
     const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER;
