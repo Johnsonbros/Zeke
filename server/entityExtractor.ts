@@ -738,6 +738,307 @@ export async function onConversationUpdated(conversationId: string): Promise<voi
   }
 }
 
+/**
+ * Process a lifelog for entities and create references
+ * Lifelogs are transcripts of conversations/meetings
+ */
+export async function processLifelogForEntities(
+  lifelogId: string,
+  title: string,
+  transcriptText: string
+): Promise<{ entities: Entity[]; references: EntityReference[] }> {
+  const fullText = `${title} ${transcriptText}`;
+  const extraction = extractAllFromText(fullText);
+  const now = new Date().toISOString();
+  const entities: Entity[] = [];
+  const references: EntityReference[] = [];
+  
+  // Process people matches
+  for (const personMatch of extraction.people) {
+    const entity = findOrCreatePersonEntity(personMatch.contact);
+    entities.push(entity);
+    
+    const ref = createEntityReference({
+      entityId: entity.id,
+      domain: "lifelog",
+      itemId: lifelogId,
+      confidence: personMatch.confidence,
+      extractedAt: now,
+      context: personMatch.matchedText
+    });
+    references.push(ref);
+  }
+  
+  // Process location matches
+  for (const locationMatch of extraction.locations) {
+    const entity = findOrCreateLocationEntity(locationMatch.place);
+    entities.push(entity);
+    
+    const ref = createEntityReference({
+      entityId: entity.id,
+      domain: "lifelog",
+      itemId: lifelogId,
+      confidence: locationMatch.confidence,
+      extractedAt: now,
+      context: locationMatch.matchedText
+    });
+    references.push(ref);
+  }
+  
+  // Process topic matches
+  for (const topicMatch of extraction.topics) {
+    const entity = findOrCreateTopicEntity(topicMatch.topic);
+    entities.push(entity);
+    
+    const ref = createEntityReference({
+      entityId: entity.id,
+      domain: "lifelog",
+      itemId: lifelogId,
+      confidence: topicMatch.confidence,
+      extractedAt: now,
+      context: topicMatch.keywords.join(", ")
+    });
+    references.push(ref);
+  }
+  
+  // Create links between co-occurring entities
+  if (entities.length > 1) {
+    for (let i = 0; i < entities.length; i++) {
+      for (let j = i + 1; j < entities.length; j++) {
+        findOrCreateEntityLink(entities[i].id, entities[j].id, "same_subject");
+      }
+    }
+  }
+  
+  return { entities, references };
+}
+
+/**
+ * Process a calendar event for entities and create references
+ */
+export async function processCalendarEventForEntities(
+  eventId: string,
+  summary: string,
+  description?: string,
+  location?: string
+): Promise<{ entities: Entity[]; references: EntityReference[] }> {
+  // Combine all text fields for extraction
+  const fullText = [summary, description, location].filter(Boolean).join(" ");
+  const extraction = extractAllFromText(fullText);
+  const now = new Date().toISOString();
+  const entities: Entity[] = [];
+  const references: EntityReference[] = [];
+  
+  // Process people matches
+  for (const personMatch of extraction.people) {
+    const entity = findOrCreatePersonEntity(personMatch.contact);
+    entities.push(entity);
+    
+    const ref = createEntityReference({
+      entityId: entity.id,
+      domain: "calendar",
+      itemId: eventId,
+      confidence: personMatch.confidence,
+      extractedAt: now,
+      context: personMatch.matchedText
+    });
+    references.push(ref);
+  }
+  
+  // Process location matches
+  for (const locationMatch of extraction.locations) {
+    const entity = findOrCreateLocationEntity(locationMatch.place);
+    entities.push(entity);
+    
+    const ref = createEntityReference({
+      entityId: entity.id,
+      domain: "calendar",
+      itemId: eventId,
+      confidence: locationMatch.confidence,
+      extractedAt: now,
+      context: locationMatch.matchedText
+    });
+    references.push(ref);
+  }
+  
+  // Process topic matches
+  for (const topicMatch of extraction.topics) {
+    const entity = findOrCreateTopicEntity(topicMatch.topic);
+    entities.push(entity);
+    
+    const ref = createEntityReference({
+      entityId: entity.id,
+      domain: "calendar",
+      itemId: eventId,
+      confidence: topicMatch.confidence,
+      extractedAt: now,
+      context: topicMatch.keywords.join(", ")
+    });
+    references.push(ref);
+  }
+  
+  // Create links between co-occurring entities
+  if (entities.length > 1) {
+    for (let i = 0; i < entities.length; i++) {
+      for (let j = i + 1; j < entities.length; j++) {
+        findOrCreateEntityLink(entities[i].id, entities[j].id, "same_subject");
+      }
+    }
+  }
+  
+  return { entities, references };
+}
+
+/**
+ * Process an SMS message for entities and create references
+ */
+export async function processSmsForEntities(
+  messageId: string,
+  messageContent: string,
+  phoneNumber: string
+): Promise<{ entities: Entity[]; references: EntityReference[] }> {
+  const extraction = extractAllFromText(messageContent);
+  const now = new Date().toISOString();
+  const entities: Entity[] = [];
+  const references: EntityReference[] = [];
+  
+  // Try to link to contact by phone number
+  const contacts = getAllContacts();
+  const matchingContact = contacts.find(c => 
+    c.phoneNumber === phoneNumber || 
+    c.phoneNumber.replace(/\D/g, '') === phoneNumber.replace(/\D/g, '')
+  );
+  
+  if (matchingContact) {
+    const contactEntity = findOrCreatePersonEntity(matchingContact);
+    entities.push(contactEntity);
+    
+    const ref = createEntityReference({
+      entityId: contactEntity.id,
+      domain: "sms",
+      itemId: messageId,
+      confidence: CONFIDENCE_EXACT,
+      extractedAt: now,
+      context: `Phone: ${phoneNumber}`
+    });
+    references.push(ref);
+  }
+  
+  // Process additional people mentions in message content
+  for (const personMatch of extraction.people) {
+    // Skip if already added via phone number match
+    if (matchingContact && personMatch.contact.id === matchingContact.id) continue;
+    
+    const entity = findOrCreatePersonEntity(personMatch.contact);
+    entities.push(entity);
+    
+    const ref = createEntityReference({
+      entityId: entity.id,
+      domain: "sms",
+      itemId: messageId,
+      confidence: personMatch.confidence,
+      extractedAt: now,
+      context: personMatch.matchedText
+    });
+    references.push(ref);
+  }
+  
+  // Process location matches
+  for (const locationMatch of extraction.locations) {
+    const entity = findOrCreateLocationEntity(locationMatch.place);
+    entities.push(entity);
+    
+    const ref = createEntityReference({
+      entityId: entity.id,
+      domain: "sms",
+      itemId: messageId,
+      confidence: locationMatch.confidence,
+      extractedAt: now,
+      context: locationMatch.matchedText
+    });
+    references.push(ref);
+  }
+  
+  // Process topic matches
+  for (const topicMatch of extraction.topics) {
+    const entity = findOrCreateTopicEntity(topicMatch.topic);
+    entities.push(entity);
+    
+    const ref = createEntityReference({
+      entityId: entity.id,
+      domain: "sms",
+      itemId: messageId,
+      confidence: topicMatch.confidence,
+      extractedAt: now,
+      context: topicMatch.keywords.join(", ")
+    });
+    references.push(ref);
+  }
+  
+  // Create links between co-occurring entities
+  if (entities.length > 1) {
+    for (let i = 0; i < entities.length; i++) {
+      for (let j = i + 1; j < entities.length; j++) {
+        findOrCreateEntityLink(entities[i].id, entities[j].id, "same_subject");
+      }
+    }
+  }
+  
+  return { entities, references };
+}
+
+/**
+ * Hook called when a lifelog is processed
+ */
+export async function onLifelogProcessed(
+  lifelogId: string,
+  title: string,
+  transcriptText: string
+): Promise<void> {
+  try {
+    console.log(`[EntityExtractor] Processing lifelog: ${lifelogId}`);
+    const result = await processLifelogForEntities(lifelogId, title, transcriptText);
+    console.log(`[EntityExtractor] Extracted ${result.entities.length} entities from lifelog ${lifelogId}`);
+  } catch (error) {
+    console.error(`[EntityExtractor] Error processing lifelog ${lifelogId}:`, error);
+  }
+}
+
+/**
+ * Hook called when a calendar event is synced
+ */
+export async function onCalendarEventSynced(
+  eventId: string,
+  summary: string,
+  description?: string,
+  location?: string
+): Promise<void> {
+  try {
+    console.log(`[EntityExtractor] Processing calendar event: ${eventId}`);
+    const result = await processCalendarEventForEntities(eventId, summary, description, location);
+    console.log(`[EntityExtractor] Extracted ${result.entities.length} entities from calendar event ${eventId}`);
+  } catch (error) {
+    console.error(`[EntityExtractor] Error processing calendar event ${eventId}:`, error);
+  }
+}
+
+/**
+ * Hook called when an SMS is received or sent
+ */
+export async function onSmsProcessed(
+  messageId: string,
+  messageContent: string,
+  phoneNumber: string
+): Promise<void> {
+  try {
+    console.log(`[EntityExtractor] Processing SMS: ${messageId}`);
+    const result = await processSmsForEntities(messageId, messageContent, phoneNumber);
+    console.log(`[EntityExtractor] Extracted ${result.entities.length} entities from SMS ${messageId}`);
+  } catch (error) {
+    console.error(`[EntityExtractor] Error processing SMS ${messageId}:`, error);
+  }
+}
+
 // ============================================
 // UTILITY FUNCTIONS
 // ============================================

@@ -17,6 +17,7 @@ import {
   executeListTool,
   executeFoodTool,
   executeAutomationTool,
+  executeKnowledgeGraphTool,
   communicationToolNames,
   reminderToolNames,
   taskToolNames,
@@ -32,6 +33,7 @@ import {
   foodToolNames,
   automationToolNames,
   weatherToolNames,
+  knowledgeGraphToolNames,
   weatherTools,
   getActiveReminders as getActiveRemindersFromModule,
   restorePendingReminders as restorePendingRemindersFromModule,
@@ -46,6 +48,7 @@ export interface ToolPermissions {
   canAccessTasks: boolean;
   canAccessGrocery: boolean;
   canSetReminders: boolean;
+  canQueryMemory: boolean;
 }
 
 export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = allToolDefinitions;
@@ -80,6 +83,7 @@ export async function executeTool(
     canAccessTasks: true,
     canAccessGrocery: true,
     canSetReminders: true,
+    canQueryMemory: true,
   };
   
   const permissionCheck = TOOL_PERMISSIONS[toolName];
@@ -133,6 +137,9 @@ export async function executeTool(
     if (tool) {
       result = await tool.execute(args as any);
     }
+  } else if (knowledgeGraphToolNames.includes(toolName)) {
+    const kgResult = await executeKnowledgeGraphTool(toolName, args);
+    result = JSON.stringify(kgResult);
   }
 
   if (result !== null) {

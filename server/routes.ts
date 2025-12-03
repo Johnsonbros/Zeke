@@ -334,6 +334,11 @@ import {
   type GraphTraversalOptions
 } from "./knowledgeGraph";
 import {
+  runBackfill,
+  previewBackfill,
+  getBackfillStatus
+} from "./graphBackfill";
+import {
   analyzeTaskPatterns,
   getSchedulingSuggestion,
   getQuickSchedulingSuggestions,
@@ -5952,6 +5957,60 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Get graph stats error:", error);
       res.status(500).json({ error: error.message || "Failed to get graph statistics" });
+    }
+  });
+
+  // GET /api/graph/backfill/status - Get backfill status
+  app.get("/api/graph/backfill/status", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Knowledge Graph: Checking backfill status`);
+      const status = getBackfillStatus();
+      res.json(status);
+    } catch (error: any) {
+      console.error("Get backfill status error:", error);
+      res.status(500).json({ error: error.message || "Failed to get backfill status" });
+    }
+  });
+
+  // GET /api/graph/backfill/preview - Preview what backfill would extract
+  app.get("/api/graph/backfill/preview", async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Knowledge Graph: Preview backfill (limit: ${limit})`);
+      
+      const preview = await previewBackfill(limit);
+      res.json(preview);
+    } catch (error: any) {
+      console.error("Preview backfill error:", error);
+      res.status(500).json({ error: error.message || "Failed to preview backfill" });
+    }
+  });
+
+  // POST /api/graph/backfill - Run knowledge graph backfill
+  app.post("/api/graph/backfill", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Knowledge Graph: Starting backfill...`);
+      
+      // Check if already running
+      const status = getBackfillStatus();
+      if (status.isRunning) {
+        return res.status(409).json({ 
+          error: "Backfill is already running",
+          status
+        });
+      }
+      
+      // Run backfill (this could take a while)
+      const result = await runBackfill();
+      
+      res.json({
+        success: true,
+        message: "Backfill completed successfully",
+        result
+      });
+    } catch (error: any) {
+      console.error("Run backfill error:", error);
+      res.status(500).json({ error: error.message || "Failed to run backfill" });
     }
   });
 
