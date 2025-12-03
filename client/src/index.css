@@ -185,6 +185,51 @@
   .safe-area-inset-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+
+  .safe-area-inset-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* Mobile-first: Minimum touch target size (44x44px per Apple HIG) */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .touch-target-lg {
+    min-height: 56px;
+    min-width: 56px;
+  }
+
+  /* Thumb zone: Bottom 40% of screen */
+  .thumb-zone {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    z-index: 40;
+  }
+
+  /* Hero text for glanceable content */
+  .hero-text {
+    font-size: 2rem;
+    line-height: 1.2;
+    font-weight: 600;
+  }
+
+  /* Mobile-optimized card spacing */
+  .mobile-card {
+    padding: 1rem;
+    border-radius: 1rem;
+  }
+
+  /* Prevent text selection on interactive elements (mobile) */
+  .no-select {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
 }
 
 /**

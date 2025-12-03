@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { LocationProvider } from "@/contexts/location-context";
+import { FloatingChatButton } from "@/components/floating-chat-button";
 import DashboardPage from "@/pages/dashboard";
 import ChatPage from "@/pages/chat";
 import GroceryPage from "@/pages/grocery";
@@ -81,6 +82,7 @@ function App() {
                 </main>
               </SidebarInset>
             </div>
+            <FloatingChatButton />
           </SidebarProvider>
           <Toaster />
         </LocationProvider>
