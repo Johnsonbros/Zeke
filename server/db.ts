@@ -44,6 +44,8 @@ import type {
   InsertLocationSettings,
   ProximityAlert,
   InsertProximityAlert,
+  LocationStateTracking,
+  InsertLocationStateTracking,
   PlaceCategory,
   CustomList,
   InsertCustomList,
@@ -721,6 +723,33 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_proximity_alerts_place ON proximity_alerts(saved_place_id);
   CREATE INDEX IF NOT EXISTS idx_proximity_alerts_created ON proximity_alerts(created_at);
   CREATE INDEX IF NOT EXISTS idx_proximity_alerts_acknowledged ON proximity_alerts(acknowledged);
+`);
+
+// ============================================
+// LOCATION CHECK-IN SYSTEM
+// ============================================
+
+// Create location_state_tracking table for tracking check-ins and location events
+db.exec(`
+  CREATE TABLE IF NOT EXISTS location_state_tracking (
+    id TEXT PRIMARY KEY,
+    saved_place_id TEXT NOT NULL,
+    saved_place_name TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    latitude TEXT NOT NULL,
+    longitude TEXT NOT NULL,
+    distance_meters TEXT NOT NULL,
+    message_generated TEXT,
+    sms_sent INTEGER NOT NULL DEFAULT 0,
+    sms_delivered_at TEXT,
+    event_detected_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (saved_place_id) REFERENCES saved_places(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_location_state_tracking_place ON location_state_tracking(saved_place_id);
+  CREATE INDEX IF NOT EXISTS idx_location_state_tracking_event_type ON location_state_tracking(event_type);
+  CREATE INDEX IF NOT EXISTS idx_location_state_tracking_detected ON location_state_tracking(event_detected_at);
+  CREATE INDEX IF NOT EXISTS idx_location_state_tracking_created ON location_state_tracking(created_at);
 `);
 
 // ============================================
@@ -4618,6 +4647,147 @@ export function acknowledgeAllProximityAlerts(): number {
       UPDATE proximity_alerts SET acknowledged = 1 WHERE acknowledged = 0
     `).run();
     return result.changes;
+  });
+}
+
+// ============================================
+// LOCATION CHECK-IN STATE TRACKING
+// ============================================
+
+interface LocationStateTrackingRow {
+  id: string;
+  saved_place_id: string;
+  saved_place_name: string;
+  event_type: string;
+  latitude: string;
+  longitude: string;
+  distance_meters: string;
+  message_generated: string | null;
+  sms_sent: number;
+  sms_delivered_at: string | null;
+  event_detected_at: string;
+  created_at: string;
+}
+
+function mapLocationStateTracking(row: LocationStateTrackingRow): LocationStateTracking {
+  return {
+    id: row.id,
+    savedPlaceId: row.saved_place_id,
+    savedPlaceName: row.saved_place_name,
+    eventType: row.event_type as "arrival" | "departure",
+    latitude: row.latitude,
+    longitude: row.longitude,
+    distanceMeters: row.distance_meters,
+    messageGenerated: row.message_generated || undefined,
+    smsSent: row.sms_sent === 1,
+    smsDeliveredAt: row.sms_delivered_at || undefined,
+    eventDetectedAt: row.event_detected_at,
+    createdAt: row.created_at,
+  };
+}
+
+export function createLocationStateTracking(data: InsertLocationStateTracking): LocationStateTracking {
+  return wrapDbOperation("createLocationStateTracking", () => {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO location_state_tracking (
+        id, saved_place_id, saved_place_name, event_type, latitude, longitude,
+        distance_meters, message_generated, sms_sent, sms_delivered_at,
+        event_detected_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.savedPlaceId,
+      data.savedPlaceName,
+      data.eventType,
+      data.latitude,
+      data.longitude,
+      data.distanceMeters,
+      data.messageGenerated || null,
+      data.smsSent ? 1 : 0,
+      data.smsDeliveredAt || null,
+      data.eventDetectedAt,
+      now
+    );
+
+    const row = db.prepare(`SELECT * FROM location_state_tracking WHERE id = ?`).get(id) as LocationStateTrackingRow;
+    invalidateLocationCache();
+    return mapLocationStateTracking(row);
+  });
+}
+
+export function getRecentLocationStateTracking(limit: number = 50): LocationStateTracking[] {
+  return wrapDbOperation("getRecentLocationStateTracking", () => {
+    const rows = db.prepare(`
+      SELECT * FROM location_state_tracking
+      ORDER BY event_detected_at DESC
+      LIMIT ?
+    `).all(limit) as LocationStateTrackingRow[];
+    return rows.map(mapLocationStateTracking);
+  });
+}
+
+export function getLocationStateTrackingByPlace(savedPlaceId: string, limit: number = 20): LocationStateTracking[] {
+  return wrapDbOperation("getLocationStateTrackingByPlace", () => {
+    const rows = db.prepare(`
+      SELECT * FROM location_state_tracking
+      WHERE saved_place_id = ?
+      ORDER BY event_detected_at DESC
+      LIMIT ?
+    `).all(savedPlaceId, limit) as LocationStateTrackingRow[];
+    return rows.map(mapLocationStateTracking);
+  });
+}
+
+export function getLastLocationStateByPlace(savedPlaceId: string): LocationStateTracking | null {
+  return wrapDbOperation("getLastLocationStateByPlace", () => {
+    const row = db.prepare(`
+      SELECT * FROM location_state_tracking
+      WHERE saved_place_id = ?
+      ORDER BY event_detected_at DESC
+      LIMIT 1
+    `).get(savedPlaceId) as LocationStateTrackingRow | undefined;
+    return row ? mapLocationStateTracking(row) : null;
+  });
+}
+
+export function getCheckInsSentToday(): number {
+  return wrapDbOperation("getCheckInsSentToday", () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayISO = today.toISOString();
+
+    const result = db.prepare(`
+      SELECT COUNT(*) as count FROM location_state_tracking
+      WHERE sms_sent = 1 AND event_detected_at >= ?
+    `).get(todayISO) as { count: number };
+    return result.count;
+  });
+}
+
+export function getLastCheckInTime(): string | null {
+  return wrapDbOperation("getLastCheckInTime", () => {
+    const result = db.prepare(`
+      SELECT event_detected_at FROM location_state_tracking
+      WHERE sms_sent = 1
+      ORDER BY event_detected_at DESC
+      LIMIT 1
+    `).get() as { event_detected_at: string } | undefined;
+    return result?.event_detected_at || null;
+  });
+}
+
+export function updateLocationStateTrackingSms(id: string, smsSent: boolean, smsDeliveredAt?: string): boolean {
+  return wrapDbOperation("updateLocationStateTrackingSms", () => {
+    const result = db.prepare(`
+      UPDATE location_state_tracking
+      SET sms_sent = ?, sms_delivered_at = ?
+      WHERE id = ?
+    `).run(smsSent ? 1 : 0, smsDeliveredAt || null, id);
+    invalidateLocationCache();
+    return result.changes > 0;
   });
 }
 

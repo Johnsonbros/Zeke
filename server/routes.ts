@@ -198,6 +198,13 @@ import {
   approveAndExecuteCommand
 } from "./zekeContextAgent";
 import {
+  startLocationCheckInMonitor,
+  stopLocationCheckInMonitor,
+  getLocationCheckInStatus,
+  getCurrentLocationState,
+  setLocationCheckInSmsCallback,
+} from "./locationCheckInMonitor";
+import {
   getRecentWakeWordCommands,
   getPendingWakeWordCommands,
   getContextAgentSettings,
@@ -757,7 +764,57 @@ export async function registerRoutes(
     }
   });
   startContextAgent();
-  
+
+  // Set up location check-in SMS callback and auto-start monitor
+  setLocationCheckInSmsCallback(async (phone: string, message: string) => {
+    if (!twilioClient) {
+      console.log("[LocationCheckIn] Twilio not configured, cannot send SMS");
+      throw new Error("Twilio not configured");
+    }
+
+    const formattedPhone = phone.startsWith('+') ? phone : `+1${phone}`;
+
+    try {
+      const result = await twilioClient.messages.create({
+        body: message,
+        from: twilioFromNumber,
+        to: formattedPhone,
+      });
+
+      logTwilioMessage({
+        direction: "outbound",
+        source: "automation",
+        fromNumber: twilioFromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        twilioSid: result.sid,
+        status: "sent",
+      });
+
+      console.log(`[LocationCheckIn] SMS sent to ${formattedPhone}: ${message.substring(0, 50)}...`);
+    } catch (error: any) {
+      logTwilioMessage({
+        direction: "outbound",
+        source: "automation",
+        fromNumber: twilioFromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        status: "failed",
+        errorCode: error.code?.toString() || "UNKNOWN",
+        errorMessage: error.message || "Unknown error",
+      });
+
+      console.error("[LocationCheckIn] Failed to send SMS:", error);
+      throw error;
+    }
+  });
+
+  // Auto-start location check-in monitor if SMS is configured
+  if (twilioClient) {
+    startLocationCheckInMonitor();
+    console.log("[LocationCheckIn] Monitor auto-started on server initialization");
+  }
+
   // Health check endpoint for Python agents bridge
   app.get("/api/health", (_req, res) => {
     res.json({ status: "healthy", service: "zeke-node" });
@@ -4394,6 +4451,60 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Get location context error:", error);
       res.status(500).json({ error: error.message || "Failed to get location context" });
+    }
+  });
+
+  // === Location Check-In System Routes ===
+
+  // GET /api/location/checkin/status - Get check-in monitor status
+  app.get("/api/location/checkin/status", (req, res) => {
+    try {
+      const status = getLocationCheckInStatus();
+      res.json(status);
+    } catch (error: any) {
+      console.error("Get check-in status error:", error);
+      res.status(500).json({ error: error.message || "Failed to get check-in status" });
+    }
+  });
+
+  // POST /api/location/checkin/start - Start the check-in monitor
+  app.post("/api/location/checkin/start", (req, res) => {
+    try {
+      const started = startLocationCheckInMonitor();
+      if (started) {
+        res.json({ success: true, message: "Check-in monitor started" });
+      } else {
+        res.json({ success: false, message: "Check-in monitor already running" });
+      }
+    } catch (error: any) {
+      console.error("Start check-in monitor error:", error);
+      res.status(500).json({ error: error.message || "Failed to start check-in monitor" });
+    }
+  });
+
+  // POST /api/location/checkin/stop - Stop the check-in monitor
+  app.post("/api/location/checkin/stop", (req, res) => {
+    try {
+      const stopped = stopLocationCheckInMonitor();
+      if (stopped) {
+        res.json({ success: true, message: "Check-in monitor stopped" });
+      } else {
+        res.json({ success: false, message: "Check-in monitor not running" });
+      }
+    } catch (error: any) {
+      console.error("Stop check-in monitor error:", error);
+      res.status(500).json({ error: error.message || "Failed to stop check-in monitor" });
+    }
+  });
+
+  // GET /api/location/checkin/state - Get current location state and nearby places
+  app.get("/api/location/checkin/state", (req, res) => {
+    try {
+      const state = getCurrentLocationState();
+      res.json(state);
+    } catch (error: any) {
+      console.error("Get location state error:", error);
+      res.status(500).json({ error: error.message || "Failed to get location state" });
     }
   });
 

@@ -1838,3 +1838,45 @@ export interface LimitlessDigestPreferences {
   includeTopPeople: boolean;
   maxSmsLength: number; // Character limit, defaults to 700
 }
+
+// ============================================
+// LOCATION CHECK-IN SYSTEM
+// ============================================
+
+// Location check-in event types
+export const checkInEventTypes = ["arrival", "departure"] as const;
+export type CheckInEventType = typeof checkInEventTypes[number];
+
+// Location state tracking table - tracks current location state and check-in history
+export const locationStateTracking = sqliteTable("location_state_tracking", {
+  id: text("id").primaryKey(),
+  savedPlaceId: text("saved_place_id").notNull(),
+  savedPlaceName: text("saved_place_name").notNull(),
+  eventType: text("event_type", { enum: checkInEventTypes }).notNull(),
+  latitude: text("latitude").notNull(),
+  longitude: text("longitude").notNull(),
+  distanceMeters: text("distance_meters").notNull(),
+  messageGenerated: text("message_generated"),
+  smsSent: integer("sms_sent", { mode: "boolean" }).notNull().default(false),
+  smsDeliveredAt: text("sms_delivered_at"),
+  eventDetectedAt: text("event_detected_at").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertLocationStateTrackingSchema = createInsertSchema(locationStateTracking).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertLocationStateTracking = z.infer<typeof insertLocationStateTrackingSchema>;
+export type LocationStateTracking = typeof locationStateTracking.$inferSelect;
+
+// Location check-in settings
+export interface LocationCheckInSettings {
+  enabled: boolean;
+  proximityThresholdMeters: number;  // Distance threshold for check-in detection (default: 150m)
+  checkIntervalMinutes: number;       // How often to check location (default: 5 minutes)
+  maxSmsPerDay: number;               // Max SMS messages per day (default: 10)
+  minIntervalMinutes: number;         // Min time between SMS (default: 30 minutes)
+  recipientPhone?: string;            // Phone to send SMS to (defaults to master admin)
+}
