@@ -6988,17 +6988,78 @@ export function contradictMemory(memoryId: string): MemoryNote | undefined {
     const now = getCurrentTimestamp();
     const existing = getMemoryNote(memoryId);
     if (!existing) return undefined;
-    
+
     const currentConfidence = parseFloat(existing.confidenceScore || "0.8");
     const newConfidence = Math.max(0, currentConfidence - CONTRADICTION_PENALTY);
-    
+
     db.prepare(`
-      UPDATE memory_notes 
+      UPDATE memory_notes
       SET confidence_score = ?,
           updated_at = ?
       WHERE id = ?
     `).run(newConfidence.toString(), now, memoryId);
-    
+
+    return getMemoryNote(memoryId);
+  });
+}
+
+/**
+ * Update confidence-related fields for a memory
+ * Allows flexible updates to any combination of confidence fields
+ */
+export function updateMemoryConfidence(
+  memoryId: string,
+  updates: {
+    confidenceScore?: string;
+    confirmationCount?: number;
+    lastConfirmedAt?: string;
+    usageCount?: number;
+    lastUsedAt?: string;
+  }
+): MemoryNote | undefined {
+  return wrapDbOperation("updateMemoryConfidence", () => {
+    const now = getCurrentTimestamp();
+    const existing = getMemoryNote(memoryId);
+    if (!existing) return undefined;
+
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (updates.confidenceScore !== undefined) {
+      fields.push("confidence_score = ?");
+      values.push(updates.confidenceScore);
+    }
+    if (updates.confirmationCount !== undefined) {
+      fields.push("confirmation_count = ?");
+      values.push(updates.confirmationCount);
+    }
+    if (updates.lastConfirmedAt !== undefined) {
+      fields.push("last_confirmed_at = ?");
+      values.push(updates.lastConfirmedAt);
+    }
+    if (updates.usageCount !== undefined) {
+      fields.push("usage_count = ?");
+      values.push(updates.usageCount);
+    }
+    if (updates.lastUsedAt !== undefined) {
+      fields.push("last_used_at = ?");
+      values.push(updates.lastUsedAt);
+    }
+
+    if (fields.length === 0) {
+      return existing;
+    }
+
+    fields.push("updated_at = ?");
+    values.push(now);
+    values.push(memoryId);
+
+    db.prepare(`
+      UPDATE memory_notes
+      SET ${fields.join(", ")}
+      WHERE id = ?
+    `).run(...values);
+
     return getMemoryNote(memoryId);
   });
 }

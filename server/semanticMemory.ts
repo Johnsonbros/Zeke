@@ -321,21 +321,70 @@ export function getMemoryLocationContext(memoryId: string): {
   }
 }
 
+/**
+ * Calculate temporal decay score for a memory based on age
+ * More recent = higher score (approaches 1.0)
+ * Older = lower score (approaches 0.0)
+ */
+function calculateMemoryTemporalDecay(createdAt: string, decayDays: number = 90): number {
+  const now = new Date();
+  const then = new Date(createdAt);
+  const daysDiff = (now.getTime() - then.getTime()) / (1000 * 60 * 60 * 24);
+
+  // Exponential decay: e^(-daysDiff / decayDays)
+  const decay = Math.exp(-daysDiff / decayDays);
+
+  // Ensure minimum score of 0.1 for very old memories
+  return Math.max(decay, 0.1);
+}
+
+/**
+ * Calculate effective confidence score including temporal decay
+ * Factors in: base confidence, confirmation count, usage, and age
+ */
+function calculateEffectiveConfidence(memory: MemoryNote): number {
+  const baseConfidence = parseFloat(memory.confidenceScore || "0.8");
+  const confirmationCount = memory.confirmationCount || 0;
+  const usageCount = memory.usageCount || 0;
+
+  // Boost confidence based on confirmations (max +0.15)
+  const confirmationBoost = Math.min(confirmationCount * 0.05, 0.15);
+
+  // Slight boost from usage (max +0.05)
+  const usageBoost = Math.min(usageCount * 0.01, 0.05);
+
+  // Apply temporal decay
+  const temporalDecay = calculateMemoryTemporalDecay(memory.createdAt);
+
+  // Combine factors
+  let effectiveConfidence = baseConfidence + confirmationBoost + usageBoost;
+  effectiveConfidence = Math.min(effectiveConfidence, 1.0);
+
+  // Apply temporal decay (older memories less confident)
+  effectiveConfidence *= (0.5 + 0.5 * temporalDecay);
+
+  return effectiveConfidence;
+}
+
 export async function semanticSearch(
   query: string,
   options: {
     limit?: number;
     minScore?: number;
     types?: Array<"fact" | "preference" | "note" | "summary">;
+    useConfidenceWeighting?: boolean;
   } = {}
 ): Promise<ScoredMemory<SemanticMemoryNote>[]> {
-  const { limit = 10, minScore = 0.3, types } = options;
+  const { limit = 10, minScore = 0.3, types, useConfidenceWeighting = true } = options;
 
   try {
     const queryEmbedding = await generateEmbedding(query);
-    
+
     let allNotes = getAllMemoryNotes().map(toSemanticMemory);
-    
+
+    // Filter out superseded memories
+    allNotes = allNotes.filter(n => !n.isSuperseded);
+
     if (types && types.length > 0) {
       allNotes = allNotes.filter(n => types.includes(n.type as any));
     }
@@ -349,8 +398,24 @@ export async function semanticSearch(
 
     const scored = scoreMemories(notesWithEmbeddings, queryEmbedding);
 
-    return scored
+    // Apply confidence weighting to scores
+    const confidenceWeighted = scored.map(s => {
+      if (!useConfidenceWeighting) return s;
+
+      const effectiveConfidence = calculateEffectiveConfidence(s.memory.originalNote);
+      const weightedScore = s.score * (0.4 + 0.6 * effectiveConfidence);
+
+      return {
+        ...s,
+        score: weightedScore,
+        originalScore: s.score,
+        effectiveConfidence
+      };
+    });
+
+    return confidenceWeighted
       .filter(s => s.score >= minScore)
+      .sort((a, b) => b.score - a.score)
       .slice(0, limit)
       .map(s => ({
         ...s,
@@ -580,7 +645,7 @@ export async function getMemoryStats(): Promise<{
 }> {
   const allNotes = getAllMemoryNotes();
   const withEmbeddings = allNotes.filter(n => n.embedding !== null).length;
-  
+
   const byType: Record<string, number> = {};
   allNotes.forEach(n => {
     byType[n.type] = (byType[n.type] || 0) + 1;
@@ -591,4 +656,203 @@ export async function getMemoryStats(): Promise<{
     withEmbeddings,
     byType,
   };
+}
+
+// ============================================
+// PROACTIVE MEMORY VERIFICATION SYSTEM
+// ============================================
+
+export interface MemoryVerificationStatus {
+  memoryId: string;
+  content: string;
+  type: string;
+  effectiveConfidence: number;
+  needsVerification: boolean;
+  verificationReason: string;
+  lastConfirmedAt: string | null;
+  daysSinceConfirmation: number | null;
+  usageCount: number;
+  confirmationCount: number;
+}
+
+/**
+ * Get all memories that need verification
+ * Returns memories with low confidence or haven't been confirmed recently
+ */
+export function getMemoriesNeedingVerification(): MemoryVerificationStatus[] {
+  const allNotes = getAllMemoryNotes().filter(n => !n.isSuperseded);
+  const results: MemoryVerificationStatus[] = [];
+
+  const now = new Date();
+
+  for (const note of allNotes) {
+    const effectiveConfidence = calculateEffectiveConfidence(note);
+    let needsVerification = false;
+    let reason = "";
+
+    // Check if confidence is low
+    if (effectiveConfidence < 0.5) {
+      needsVerification = true;
+      reason = "Low confidence score";
+    }
+
+    // Check if heavily used but never confirmed
+    if (note.usageCount && note.usageCount >= 3 && note.confirmationCount === 0) {
+      needsVerification = true;
+      reason = reason ? `${reason}, Used multiple times but never confirmed` : "Used multiple times but never confirmed";
+    }
+
+    // Check if old and not confirmed recently
+    if (note.lastConfirmedAt) {
+      const daysSinceConfirmation = (now.getTime() - new Date(note.lastConfirmedAt).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSinceConfirmation > 60 && note.type !== "summary") {
+        needsVerification = true;
+        reason = reason ? `${reason}, Not confirmed in ${Math.round(daysSinceConfirmation)} days` : `Not confirmed in ${Math.round(daysSinceConfirmation)} days`;
+      }
+    } else if (note.usageCount && note.usageCount > 0) {
+      // Used but never confirmed
+      needsVerification = true;
+      reason = reason ? `${reason}, Used but never confirmed` : "Used but never confirmed";
+    }
+
+    if (needsVerification) {
+      const daysSinceConfirmation = note.lastConfirmedAt
+        ? (now.getTime() - new Date(note.lastConfirmedAt).getTime()) / (1000 * 60 * 60 * 24)
+        : null;
+
+      results.push({
+        memoryId: note.id,
+        content: note.content,
+        type: note.type,
+        effectiveConfidence,
+        needsVerification: true,
+        verificationReason: reason,
+        lastConfirmedAt: note.lastConfirmedAt || null,
+        daysSinceConfirmation,
+        usageCount: note.usageCount || 0,
+        confirmationCount: note.confirmationCount || 0
+      });
+    }
+  }
+
+  // Sort by priority: lowest confidence and most used first
+  return results.sort((a, b) => {
+    const aScore = a.effectiveConfidence - (a.usageCount * 0.01);
+    const bScore = b.effectiveConfidence - (b.usageCount * 0.01);
+    return aScore - bScore;
+  });
+}
+
+/**
+ * Mark a memory as confirmed by the user
+ * Updates confidence score and confirmation timestamp
+ */
+export async function confirmMemory(memoryId: string): Promise<void> {
+  const { updateMemoryConfidence } = await import("./db");
+
+  const memory = getAllMemoryNotes().find(n => n.id === memoryId);
+  if (!memory) {
+    console.warn(`[SemanticMemory] Cannot confirm memory ${memoryId}: not found`);
+    return;
+  }
+
+  const confirmationCount = (memory.confirmationCount || 0) + 1;
+  const now = new Date().toISOString();
+
+  updateMemoryConfidence(memoryId, {
+    confirmationCount,
+    lastConfirmedAt: now
+  });
+
+  console.log(`[SemanticMemory] Memory confirmed: "${memory.content.substring(0, 50)}..." (confirmations: ${confirmationCount})`);
+}
+
+/**
+ * Mark a memory as contradicted/incorrect
+ * Lowers confidence score significantly
+ */
+export async function contradictMemory(memoryId: string): Promise<void> {
+  const { updateMemoryConfidence } = await import("./db");
+
+  const memory = getAllMemoryNotes().find(n => n.id === memoryId);
+  if (!memory) {
+    console.warn(`[SemanticMemory] Cannot contradict memory ${memoryId}: not found`);
+    return;
+  }
+
+  const currentConfidence = parseFloat(memory.confidenceScore || "0.8");
+  const newConfidence = Math.max(currentConfidence - 0.3, 0.1);
+
+  updateMemoryConfidence(memoryId, {
+    confidenceScore: newConfidence.toString()
+  });
+
+  console.log(`[SemanticMemory] Memory contradicted: "${memory.content.substring(0, 50)}..." (confidence: ${currentConfidence.toFixed(2)} → ${newConfidence.toFixed(2)})`);
+}
+
+/**
+ * Increment usage count when a memory is used in a response
+ */
+export async function recordMemoryUsage(memoryId: string): Promise<void> {
+  const { updateMemoryConfidence } = await import("./db");
+
+  const memory = getAllMemoryNotes().find(n => n.id === memoryId);
+  if (!memory) return;
+
+  const usageCount = (memory.usageCount || 0) + 1;
+  const now = new Date().toISOString();
+
+  updateMemoryConfidence(memoryId, {
+    usageCount,
+    lastUsedAt: now
+  });
+
+  console.log(`[SemanticMemory] Memory usage recorded: "${memory.content.substring(0, 50)}..." (uses: ${usageCount})`);
+}
+
+/**
+ * Auto-detect confirmation or contradiction in user messages
+ * Returns memory IDs that should be updated
+ */
+export async function detectMemoryValidation(
+  userMessage: string,
+  conversationContext: { memoryIdsUsed?: string[] }
+): Promise<{
+  confirmed: string[];
+  contradicted: string[];
+}> {
+  const confirmed: string[] = [];
+  const contradicted: string[] = [];
+
+  if (!conversationContext.memoryIdsUsed || conversationContext.memoryIdsUsed.length === 0) {
+    return { confirmed, contradicted };
+  }
+
+  const messageLower = userMessage.toLowerCase();
+
+  // Confirmation patterns
+  const confirmationPatterns = [
+    /\b(yes|yeah|yep|correct|right|exactly|that's right|true)\b/,
+    /\b(still (like|love|prefer))\b/,
+    /\b(that'?s still)\b/,
+  ];
+
+  // Contradiction patterns
+  const contradictionPatterns = [
+    /\b(no|nope|not (anymore|really|quite)|wrong|incorrect|actually)\b/,
+    /\b(don't (like|love|prefer|want) (that|those|it) anymore)\b/,
+    /\b(changed my mind|not a fan|used to)\b/,
+  ];
+
+  const hasConfirmation = confirmationPatterns.some(p => p.test(messageLower));
+  const hasContradiction = contradictionPatterns.some(p => p.test(messageLower));
+
+  // If recent memories were used and user confirms/contradicts
+  if (hasConfirmation) {
+    confirmed.push(...conversationContext.memoryIdsUsed);
+  } else if (hasContradiction) {
+    contradicted.push(...conversationContext.memoryIdsUsed);
+  }
+
+  return { confirmed, contradicted };
 }
