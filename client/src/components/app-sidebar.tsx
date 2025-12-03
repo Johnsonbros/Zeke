@@ -160,24 +160,24 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
-      <SidebarHeader className="p-4">
+      <SidebarHeader className="p-4 safe-area-inset-top">
         <Link href="/" onClick={closeSidebarOnMobile}>
-          <div className="flex items-center gap-3 cursor-pointer" data-testid="link-home">
-            <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-lg font-bold text-primary-foreground">Z</span>
+          <div className="flex items-center gap-3 cursor-pointer hover-elevate rounded-lg p-2 -m-2 transition-all" data-testid="link-home">
+            <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center shadow-md">
+              <span className="text-xl font-bold text-primary-foreground">Z</span>
             </div>
             <div>
-              <h1 className="text-lg font-semibold">ZEKE</h1>
-              <p className="text-xs text-muted-foreground">Your Personal AI</p>
+              <h1 className="text-xl font-semibold">ZEKE</h1>
+              <p className="text-sm text-muted-foreground">Your Personal AI</p>
             </div>
           </div>
         </Link>
       </SidebarHeader>
 
-      <div className="px-4 pb-2">
+      <div className="px-4 pb-3">
         <Link href="/chat" onClick={closeSidebarOnMobile}>
-          <Button className="w-full gap-2" data-testid="button-new-chat">
-            <Plus className="h-4 w-4" />
+          <Button className="w-full gap-2 h-11 text-base shadow-sm" data-testid="button-new-chat">
+            <Plus className="h-5 w-5" />
             New Chat
           </Button>
         </Link>
@@ -274,24 +274,24 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="p-4 safe-area-inset-bottom">
         <Link href="/profile" onClick={closeSidebarOnMobile}>
           <div
-            className="flex items-center gap-3 p-2 rounded-lg hover-elevate cursor-pointer"
+            className="flex items-center gap-3 p-3 rounded-xl hover-elevate cursor-pointer transition-all border"
             data-testid="link-profile"
           >
-            <Avatar className="h-9 w-9">
-              <AvatarFallback className="bg-accent text-accent-foreground text-sm font-semibold">
+            <Avatar className="h-11 w-11">
+              <AvatarFallback className="bg-accent text-accent-foreground text-base font-semibold">
                 NJ
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">Nate Johnson</p>
+              <p className="text-sm font-semibold truncate">Nate Johnson</p>
               <p className="text-xs text-muted-foreground truncate">
                 CEO, Johnson Bros.
               </p>
             </div>
-            <Settings className="h-4 w-4 text-muted-foreground" />
+            <Settings className="h-5 w-5 text-muted-foreground" />
           </div>
         </Link>
       </SidebarFooter>

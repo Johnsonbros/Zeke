@@ -36,17 +36,17 @@ import { format, isToday, isTomorrow, isPast, parseISO } from "date-fns";
 
 function TypingIndicator() {
   return (
-    <div className="flex items-start gap-2 sm:gap-3 px-2 sm:px-4 py-2 sm:py-3" data-testid="typing-indicator">
-      <Avatar className="h-7 w-7 sm:h-8 sm:w-8 shrink-0">
-        <AvatarFallback className="bg-primary text-primary-foreground text-xs sm:text-sm font-semibold">
+    <div className="flex items-start gap-3 px-4 py-2" data-testid="typing-indicator">
+      <Avatar className="h-8 w-8 sm:h-9 sm:w-9 shrink-0">
+        <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
           Z
         </AvatarFallback>
       </Avatar>
-      <div className="bg-accent rounded-lg px-3 py-2 sm:px-4 sm:py-3">
-        <div className="flex gap-1">
-          <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-          <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-          <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+      <div className="bg-accent rounded-2xl px-4 py-3 shadow-sm">
+        <div className="flex gap-1.5">
+          <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+          <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+          <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
         </div>
       </div>
     </div>
@@ -56,44 +56,44 @@ function TypingIndicator() {
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
   const isSms = message.source === "sms";
-  
+
   return (
-    <div 
-      className={`flex items-start gap-2 sm:gap-3 px-2 sm:px-4 py-1.5 sm:py-2 ${isUser ? "flex-row-reverse" : ""}`}
+    <div
+      className={`flex items-start gap-3 px-4 py-2 ${isUser ? "flex-row-reverse" : ""}`}
       data-testid={`message-${message.id}`}
     >
-      <Avatar className="h-7 w-7 sm:h-8 sm:w-8 shrink-0">
-        <AvatarFallback 
-          className={`text-xs sm:text-sm font-semibold ${
-            isUser 
-              ? "bg-accent text-accent-foreground" 
+      <Avatar className="h-8 w-8 sm:h-9 sm:w-9 shrink-0">
+        <AvatarFallback
+          className={`text-sm font-semibold ${
+            isUser
+              ? "bg-accent text-accent-foreground"
               : "bg-primary text-primary-foreground"
           }`}
         >
           {isUser ? "NJ" : "Z"}
         </AvatarFallback>
       </Avatar>
-      
-      <div className={`flex flex-col max-w-[80%] sm:max-w-[75%] md:max-w-[70%] ${isUser ? "items-end" : "items-start"}`}>
-        <div 
-          className={`rounded-lg px-3 py-2 sm:px-4 sm:py-3 relative ${
-            isUser 
-              ? "bg-primary text-primary-foreground" 
+
+      <div className={`flex flex-col max-w-[85%] sm:max-w-[75%] md:max-w-[70%] ${isUser ? "items-end" : "items-start"}`}>
+        <div
+          className={`rounded-2xl px-4 py-3 relative shadow-sm ${
+            isUser
+              ? "bg-primary text-primary-foreground"
               : "bg-accent text-accent-foreground"
           }`}
         >
           {isSms && (
-            <div 
-              className={`absolute -top-1 ${isUser ? "-left-1" : "-right-1"} flex items-center gap-0.5 sm:gap-1 px-1 sm:px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground text-[9px] sm:text-[10px]`}
+            <div
+              className={`absolute -top-1 ${isUser ? "-left-1" : "-right-1"} flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground text-[10px] font-medium`}
               data-testid={`sms-badge-${message.id}`}
             >
-              <Smartphone className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
+              <Smartphone className="h-2.5 w-2.5" />
               <span>SMS</span>
             </div>
           )}
-          <p className="text-xs sm:text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
+          <p className="text-sm sm:text-base whitespace-pre-wrap leading-relaxed">{message.content}</p>
         </div>
-        <span className="text-[10px] sm:text-[11px] text-muted-foreground mt-0.5 sm:mt-1 px-1">
+        <span className="text-xs text-muted-foreground mt-1.5 px-1">
           {format(new Date(message.createdAt), "h:mm a")}
         </span>
       </div>
@@ -251,15 +251,15 @@ function EmptyState({ onSendMessage }: { onSendMessage: (message: string) => voi
 
   return (
     <ScrollArea className="h-full">
-      <div className="flex flex-col items-center py-6 sm:py-8 md:py-10 px-3 sm:px-4 max-w-2xl mx-auto gap-5 sm:gap-6 md:gap-8" data-testid="empty-state">
-        <div className="flex flex-col items-center gap-1.5 sm:gap-2 text-center">
-          <div className="h-12 w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 rounded-full bg-primary/10 flex items-center justify-center">
-            <span className="text-2xl sm:text-2xl md:text-3xl font-bold text-primary">Z</span>
+      <div className="flex flex-col items-center py-8 sm:py-10 md:py-12 px-4 sm:px-6 max-w-2xl mx-auto gap-6 sm:gap-8" data-testid="empty-state">
+        <div className="flex flex-col items-center gap-2 sm:gap-3 text-center">
+          <div className="h-16 w-16 sm:h-18 sm:w-18 md:h-20 md:w-20 rounded-full bg-primary/10 flex items-center justify-center shadow-lg">
+            <span className="text-3xl sm:text-4xl md:text-5xl font-bold text-primary">Z</span>
           </div>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-semibold tracking-tight mt-1.5 sm:mt-2" data-testid="empty-state-title">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight mt-2" data-testid="empty-state-title">
             {getTimeGreeting()}
           </h1>
-          <p className="text-sm sm:text-base text-muted-foreground" data-testid="empty-state-subtitle">
+          <p className="text-base sm:text-lg text-muted-foreground" data-testid="empty-state-subtitle">
             {personalizedSubtitle}
           </p>
         </div>
@@ -569,20 +569,20 @@ export default function ChatPage() {
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0">
-        <header className="h-11 sm:h-12 border-b flex items-center justify-between px-3 sm:px-4 shrink-0">
+        <header className="h-14 sm:h-14 border-b flex items-center justify-between px-4 sm:px-4 shrink-0 safe-area-inset-top">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <h1 className="text-base sm:text-lg font-semibold truncate">
               {messagesData?.conversation?.title || "Chat with ZEKE"}
             </h1>
             {messagesData?.conversation?.mode === "getting_to_know" && (
               <Badge variant="secondary" className="gap-1 text-[10px] sm:text-xs" data-testid="badge-getting-to-know">
-                <Sparkles className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                Learning
+                <Sparkles className="h-3 w-3 sm:h-3 sm:w-3" />
+                <span className="hidden sm:inline">Learning</span>
               </Badge>
             )}
           </div>
-          <div className="md:hidden flex items-center gap-1.5 sm:gap-2">
-            <Button size="icon" variant="ghost" onClick={handleNewChat} className="h-8 w-8 sm:h-9 sm:w-9" data-testid="button-new-chat-mobile">
+          <div className="md:hidden flex items-center gap-2">
+            <Button size="icon" variant="ghost" onClick={handleNewChat} className="h-10 w-10" data-testid="button-new-chat-mobile">
               <Plus className="h-4 w-4" />
             </Button>
           </div>
@@ -612,8 +612,8 @@ export default function ChatPage() {
           )}
         </div>
 
-        <div className="p-2 sm:p-3 md:p-4 border-t bg-background/80 backdrop-blur shrink-0">
-          <div className="flex items-end gap-2 sm:gap-3 max-w-4xl mx-auto">
+        <div className="p-3 sm:p-4 md:p-4 border-t bg-background/95 backdrop-blur-sm shrink-0 safe-area-inset-bottom">
+          <div className="flex items-end gap-3 max-w-4xl mx-auto">
             <div className="flex-1 relative">
               <Textarea
                 ref={textareaRef}
@@ -621,7 +621,7 @@ export default function ChatPage() {
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Message ZEKE..."
-                className="min-h-[44px] sm:min-h-[48px] max-h-[120px] sm:max-h-[150px] resize-none text-sm sm:text-base py-2.5 sm:py-3 px-3 sm:px-4"
+                className="min-h-[48px] max-h-[140px] sm:max-h-[160px] resize-none text-base py-3 px-4 rounded-xl border-2 focus:border-primary transition-colors"
                 rows={1}
                 disabled={sendMessageMutation.isPending}
                 data-testid="input-message"
@@ -631,13 +631,13 @@ export default function ChatPage() {
               size="icon"
               onClick={handleSend}
               disabled={!inputValue.trim() || sendMessageMutation.isPending}
-              className="h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 rounded-full shrink-0"
+              className="h-12 w-12 rounded-full shrink-0 shadow-lg hover:shadow-xl transition-shadow"
               data-testid="button-send"
             >
-              <Send className="h-4 w-4 sm:h-5 sm:w-5" />
+              <Send className="h-5 w-5" />
             </Button>
           </div>
-          <p className="text-[10px] sm:text-[11px] text-muted-foreground text-center mt-1.5 sm:mt-2 hidden md:block">
+          <p className="text-xs text-muted-foreground text-center mt-2 hidden sm:block">
             ZEKE can make mistakes. Consider checking important info.
           </p>
         </div>

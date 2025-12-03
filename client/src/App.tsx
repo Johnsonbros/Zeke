@@ -67,13 +67,14 @@ function App() {
             <div className="flex h-screen w-full">
               <AppSidebar />
               <SidebarInset>
-                <header className="flex h-12 items-center gap-2 border-b px-4 md:hidden">
-                  <SidebarTrigger data-testid="button-sidebar-toggle" />
-                  <div className="flex items-center gap-2">
-                    <div className="h-6 w-6 rounded bg-primary flex items-center justify-center">
-                      <span className="text-xs font-bold text-primary-foreground">Z</span>
+                {/* Mobile header with larger touch targets */}
+                <header className="flex h-14 items-center gap-3 border-b px-4 md:hidden safe-area-inset-top">
+                  <SidebarTrigger className="h-10 w-10" data-testid="button-sidebar-toggle" />
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+                      <span className="text-sm font-bold text-primary-foreground">Z</span>
                     </div>
-                    <span className="font-semibold text-sm">ZEKE</span>
+                    <span className="font-semibold text-base">ZEKE</span>
                   </div>
                 </header>
                 <main className="flex-1 overflow-hidden">
