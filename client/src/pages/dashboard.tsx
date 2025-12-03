@@ -198,18 +198,18 @@ function StatCard({
 
   return (
     <Link href={href}>
-      <Card className={`hover-elevate cursor-pointer transition-all ${variantClasses[variant]}`} data-testid={`stat-card-${title.toLowerCase().replace(/\s+/g, "-")}`}>
-        <CardContent className="p-3 sm:p-4">
-          <div className="flex items-center justify-between gap-2 sm:gap-4">
+      <Card className={`hover-elevate cursor-pointer transition-all touch-target ${variantClasses[variant]}`} data-testid={`stat-card-${title.toLowerCase().replace(/\s+/g, "-")}`}>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <p className="text-xs sm:text-sm text-muted-foreground truncate">{title}</p>
-              <p className="text-xl sm:text-2xl font-semibold mt-0.5 sm:mt-1" data-testid={`stat-value-${title.toLowerCase().replace(/\s+/g, "-")}`}>{value}</p>
+              <p className="text-sm text-muted-foreground truncate">{title}</p>
+              <p className="text-3xl font-bold mt-1" data-testid={`stat-value-${title.toLowerCase().replace(/\s+/g, "-")}`}>{value}</p>
               {subtitle && (
-                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">{subtitle}</p>
+                <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>
               )}
             </div>
-            <div className="p-2 sm:p-3 rounded-lg bg-primary/10 shrink-0">
-              <Icon className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+            <div className="p-3 rounded-xl bg-primary/10 shrink-0">
+              <Icon className="h-6 w-6 text-primary" />
             </div>
           </div>
         </CardContent>
@@ -432,8 +432,8 @@ function CommunicationsWidget({
   }
 
   return (
-    <Card className="col-span-1 sm:col-span-2" data-testid="widget-communications">
-      <CardHeader className="pb-2 sm:pb-3">
+    <Card data-testid="widget-communications">
+      <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg bg-primary/10">
@@ -620,7 +620,7 @@ function LocationWidget({
   }
 
   return (
-    <Card className="col-span-1 sm:col-span-2" data-testid="widget-location">
+    <Card data-testid="widget-location">
       <CardHeader className="pb-2 sm:pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1340,7 +1340,7 @@ function ProactiveInsightsWidget({
   };
 
   return (
-    <Card className="col-span-1 sm:col-span-2" data-testid="widget-proactive-insights">
+    <Card data-testid="widget-proactive-insights">
       <CardHeader className="pb-2 sm:pb-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -1629,24 +1629,24 @@ export default function DashboardPage() {
         </div>
 
         {isLoading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
+          <div className="flex flex-col gap-3">
             {[...Array(5)].map((_, i) => (
-              <Skeleton key={i} className="h-[90px] sm:h-[100px]" />
+              <Skeleton key={i} className="h-24" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
+          <div className="flex flex-col gap-3">
             <StatCard
               title="Today's Events"
               value={todayEvents?.length || 0}
-              subtitle={todayEvents && todayEvents.length > 0 ? `Next: ${todayEvents[0]?.summary?.substring(0, 15)}...` : "No events"}
+              subtitle={todayEvents && todayEvents.length > 0 ? `Next: ${todayEvents[0]?.summary?.substring(0, 20)}...` : "No events"}
               icon={Calendar}
               href="/calendar"
             />
             <StatCard
               title="Pending Tasks"
               value={stats.tasks.pending}
-              subtitle={stats.tasks.overdue > 0 ? `${stats.tasks.overdue} overdue` : stats.tasks.dueToday > 0 ? `${stats.tasks.dueToday} due today` : undefined}
+              subtitle={stats.tasks.overdue > 0 ? `${stats.tasks.overdue} overdue` : stats.tasks.dueToday > 0 ? `${stats.tasks.dueToday} due today` : "All clear"}
               icon={ListTodo}
               href="/tasks"
               variant={stats.tasks.overdue > 0 ? "warning" : "default"}
@@ -1654,39 +1654,39 @@ export default function DashboardPage() {
             <StatCard
               title="Grocery Items"
               value={stats.grocery.total - stats.grocery.purchased}
-              subtitle={`${stats.grocery.purchased} purchased`}
+              subtitle={`${stats.grocery.purchased} already purchased`}
               icon={ShoppingCart}
               href="/grocery"
             />
             <StatCard
               title="Memories"
               value={stats.memories.total}
-              subtitle={`${stats.memories.recentCount} this week`}
+              subtitle={`${stats.memories.recentCount} added this week`}
               icon={Brain}
               href="/memory"
             />
             <StatCard
               title="Conversations"
               value={stats.conversations.total}
-              subtitle={`${stats.conversations.recentCount} recent`}
+              subtitle={`${stats.conversations.recentCount} recent chats`}
               icon={MessageSquare}
               href="/chat"
             />
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
+        <div className="flex flex-col gap-4">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
-              <CardTitle className="text-sm sm:text-base font-medium">Today's Schedule</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3 px-4 pt-4">
+              <CardTitle className="text-base font-semibold">Today's Schedule</CardTitle>
               <Link href="/calendar">
-                <Button size="sm" variant="ghost" className="h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm" data-testid="button-view-all-calendar">
+                <Button size="sm" variant="ghost" className="h-9 px-3 text-sm touch-target" data-testid="button-view-all-calendar">
                   View all
-                  <ArrowRight className="h-2.5 w-2.5 sm:h-3 sm:w-3 ml-1" />
+                  <ArrowRight className="h-4 w-4 ml-1" />
                 </Button>
               </Link>
             </CardHeader>
-            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+            <CardContent className="px-4 pb-4">
               {calendarLoading ? (
                 <div className="space-y-2">
                   {[...Array(3)].map((_, i) => (
@@ -1700,16 +1700,16 @@ export default function DashboardPage() {
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
-              <CardTitle className="text-sm sm:text-base font-medium">Tasks</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3 px-4 pt-4">
+              <CardTitle className="text-base font-semibold">Tasks</CardTitle>
               <Link href="/tasks">
-                <Button size="sm" variant="ghost" className="h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm" data-testid="button-view-all-tasks">
+                <Button size="sm" variant="ghost" className="h-9 px-3 text-sm touch-target" data-testid="button-view-all-tasks">
                   View all
-                  <ArrowRight className="h-2.5 w-2.5 sm:h-3 sm:w-3 ml-1" />
+                  <ArrowRight className="h-4 w-4 ml-1" />
                 </Button>
               </Link>
             </CardHeader>
-            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+            <CardContent className="px-4 pb-4">
               {tasksLoading ? (
                 <div className="space-y-2">
                   {[...Array(3)].map((_, i) => (
@@ -1722,17 +1722,17 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="sm:col-span-2 lg:col-span-1">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
-              <CardTitle className="text-sm sm:text-base font-medium">Grocery List</CardTitle>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3 px-4 pt-4">
+              <CardTitle className="text-base font-semibold">Grocery List</CardTitle>
               <Link href="/grocery">
-                <Button size="sm" variant="ghost" className="h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm" data-testid="button-view-all-grocery">
+                <Button size="sm" variant="ghost" className="h-9 px-3 text-sm touch-target" data-testid="button-view-all-grocery">
                   View all
-                  <ArrowRight className="h-2.5 w-2.5 sm:h-3 sm:w-3 ml-1" />
+                  <ArrowRight className="h-4 w-4 ml-1" />
                 </Button>
               </Link>
             </CardHeader>
-            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+            <CardContent className="px-4 pb-4">
               {groceryLoading ? (
                 <div className="space-y-2">
                   {[...Array(3)].map((_, i) => (
@@ -1746,11 +1746,11 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 lg:gap-6">
+        <div className="flex flex-col gap-4">
           <DashboardChatWidget />
-          <div className="space-y-3 sm:space-y-4">
-            <h2 className="text-base sm:text-lg font-medium">Quick Access</h2>
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+          <div className="space-y-4">
+            <h2 className="text-lg font-semibold">Quick Access</h2>
+            <div className="flex flex-col gap-3">
               <FeatureCard
                 title="Calendar"
                 description="View and manage your schedule"
@@ -1776,60 +1776,55 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
-          <ConversationQualityWidget 
-            metrics={conversationMetrics}
-            memoryStats={memoryConfidence}
-            isLoading={isQualityMetricsLoading}
-          />
-          <FeatureCard
-            title="ZEKE's Memory"
-            description="What ZEKE knows about you"
-            icon={Brain}
-            href="/memory"
-            badge={{ text: `${stats.memories.total} memories` }}
-            action="View memories"
-          />
-        </div>
+        <ConversationQualityWidget
+          metrics={conversationMetrics}
+          memoryStats={memoryConfidence}
+          isLoading={isQualityMetricsLoading}
+        />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
-          <CommunicationsWidget 
-            stats={smsStats} 
-            conversations={smsConversations}
-            isLoading={isSmsLoading}
-          />
-          <NotificationSettingsWidget
-            status={notificationStatus}
-            isLoading={notificationStatusLoading}
-            onToggleNotifications={handleToggleNotifications}
-            onToggleBatching={handleToggleBatching}
-            onToggleQuietHours={handleToggleQuietHours}
-            isUpdating={updateNotificationPrefsMutation.isPending}
-          />
-        </div>
+        <FeatureCard
+          title="ZEKE's Memory"
+          description="What ZEKE knows about you"
+          icon={Brain}
+          href="/memory"
+          badge={{ text: `${stats.memories.total} memories` }}
+          action="View memories"
+        />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
-          <ProactiveInsightsWidget
-            insights={insights}
-            isLoading={insightsLoading}
-            onDismiss={handleDismissInsight}
-            onComplete={handleCompleteInsight}
-            onSnooze={handleSnoozeInsight}
-            onRefresh={handleRefreshInsights}
-            isRefreshing={refreshInsightsMutation.isPending}
-          />
-        </div>
+        <CommunicationsWidget
+          stats={smsStats}
+          conversations={smsConversations}
+          isLoading={isSmsLoading}
+        />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
-          <LocationWidget
-            places={savedPlaces}
-            currentLocation={currentLocation}
-            isLoading={isLocationLoading}
-          />
-          <LocationTimelineWidget
-            isLoading={isLocationLoading}
-          />
-        </div>
+        <NotificationSettingsWidget
+          status={notificationStatus}
+          isLoading={notificationStatusLoading}
+          onToggleNotifications={handleToggleNotifications}
+          onToggleBatching={handleToggleBatching}
+          onToggleQuietHours={handleToggleQuietHours}
+          isUpdating={updateNotificationPrefsMutation.isPending}
+        />
+
+        <ProactiveInsightsWidget
+          insights={insights}
+          isLoading={insightsLoading}
+          onDismiss={handleDismissInsight}
+          onComplete={handleCompleteInsight}
+          onSnooze={handleSnoozeInsight}
+          onRefresh={handleRefreshInsights}
+          isRefreshing={refreshInsightsMutation.isPending}
+        />
+
+        <LocationWidget
+          places={savedPlaces}
+          currentLocation={currentLocation}
+          isLoading={isLocationLoading}
+        />
+
+        <LocationTimelineWidget
+          isLoading={isLocationLoading}
+        />
       </div>
     </div>
   );
