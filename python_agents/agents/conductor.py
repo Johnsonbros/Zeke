@@ -74,6 +74,10 @@ class IntentType(str, Enum):
     STATUS_CHECK = "status_check"
     HELP = "help"
     UNKNOWN = "unknown"
+    VIEW_PREDICTIONS = "view_predictions"
+    ANALYZE_PATTERNS = "analyze_patterns"
+    DETECT_ANOMALIES = "detect_anomalies"
+    CREATE_PREDICTION = "create_prediction"
 
 
 INTENT_TO_CATEGORY: dict[IntentType, CapabilityCategory] = {
@@ -113,6 +117,10 @@ INTENT_TO_CATEGORY: dict[IntentType, CapabilityCategory] = {
     IntentType.STATUS_CHECK: CapabilityCategory.SYSTEM,
     IntentType.HELP: CapabilityCategory.SYSTEM,
     IntentType.UNKNOWN: CapabilityCategory.SYSTEM,
+    IntentType.VIEW_PREDICTIONS: CapabilityCategory.PREDICTION,
+    IntentType.ANALYZE_PATTERNS: CapabilityCategory.PREDICTION,
+    IntentType.DETECT_ANOMALIES: CapabilityCategory.PREDICTION,
+    IntentType.CREATE_PREDICTION: CapabilityCategory.PREDICTION,
 }
 
 
@@ -126,6 +134,7 @@ CAPABILITY_TO_AGENT: dict[CapabilityCategory, list[AgentId]] = {
     CapabilityCategory.PROFILE: [AgentId.PERSONAL_DATA_STEWARD],
     CapabilityCategory.SYSTEM: [AgentId.SAFETY_AUDITOR, AgentId.OPS_PLANNER, AgentId.MEMORY_CURATOR],
     CapabilityCategory.LIMITLESS: [AgentId.LIMITLESS_ANALYST],
+    CapabilityCategory.PREDICTION: [AgentId.FORESIGHT_STRATEGIST],
 }
 
 
@@ -136,6 +145,10 @@ INTENT_TO_AGENT: dict[IntentType, AgentId] = {
     IntentType.MORNING_BRIEFING: AgentId.OPS_PLANNER,
     IntentType.SAVE_MEMORY: AgentId.MEMORY_CURATOR,
     IntentType.LIFELOG_QUERY: AgentId.LIMITLESS_ANALYST,
+    IntentType.VIEW_PREDICTIONS: AgentId.FORESIGHT_STRATEGIST,
+    IntentType.ANALYZE_PATTERNS: AgentId.FORESIGHT_STRATEGIST,
+    IntentType.DETECT_ANOMALIES: AgentId.FORESIGHT_STRATEGIST,
+    IntentType.CREATE_PREDICTION: AgentId.FORESIGHT_STRATEGIST,
 }
 
 

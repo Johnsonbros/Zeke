@@ -110,7 +110,16 @@ import type {
   LifelogActionItem,
   InsertLifelogActionItem,
   LimitlessAnalyticsDaily,
-  InsertLimitlessAnalyticsDaily
+  InsertLimitlessAnalyticsDaily,
+  Prediction,
+  InsertPrediction,
+  Pattern,
+  InsertPattern,
+  AnticipatoryAction,
+  InsertAnticipatoryAction,
+  PredictionFeedback,
+  InsertPredictionFeedback,
+  PredictionWithDetails
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -1325,6 +1334,122 @@ db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_limitless_analytics_daily_date ON limitless_analytics_daily(date);
 `);
 
+// ============================================
+// PREDICTIVE INTELLIGENCE SYSTEM TABLES
+// ============================================
+
+// Create predictions table for AI-generated predictions
+db.exec(`
+  CREATE TABLE IF NOT EXISTS predictions (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    confidence_score TEXT NOT NULL,
+    confidence_level TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    suggested_action TEXT NOT NULL,
+    action_data TEXT,
+    auto_execute INTEGER NOT NULL DEFAULT 0,
+    requires_user_approval INTEGER NOT NULL DEFAULT 1,
+    reasoning TEXT NOT NULL,
+    data_sources_used TEXT NOT NULL,
+    related_pattern_ids TEXT,
+    predicted_for TEXT,
+    valid_until TEXT,
+    executed_at TEXT,
+    user_feedback TEXT,
+    user_feedback_note TEXT,
+    validated_at TEXT,
+    validation_result TEXT,
+    priority TEXT NOT NULL DEFAULT 'medium',
+    impact_score TEXT,
+    notification_sent INTEGER NOT NULL DEFAULT 0,
+    notified_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_predictions_status ON predictions(status);
+  CREATE INDEX IF NOT EXISTS idx_predictions_type ON predictions(type);
+  CREATE INDEX IF NOT EXISTS idx_predictions_confidence ON predictions(confidence_level);
+  CREATE INDEX IF NOT EXISTS idx_predictions_priority ON predictions(priority);
+  CREATE INDEX IF NOT EXISTS idx_predictions_valid_until ON predictions(valid_until);
+`);
+
+// Create patterns table for discovered behavioral patterns
+db.exec(`
+  CREATE TABLE IF NOT EXISTS patterns (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    pattern_definition TEXT NOT NULL,
+    frequency TEXT NOT NULL,
+    strength TEXT NOT NULL,
+    data_source TEXT NOT NULL,
+    sample_size INTEGER NOT NULL,
+    time_range_start TEXT NOT NULL,
+    time_range_end TEXT NOT NULL,
+    last_validated_at TEXT,
+    validation_count INTEGER DEFAULT 0,
+    accuracy_rate TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    is_superseded INTEGER NOT NULL DEFAULT 0,
+    superseded_by TEXT,
+    prediction_count INTEGER DEFAULT 0,
+    last_used_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_patterns_type ON patterns(type);
+  CREATE INDEX IF NOT EXISTS idx_patterns_active ON patterns(is_active);
+  CREATE INDEX IF NOT EXISTS idx_patterns_data_source ON patterns(data_source);
+`);
+
+// Create anticipatory_actions table for proactive actions
+db.exec(`
+  CREATE TABLE IF NOT EXISTS anticipatory_actions (
+    id TEXT PRIMARY KEY,
+    prediction_id TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    action_description TEXT NOT NULL,
+    action_data TEXT NOT NULL,
+    executed_at TEXT NOT NULL,
+    success INTEGER NOT NULL,
+    result TEXT,
+    error_message TEXT,
+    user_responsed INTEGER NOT NULL DEFAULT 0,
+    user_response_type TEXT,
+    user_response_note TEXT,
+    user_responded_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (prediction_id) REFERENCES predictions(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_anticipatory_actions_prediction ON anticipatory_actions(prediction_id);
+  CREATE INDEX IF NOT EXISTS idx_anticipatory_actions_success ON anticipatory_actions(success);
+`);
+
+// Create prediction_feedback table for learning
+db.exec(`
+  CREATE TABLE IF NOT EXISTS prediction_feedback (
+    id TEXT PRIMARY KEY,
+    prediction_id TEXT NOT NULL,
+    was_accurate INTEGER NOT NULL,
+    accuracy_score TEXT,
+    feedback_type TEXT NOT NULL,
+    feedback_note TEXT,
+    lessons_learned TEXT,
+    adjustments_made TEXT,
+    improved_confidence INTEGER,
+    affected_pattern_ids TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (prediction_id) REFERENCES predictions(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_prediction_feedback_prediction ON prediction_feedback(prediction_id);
+  CREATE INDEX IF NOT EXISTS idx_prediction_feedback_type ON prediction_feedback(feedback_type);
+`);
+
+console.log("Predictive intelligence system tables initialized");
 console.log("Limitless enhanced features tables initialized");
 
 // Seed initial family members if table is empty
@@ -9045,6 +9170,558 @@ export function getRecentLimitlessAnalytics(days: number = 7): LimitlessAnalytic
       ORDER BY date DESC
     `).all(startDate) as LimitlessAnalyticsDailyRow[];
     return rows.map(mapLimitlessAnalyticsDaily);
+  });
+}
+
+// ============================================
+// PREDICTION SYSTEM OPERATIONS
+// ============================================
+
+// Database row types for predictions
+interface PredictionRow {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  confidence_score: string;
+  confidence_level: string;
+  status: string;
+  suggested_action: string;
+  action_data: string | null;
+  auto_execute: number;
+  requires_user_approval: number;
+  reasoning: string;
+  data_sources_used: string;
+  related_pattern_ids: string | null;
+  predicted_for: string | null;
+  valid_until: string | null;
+  executed_at: string | null;
+  user_feedback: string | null;
+  user_feedback_note: string | null;
+  validated_at: string | null;
+  validation_result: string | null;
+  priority: string;
+  impact_score: string | null;
+  notification_sent: number;
+  notified_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface PatternRow {
+  id: string;
+  type: string;
+  name: string;
+  description: string;
+  pattern_definition: string;
+  frequency: string;
+  strength: string;
+  data_source: string;
+  sample_size: number;
+  time_range_start: string;
+  time_range_end: string;
+  last_validated_at: string | null;
+  validation_count: number;
+  accuracy_rate: string | null;
+  is_active: number;
+  is_superseded: number;
+  superseded_by: string | null;
+  prediction_count: number;
+  last_used_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AnticipatoryActionRow {
+  id: string;
+  prediction_id: string;
+  action_type: string;
+  action_description: string;
+  action_data: string;
+  executed_at: string;
+  success: number;
+  result: string | null;
+  error_message: string | null;
+  user_responsed: number;
+  user_response_type: string | null;
+  user_response_note: string | null;
+  user_responded_at: string | null;
+  created_at: string;
+}
+
+interface PredictionFeedbackRow {
+  id: string;
+  prediction_id: string;
+  was_accurate: number;
+  accuracy_score: string | null;
+  feedback_type: string;
+  feedback_note: string | null;
+  lessons_learned: string | null;
+  adjustments_made: string | null;
+  improved_confidence: number | null;
+  affected_pattern_ids: string | null;
+  created_at: string;
+}
+
+// Mapper functions
+function mapPrediction(row: PredictionRow): Prediction {
+  return {
+    id: row.id,
+    type: row.type as any,
+    title: row.title,
+    description: row.description,
+    confidenceScore: row.confidence_score,
+    confidenceLevel: row.confidence_level as any,
+    status: row.status as any,
+    suggestedAction: row.suggested_action,
+    actionData: row.action_data,
+    autoExecute: Boolean(row.auto_execute),
+    requiresUserApproval: Boolean(row.requires_user_approval),
+    reasoning: row.reasoning,
+    dataSourcesUsed: row.data_sources_used,
+    relatedPatternIds: row.related_pattern_ids,
+    predictedFor: row.predicted_for,
+    validUntil: row.valid_until,
+    executedAt: row.executed_at,
+    userFeedback: row.user_feedback as any,
+    userFeedbackNote: row.user_feedback_note,
+    validatedAt: row.validated_at,
+    validationResult: row.validation_result as any,
+    priority: row.priority as any,
+    impactScore: row.impact_score,
+    notificationSent: Boolean(row.notification_sent),
+    notifiedAt: row.notified_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapPattern(row: PatternRow): Pattern {
+  return {
+    id: row.id,
+    type: row.type as any,
+    name: row.name,
+    description: row.description,
+    patternDefinition: row.pattern_definition,
+    frequency: row.frequency,
+    strength: row.strength,
+    dataSource: row.data_source,
+    sampleSize: row.sample_size,
+    timeRangeStart: row.time_range_start,
+    timeRangeEnd: row.time_range_end,
+    lastValidatedAt: row.last_validated_at,
+    validationCount: row.validation_count,
+    accuracyRate: row.accuracy_rate,
+    isActive: Boolean(row.is_active),
+    isSuperseded: Boolean(row.is_superseded),
+    supersededBy: row.superseded_by,
+    predictionCount: row.prediction_count,
+    lastUsedAt: row.last_used_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapAnticipatoryAction(row: AnticipatoryActionRow): AnticipatoryAction {
+  return {
+    id: row.id,
+    predictionId: row.prediction_id,
+    actionType: row.action_type,
+    actionDescription: row.action_description,
+    actionData: row.action_data,
+    executedAt: row.executed_at,
+    success: Boolean(row.success),
+    result: row.result,
+    errorMessage: row.error_message,
+    userResponsed: Boolean(row.user_responsed),
+    userResponseType: row.user_response_type as any,
+    userResponseNote: row.user_response_note,
+    userRespondedAt: row.user_responded_at,
+    createdAt: row.created_at,
+  };
+}
+
+function mapPredictionFeedback(row: PredictionFeedbackRow): PredictionFeedback {
+  return {
+    id: row.id,
+    predictionId: row.prediction_id,
+    wasAccurate: Boolean(row.was_accurate),
+    accuracyScore: row.accuracy_score,
+    feedbackType: row.feedback_type as any,
+    feedbackNote: row.feedback_note,
+    lessonsLearned: row.lessons_learned,
+    adjustmentsMade: row.adjustments_made,
+    improvedConfidence: row.improved_confidence ? Boolean(row.improved_confidence) : null,
+    affectedPatternIds: row.affected_pattern_ids,
+    createdAt: row.created_at,
+  };
+}
+
+// Prediction CRUD operations
+export function createPrediction(data: InsertPrediction): Prediction {
+  return wrapDbOperation("createPrediction", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+
+    db.prepare(`
+      INSERT INTO predictions (
+        id, type, title, description, confidence_score, confidence_level, status,
+        suggested_action, action_data, auto_execute, requires_user_approval,
+        reasoning, data_sources_used, related_pattern_ids, predicted_for, valid_until,
+        priority, impact_score, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.type,
+      data.title,
+      data.description,
+      data.confidenceScore,
+      data.confidenceLevel,
+      data.status || "pending",
+      data.suggestedAction,
+      data.actionData || null,
+      data.autoExecute ? 1 : 0,
+      data.requiresUserApproval !== undefined ? (data.requiresUserApproval ? 1 : 0) : 1,
+      data.reasoning,
+      data.dataSourcesUsed,
+      data.relatedPatternIds || null,
+      data.predictedFor || null,
+      data.validUntil || null,
+      data.priority || "medium",
+      data.impactScore || null,
+      now,
+      now
+    );
+
+    return getPredictionById(id)!;
+  });
+}
+
+export function getPredictionById(id: string): Prediction | undefined {
+  return wrapDbOperation("getPredictionById", () => {
+    const row = db.prepare(`SELECT * FROM predictions WHERE id = ?`).get(id) as PredictionRow | undefined;
+    return row ? mapPrediction(row) : undefined;
+  });
+}
+
+export function getAllPredictions(filters?: { status?: string; type?: string; limit?: number }): Prediction[] {
+  return wrapDbOperation("getAllPredictions", () => {
+    let query = `SELECT * FROM predictions WHERE 1=1`;
+    const params: any[] = [];
+
+    if (filters?.status) {
+      query += ` AND status = ?`;
+      params.push(filters.status);
+    }
+    if (filters?.type) {
+      query += ` AND type = ?`;
+      params.push(filters.type);
+    }
+
+    query += ` ORDER BY created_at DESC`;
+
+    if (filters?.limit) {
+      query += ` LIMIT ?`;
+      params.push(filters.limit);
+    }
+
+    const rows = db.prepare(query).all(...params) as PredictionRow[];
+    return rows.map(mapPrediction);
+  });
+}
+
+export function getPendingPredictions(): Prediction[] {
+  return getAllPredictions({ status: "pending" });
+}
+
+export function updatePrediction(id: string, data: Partial<InsertPrediction> & { status?: string; executedAt?: string; userFeedback?: string; userFeedbackNote?: string; validatedAt?: string; validationResult?: string; notificationSent?: boolean; notifiedAt?: string }): Prediction | undefined {
+  return wrapDbOperation("updatePrediction", () => {
+    const now = getCurrentTimestamp();
+    const updates: string[] = ["updated_at = ?"];
+    const values: any[] = [now];
+
+    if (data.title !== undefined) { updates.push("title = ?"); values.push(data.title); }
+    if (data.description !== undefined) { updates.push("description = ?"); values.push(data.description); }
+    if (data.status !== undefined) { updates.push("status = ?"); values.push(data.status); }
+    if (data.confidenceScore !== undefined) { updates.push("confidence_score = ?"); values.push(data.confidenceScore); }
+    if (data.confidenceLevel !== undefined) { updates.push("confidence_level = ?"); values.push(data.confidenceLevel); }
+    if (data.suggestedAction !== undefined) { updates.push("suggested_action = ?"); values.push(data.suggestedAction); }
+    if (data.actionData !== undefined) { updates.push("action_data = ?"); values.push(data.actionData); }
+    if (data.autoExecute !== undefined) { updates.push("auto_execute = ?"); values.push(data.autoExecute ? 1 : 0); }
+    if (data.requiresUserApproval !== undefined) { updates.push("requires_user_approval = ?"); values.push(data.requiresUserApproval ? 1 : 0); }
+    if (data.executedAt !== undefined) { updates.push("executed_at = ?"); values.push(data.executedAt); }
+    if (data.userFeedback !== undefined) { updates.push("user_feedback = ?"); values.push(data.userFeedback); }
+    if (data.userFeedbackNote !== undefined) { updates.push("user_feedback_note = ?"); values.push(data.userFeedbackNote); }
+    if (data.validatedAt !== undefined) { updates.push("validated_at = ?"); values.push(data.validatedAt); }
+    if (data.validationResult !== undefined) { updates.push("validation_result = ?"); values.push(data.validationResult); }
+    if (data.priority !== undefined) { updates.push("priority = ?"); values.push(data.priority); }
+    if (data.impactScore !== undefined) { updates.push("impact_score = ?"); values.push(data.impactScore); }
+    if (data.notificationSent !== undefined) { updates.push("notification_sent = ?"); values.push(data.notificationSent ? 1 : 0); }
+    if (data.notifiedAt !== undefined) { updates.push("notified_at = ?"); values.push(data.notifiedAt); }
+
+    values.push(id);
+    db.prepare(`UPDATE predictions SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+    return getPredictionById(id);
+  });
+}
+
+export function deletePrediction(id: string): boolean {
+  return wrapDbOperation("deletePrediction", () => {
+    const result = db.prepare(`DELETE FROM predictions WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function getPredictionStats(): { total: number; byStatus: Record<string, number>; byType: Record<string, number> } {
+  return wrapDbOperation("getPredictionStats", () => {
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM predictions`).get() as { count: number }).count;
+
+    const byStatusRows = db.prepare(`
+      SELECT status, COUNT(*) as count FROM predictions GROUP BY status
+    `).all() as Array<{ status: string; count: number }>;
+    const byStatus: Record<string, number> = {};
+    byStatusRows.forEach(row => { byStatus[row.status] = row.count; });
+
+    const byTypeRows = db.prepare(`
+      SELECT type, COUNT(*) as count FROM predictions GROUP BY type
+    `).all() as Array<{ type: string; count: number }>;
+    const byType: Record<string, number> = {};
+    byTypeRows.forEach(row => { byType[row.type] = row.count; });
+
+    return { total, byStatus, byType };
+  });
+}
+
+// Pattern CRUD operations
+export function createPattern(data: InsertPattern): Pattern {
+  return wrapDbOperation("createPattern", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+
+    db.prepare(`
+      INSERT INTO patterns (
+        id, type, name, description, pattern_definition, frequency, strength,
+        data_source, sample_size, time_range_start, time_range_end,
+        validation_count, is_active, prediction_count, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.type,
+      data.name,
+      data.description,
+      data.patternDefinition,
+      data.frequency,
+      data.strength,
+      data.dataSource,
+      data.sampleSize,
+      data.timeRangeStart,
+      data.timeRangeEnd,
+      data.validationCount || 0,
+      data.isActive !== undefined ? (data.isActive ? 1 : 0) : 1,
+      data.predictionCount || 0,
+      now,
+      now
+    );
+
+    return getPatternById(id)!;
+  });
+}
+
+export function getPatternById(id: string): Pattern | undefined {
+  return wrapDbOperation("getPatternById", () => {
+    const row = db.prepare(`SELECT * FROM patterns WHERE id = ?`).get(id) as PatternRow | undefined;
+    return row ? mapPattern(row) : undefined;
+  });
+}
+
+export function getAllPatterns(filters?: { type?: string; isActive?: boolean; dataSource?: string }): Pattern[] {
+  return wrapDbOperation("getAllPatterns", () => {
+    let query = `SELECT * FROM patterns WHERE 1=1`;
+    const params: any[] = [];
+
+    if (filters?.type) {
+      query += ` AND type = ?`;
+      params.push(filters.type);
+    }
+    if (filters?.isActive !== undefined) {
+      query += ` AND is_active = ?`;
+      params.push(filters.isActive ? 1 : 0);
+    }
+    if (filters?.dataSource) {
+      query += ` AND data_source = ?`;
+      params.push(filters.dataSource);
+    }
+
+    query += ` ORDER BY created_at DESC`;
+
+    const rows = db.prepare(query).all(...params) as PatternRow[];
+    return rows.map(mapPattern);
+  });
+}
+
+export function getActivePatterns(): Pattern[] {
+  return getAllPatterns({ isActive: true });
+}
+
+export function updatePattern(id: string, data: Partial<InsertPattern> & { lastValidatedAt?: string; accuracyRate?: string; isSuperseded?: boolean; supersededBy?: string; lastUsedAt?: string }): Pattern | undefined {
+  return wrapDbOperation("updatePattern", () => {
+    const now = getCurrentTimestamp();
+    const updates: string[] = ["updated_at = ?"];
+    const values: any[] = [now];
+
+    if (data.name !== undefined) { updates.push("name = ?"); values.push(data.name); }
+    if (data.description !== undefined) { updates.push("description = ?"); values.push(data.description); }
+    if (data.strength !== undefined) { updates.push("strength = ?"); values.push(data.strength); }
+    if (data.lastValidatedAt !== undefined) { updates.push("last_validated_at = ?"); values.push(data.lastValidatedAt); }
+    if (data.validationCount !== undefined) { updates.push("validation_count = ?"); values.push(data.validationCount); }
+    if (data.accuracyRate !== undefined) { updates.push("accuracy_rate = ?"); values.push(data.accuracyRate); }
+    if (data.isActive !== undefined) { updates.push("is_active = ?"); values.push(data.isActive ? 1 : 0); }
+    if (data.isSuperseded !== undefined) { updates.push("is_superseded = ?"); values.push(data.isSuperseded ? 1 : 0); }
+    if (data.supersededBy !== undefined) { updates.push("superseded_by = ?"); values.push(data.supersededBy); }
+    if (data.predictionCount !== undefined) { updates.push("prediction_count = ?"); values.push(data.predictionCount); }
+    if (data.lastUsedAt !== undefined) { updates.push("last_used_at = ?"); values.push(data.lastUsedAt); }
+
+    values.push(id);
+    db.prepare(`UPDATE patterns SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+    return getPatternById(id);
+  });
+}
+
+export function deletePattern(id: string): boolean {
+  return wrapDbOperation("deletePattern", () => {
+    const result = db.prepare(`DELETE FROM patterns WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function incrementPatternUsage(id: string): void {
+  wrapDbOperation("incrementPatternUsage", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      UPDATE patterns
+      SET prediction_count = prediction_count + 1, last_used_at = ?
+      WHERE id = ?
+    `).run(now, id);
+  });
+}
+
+// Anticipatory Action operations
+export function createAnticipatoryAction(data: InsertAnticipatoryAction): AnticipatoryAction {
+  return wrapDbOperation("createAnticipatoryAction", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+
+    db.prepare(`
+      INSERT INTO anticipatory_actions (
+        id, prediction_id, action_type, action_description, action_data,
+        executed_at, success, result, error_message, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.predictionId,
+      data.actionType,
+      data.actionDescription,
+      data.actionData,
+      data.executedAt,
+      data.success ? 1 : 0,
+      data.result || null,
+      data.errorMessage || null,
+      now
+    );
+
+    return getAnticipatoryActionById(id)!;
+  });
+}
+
+export function getAnticipatoryActionById(id: string): AnticipatoryAction | undefined {
+  return wrapDbOperation("getAnticipatoryActionById", () => {
+    const row = db.prepare(`SELECT * FROM anticipatory_actions WHERE id = ?`).get(id) as AnticipatoryActionRow | undefined;
+    return row ? mapAnticipatoryAction(row) : undefined;
+  });
+}
+
+export function getAnticipatoryActionsByPrediction(predictionId: string): AnticipatoryAction[] {
+  return wrapDbOperation("getAnticipatoryActionsByPrediction", () => {
+    const rows = db.prepare(`
+      SELECT * FROM anticipatory_actions WHERE prediction_id = ? ORDER BY executed_at DESC
+    `).all(predictionId) as AnticipatoryActionRow[];
+    return rows.map(mapAnticipatoryAction);
+  });
+}
+
+// Prediction Feedback operations
+export function createPredictionFeedback(data: InsertPredictionFeedback): PredictionFeedback {
+  return wrapDbOperation("createPredictionFeedback", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+
+    db.prepare(`
+      INSERT INTO prediction_feedback (
+        id, prediction_id, was_accurate, accuracy_score, feedback_type,
+        feedback_note, lessons_learned, adjustments_made, improved_confidence,
+        affected_pattern_ids, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.predictionId,
+      data.wasAccurate ? 1 : 0,
+      data.accuracyScore || null,
+      data.feedbackType,
+      data.feedbackNote || null,
+      data.lessonsLearned || null,
+      data.adjustmentsMade || null,
+      data.improvedConfidence !== undefined ? (data.improvedConfidence ? 1 : 0) : null,
+      data.affectedPatternIds || null,
+      now
+    );
+
+    return getPredictionFeedbackById(id)!;
+  });
+}
+
+export function getPredictionFeedbackById(id: string): PredictionFeedback | undefined {
+  return wrapDbOperation("getPredictionFeedbackById", () => {
+    const row = db.prepare(`SELECT * FROM prediction_feedback WHERE id = ?`).get(id) as PredictionFeedbackRow | undefined;
+    return row ? mapPredictionFeedback(row) : undefined;
+  });
+}
+
+export function getPredictionFeedbackByPrediction(predictionId: string): PredictionFeedback[] {
+  return wrapDbOperation("getPredictionFeedbackByPrediction", () => {
+    const rows = db.prepare(`
+      SELECT * FROM prediction_feedback WHERE prediction_id = ? ORDER BY created_at DESC
+    `).all(predictionId) as PredictionFeedbackRow[];
+    return rows.map(mapPredictionFeedback);
+  });
+}
+
+// Get prediction with all related details
+export function getPredictionWithDetails(id: string): PredictionWithDetails | undefined {
+  return wrapDbOperation("getPredictionWithDetails", () => {
+    const prediction = getPredictionById(id);
+    if (!prediction) return undefined;
+
+    const actions = getAnticipatoryActionsByPrediction(id);
+    const feedbacks = getPredictionFeedbackByPrediction(id);
+
+    let relatedPatterns: Pattern[] = [];
+    if (prediction.relatedPatternIds) {
+      try {
+        const patternIds = JSON.parse(prediction.relatedPatternIds) as string[];
+        relatedPatterns = patternIds
+          .map(pid => getPatternById(pid))
+          .filter((p): p is Pattern => p !== undefined);
+      } catch (e) {
+        // Invalid JSON, skip
+      }
+    }
+
+    return {
+      ...prediction,
+      relatedPatterns,
+      anticipatoryAction: actions[0], // Most recent
+      feedback: feedbacks[0], // Most recent
+    };
   });
 }
 

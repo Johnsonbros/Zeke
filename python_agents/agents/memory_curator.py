@@ -569,26 +569,64 @@ class MemoryCuratorAgent(BaseAgent):
     ) -> dict[str, Any]:
         """
         Save a new memory for future retrieval.
-        
-        This method is a placeholder for future implementation of memory
-        storage. Currently returns a stub response.
-        
+
+        Stores the memory in the database via the Node.js bridge, with optional
+        metadata and importance scoring.
+
         Args:
             content: The memory content to store
             category: Category of memory (fact, preference, event, etc.)
             importance: How important this memory is (0-1)
             metadata: Additional metadata to store
-            
+
         Returns:
             dict: Result with success status and memory ID
         """
         logger.info(f"Memory save requested: category={category}, importance={importance}")
-        return {
-            "success": True,
-            "message": "Memory storage will be implemented in a future update",
-            "stored": False,
-            "content_preview": content[:100] if content else "",
-        }
+
+        try:
+            bridge = get_bridge()
+
+            # Prepare metadata as JSON string
+            metadata_dict = metadata or {}
+            metadata_dict["category"] = category
+            metadata_dict["importance"] = importance
+
+            # Call Node.js create_memory_note tool via bridge
+            result = await bridge.execute_tool("create_memory_note", {
+                "content": content,
+                "confidenceScore": importance,
+                "metadata": json.dumps(metadata_dict)
+            })
+
+            if result.get("success"):
+                memory_id = result.get("data", {}).get("id", "unknown")
+                logger.info(f"Memory saved successfully: id={memory_id}")
+                return {
+                    "success": True,
+                    "message": "Memory saved successfully",
+                    "stored": True,
+                    "memory_id": memory_id,
+                    "content_preview": content[:100] if content else "",
+                }
+            else:
+                error_msg = result.get("error", "Unknown error")
+                logger.error(f"Failed to save memory: {error_msg}")
+                return {
+                    "success": False,
+                    "message": f"Failed to save memory: {error_msg}",
+                    "stored": False,
+                    "content_preview": content[:100] if content else "",
+                }
+
+        except Exception as e:
+            logger.error(f"Exception while saving memory: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Exception while saving memory: {str(e)}",
+                "stored": False,
+                "content_preview": content[:100] if content else "",
+            }
     
     async def _execute(self, input_text: str, context: AgentContext) -> str:
         """

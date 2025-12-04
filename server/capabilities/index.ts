@@ -102,6 +102,8 @@ export {
 
 export {
   predictionTools,
+  predictionToolDefinitions,
+  predictionToolNames,
 } from "./predictions";
 
 export {
@@ -139,6 +141,7 @@ import { listToolDefinitions, listToolPermissions } from "./lists";
 import { foodToolDefinitions, foodToolPermissions } from "./food";
 import { automationToolDefinitions, automationToolPermissions } from "./automations";
 import { weatherTools } from "./weather";
+import { predictionToolDefinitions } from "./predictions";
 import { knowledgeGraphToolDefinitions, knowledgeGraphToolPermissions } from "./knowledgeGraph";
 
 const weatherToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = weatherTools.map(tool => ({
@@ -158,6 +161,27 @@ const weatherToolPermissions: Record<string, (permissions: ToolPermissions) => b
 
 export const weatherToolNames = weatherTools.map(t => t.name);
 
+const predictionToolDefinitionsFormatted: OpenAI.Chat.ChatCompletionTool[] = predictionToolDefinitions.map(tool => ({
+  type: "function" as const,
+  function: {
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
+  },
+}));
+
+const predictionToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
+  build_fused_context: (p) => p.isAdmin,
+  get_active_patterns: (p) => p.isAdmin,
+  detect_anomalies: (p) => p.isAdmin,
+  create_prediction: (p) => p.isAdmin,
+  get_pending_predictions: (p) => p.isAdmin || p.canSetReminders,
+  execute_prediction: (p) => p.isAdmin,
+  record_prediction_feedback: (p) => p.isAdmin || p.canSetReminders,
+  get_prediction_accuracy_stats: (p) => p.isAdmin,
+  discover_new_patterns: (p) => p.isAdmin,
+};
+
 export const allToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   ...reminderToolDefinitions,
   ...searchToolDefinitions,
@@ -174,6 +198,7 @@ export const allToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   ...foodToolDefinitions,
   ...automationToolDefinitions,
   ...weatherToolDefinitions,
+  ...predictionToolDefinitionsFormatted,
   ...knowledgeGraphToolDefinitions,
 ];
 
@@ -193,5 +218,6 @@ export const allToolPermissions: Record<string, (permissions: ToolPermissions) =
   ...foodToolPermissions,
   ...automationToolPermissions,
   ...weatherToolPermissions,
+  ...predictionToolPermissions,
   ...knowledgeGraphToolPermissions,
 };
