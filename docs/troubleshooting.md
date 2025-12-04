@@ -25,11 +25,12 @@ This error occurs when Git detects an incomplete rebase operation. To resolve th
 
 ### Checking rebase status
 
-To check if a rebase is in progress:
+To check if a rebase is in progress, run:
 ```bash
-# Check for rebase state files
-ls -la .git/rebase-merge 2>/dev/null || ls -la .git/rebase-apply 2>/dev/null || echo "No rebase in progress"
+git status
 ```
+
+Git will show a message like "rebase in progress" if a rebase is ongoing, along with guidance on how to proceed.
 
 ### After aborting a rebase
 
@@ -51,5 +52,8 @@ If `npm run db:init` fails, ensure:
 
 If `script/bootstrap` fails:
 1. Ensure Python and Node.js are installed
-2. Run `npm ci` manually to see detailed errors
-3. Run `pip install uv` if uv is missing
+2. Run `npm ci` manually to see detailed errors. Look for:
+   - `ENOENT` errors indicating missing files or directories
+   - `EPERM` errors indicating permission issues
+   - Network-related errors if packages cannot be downloaded
+3. Run `pip install uv` if you see "uv: command not found"
