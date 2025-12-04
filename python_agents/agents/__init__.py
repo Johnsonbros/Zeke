@@ -89,6 +89,11 @@ from .limitless_analyst import (
     get_limitless_analyst,
 )
 
+from .foresight_strategist import (
+    ForesightStrategistAgent,
+    get_foresight_strategist,
+)
+
 from ..tracing import (
     TraceContext,
     TraceEvent,
@@ -145,6 +150,8 @@ __all__ = [
     "ContextBundle",
     "LifelogOverviewResult",
     "get_limitless_analyst",
+    "ForesightStrategistAgent",
+    "get_foresight_strategist",
     "TraceContext",
     "TraceEvent",
     "TraceEventType",

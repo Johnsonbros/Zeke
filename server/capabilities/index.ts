@@ -101,6 +101,10 @@ export {
 } from "./automations";
 
 export {
+  predictionTools,
+} from "./predictions";
+
+export {
   weatherTools,
   generateAIWeatherBriefing,
   checkAndSendSevereWeatherAlerts,

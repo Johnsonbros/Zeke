@@ -1880,3 +1880,219 @@ export interface LocationCheckInSettings {
   minIntervalMinutes: number;         // Min time between SMS (default: 30 minutes)
   recipientPhone?: string;            // Phone to send SMS to (defaults to master admin)
 }
+
+// ============================================
+// PREDICTIVE INTELLIGENCE ENGINE
+// ============================================
+
+// Prediction types for different categories of predictions
+export const predictionTypes = [
+  "schedule_optimization",
+  "supply_management",
+  "routine_deviation",
+  "energy_pattern",
+  "relationship_reminder",
+  "business_forecast",
+  "task_deadline_risk",
+  "conflict_prevention",
+  "wellness_suggestion",
+  "proactive_preparation"
+] as const;
+export type PredictionType = typeof predictionTypes[number];
+
+// Prediction confidence levels
+export const predictionConfidenceLevels = ["very_high", "high", "medium", "low"] as const;
+export type PredictionConfidenceLevel = typeof predictionConfidenceLevels[number];
+
+// Prediction statuses
+export const predictionStatuses = ["pending", "executed", "dismissed", "expired", "validated", "invalidated"] as const;
+export type PredictionStatus = typeof predictionStatuses[number];
+
+// Predictions table - stores AI-generated predictions about user needs
+export const predictions = sqliteTable("predictions", {
+  id: text("id").primaryKey(),
+  type: text("type", { enum: predictionTypes }).notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  confidenceScore: text("confidence_score").notNull(), // 0-1 scale, stored as text for precision
+  confidenceLevel: text("confidence_level", { enum: predictionConfidenceLevels }).notNull(),
+  status: text("status", { enum: predictionStatuses }).notNull().default("pending"),
+
+  // What action should be taken
+  suggestedAction: text("suggested_action").notNull(),
+  actionData: text("action_data"), // JSON data for the action
+  autoExecute: integer("auto_execute", { mode: "boolean" }).notNull().default(false),
+  requiresUserApproval: integer("requires_user_approval", { mode: "boolean" }).notNull().default(true),
+
+  // Prediction context
+  reasoning: text("reasoning").notNull(), // Why this prediction was made
+  dataSourcesUsed: text("data_sources_used").notNull(), // JSON array of data sources
+  relatedPatternIds: text("related_pattern_ids"), // JSON array of pattern IDs
+
+  // Timing
+  predictedFor: text("predicted_for"), // When this prediction applies
+  validUntil: text("valid_until"), // Expiration time for prediction
+  executedAt: text("executed_at"),
+
+  // Validation and learning
+  userFeedback: text("user_feedback", { enum: ["helpful", "not_helpful", "inaccurate", "accurate"] }),
+  userFeedbackNote: text("user_feedback_note"),
+  validatedAt: text("validated_at"),
+  validationResult: text("validation_result", { enum: ["correct", "incorrect", "partially_correct", "unknown"] }),
+
+  // Metadata
+  priority: text("priority", { enum: ["low", "medium", "high", "urgent"] }).notNull().default("medium"),
+  impactScore: text("impact_score"), // 0-1 scale for potential impact
+  notificationSent: integer("notification_sent", { mode: "boolean" }).notNull().default(false),
+  notifiedAt: text("notified_at"),
+
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertPredictionSchema = createInsertSchema(predictions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPrediction = z.infer<typeof insertPredictionSchema>;
+export type Prediction = typeof predictions.$inferSelect;
+
+// Pattern types for different categories of patterns
+export const patternTypes = [
+  "temporal",       // Time-based patterns (e.g., daily routines)
+  "behavioral",     // Behavior patterns (e.g., task completion habits)
+  "contextual",     // Context-based patterns (e.g., location-triggered behaviors)
+  "seasonal",       // Seasonal/cyclical patterns
+  "correlation",    // Correlated events
+  "anomaly"        // Anomalous patterns (deviations from norm)
+] as const;
+export type PatternType = typeof patternTypes[number];
+
+// Patterns table - stores discovered patterns from historical data
+export const patterns = sqliteTable("patterns", {
+  id: text("id").primaryKey(),
+  type: text("type", { enum: patternTypes }).notNull(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+
+  // Pattern definition
+  patternDefinition: text("pattern_definition").notNull(), // JSON describing the pattern
+  frequency: text("frequency").notNull(), // How often this pattern occurs
+  strength: text("strength").notNull(), // 0-1 scale for pattern strength
+
+  // Data context
+  dataSource: text("data_source").notNull(), // e.g., "calendar", "tasks", "location", "limitless"
+  sampleSize: integer("sample_size").notNull(), // Number of data points analyzed
+  timeRangeStart: text("time_range_start").notNull(),
+  timeRangeEnd: text("time_range_end").notNull(),
+
+  // Pattern validation
+  lastValidatedAt: text("last_validated_at"),
+  validationCount: integer("validation_count").default(0),
+  accuracyRate: text("accuracy_rate"), // 0-1 scale of prediction accuracy
+
+  // Pattern status
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  isSuperseded: integer("is_superseded", { mode: "boolean" }).notNull().default(false),
+  supersededBy: text("superseded_by"), // ID of pattern that replaced this
+
+  // Usage tracking
+  predictionCount: integer("prediction_count").default(0), // Times used for predictions
+  lastUsedAt: text("last_used_at"),
+
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertPatternSchema = createInsertSchema(patterns).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPattern = z.infer<typeof insertPatternSchema>;
+export type Pattern = typeof patterns.$inferSelect;
+
+// Anticipatory actions - logs of proactive actions taken by ZEKE
+export const anticipatoryActions = sqliteTable("anticipatory_actions", {
+  id: text("id").primaryKey(),
+  predictionId: text("prediction_id").notNull().references(() => predictions.id),
+  actionType: text("action_type").notNull(), // e.g., "send_sms", "create_task", "adjust_calendar"
+  actionDescription: text("action_description").notNull(),
+
+  // Action details
+  actionData: text("action_data").notNull(), // JSON of action parameters
+  executedAt: text("executed_at").notNull(),
+
+  // Results
+  success: integer("success", { mode: "boolean" }).notNull(),
+  result: text("result"), // JSON result from action
+  errorMessage: text("error_message"),
+
+  // User response
+  userResponsed: integer("user_responsed", { mode: "boolean" }).notNull().default(false),
+  userResponseType: text("user_response_type", { enum: ["positive", "negative", "neutral", "modified"] }),
+  userResponseNote: text("user_response_note"),
+  userRespondedAt: text("user_responded_at"),
+
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertAnicipatoryActionSchema = createInsertSchema(anticipatoryActions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAnticipatoryAction = z.infer<typeof insertAnicipatoryActionSchema>;
+export type AnticipatoryAction = typeof anticipatoryActions.$inferSelect;
+
+// Prediction feedback - tracks prediction accuracy for learning
+export const predictionFeedback = sqliteTable("prediction_feedback", {
+  id: text("id").primaryKey(),
+  predictionId: text("prediction_id").notNull().references(() => predictions.id),
+
+  // Feedback details
+  wasAccurate: integer("was_accurate", { mode: "boolean" }).notNull(),
+  accuracyScore: text("accuracy_score"), // 0-1 scale for partial accuracy
+  feedbackType: text("feedback_type", { enum: ["explicit_user", "implicit_behavior", "outcome_validation"] }).notNull(),
+  feedbackNote: text("feedback_note"),
+
+  // What was learned
+  lessonsLearned: text("lessons_learned"), // JSON array of insights
+  adjustmentsMade: text("adjustments_made"), // JSON describing model adjustments
+
+  // Impact on future predictions
+  improvedConfidence: integer("improved_confidence", { mode: "boolean" }),
+  affectedPatternIds: text("affected_pattern_ids"), // JSON array of patterns updated
+
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertPredictionFeedbackSchema = createInsertSchema(predictionFeedback).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPredictionFeedback = z.infer<typeof insertPredictionFeedbackSchema>;
+export type PredictionFeedback = typeof predictionFeedback.$inferSelect;
+
+// Prediction settings and preferences
+export interface PredictionSettings {
+  enabled: boolean;
+  autoExecuteHighConfidence: boolean; // Auto-execute predictions with >0.9 confidence
+  minConfidenceForNotification: number; // Min confidence (0-1) to send notifications
+  maxPredictionsPerDay: number;
+  notifyVia: "sms" | "web" | "both";
+  enabledPredictionTypes: PredictionType[];
+  learningEnabled: boolean; // Whether to use feedback for learning
+  analysisIntervalMinutes: number; // How often to run pattern analysis (default: 60)
+}
+
+// Extended prediction with related data
+export interface PredictionWithDetails extends Prediction {
+  relatedPatterns?: Pattern[];
+  anticipatoryAction?: AnticipatoryAction;
+  feedback?: PredictionFeedback;
+}
