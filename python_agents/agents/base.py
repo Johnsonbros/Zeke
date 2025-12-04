@@ -109,6 +109,7 @@ class AgentId(str, Enum):
     PERSONAL_DATA_STEWARD = "personal_data_steward"
     SAFETY_AUDITOR = "safety_auditor"
     LIMITLESS_ANALYST = "limitless_analyst"
+    FORESIGHT_STRATEGIST = "foresight_strategist"
 
 
 class AgentStatus(str, Enum):
