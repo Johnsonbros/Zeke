@@ -4174,34 +4174,40 @@ export async function registerRoutes(
             console.warn("[Overland] Skipping non-Point location:", location.type);
             continue;
           }
-          
+
           const [longitude, latitude] = location.geometry.coordinates;
           const props = location.properties || {};
-          
+
           // Extract properties from Overland payload
           const accuracy = props.horizontal_accuracy;
           const altitude = props.altitude;
           const speed = props.speed;
           const heading = props.course;
-          
+          const timestamp = props.timestamp;
+
           // Save to location history
-          createLocationHistory({
+          const savedLocation = createLocationHistory({
             latitude: String(latitude),
             longitude: String(longitude),
             accuracy: accuracy !== undefined ? String(accuracy) : undefined,
             altitude: altitude !== undefined ? String(altitude) : undefined,
             speed: speed !== undefined ? String(speed) : undefined,
             heading: heading !== undefined ? String(heading) : undefined,
-            source: "gps"
+            source: "overland"
           });
-          
+
           savedCount++;
+
+          // Log detailed info for the first location in the batch
+          if (savedCount === 1) {
+            console.log(`[Overland] GPS data received - Lat: ${latitude.toFixed(6)}, Lon: ${longitude.toFixed(6)}, Accuracy: ${accuracy ? accuracy.toFixed(0) + 'm' : 'N/A'}${timestamp ? ', Time: ' + new Date(timestamp * 1000).toISOString() : ''}`);
+          }
         } catch (locError) {
           console.error("[Overland] Error processing location:", locError);
         }
       }
-      
-      console.log(`[Overland] Saved ${savedCount}/${locations.length} locations`);
+
+      console.log(`[Overland] ✓ Saved ${savedCount}/${locations.length} location${savedCount !== 1 ? 's' : ''} from Overland GPS`);
       
       // Overland expects a specific response format
       res.json({ 

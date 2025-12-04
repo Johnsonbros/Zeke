@@ -743,7 +743,7 @@ export const locationHistory = sqliteTable("location_history", {
   altitude: text("altitude"),
   speed: text("speed"),
   heading: text("heading"),
-  source: text("source", { enum: ["gps", "network", "manual"] }).notNull().default("gps"),
+  source: text("source", { enum: ["gps", "network", "manual", "overland"] }).notNull().default("gps"),
   createdAt: text("created_at").notNull(),
 });
 
