@@ -2096,3 +2096,232 @@ export interface PredictionWithDetails extends Prediction {
   anticipatoryAction?: AnticipatoryAction;
   feedback?: PredictionFeedback;
 }
+
+// ============================================
+// AUTONOMOUS INTELLIGENCE SYSTEM
+// ============================================
+
+// User intents extracted from lifelogs and conversations
+export const userIntents = sqliteTable("user_intents", {
+  id: text("id").primaryKey(),
+  type: text("type", { enum: ["goal", "concern", "question"] }).notNull(),
+  description: text("description").notNull(),
+  confidence: text("confidence").notNull(), // 0-1 scale
+  context: text("context").notNull(),
+  source: text("source", { enum: ["lifelog", "conversation", "manual"] }).notNull(),
+  sourceId: text("source_id"),
+  relatedEntities: text("related_entities"), // JSON array
+  timeframe: text("timeframe"), // Natural language timeframe
+  priority: text("priority", { enum: ["low", "medium", "high", "urgent"] }).default("medium"),
+  status: text("status", { enum: ["active", "fulfilled", "expired", "archived"] }).notNull().default("active"),
+  extractedAt: text("extracted_at").notNull(),
+  fulfilledAt: text("fulfilled_at"),
+  outcome: text("outcome"),
+});
+
+export const insertUserIntentSchema = createInsertSchema(userIntents).omit({
+  id: true,
+});
+
+export type InsertUserIntent = z.infer<typeof insertUserIntentSchema>;
+export type UserIntent = typeof userIntents.$inferSelect;
+
+// User preferences learned from behavior and feedback
+export const userPreferences = sqliteTable("user_preferences", {
+  id: text("id").primaryKey(),
+  category: text("category").notNull(), // e.g., "food", "timing", "communication", "proactivity"
+  preference: text("preference").notNull(),
+  strength: text("strength", { enum: ["strong_prefer", "prefer", "neutral", "dislike", "strong_dislike"] }).notNull(),
+  confidence: text("confidence").notNull(), // 0-1 scale
+  context: text("context"),
+  source: text("source", { enum: ["lifelog", "conversation", "feedback", "observation"] }).notNull(),
+  sourceId: text("source_id"),
+  learnedAt: text("learned_at").notNull(),
+  lastConfirmedAt: text("last_confirmed_at"),
+  timesConfirmed: integer("times_confirmed").default(0),
+});
+
+export const insertUserPreferenceSchema = createInsertSchema(userPreferences).omit({
+  id: true,
+});
+
+export type InsertUserPreference = z.infer<typeof insertUserPreferenceSchema>;
+export type UserPreference = typeof userPreferences.$inferSelect;
+
+// User commitments extracted from conversations
+export const userCommitments = sqliteTable("user_commitments", {
+  id: text("id").primaryKey(),
+  commitment: text("commitment").notNull(),
+  confidence: text("confidence").notNull(), // 0-1 scale
+  context: text("context").notNull(),
+  source: text("source", { enum: ["lifelog", "conversation"] }).notNull(),
+  sourceId: text("source_id"),
+  relatedEntities: text("related_entities"), // JSON array
+  dueDate: text("due_date"),
+  priority: text("priority", { enum: ["low", "medium", "high", "urgent"] }).default("medium"),
+  status: text("status", { enum: ["active", "completed", "cancelled", "missed"] }).notNull().default("active"),
+  extractedAt: text("extracted_at").notNull(),
+  completedAt: text("completed_at"),
+  outcome: text("outcome"),
+});
+
+export const insertUserCommitmentSchema = createInsertSchema(userCommitments).omit({
+  id: true,
+});
+
+export type InsertUserCommitment = z.infer<typeof insertUserCommitmentSchema>;
+export type UserCommitment = typeof userCommitments.$inferSelect;
+
+// Intent categories for organization
+export const intentCategories = sqliteTable("intent_categories", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  createdAt: text("created_at").notNull(),
+});
+
+export type IntentCategory = typeof intentCategories.$inferSelect;
+
+// Semantic clusters - topics and themes from conversations
+export const semanticClusters = sqliteTable("semantic_clusters", {
+  id: text("id").primaryKey(),
+  topic: text("topic").notNull().unique(),
+  frequency: integer("frequency").notNull(),
+  sentiment: text("sentiment", { enum: ["positive", "neutral", "negative"] }).notNull(),
+  relatedTopics: text("related_topics"), // JSON array
+  firstMentioned: text("first_mentioned").notNull(),
+  lastMentioned: text("last_mentioned").notNull(),
+  contexts: text("contexts"), // JSON array - where this topic appears
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertSemanticClusterSchema = createInsertSchema(semanticClusters).omit({
+  id: true,
+});
+
+export type InsertSemanticCluster = z.infer<typeof insertSemanticClusterSchema>;
+export type SemanticCluster = typeof semanticClusters.$inferSelect;
+
+// Temporal patterns - recurring behaviors
+export const temporalPatterns = sqliteTable("temporal_patterns", {
+  id: text("id").primaryKey(),
+  pattern: text("pattern").notNull().unique(),
+  frequency: text("frequency", { enum: ["daily", "weekly", "monthly", "occasional"] }).notNull(),
+  timeOfDay: text("time_of_day"), // morning, afternoon, evening, night
+  dayOfWeek: text("day_of_week"), // Monday, Tuesday, etc.
+  confidence: text("confidence").notNull(), // 0-1 scale
+  observations: integer("observations").notNull(),
+  context: text("context").notNull(),
+  firstObserved: text("first_observed").notNull(),
+  lastObserved: text("last_observed").notNull(),
+});
+
+export const insertTemporalPatternSchema = createInsertSchema(temporalPatterns).omit({
+  id: true,
+});
+
+export type InsertTemporalPattern = z.infer<typeof insertTemporalPatternSchema>;
+export type TemporalPattern = typeof temporalPatterns.$inferSelect;
+
+// Contextual associations - trigger-response patterns
+export const contextualAssociations = sqliteTable("contextual_associations", {
+  id: text("id").primaryKey(),
+  trigger: text("trigger").notNull(),
+  response: text("response").notNull(),
+  context: text("context").notNull(),
+  confidence: text("confidence").notNull(), // 0-1 scale
+  observations: integer("observations").notNull(),
+  firstObserved: text("first_observed").notNull(),
+  lastObserved: text("last_observed").notNull(),
+});
+
+export const insertContextualAssociationSchema = createInsertSchema(contextualAssociations).omit({
+  id: true,
+});
+
+export type InsertContextualAssociation = z.infer<typeof insertContextualAssociationSchema>;
+export type ContextualAssociation = typeof contextualAssociations.$inferSelect;
+
+// Knowledge graph - entity relationships
+export const knowledgeGraph = sqliteTable("knowledge_graph", {
+  id: text("id").primaryKey(),
+  entity1: text("entity1").notNull(),
+  entity1Type: text("entity1_type").notNull(), // person, place, project, etc.
+  entity2: text("entity2").notNull(),
+  entity2Type: text("entity2_type").notNull(),
+  relationshipType: text("relationship_type").notNull(), // works_with, located_at, part_of, etc.
+  strength: text("strength").notNull(), // 0-1 confidence
+  evidence: text("evidence"), // JSON array of evidence
+  discoveredAt: text("discovered_at").notNull(),
+  lastSeen: text("last_seen").notNull(),
+});
+
+export const insertKnowledgeGraphSchema = createInsertSchema(knowledgeGraph).omit({
+  id: true,
+});
+
+export type InsertKnowledgeGraph = z.infer<typeof insertKnowledgeGraphSchema>;
+export type KnowledgeGraph = typeof knowledgeGraph.$inferSelect;
+
+// Proactive actions - actions ZEKE considers or takes
+export const proactiveActions = sqliteTable("proactive_actions", {
+  id: text("id").primaryKey(),
+  type: text("type", { enum: ["reminder", "suggestion", "insight", "alert", "question", "automation"] }).notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  confidence: text("confidence").notNull(), // 0-1 scale
+  priority: text("priority", { enum: ["low", "medium", "high", "urgent"] }).notNull(),
+  reasoning: text("reasoning").notNull(),
+  suggestedAction: text("suggested_action"),
+  requiresApproval: integer("requires_approval", { mode: "boolean" }).notNull(),
+  dataSourcesUsed: text("data_sources_used").notNull(), // JSON array
+  status: text("status", { enum: ["pending", "pending_approval", "approved", "rejected", "executed", "queued", "expired"] }).notNull(),
+  validUntil: text("valid_until"),
+  createdAt: text("created_at").notNull(),
+  executedAt: text("executed_at"),
+  outcome: text("outcome"),
+});
+
+export const insertProactiveActionSchema = createInsertSchema(proactiveActions).omit({
+  id: true,
+});
+
+export type InsertProactiveAction = z.infer<typeof insertProactiveActionSchema>;
+export type ProactiveAction = typeof proactiveActions.$inferSelect;
+
+// Proactivity settings - configuration for autonomous behavior
+export const proactivitySettings = sqliteTable("proactivity_settings", {
+  id: text("id").primaryKey(),
+  minConfidence: text("min_confidence").notNull().default("0.7"), // 0-1 scale
+  maxActionsPerHour: integer("max_actions_per_hour").notNull().default(3),
+  maxActionsPerDay: integer("max_actions_per_day").notNull().default(10),
+  quietHoursStart: text("quiet_hours_start"), // "22:00"
+  quietHoursEnd: text("quiet_hours_end"), // "07:00"
+  preferredNotificationMethods: text("preferred_notification_methods"), // JSON array: ["sms", "push", "silent"]
+  autoExecuteThreshold: text("auto_execute_threshold").notNull().default("0.9"), // Confidence threshold for auto-execution
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertProactivitySettingSchema = createInsertSchema(proactivitySettings).omit({
+  id: true,
+});
+
+export type InsertProactivitySetting = z.infer<typeof insertProactivitySettingSchema>;
+export type ProactivitySetting = typeof proactivitySettings.$inferSelect;
+
+// Action feedback - learning from user responses
+export const actionFeedback = sqliteTable("action_feedback", {
+  id: text("id").primaryKey(),
+  actionId: text("action_id").notNull().references(() => proactiveActions.id),
+  actionType: text("action_type").notNull(),
+  feedbackType: text("feedback_type", { enum: ["positive", "negative", "neutral", "approved", "rejected"] }).notNull(),
+  comments: text("comments"),
+  providedAt: text("provided_at").notNull(),
+});
+
+export const insertActionFeedbackSchema = createInsertSchema(actionFeedback).omit({
+  id: true,
+});
+
+export type InsertActionFeedback = z.infer<typeof insertActionFeedbackSchema>;
+export type ActionFeedback = typeof actionFeedback.$inferSelect;

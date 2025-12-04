@@ -9,6 +9,7 @@ import { initializeConversationSummarizer } from "./jobs/conversationSummarizer"
 import { initializeVoicePipeline, startVoicePipeline, isVoicePipelineAvailable } from "./voice";
 import { initializeLimitlessDigest } from "./limitlessDigest";
 import { initializeLimitlessProcessor } from "./jobs/limitlessProcessor";
+import { initializeAutonomousIntegration } from "./jobs/autonomousIntegration";
 
 export { log };
 
@@ -92,6 +93,10 @@ app.use((req, res, next) => {
   initializeLimitlessDigest();
   initializeLimitlessProcessor();
   log("Limitless enhanced features initialized", "startup");
+
+  // Initialize Autonomous Intelligence System
+  initializeAutonomousIntegration();
+  log("Autonomous intelligence system initialized", "startup");
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
