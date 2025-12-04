@@ -158,16 +158,48 @@ export async function executeGroceryTool(
         category?: string;
         added_by?: string;
       };
-      
+
       try {
+        // Smart duplicate detection: check if similar item already exists
+        const existingItems = getAllGroceryItems();
+        const normalizedName = name.toLowerCase().trim();
+
+        // Check for exact match (case-insensitive)
+        const exactMatch = existingItems.find(
+          item => !item.purchased && item.name.toLowerCase().trim() === normalizedName
+        );
+
+        if (exactMatch) {
+          // If exact match found, inform user instead of adding duplicate
+          return JSON.stringify({
+            success: false,
+            duplicate: true,
+            message: `"${exactMatch.name}" is already on the grocery list (${exactMatch.quantity})`,
+            existingItem: {
+              id: exactMatch.id,
+              name: exactMatch.name,
+              quantity: exactMatch.quantity,
+              category: exactMatch.category,
+            },
+          });
+        }
+
+        // Check for close matches (partial match) to warn about potential duplicates
+        const closeMatches = existingItems.filter(item => {
+          if (item.purchased) return false;
+          const itemName = item.name.toLowerCase().trim();
+          // Check if one contains the other
+          return itemName.includes(normalizedName) || normalizedName.includes(itemName);
+        });
+
         const item = createGroceryItem({
           name,
           quantity: quantity || "1",
           category: category || "Other",
           addedBy: added_by || "Nate",
         });
-        
-        return JSON.stringify({
+
+        const response: any = {
           success: true,
           message: `Added "${name}" to the grocery list`,
           item: {
@@ -177,7 +209,18 @@ export async function executeGroceryTool(
             category: item.category,
             addedBy: item.addedBy,
           },
-        });
+        };
+
+        // If close matches found, include them in the response
+        if (closeMatches.length > 0) {
+          response.warning = `Similar items already on list: ${closeMatches.map(m => m.name).join(', ')}`;
+          response.similarItems = closeMatches.map(m => ({
+            name: m.name,
+            quantity: m.quantity,
+          }));
+        }
+
+        return JSON.stringify(response);
       } catch (error) {
         return JSON.stringify({ success: false, error: "Failed to add item to grocery list" });
       }

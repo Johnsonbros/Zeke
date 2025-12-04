@@ -248,18 +248,53 @@ export async function executeTaskTool(
       };
       
       try {
+        // Smart priority suggestion based on due date and keywords
+        let suggestedPriority = priority || "medium";
+        let priorityReason = "";
+
+        if (!priority && due_date) {
+          // Auto-suggest priority based on due date
+          const dueDateTime = new Date(due_date).getTime();
+          const now = new Date().getTime();
+          const daysUntilDue = (dueDateTime - now) / (1000 * 60 * 60 * 24);
+
+          if (daysUntilDue < 1) {
+            suggestedPriority = "high";
+            priorityReason = "Due today/overdue - auto-set to high priority";
+          } else if (daysUntilDue < 3) {
+            suggestedPriority = "high";
+            priorityReason = "Due within 3 days - auto-set to high priority";
+          } else if (daysUntilDue < 7) {
+            suggestedPriority = "medium";
+            priorityReason = "Due within a week - auto-set to medium priority";
+          } else {
+            suggestedPriority = "low";
+            priorityReason = "Due date is far out - auto-set to low priority";
+          }
+        }
+
+        // Check for urgency keywords in title or description
+        if (!priority) {
+          const urgencyKeywords = /urgent|asap|immediately|critical|emergency|today|now/i;
+          const combinedText = `${title} ${description || ""}`;
+          if (urgencyKeywords.test(combinedText)) {
+            suggestedPriority = "high";
+            priorityReason = "Urgency keywords detected - auto-set to high priority";
+          }
+        }
+
         const task = createTask({
           title,
           description: description || "",
-          priority: priority || "medium",
+          priority: suggestedPriority,
           dueDate: due_date || null,
           category: category || "personal",
         });
-        
+
         onTaskCreated(task).catch(err => {
           console.error("[TaskTool] Entity extraction failed:", err);
         });
-        
+
         let message = `Added task: "${title}"`;
         if (due_date) {
           const dueStr = new Date(due_date).toLocaleDateString("en-US", {
@@ -270,7 +305,10 @@ export async function executeTaskTool(
           });
           message += ` (due ${dueStr})`;
         }
-        
+        if (priorityReason) {
+          message += `. ${priorityReason}`;
+        }
+
         return JSON.stringify({
           success: true,
           message,

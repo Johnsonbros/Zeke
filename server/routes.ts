@@ -5490,28 +5490,32 @@ export async function registerRoutes(
       
       const systemMetrics = getSystemMetrics(days);
       const { qualityStats } = systemMetrics;
-      
+
       // Calculate metrics for dashboard
       const totalConversations = qualityStats.totalConversations || 0;
-      
+
       // Success rate is already a percentage, convert to 0-1 range
       const avgToolSuccessRate = (qualityStats.overallSuccessRate || 0) / 100;
-      
-      // For response time, retry rate, and follow-up rate we need to query additional data
-      // For now, use defaults until we add these to the quality stats query
-      const avgResponseTimeMs = 0; // TODO: Add average tool duration to quality stats
-      const avgRetryRate = 0; // TODO: Track retry patterns
-      const avgFollowUpNeeded = 0; // TODO: Track follow-up patterns
-      
-      // Determine trend based on total conversations (simple heuristic for now)
-      // In the future, compare with previous period
+
+      // Get metrics from quality stats (now computed from actual data)
+      const avgResponseTimeMs = qualityStats.averageResponseTimeMs || 0;
+      const avgRetryRate = qualityStats.retryRate || 0;
+      const avgFollowUpNeeded = qualityStats.followUpRate || 0;
+
+      // Determine trend based on total conversations and quality metrics
       let recentTrend: "improving" | "stable" | "declining" = "stable";
-      if (totalConversations > 10 && avgToolSuccessRate >= 0.8) {
-        recentTrend = "improving";
+      if (totalConversations > 10) {
+        // Quality is improving if success rate is high, retry and follow-up rates are low
+        const qualityScore = (avgToolSuccessRate * 0.5) + ((1 - avgRetryRate) * 0.25) + ((1 - avgFollowUpNeeded) * 0.25);
+        if (qualityScore >= 0.75) {
+          recentTrend = "improving";
+        } else if (qualityScore < 0.5) {
+          recentTrend = "declining";
+        }
       } else if (totalConversations > 5 && avgToolSuccessRate < 0.5) {
         recentTrend = "declining";
       }
-      
+
       res.json({
         totalConversations,
         avgToolSuccessRate,
