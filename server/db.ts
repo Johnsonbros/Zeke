@@ -4650,6 +4650,40 @@ export function acknowledgeAllProximityAlerts(): number {
   });
 }
 
+export function getProximityAlertsForPlace(savedPlaceId: string, limit: number = 20): ProximityAlert[] {
+  return wrapDbOperation("getProximityAlertsForPlace", () => {
+    const rows = db.prepare(`
+      SELECT * FROM proximity_alerts
+      WHERE saved_place_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(savedPlaceId, limit) as ProximityAlertRow[];
+    return rows.map(mapProximityAlert);
+  });
+}
+
+export function getRecentAlertsForPlace(savedPlaceId: string, minutesAgo: number = 30): ProximityAlert[] {
+  return wrapDbOperation("getRecentAlertsForPlace", () => {
+    const cutoffTime = new Date(Date.now() - minutesAgo * 60 * 1000).toISOString();
+    const rows = db.prepare(`
+      SELECT * FROM proximity_alerts
+      WHERE saved_place_id = ? AND created_at > ?
+      ORDER BY created_at DESC
+    `).all(savedPlaceId, cutoffTime) as ProximityAlertRow[];
+    return rows.map(mapProximityAlert);
+  });
+}
+
+export function deleteOldProximityAlerts(daysOld: number = 30): number {
+  return wrapDbOperation("deleteOldProximityAlerts", () => {
+    const cutoffTime = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000).toISOString();
+    const result = db.prepare(`
+      DELETE FROM proximity_alerts WHERE created_at < ?
+    `).run(cutoffTime);
+    return result.changes;
+  });
+}
+
 // ============================================
 // LOCATION CHECK-IN STATE TRACKING
 // ============================================

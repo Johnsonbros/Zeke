@@ -96,6 +96,9 @@ import {
   getUnacknowledgedAlerts,
   acknowledgeProximityAlert,
   acknowledgeAllProximityAlerts,
+  getProximityAlertsForPlace,
+  getRecentAlertsForPlace,
+  deleteOldProximityAlerts,
   findNearbyPlaces,
   checkGroceryProximity,
   calculateDistance,
@@ -3942,6 +3945,30 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Acknowledge all alerts error:", error);
       res.status(500).json({ error: error.message || "Failed to acknowledge all alerts" });
+    }
+  });
+
+  // GET /api/location/places/:id/alerts - Get proximity alerts for a specific place
+  app.get("/api/location/places/:id/alerts", (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const alerts = getProximityAlertsForPlace(req.params.id, limit);
+      res.json(alerts);
+    } catch (error: any) {
+      console.error("Get place alerts error:", error);
+      res.status(500).json({ error: error.message || "Failed to get alerts for place" });
+    }
+  });
+
+  // DELETE /api/location/alerts/old - Delete old proximity alerts
+  app.delete("/api/location/alerts/old", (req, res) => {
+    try {
+      const daysOld = parseInt(req.query.daysOld as string) || 30;
+      const count = deleteOldProximityAlerts(daysOld);
+      res.json({ deleted: count });
+    } catch (error: any) {
+      console.error("Delete old alerts error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete old alerts" });
     }
   });
 

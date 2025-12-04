@@ -7,9 +7,12 @@
  * Features:
  * - Runs every 5 minutes via node-cron
  * - Detects arrivals/departures using GPS proximity (150m threshold)
- * - Generates smart, contextual messages using the context router
+ * - Predictive proximity alerts with velocity-based radius adjustment
+ * - Generates smart, contextual messages using AI
  * - Throttles SMS delivery (max 10/day, 30min intervals)
  * - Tracks check-in history in location_state_tracking table
+ * - Creates proximity_alerts records for places with alerts enabled
+ * - Prevents alert spam with 30-minute cooldown per location
  */
 
 import * as cron from "node-cron";
@@ -24,6 +27,12 @@ import {
   getLastCheckInTime,
   getAllTasks,
   getAllGroceryItems,
+  getPlacesWithProximityAlerts,
+  createProximityAlert,
+  getRecentAlertsForPlace,
+  getLocationHistory,
+  getTasksByPlace,
+  getRemindersByPlace,
 } from "./db";
 import { getUpcomingEvents } from "./googleCalendar";
 import { MASTER_ADMIN_PHONE } from "@shared/schema";
@@ -88,6 +97,211 @@ export function getLocationCheckInSettings() {
  */
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   return calculateDistance(lat1, lon1, lat2, lon2);
+}
+
+/**
+ * Calculate approach velocity based on recent location history
+ * Returns velocity in meters per second (positive = approaching, negative = moving away)
+ */
+function calculateApproachVelocity(
+  currentLocation: LocationHistory,
+  targetLat: number,
+  targetLon: number
+): number | null {
+  try {
+    // Get location history from the last 15 minutes
+    const history = getLocationHistory(10);
+    if (history.length < 2) {
+      return null;
+    }
+
+    const currentLat = parseFloat(currentLocation.latitude);
+    const currentLon = parseFloat(currentLocation.longitude);
+    const currentDistance = haversineDistance(currentLat, currentLon, targetLat, targetLon);
+
+    // Find a location from 5-15 minutes ago for comparison
+    const now = new Date(currentLocation.createdAt);
+    const previous = history.find(loc => {
+      const locTime = new Date(loc.createdAt);
+      const minutesAgo = (now.getTime() - locTime.getTime()) / (1000 * 60);
+      return minutesAgo >= 5 && minutesAgo <= 15;
+    });
+
+    if (!previous) {
+      return null;
+    }
+
+    const prevLat = parseFloat(previous.latitude);
+    const prevLon = parseFloat(previous.longitude);
+    const prevDistance = haversineDistance(prevLat, prevLon, targetLat, targetLon);
+
+    // Calculate time difference in seconds
+    const timeDiff = (now.getTime() - new Date(previous.createdAt).getTime()) / 1000;
+    if (timeDiff === 0) {
+      return null;
+    }
+
+    // Velocity: positive if getting closer (approaching), negative if moving away
+    const velocity = (prevDistance - currentDistance) / timeDiff;
+    return velocity;
+  } catch (error) {
+    console.error("[Proximity Alert] Error calculating approach velocity:", error);
+    return null;
+  }
+}
+
+/**
+ * Calculate predictive alert distance based on approach velocity
+ * Returns the distance threshold at which to trigger an alert
+ */
+function getPredictiveAlertDistance(
+  baseRadius: number,
+  velocity: number | null
+): number {
+  if (!velocity || velocity <= 0) {
+    // Not approaching or velocity unknown, use base radius
+    return baseRadius;
+  }
+
+  // If approaching quickly, extend the alert radius to give more warning
+  // velocity is in m/s, so 1 m/s = 3.6 km/h
+  const speedKmh = velocity * 3.6;
+
+  if (speedKmh > 40) {
+    // Fast approach (e.g., driving), alert at 2x radius
+    return baseRadius * 2;
+  } else if (speedKmh > 15) {
+    // Medium speed (e.g., cycling), alert at 1.5x radius
+    return baseRadius * 1.5;
+  } else if (speedKmh > 3) {
+    // Slow approach (e.g., walking), alert at 1.2x radius
+    return baseRadius * 1.2;
+  }
+
+  // Very slow approach, use base radius
+  return baseRadius;
+}
+
+/**
+ * Determine alert type based on place and linked items
+ */
+function determineAlertType(place: SavedPlace): "grocery" | "reminder" | "general" {
+  // Check if it's a grocery store
+  if (place.category === 'grocery') {
+    return 'grocery';
+  }
+
+  // Check if there are linked tasks or reminders
+  try {
+    const tasks = getTasksByPlace(place.id);
+    const reminders = getRemindersByPlace(place.id);
+    if (tasks.length > 0 || reminders.length > 0) {
+      return 'reminder';
+    }
+  } catch (error) {
+    console.error("[Proximity Alert] Error checking linked items:", error);
+  }
+
+  return 'general';
+}
+
+/**
+ * Generate proximity alert message
+ */
+async function generateProximityAlertMessage(
+  place: SavedPlace,
+  distance: number,
+  alertType: "grocery" | "reminder" | "general"
+): Promise<string> {
+  try {
+    const client = getOpenAIClient();
+
+    // Gather relevant context based on alert type
+    let contextParts: string[] = [];
+
+    if (alertType === 'grocery') {
+      const groceryItems = getAllGroceryItems().filter(g => !g.purchased);
+      if (groceryItems.length > 0) {
+        const itemsList = groceryItems
+          .slice(0, 8)
+          .map(g => `- ${g.name}${g.quantity ? ` (${g.quantity})` : ''}`)
+          .join('\n');
+        contextParts.push(`Grocery list:\n${itemsList}`);
+      }
+    }
+
+    if (alertType === 'reminder') {
+      const tasks = getTasksByPlace(place.id).filter(t => !t.completed);
+      const reminders = getRemindersByPlace(place.id);
+
+      if (tasks.length > 0) {
+        const tasksList = tasks
+          .slice(0, 5)
+          .map(t => `- ${t.title}${t.dueDate ? ` (due: ${t.dueDate})` : ''}`)
+          .join('\n');
+        contextParts.push(`Tasks for this location:\n${tasksList}`);
+      }
+
+      if (reminders.length > 0) {
+        const remindersList = reminders
+          .slice(0, 3)
+          .map(r => `- ${r.title}`)
+          .join('\n');
+        contextParts.push(`Reminders for this location:\n${remindersList}`);
+      }
+    }
+
+    const contextString = contextParts.length > 0
+      ? contextParts.join('\n\n')
+      : 'No specific items or tasks linked to this location.';
+
+    const distanceText = distance < 1000
+      ? `${Math.round(distance)}m`
+      : `${(distance / 1000).toFixed(1)}km`;
+
+    const prompt = `You are ZEKE, Nate Johnson's personal AI assistant. Generate a proximity alert message:
+
+Location: ${place.name} (${place.category})
+Distance: ${distanceText} away
+Alert Type: ${alertType}
+
+Context:
+${contextString}
+
+Generate a brief, actionable SMS message (max 160 chars) that:
+1. Alerts user they're near ${place.name}
+2. Mentions relevant items/tasks if any
+3. Is concise and helpful
+
+Keep it short and direct.`;
+
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "You are ZEKE, a helpful personal AI assistant. Generate brief proximity alert messages."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      max_completion_tokens: 80,
+      temperature: 0.7,
+    });
+
+    const message = response.choices[0]?.message?.content?.trim() ||
+      `You're ${distanceText} from ${place.name}`;
+
+    return message;
+  } catch (error) {
+    console.error("[Proximity Alert] Error generating message:", error);
+    const distanceText = distance < 1000
+      ? `${Math.round(distance)}m`
+      : `${(distance / 1000).toFixed(1)}km`;
+    return `You're ${distanceText} from ${place.name}`;
+  }
 }
 
 /**
@@ -316,6 +530,69 @@ async function processLocationCheck(): Promise<void> {
           smsDeliveredAt,
           eventDetectedAt: new Date().toISOString(),
         });
+      }
+    }
+
+    // ============================================
+    // PROCESS PROXIMITY ALERTS
+    // ============================================
+
+    // Get places with proximity alerts enabled
+    const alertPlaces = getPlacesWithProximityAlerts();
+    if (alertPlaces.length > 0) {
+      console.log(`[Proximity Alert] Checking ${alertPlaces.length} places with alerts enabled`);
+
+      for (const place of alertPlaces) {
+        const placeLat = parseFloat(place.latitude);
+        const placeLon = parseFloat(place.longitude);
+        const distance = haversineDistance(currentLat, currentLon, placeLat, placeLon);
+
+        // Calculate approach velocity for predictive alerting
+        const velocity = calculateApproachVelocity(currentLocation, placeLat, placeLon);
+
+        // Get predictive alert distance based on approach velocity
+        const alertRadius = getPredictiveAlertDistance(
+          place.proximityRadiusMeters || 200,
+          velocity
+        );
+
+        // Check if within alert radius
+        const isWithinRadius = distance <= alertRadius;
+
+        if (isWithinRadius) {
+          // Check if we've recently alerted for this place (avoid spam)
+          const recentAlerts = getRecentAlertsForPlace(place.id, 30); // 30 minutes cooldown
+
+          if (recentAlerts.length === 0) {
+            // Determine alert type
+            const alertType = determineAlertType(place);
+
+            // Generate alert message
+            const alertMessage = await generateProximityAlertMessage(place, distance, alertType);
+
+            // Create proximity alert record
+            const alert = createProximityAlert({
+              savedPlaceId: place.id,
+              distanceMeters: distance.toFixed(2),
+              alertType,
+              alertMessage,
+              acknowledged: false,
+            });
+
+            console.log(`[Proximity Alert] ALERT created for ${place.name} at ${Math.round(distance)}m (threshold: ${Math.round(alertRadius)}m)`);
+
+            // Log velocity info if available
+            if (velocity !== null) {
+              const speedKmh = velocity * 3.6;
+              console.log(`[Proximity Alert] Approach velocity: ${speedKmh.toFixed(1)} km/h`);
+            }
+
+            // Note: Actual notification sending will be handled by the notification batcher
+            // which batches proximity alerts with other notifications
+          } else {
+            console.log(`[Proximity Alert] Skipping ${place.name} - alerted within last 30 minutes`);
+          }
+        }
       }
     }
 
