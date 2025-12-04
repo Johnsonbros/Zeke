@@ -1295,15 +1295,24 @@ export default function LocationPage() {
               const normalizedIndex = index / Math.max(totalPoints - 1, 1);
               const opacity = 0.3 + (normalizedIndex * 0.7);
               const radius = 4 + (normalizedIndex * 4);
-              
+
+              // Color-code by source: Overland = green, GPS = blue, Network = purple, Manual = orange
+              const sourceColors = {
+                overland: { fill: '#22c55e', stroke: '#16a34a' },
+                gps: { fill: '#3b82f6', stroke: '#1d4ed8' },
+                network: { fill: '#a855f7', stroke: '#7c3aed' },
+                manual: { fill: '#f97316', stroke: '#ea580c' }
+              };
+              const colors = sourceColors[location.source as keyof typeof sourceColors] || sourceColors.gps;
+
               return (
                 <CircleMarker
                   key={location.id}
                   center={[parseFloat(location.latitude), parseFloat(location.longitude)]}
                   radius={radius}
-                  fillColor="#3b82f6"
+                  fillColor={colors.fill}
                   fillOpacity={opacity}
-                  color="#1d4ed8"
+                  color={colors.stroke}
                   weight={1}
                   opacity={opacity}
                 >
@@ -1319,8 +1328,18 @@ export default function LocationPage() {
                         </div>
                       )}
                       <div className="text-muted-foreground text-xs mt-0.5">
-                        Source: {location.source}
+                        Source: <span className="font-medium">{location.source === 'overland' ? 'Overland GPS' : location.source.toUpperCase()}</span>
                       </div>
+                      {location.speed && (
+                        <div className="text-muted-foreground text-xs mt-0.5">
+                          Speed: {parseFloat(location.speed).toFixed(1)} m/s
+                        </div>
+                      )}
+                      {location.altitude && (
+                        <div className="text-muted-foreground text-xs mt-0.5">
+                          Altitude: {parseFloat(location.altitude).toFixed(0)}m
+                        </div>
+                      )}
                     </div>
                   </Popup>
                 </CircleMarker>
@@ -1364,14 +1383,14 @@ export default function LocationPage() {
             ))}
           </MapContainer>
 
-          <div className="absolute bottom-4 left-4 z-[1000]">
+          <div className="absolute bottom-4 left-4 z-[1000] flex flex-col gap-2">
             <Button
               onClick={() => {
                 if (currentLocation) {
                   setSelectedLocation(currentLocation);
                   setIsAddingPlace(true);
                 } else {
-                  toast({ 
+                  toast({
                     title: "Get your location first",
                     description: "Click the navigation button to find your current location"
                   });
@@ -1383,6 +1402,38 @@ export default function LocationPage() {
               <Plus className="h-4 w-4" />
               Save Current Location
             </Button>
+
+            {showHistory && locationHistory && locationHistory.length > 0 && (
+              <div className="bg-background/95 backdrop-blur border border-border rounded-lg p-2 shadow-lg text-xs">
+                <div className="font-medium mb-1.5">Location Sources:</div>
+                <div className="space-y-1">
+                  {locationHistory.some(l => l.source === 'overland') && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-green-500 border border-green-600"></div>
+                      <span>Overland GPS</span>
+                    </div>
+                  )}
+                  {locationHistory.some(l => l.source === 'gps') && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-blue-500 border border-blue-700"></div>
+                      <span>Browser GPS</span>
+                    </div>
+                  )}
+                  {locationHistory.some(l => l.source === 'network') && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-purple-500 border border-purple-700"></div>
+                      <span>Network</span>
+                    </div>
+                  )}
+                  {locationHistory.some(l => l.source === 'manual') && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-orange-500 border border-orange-600"></div>
+                      <span>Manual</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

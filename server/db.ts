@@ -1922,7 +1922,7 @@ function mapLocationHistory(row: LocationHistoryRow): LocationHistory {
     altitude: row.altitude,
     speed: row.speed,
     heading: row.heading,
-    source: row.source as "gps" | "network" | "manual",
+    source: row.source as "gps" | "network" | "manual" | "overland",
     createdAt: row.created_at,
   };
 }
@@ -4133,7 +4133,7 @@ export function createLocationHistory(data: InsertLocationHistory): LocationHist
       altitude: data.altitude || null,
       speed: data.speed || null,
       heading: data.heading || null,
-      source: source as "gps" | "network" | "manual",
+      source: source as "gps" | "network" | "manual" | "overland",
       createdAt: now,
     };
   });
