@@ -559,45 +559,75 @@ export async function buildGroceryBundle(ctx: AppContext, maxTokens: number): Pr
  */
 export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
   const parts: string[] = [];
-  
+
   try {
     // Get current location
     const location = getLatestLocation();
     if (location) {
       const ageMs = Date.now() - new Date(location.createdAt).getTime();
       const ageMinutes = Math.floor(ageMs / 60000);
-      const ageStr = ageMinutes < 60 
+      const ageStr = ageMinutes < 60
         ? `${ageMinutes} minutes ago`
         : `${Math.floor(ageMinutes / 60)} hours ago`;
-      
+
       // Latitude and longitude are strings in the schema
       const lat = parseFloat(location.latitude);
       const lng = parseFloat(location.longitude);
-      parts.push(`## Current Location\nLat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)} (${ageStr})`);
-      
+
       // Check nearby places (requires numeric lat/lng)
       const nearbyPlaces = findNearbyPlaces(lat, lng, 500);
+      const closestPlace = nearbyPlaces.length > 0 ? nearbyPlaces[0] : null;
+
+      // Enhanced header with place name if at a saved location
+      if (closestPlace && closestPlace.distance < 150) {
+        parts.push(`## Current Location\n📍 At ${closestPlace.name} (${closestPlace.category || "place"}) - ${ageStr}`);
+      } else {
+        parts.push(`## Current Location\nLat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)} (${ageStr})`);
+      }
+
       if (nearbyPlaces.length > 0) {
-        const closestPlace = nearbyPlaces[0];
-        const placeList = nearbyPlaces.slice(0, 3).map(p => 
+        const placeList = nearbyPlaces.slice(0, 3).map(p =>
           `- ${p.name} (${p.category || "place"}, ${Math.round(p.distance)}m away)`
         ).join("\n");
         parts.push(`### Nearby Saved Places\n${placeList}`);
-        
-        // Get past conversations at this location
-        const lifelogsAtPlace = getLifelogsAtPlace(closestPlace.id);
-        if (lifelogsAtPlace.length > 0) {
-          const recentLifelogs = lifelogsAtPlace.slice(0, 5);
-          const lifelogList = recentLifelogs.map((ll: LifelogLocation) => {
-            const date = new Date(ll.lifelogStartTime);
-            const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-            const timeStr = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-            return `- "${ll.lifelogTitle}" (${dateStr} at ${timeStr})`;
-          }).join("\n");
-          parts.push(`### Past Conversations at ${closestPlace.name}\n${lifelogList}`);
+
+        // Get past conversations at this location - ALWAYS include if available (key feature!)
+        if (closestPlace) {
+          const lifelogsAtPlace = getLifelogsAtPlace(closestPlace.id);
+          if (lifelogsAtPlace.length > 0) {
+            const recentLifelogs = lifelogsAtPlace.slice(0, 8); // More when location is important
+            const lifelogList = recentLifelogs.map((ll: LifelogLocation) => {
+              const date = new Date(ll.lifelogStartTime);
+              const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+              const timeStr = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+              return `- "${ll.lifelogTitle}" (${dateStr} at ${timeStr})`;
+            }).join("\n");
+            parts.push(`### Past Conversations at ${closestPlace.name}\n${lifelogList}`);
+
+            // Add insight about frequency
+            if (lifelogsAtPlace.length > 5) {
+              parts.push(`*You've had ${lifelogsAtPlace.length} conversations here - this is a frequently visited location*`);
+            }
+          }
+
+          // Get linked tasks for this place
+          const linkedTasks = getTasksByPlace(closestPlace.id).filter(t => !t.completed);
+          if (linkedTasks.length > 0) {
+            const taskList = linkedTasks.slice(0, 5).map(t =>
+              `- ${t.title}${t.priority === "high" ? " (HIGH PRIORITY)" : ""}`
+            ).join("\n");
+            parts.push(`### 🎯 Tasks Linked to ${closestPlace.name}\n${taskList}`);
+          }
+
+          // Get linked reminders for this place
+          const linkedReminders = getRemindersByPlace(closestPlace.id);
+          if (linkedReminders.length > 0) {
+            const reminderList = linkedReminders.slice(0, 3).map(r => `- ${r.message}`).join("\n");
+            parts.push(`### 🔔 Location Reminders\n${reminderList}`);
+          }
         }
       }
-      
+
       // Also check for nearby lifelogs (even if not at a saved place)
       const nearbyLifelogs = getLifelogsNearLocation(lat, lng, 500);
       if (nearbyLifelogs.length > 0 && nearbyPlaces.length === 0) {
@@ -610,25 +640,26 @@ export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): 
         }).join("\n");
         parts.push(`### Past Conversations Nearby\n${nearbyList}`);
       }
-      
+
       // Check grocery proximity - returns an array of nearby grocery stores
       const groceryProximity = checkGroceryProximity(lat, lng);
       if (groceryProximity && groceryProximity.length > 0) {
         const storeNames = groceryProximity.map(g => g.place.name).join(", ");
         const items = getAllGroceryItems().filter((i: GroceryItem) => !i.purchased);
         if (items.length > 0) {
-          parts.push(`### Grocery Alert\nNear: ${storeNames}. You have ${items.length} items on your grocery list!`);
+          const topItems = items.slice(0, 5).map(i => i.name).join(", ");
+          parts.push(`### 🛒 Grocery Alert\nNear: ${storeNames}. You have ${items.length} items on your list: ${topItems}${items.length > 5 ? "..." : ""}`);
         }
       }
     }
-    
+
     // Starred places
     const starred = getStarredPlaces();
     if (starred.length > 0) {
       const starredList = starred.slice(0, 5).map(p => `- ${p.name} (${p.category || "starred"})`).join("\n");
-      parts.push(`### Favorite Places\n${starredList}`);
+      parts.push(`### ⭐ Favorite Places\n${starredList}`);
     }
-    
+
     // Recent location-tagged conversations
     const recentLocatedLifelogs = getRecentLifelogLocations(5);
     const withPlaces = recentLocatedLifelogs.filter((ll: LifelogLocation) => ll.savedPlaceName);
@@ -644,7 +675,7 @@ export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): 
   } catch (error) {
     console.error("Error building locations bundle:", error);
   }
-  
+
   const content = truncateToTokens(parts.join("\n\n"), maxTokens);
   return {
     name: "locations",
@@ -1182,6 +1213,68 @@ const BUNDLE_BUILDERS: Record<string, (ctx: AppContext, maxTokens: number) => Pr
 };
 
 /**
+ * Detect if user is currently at a significant place
+ * Returns the place info if they are, null otherwise
+ */
+function detectCurrentSignificantPlace(): { name: string; category: string } | null {
+  try {
+    const location = getLatestLocation();
+    if (!location) return null;
+
+    const lat = parseFloat(location.latitude);
+    const lng = parseFloat(location.longitude);
+
+    // Check if near any starred places first (highest priority)
+    const starredPlaces = getStarredPlaces();
+    for (const place of starredPlaces) {
+      const placeLat = parseFloat(place.latitude);
+      const placeLng = parseFloat(place.longitude);
+      const distance = calculateHaversineDistance(lat, lng, placeLat, placeLng);
+      const threshold = place.proximityRadiusMeters || 150;
+
+      if (distance <= threshold) {
+        return { name: place.name, category: place.category || "starred" };
+      }
+    }
+
+    // Check for important category places (work, home)
+    const nearbyPlaces = findNearbyPlaces(lat, lng, 200);
+    const importantPlace = nearbyPlaces.find(p =>
+      p.category === "work" ||
+      p.category === "home" ||
+      p.category === "frequent"
+    );
+
+    if (importantPlace) {
+      return { name: importantPlace.name, category: importantPlace.category || "place" };
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error detecting current place:", error);
+    return null;
+  }
+}
+
+/**
+ * Simple haversine distance calculation (meters)
+ */
+function calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // Earth's radius in meters
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+          Math.cos(φ1) * Math.cos(φ2) *
+          Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
+
+/**
  * Main context router - assembles context based on route and query
  */
 export async function assembleContext(
@@ -1189,16 +1282,30 @@ export async function assembleContext(
   budget: TokenBudget = DEFAULT_TOKEN_BUDGET
 ): Promise<string> {
   const bundles: ContextBundle[] = [];
-  
+
   // Always include global bundle
   const globalBundle = await buildGlobalBundle(ctx);
   bundles.push(globalBundle);
-  
+
   // Determine route config
   let routeConfig = ROUTE_BUNDLES[ctx.currentRoute];
   if (!routeConfig) {
     // Default to SMS config for unknown routes (likely SMS conversation)
     routeConfig = ROUTE_BUNDLES["sms"];
+  }
+
+  // INTELLIGENT LOCATION PROMOTION: If user is at a significant place, boost location to PRIMARY
+  const currentPlace = detectCurrentSignificantPlace();
+  if (currentPlace && !routeConfig.primary.includes("locations")) {
+    console.log(`[ContextRouter] User is at ${currentPlace.name} (${currentPlace.category}) - promoting location to PRIMARY context`);
+
+    // Create a modified route config with location as primary
+    routeConfig = {
+      ...routeConfig,
+      primary: [...routeConfig.primary, "locations"],
+      secondary: routeConfig.secondary.filter(b => b !== "locations"),
+      tertiary: routeConfig.tertiary?.filter(b => b !== "locations"),
+    };
   }
   
   // Build primary bundles
