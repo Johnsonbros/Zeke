@@ -9,6 +9,7 @@ import {
   getNLAutomation,
   getLatestLocation,
   getSavedPlace,
+  getAllSavedPlaces,
   getOverdueTasks,
   getTasksDueToday,
   calculateDistance
@@ -492,10 +493,20 @@ export async function evaluateLocationTriggers(): Promise<void> {
       let shouldTrigger = false;
       let placeInfo = { name: "", category: "" };
 
-      if (config.placeId) {
-        const place = getSavedPlace(config.placeId);
-        if (!place) continue;
+      let place = config.placeId ? getSavedPlace(config.placeId) : null;
 
+      // If no placeId but placeName is provided, search for the place by name
+      if (!place && config.placeName) {
+        place = searchPlaceByName(config.placeName);
+        if (place) {
+          console.log(`[NLAutomationExecutor] Found place "${place.name}" by name search for automation ${automation.name}`);
+        } else {
+          console.warn(`[NLAutomationExecutor] Could not find place with name "${config.placeName}" for automation ${automation.name}`);
+          continue;
+        }
+      }
+
+      if (place) {
         const placeLat = parseFloat(place.latitude);
         const placeLng = parseFloat(place.longitude);
         const distance = calculateDistance(lat, lng, placeLat, placeLng);
@@ -505,18 +516,15 @@ export async function evaluateLocationTriggers(): Promise<void> {
 
         // Check if entering or leaving proximity
         const isNearby = distance <= threshold;
-        const wasNearby = await wasNearLocation(automation.id, config.placeId);
+        const wasNearby = await wasNearLocation(automation.id, place.id);
 
         if (config.triggerOnArrive && isNearby && !wasNearby) {
           shouldTrigger = true;
-          await recordLocationState(automation.id, config.placeId, true);
+          await recordLocationState(automation.id, place.id, true);
         } else if (config.triggerOnLeave && !isNearby && wasNearby) {
           shouldTrigger = true;
-          await recordLocationState(automation.id, config.placeId, false);
+          await recordLocationState(automation.id, place.id, false);
         }
-      } else if (config.placeName) {
-        // TODO: Search for place by name if placeId not provided
-        placeInfo.name = config.placeName;
       }
 
       if (shouldTrigger) {
@@ -548,6 +556,25 @@ async function wasNearLocation(automationId: string, placeId: string): Promise<b
 async function recordLocationState(automationId: string, placeId: string, isNear: boolean): Promise<void> {
   const key = `${automationId}:${placeId}`;
   locationStates.set(key, isNear);
+}
+
+/**
+ * Search for a saved place by name (case-insensitive partial match)
+ * Returns the first matching place
+ */
+function searchPlaceByName(placeName: string): ReturnType<typeof getSavedPlace> | undefined {
+  const allPlaces = getAllSavedPlaces();
+  const normalizedSearch = placeName.toLowerCase().trim();
+
+  // First try exact match (case-insensitive)
+  let match = allPlaces.find(p => p.name.toLowerCase() === normalizedSearch);
+
+  // If no exact match, try partial match (contains)
+  if (!match) {
+    match = allPlaces.find(p => p.name.toLowerCase().includes(normalizedSearch));
+  }
+
+  return match;
 }
 
 // ============================================

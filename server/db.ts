@@ -7010,26 +7010,39 @@ export function getOverallQualityStats(days: number = 7): {
   totalToolCalls: number;
   overallSuccessRate: number;
   averageQualityScore: number;
+  averageResponseTimeMs: number;
+  retryRate: number;
+  followUpRate: number;
   toolStats: Array<{ toolName: string; successRate: number; count: number }>;
 } {
   return wrapDbOperation("getOverallQualityStats", () => {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - days);
     const cutoff = cutoffDate.toISOString();
-    
+
     // Get overall stats
     const overall = db.prepare(`
-      SELECT 
+      SELECT
         COUNT(DISTINCT conversation_id) as total_conversations,
         COUNT(CASE WHEN tool_name IS NOT NULL THEN 1 END) as total_tool_calls,
-        SUM(CASE WHEN tool_outcome = 'success' THEN 1 ELSE 0 END) as successful_calls
+        SUM(CASE WHEN tool_outcome = 'success' THEN 1 ELSE 0 END) as successful_calls,
+        AVG(CASE WHEN tool_duration_ms IS NOT NULL THEN tool_duration_ms END) as avg_tool_duration,
+        SUM(CASE WHEN user_retried = 1 THEN 1 ELSE 0 END) as retry_count,
+        SUM(CASE WHEN required_follow_up = 1 THEN 1 ELSE 0 END) as follow_up_count
       FROM conversation_metrics
       WHERE created_at >= ?
-    `).get(cutoff) as { total_conversations: number; total_tool_calls: number; successful_calls: number };
-    
+    `).get(cutoff) as {
+      total_conversations: number;
+      total_tool_calls: number;
+      successful_calls: number;
+      avg_tool_duration: number | null;
+      retry_count: number;
+      follow_up_count: number;
+    };
+
     // Get per-tool stats
     const toolStats = db.prepare(`
-      SELECT 
+      SELECT
         tool_name,
         COUNT(*) as count,
         SUM(CASE WHEN tool_outcome = 'success' THEN 1 ELSE 0 END) as successful
@@ -7038,14 +7051,41 @@ export function getOverallQualityStats(days: number = 7): {
       GROUP BY tool_name
       ORDER BY count DESC
     `).all(cutoff) as Array<{ tool_name: string; count: number; successful: number }>;
-    
+
+    // Calculate quality score based on multiple factors
+    const totalConversations = overall.total_conversations || 0;
+    const successRate = overall.total_tool_calls > 0
+      ? (overall.successful_calls / overall.total_tool_calls)
+      : 0;
+    const retryRate = totalConversations > 0
+      ? (overall.retry_count / totalConversations)
+      : 0;
+    const followUpRate = totalConversations > 0
+      ? (overall.follow_up_count / totalConversations)
+      : 0;
+
+    // Quality score formula:
+    // - 40% based on tool success rate
+    // - 30% based on low retry rate (inverse)
+    // - 30% based on low follow-up rate (inverse)
+    const qualityScore = totalConversations > 0
+      ? Math.round(
+          (successRate * 40) +
+          ((1 - retryRate) * 30) +
+          ((1 - followUpRate) * 30)
+        )
+      : 75; // Default score for no data
+
     return {
-      totalConversations: overall.total_conversations || 0,
+      totalConversations,
       totalToolCalls: overall.total_tool_calls || 0,
-      overallSuccessRate: overall.total_tool_calls > 0 
-        ? (overall.successful_calls / overall.total_tool_calls) * 100 
+      overallSuccessRate: overall.total_tool_calls > 0
+        ? (overall.successful_calls / overall.total_tool_calls) * 100
         : 0,
-      averageQualityScore: 75, // TODO: compute from individual conversation scores
+      averageQualityScore: qualityScore,
+      averageResponseTimeMs: overall.avg_tool_duration || 0,
+      retryRate: retryRate,
+      followUpRate: followUpRate,
       toolStats: toolStats.map(t => ({
         toolName: t.tool_name,
         count: t.count,
