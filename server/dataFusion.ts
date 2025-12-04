@@ -5,7 +5,7 @@
  * Limitless lifelogs, etc.) to create rich contextual insights for predictive intelligence.
  */
 
-import { db } from "../db/index.js";
+import { db } from "./db";
 import {
   tasks,
   calendarEvents,

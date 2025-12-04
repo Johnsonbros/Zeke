@@ -12,7 +12,7 @@ import cron from "node-cron";
 import logger from "./logging.js";
 import { discoverPatterns, getActivePatterns } from "./patternRecognition.js";
 import { buildFusedContext, detectAnomalies } from "./dataFusion.js";
-import { db } from "../db/index.js";
+import { db } from "./db";
 import { predictions } from "../shared/schema.js";
 import { eq } from "drizzle-orm";
 

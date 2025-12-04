@@ -5,7 +5,7 @@
  * temporal trends, and predictive insights about user behavior.
  */
 
-import { db } from "../db/index.js";
+import { db } from "./db";
 import {
   patterns,
   type InsertPattern,
