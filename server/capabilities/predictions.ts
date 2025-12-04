@@ -32,7 +32,7 @@ import {
 import logger from "../logging.js";
 
 // Helper to execute tool calls (for executing prediction actions)
-import { toolExecutors } from "../tools.js";
+import { executeTool } from "../tools.js";
 
 interface ToolResult {
   success: boolean;
@@ -236,10 +236,17 @@ async function execute_prediction(params: { predictionId: string }): Promise<Too
       message: "Action execution not implemented for this action type",
     };
 
-    // Try to execute using tool executors if available
-    if (toolExecutors && typeof toolExecutors[prediction.suggestedAction] === "function") {
+    // Try to execute using executeTool if the suggested action is a valid tool
+    if (prediction.suggestedAction) {
       try {
-        executionResult = await toolExecutors[prediction.suggestedAction](actionData);
+        const result = await executeTool(prediction.suggestedAction, actionData);
+        const parsed = JSON.parse(result);
+        // Handle both explicit success field and error field
+        const isSuccess = parsed.success === true || (parsed.success !== false && !parsed.error);
+        executionResult = {
+          success: isSuccess,
+          ...parsed,
+        };
       } catch (error: any) {
         executionResult = {
           success: false,

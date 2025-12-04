@@ -266,6 +266,40 @@ export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type UpdateTask = z.infer<typeof updateTaskSchema>;
 export type Task = typeof tasks.$inferSelect;
 
+// Calendar events table for tracking calendar data
+export const calendarEvents = sqliteTable("calendar_events", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description").default(""),
+  start: text("start").notNull(),
+  end: text("end").notNull(),
+  location: text("location"),
+  isAllDay: integer("is_all_day", { mode: "boolean" }).notNull().default(false),
+  googleCalendarId: text("google_calendar_id"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateCalendarEventSchema = z.object({
+  title: z.string().min(1).optional(),
+  description: z.string().optional(),
+  start: z.string().optional(),
+  end: z.string().optional(),
+  location: z.string().nullable().optional(),
+  isAllDay: z.boolean().optional(),
+  googleCalendarId: z.string().nullable().optional(),
+});
+
+export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
+export type UpdateCalendarEvent = z.infer<typeof updateCalendarEventSchema>;
+export type CalendarEvent = typeof calendarEvents.$inferSelect;
+
 // Access levels for contacts
 export const accessLevels = ["admin", "family", "friend", "business", "restricted", "unknown"] as const;
 export type AccessLevel = typeof accessLevels[number];
@@ -1350,6 +1384,49 @@ export const insertLimitlessSummarySchema = createInsertSchema(limitlessSummarie
 
 export type InsertLimitlessSummary = z.infer<typeof insertLimitlessSummarySchema>;
 export type LimitlessSummary = typeof limitlessSummaries.$inferSelect;
+
+// Limitless lifelogs cache - stores processed lifelogs for local data fusion
+export const limitlessLifelogs = sqliteTable("limitless_lifelogs", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  markdown: text("markdown"),
+  summary: text("summary"),
+  startTimestamp: text("start_timestamp").notNull(),
+  endTimestamp: text("end_timestamp").notNull(),
+  isStarred: integer("is_starred", { mode: "boolean" }).notNull().default(false),
+  processedSuccessfully: integer("processed_successfully", { mode: "boolean" }).notNull().default(false),
+  summaryId: text("summary_id"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertLimitlessLifelogSchema = createInsertSchema(limitlessLifelogs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertLimitlessLifelog = z.infer<typeof insertLimitlessLifelogSchema>;
+export type LimitlessLifelog = typeof limitlessLifelogs.$inferSelect;
+
+// Weather records table - stores weather data for contextual predictions
+export const weatherRecords = sqliteTable("weather_records", {
+  id: text("id").primaryKey(),
+  timestamp: text("timestamp").notNull(),
+  temperature: text("temperature"),
+  humidity: text("humidity"),
+  conditions: text("conditions"),
+  location: text("location"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertWeatherRecordSchema = createInsertSchema(weatherRecords).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertWeatherRecord = z.infer<typeof insertWeatherRecordSchema>;
+export type WeatherRecord = typeof weatherRecords.$inferSelect;
 
 // Parsed types for JSON fields in Limitless summaries
 export interface LimitlessDiscussionPoint {
