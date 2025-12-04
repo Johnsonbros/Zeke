@@ -115,6 +115,17 @@ interface LocationSettings {
   retentionDays: number;
 }
 
+interface ProximityAlert {
+  id: string;
+  savedPlaceId: string;
+  placeListId?: string | null;
+  distanceMeters: string;
+  alertType: "grocery" | "reminder" | "general";
+  alertMessage: string;
+  acknowledged: boolean;
+  createdAt: string;
+}
+
 interface GeocodingResult {
   place_id: number;
   lat: string;
@@ -941,6 +952,10 @@ export default function LocationPage() {
     queryKey: ["/api/location/places"],
   });
 
+  const { data: proximityAlerts, isLoading: alertsLoading } = useQuery<ProximityAlert[]>({
+    queryKey: ["/api/location/alerts"],
+  });
+
   const { data: locationHistory } = useQuery<LocationHistory[]>({
     queryKey: ["/api/location/history", startDate, endDate],
     queryFn: async () => {
@@ -1051,6 +1066,32 @@ export default function LocationPage() {
     },
     onError: (error: Error) => {
       toast({ title: "Failed to remove list", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const acknowledgeAlertMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("POST", `/api/location/alerts/${id}/acknowledge`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/location/alerts"] });
+      toast({ title: "Alert acknowledged" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to acknowledge alert", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const acknowledgeAllAlertsMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/location/alerts/acknowledge-all");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/location/alerts"] });
+      toast({ title: "All alerts acknowledged" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to acknowledge alerts", description: error.message, variant: "destructive" });
     },
   });
 
@@ -1356,6 +1397,15 @@ export default function LocationPage() {
                 <List className="h-3.5 w-3.5" />
                 Lists
               </TabsTrigger>
+              <TabsTrigger value="alerts" className="gap-1.5" data-testid="tab-alerts">
+                <Bell className="h-3.5 w-3.5" />
+                Alerts
+                {proximityAlerts?.filter(a => !a.acknowledged).length ? (
+                  <Badge variant="destructive" className="ml-1.5 h-4 px-1 text-[10px]">
+                    {proximityAlerts.filter(a => !a.acknowledged).length}
+                  </Badge>
+                ) : null}
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="places" className="flex-1 m-0 overflow-hidden">
@@ -1491,6 +1541,149 @@ export default function LocationPage() {
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </TabsContent>
+
+            <TabsContent value="alerts" className="flex-1 m-0 overflow-hidden flex flex-col">
+              <div className="p-4 pb-2 shrink-0">
+                {proximityAlerts?.filter(a => !a.acknowledged).length ? (
+                  <Button
+                    onClick={() => acknowledgeAllAlertsMutation.mutate()}
+                    variant="outline"
+                    className="w-full gap-2"
+                    disabled={acknowledgeAllAlertsMutation.isPending}
+                    data-testid="button-acknowledge-all"
+                  >
+                    <Check className="h-4 w-4" />
+                    Acknowledge All ({proximityAlerts.filter(a => !a.acknowledged).length})
+                  </Button>
+                ) : null}
+              </div>
+              <ScrollArea className="flex-1">
+                <div className="p-4 pt-2 space-y-3">
+                  {alertsLoading ? (
+                    <div className="space-y-3">
+                      {[1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-24 rounded-lg" />
+                      ))}
+                    </div>
+                  ) : !proximityAlerts || proximityAlerts.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Bell className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
+                      <p className="text-sm font-medium">No proximity alerts</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Alerts will appear when you approach saved places
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {proximityAlerts.filter(a => !a.acknowledged).length > 0 && (
+                        <div className="space-y-2">
+                          <h3 className="text-xs font-medium text-muted-foreground px-1">Unacknowledged</h3>
+                          {proximityAlerts
+                            .filter(a => !a.acknowledged)
+                            .map((alert) => {
+                              const place = places?.find(p => p.id === alert.savedPlaceId);
+                              const distanceKm = parseFloat(alert.distanceMeters) / 1000;
+                              const distanceText = distanceKm < 1
+                                ? `${Math.round(parseFloat(alert.distanceMeters))}m`
+                                : `${distanceKm.toFixed(1)}km`;
+
+                              return (
+                                <div
+                                  key={alert.id}
+                                  className="group p-3 rounded-lg border border-border bg-accent/50 hover-elevate"
+                                  data-testid={`alert-card-${alert.id}`}
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div className="shrink-0 w-8 h-8 rounded-full bg-background flex items-center justify-center">
+                                      <Bell className="h-3.5 w-3.5 text-foreground" />
+                                    </div>
+                                    <div className="flex-1 min-w-0 space-y-1">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-medium">{place?.name || 'Unknown Place'}</p>
+                                          <p className="text-xs text-muted-foreground mt-0.5">{distanceText} away</p>
+                                        </div>
+                                        <Badge variant={
+                                          alert.alertType === 'grocery' ? 'default' :
+                                          alert.alertType === 'reminder' ? 'secondary' :
+                                          'outline'
+                                        } className="text-[10px]">
+                                          {alert.alertType}
+                                        </Badge>
+                                      </div>
+                                      <p className="text-xs text-foreground/80 leading-relaxed">{alert.alertMessage}</p>
+                                      <div className="flex items-center justify-between pt-1">
+                                        <span className="text-[10px] text-muted-foreground">
+                                          {format(new Date(alert.createdAt), 'MMM d, h:mm a')}
+                                        </span>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => acknowledgeAlertMutation.mutate(alert.id)}
+                                          disabled={acknowledgeAlertMutation.isPending}
+                                          className="h-6 text-xs gap-1"
+                                          data-testid={`button-acknowledge-${alert.id}`}
+                                        >
+                                          <Check className="h-3 w-3" />
+                                          Acknowledge
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      )}
+
+                      {proximityAlerts.filter(a => a.acknowledged).length > 0 && (
+                        <div className="space-y-2">
+                          <h3 className="text-xs font-medium text-muted-foreground px-1">Recent</h3>
+                          {proximityAlerts
+                            .filter(a => a.acknowledged)
+                            .map((alert) => {
+                              const place = places?.find(p => p.id === alert.savedPlaceId);
+                              const distanceKm = parseFloat(alert.distanceMeters) / 1000;
+                              const distanceText = distanceKm < 1
+                                ? `${Math.round(parseFloat(alert.distanceMeters))}m`
+                                : `${distanceKm.toFixed(1)}km`;
+
+                              return (
+                                <div
+                                  key={alert.id}
+                                  className="p-3 rounded-lg border border-border opacity-60"
+                                  data-testid={`alert-card-acknowledged-${alert.id}`}
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div className="shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                                      <Check className="h-3.5 w-3.5 text-muted-foreground" />
+                                    </div>
+                                    <div className="flex-1 min-w-0 space-y-1">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-medium">{place?.name || 'Unknown Place'}</p>
+                                          <p className="text-xs text-muted-foreground mt-0.5">{distanceText} away</p>
+                                        </div>
+                                        <Badge variant="outline" className="text-[10px]">
+                                          {alert.alertType}
+                                        </Badge>
+                                      </div>
+                                      <p className="text-xs text-muted-foreground leading-relaxed">{alert.alertMessage}</p>
+                                      <span className="text-[10px] text-muted-foreground">
+                                        {format(new Date(alert.createdAt), 'MMM d, h:mm a')}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </ScrollArea>
