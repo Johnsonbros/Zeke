@@ -131,6 +131,7 @@ class CapabilityCategory(str, Enum):
     PROFILE = "profile"
     SYSTEM = "system"
     LIMITLESS = "limitless"
+    PREDICTION = "prediction"
 
 
 class HandoffReason(str, Enum):

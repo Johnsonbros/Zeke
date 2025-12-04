@@ -170,6 +170,20 @@ import {
   getMeetingsByDate,
   getPendingLifelogActionItems,
   getAllLifelogActionItems,
+  createPrediction,
+  getPredictionById,
+  getAllPredictions,
+  getPendingPredictions,
+  updatePrediction,
+  deletePrediction,
+  getPredictionStats,
+  getPredictionWithDetails,
+  createPattern,
+  getPatternById,
+  getAllPatterns,
+  getActivePatterns,
+  updatePattern,
+  deletePattern,
 } from "./db";
 import type { TwilioMessageSource } from "@shared/schema";
 import { generateContextualQuestion } from "./gettingToKnow";
@@ -186,6 +200,7 @@ import {
   fileToolNames,
   memoryToolNames,
   utilityToolNames,
+  predictionTools,
 } from "./capabilities";
 import { createReminderSequenceData } from "./capabilities/workflows";
 import { scheduleReminderExecution } from "./capabilities/reminders";
@@ -6610,6 +6625,185 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Get NL automation logs error:", error);
       res.status(500).json({ error: error.message || "Failed to get automation logs" });
+    }
+  });
+
+  // ============================================
+  // PREDICTION SYSTEM ENDPOINTS
+  // ============================================
+
+  // GET /api/predictions - Get all predictions (with optional filters)
+  app.get("/api/predictions", async (req, res) => {
+    try {
+      const { status, type, limit } = req.query;
+      const predictions = getAllPredictions({
+        status: status as string | undefined,
+        type: type as string | undefined,
+        limit: limit ? parseInt(limit as string) : undefined,
+      });
+      res.json(predictions);
+    } catch (error: any) {
+      console.error("Get predictions error:", error);
+      res.status(500).json({ error: error.message || "Failed to get predictions" });
+    }
+  });
+
+  // GET /api/predictions/pending - Get pending predictions
+  app.get("/api/predictions/pending", async (_req, res) => {
+    try {
+      const predictions = getPendingPredictions();
+      res.json(predictions);
+    } catch (error: any) {
+      console.error("Get pending predictions error:", error);
+      res.status(500).json({ error: error.message || "Failed to get pending predictions" });
+    }
+  });
+
+  // GET /api/predictions/stats - Get prediction statistics
+  app.get("/api/predictions/stats", async (_req, res) => {
+    try {
+      const stats = getPredictionStats();
+      res.json(stats);
+    } catch (error: any) {
+      console.error("Get prediction stats error:", error);
+      res.status(500).json({ error: error.message || "Failed to get prediction stats" });
+    }
+  });
+
+  // GET /api/predictions/:id - Get a specific prediction with details
+  app.get("/api/predictions/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const prediction = getPredictionWithDetails(id);
+      if (!prediction) {
+        return res.status(404).json({ error: "Prediction not found" });
+      }
+      res.json(prediction);
+    } catch (error: any) {
+      console.error("Get prediction error:", error);
+      res.status(500).json({ error: error.message || "Failed to get prediction" });
+    }
+  });
+
+  // POST /api/predictions - Create a new prediction
+  app.post("/api/predictions", async (req, res) => {
+    try {
+      const prediction = createPrediction(req.body);
+      res.json(prediction);
+    } catch (error: any) {
+      console.error("Create prediction error:", error);
+      res.status(500).json({ error: error.message || "Failed to create prediction" });
+    }
+  });
+
+  // PUT /api/predictions/:id - Update a prediction
+  app.put("/api/predictions/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const prediction = updatePrediction(id, req.body);
+      if (!prediction) {
+        return res.status(404).json({ error: "Prediction not found" });
+      }
+      res.json(prediction);
+    } catch (error: any) {
+      console.error("Update prediction error:", error);
+      res.status(500).json({ error: error.message || "Failed to update prediction" });
+    }
+  });
+
+  // DELETE /api/predictions/:id - Delete a prediction
+  app.delete("/api/predictions/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = deletePrediction(id);
+      if (!success) {
+        return res.status(404).json({ error: "Prediction not found" });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete prediction error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete prediction" });
+    }
+  });
+
+  // POST /api/predictions/:id/execute - Execute a prediction
+  app.post("/api/predictions/:id/execute", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const result = await predictionTools.execute_prediction({ predictionId: id });
+      res.json(result);
+    } catch (error: any) {
+      console.error("Execute prediction error:", error);
+      res.status(500).json({ error: error.message || "Failed to execute prediction" });
+    }
+  });
+
+  // POST /api/predictions/:id/feedback - Record feedback for a prediction
+  app.post("/api/predictions/:id/feedback", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const result = await predictionTools.record_prediction_feedback({
+        predictionId: id,
+        ...req.body,
+      });
+      res.json(result);
+    } catch (error: any) {
+      console.error("Record prediction feedback error:", error);
+      res.status(500).json({ error: error.message || "Failed to record feedback" });
+    }
+  });
+
+  // GET /api/patterns - Get all patterns (with optional filters)
+  app.get("/api/patterns", async (req, res) => {
+    try {
+      const { type, isActive, dataSource } = req.query;
+      const patterns = getAllPatterns({
+        type: type as string | undefined,
+        isActive: isActive ? isActive === "true" : undefined,
+        dataSource: dataSource as string | undefined,
+      });
+      res.json(patterns);
+    } catch (error: any) {
+      console.error("Get patterns error:", error);
+      res.status(500).json({ error: error.message || "Failed to get patterns" });
+    }
+  });
+
+  // GET /api/patterns/active - Get active patterns
+  app.get("/api/patterns/active", async (_req, res) => {
+    try {
+      const patterns = getActivePatterns();
+      res.json(patterns);
+    } catch (error: any) {
+      console.error("Get active patterns error:", error);
+      res.status(500).json({ error: error.message || "Failed to get active patterns" });
+    }
+  });
+
+  // GET /api/patterns/:id - Get a specific pattern
+  app.get("/api/patterns/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const pattern = getPatternById(id);
+      if (!pattern) {
+        return res.status(404).json({ error: "Pattern not found" });
+      }
+      res.json(pattern);
+    } catch (error: any) {
+      console.error("Get pattern error:", error);
+      res.status(500).json({ error: error.message || "Failed to get pattern" });
+    }
+  });
+
+  // POST /api/patterns/discover - Discover new patterns from historical data
+  app.post("/api/patterns/discover", async (req, res) => {
+    try {
+      const { daysBack } = req.body;
+      const result = await predictionTools.discover_new_patterns({ daysBack });
+      res.json(result);
+    } catch (error: any) {
+      console.error("Discover patterns error:", error);
+      res.status(500).json({ error: error.message || "Failed to discover patterns" });
     }
   });
 
