@@ -10,7 +10,14 @@
  */
 
 import * as cron from "node-cron";
-import { getPreference, setPreference, getContactByPhone } from "./db";
+import {
+  getPreference,
+  setPreference,
+  getContactByPhone,
+  getLocationHistoryInRange,
+  findNearbyPlaces,
+  getRecentLifelogLocations
+} from "./db";
 import { generateDailySummary, getLifelogOverview } from "./limitless";
 import { queueNotification } from "./notificationBatcher";
 import { isMasterAdmin } from "@shared/schema";
@@ -67,6 +74,60 @@ export function updateLimitlessDigestPreferences(updates: Partial<LimitlessDiges
 }
 
 /**
+ * Analyze location patterns for the day
+ */
+function analyzeDailyLocationPatterns(date: string): {
+  placesVisited: string[];
+  mostFrequentPlace?: string;
+  totalPlaces: number;
+} {
+  try {
+    // Get today's date range
+    const startDate = new Date(date);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(date);
+    endDate.setHours(23, 59, 59, 999);
+
+    // Get location history for the day
+    const locationHistory = getLocationHistoryInRange(startDate.toISOString(), endDate.toISOString());
+
+    if (locationHistory.length === 0) {
+      return { placesVisited: [], totalPlaces: 0 };
+    }
+
+    // Track places visited with their visit counts
+    const placeVisits = new Map<string, number>();
+
+    // Check each location point against saved places
+    for (const loc of locationHistory) {
+      const lat = parseFloat(loc.latitude);
+      const lng = parseFloat(loc.longitude);
+      const nearbyPlaces = findNearbyPlaces(lat, lng, 150); // 150m radius
+
+      if (nearbyPlaces.length > 0) {
+        const closestPlace = nearbyPlaces[0];
+        const count = placeVisits.get(closestPlace.name) || 0;
+        placeVisits.set(closestPlace.name, count + 1);
+      }
+    }
+
+    // Sort places by visit frequency
+    const sortedPlaces = Array.from(placeVisits.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([name]) => name);
+
+    return {
+      placesVisited: sortedPlaces,
+      mostFrequentPlace: sortedPlaces[0],
+      totalPlaces: sortedPlaces.length,
+    };
+  } catch (error) {
+    console.error("Error analyzing location patterns:", error);
+    return { placesVisited: [], totalPlaces: 0 };
+  }
+}
+
+/**
  * Format the daily summary for SMS with character limit awareness
  */
 function formatDigestForSms(
@@ -76,15 +137,20 @@ function formatDigestForSms(
     actionItems: LimitlessActionItem[];
     peopleInteracted: string[];
   },
+  locationAnalysis: {
+    placesVisited: string[];
+    mostFrequentPlace?: string;
+    totalPlaces: number;
+  },
   maxLength: number = 700
 ): string {
   const parts: string[] = [];
-  
+
   // Header
   parts.push(`ZEKE DAILY DIGEST`);
   parts.push(`${summary.summaryTitle}`);
   parts.push("");
-  
+
   // Key discussions (limit to top 2)
   if (summary.keyDiscussions.length > 0) {
     parts.push("Highlights:");
@@ -95,13 +161,13 @@ function formatDigestForSms(
     }
     parts.push("");
   }
-  
+
   // Action items (limit to top 3)
   const highPriorityItems = summary.actionItems.filter(a => a.priority === "high");
-  const itemsToShow = highPriorityItems.length > 0 
+  const itemsToShow = highPriorityItems.length > 0
     ? highPriorityItems.slice(0, 3)
     : summary.actionItems.slice(0, 3);
-  
+
   if (itemsToShow.length > 0) {
     parts.push("Action Items:");
     for (const item of itemsToShow) {
@@ -110,20 +176,33 @@ function formatDigestForSms(
     }
     parts.push("");
   }
-  
+
+  // Location insights (NEW!)
+  if (locationAnalysis.totalPlaces > 0) {
+    const placesLine = locationAnalysis.placesVisited.slice(0, 3).join(", ");
+    if (locationAnalysis.totalPlaces === 1) {
+      parts.push(`📍 Location: ${placesLine}`);
+    } else if (locationAnalysis.totalPlaces === 2) {
+      parts.push(`📍 Locations: ${placesLine}`);
+    } else {
+      parts.push(`📍 Places visited: ${placesLine}${locationAnalysis.totalPlaces > 3 ? ` +${locationAnalysis.totalPlaces - 3} more` : ""}`);
+    }
+    parts.push("");
+  }
+
   // People interacted with
   if (summary.peopleInteracted.length > 0) {
     const people = summary.peopleInteracted.slice(0, 5).join(", ");
     parts.push(`People: ${people}`);
   }
-  
+
   let message = parts.join("\n");
-  
+
   // Truncate if too long
   if (message.length > maxLength) {
     message = message.substring(0, maxLength - 3) + "...";
   }
-  
+
   return message;
 }
 
@@ -198,7 +277,10 @@ export async function sendDailyDigest(): Promise<{
     const peopleInteracted: string[] = result.summary.peopleInteracted
       ? JSON.parse(result.summary.peopleInteracted)
       : [];
-    
+
+    // Analyze location patterns for today
+    const locationAnalysis = analyzeDailyLocationPatterns(today);
+
     // Format for SMS
     const smsContent = formatDigestForSms(
       {
@@ -207,6 +289,7 @@ export async function sendDailyDigest(): Promise<{
         actionItems,
         peopleInteracted,
       },
+      locationAnalysis,
       prefs.maxSmsLength
     );
     
