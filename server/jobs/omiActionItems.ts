@@ -1,24 +1,24 @@
 /**
- * Limitless Action Item Extractor
+ * Omi Action Item Extractor
  * 
- * Processes lifelogs to automatically extract action items and commitments.
+ * Processes memories to automatically extract action items and commitments.
  * Features:
  * - AI-powered detection of commitments like "I'll send that by Friday"
  * - Automatic task creation with source tracking
  * - Speaker/contact linking
- * - Deduplication using (lifelogId, sourceOffsetMs) keys
+ * - Deduplication using (memoryId, sourceOffsetMs) keys
  */
 
 import OpenAI from "openai";
 import {
-  createLifelogActionItem,
-  checkActionItemExists,
-  updateLifelogActionItem,
+  createMemoryActionItem,
+  checkMemoryActionItemExists,
+  updateMemoryActionItem,
   createTask,
   getAllContacts,
 } from "../db";
-import type { InsertLifelogActionItem, InsertTask, Contact } from "@shared/schema";
-import type { Lifelog, ContentNode } from "../limitless";
+import type { InsertMemoryActionItem, InsertTask, Contact } from "@shared/schema";
+import type { OmiMemoryData, TranscriptSegment } from "../omi";
 
 let openai: OpenAI | null = null;
 
@@ -46,31 +46,25 @@ interface ExtractionResult {
 }
 
 /**
- * Extract transcript content from a lifelog for analysis
+ * Extract transcript content from a memory for analysis
  */
-function extractTranscriptText(lifelog: Lifelog): { text: string; speakers: string[] } {
+function extractTranscriptText(memory: OmiMemoryData): { text: string; speakers: string[] } {
   const textParts: string[] = [];
   const speakers = new Set<string>();
   
-  function processNode(node: ContentNode) {
-    if (node.speakerName) {
-      speakers.add(node.speakerName);
+  for (const segment of memory.transcriptSegments || []) {
+    if (segment.speaker) {
+      speakers.add(segment.speaker);
     }
     
-    if (node.content && (node.type === "blockquote" || node.type === "paragraph")) {
-      const speakerPrefix = node.speakerName ? `[${node.speakerName}]: ` : "";
-      textParts.push(`${speakerPrefix}${node.content}`);
-    }
-    
-    if (node.children) {
-      for (const child of node.children) {
-        processNode(child);
-      }
+    if (segment.text) {
+      const speakerPrefix = segment.speaker ? `[${segment.speaker}]: ` : "";
+      textParts.push(`${speakerPrefix}${segment.text}`);
     }
   }
   
-  for (const content of lifelog.contents || []) {
-    processNode(content);
+  if (memory.transcript && textParts.length === 0) {
+    textParts.push(memory.transcript);
   }
   
   return { text: textParts.join("\n"), speakers: Array.from(speakers) };
@@ -116,7 +110,7 @@ Speakers in this conversation: ${speakers.join(", ") || "Unknown"}`,
         },
         {
           role: "user",
-          content: transcript.substring(0, 4000), // Limit to avoid token limits
+          content: transcript.substring(0, 4000),
         },
       ],
       response_format: { type: "json_object" },
@@ -145,15 +139,13 @@ function findContactByName(name: string, contacts: Contact[]): Contact | undefin
   
   const normalizedName = name.toLowerCase().trim();
   
-  // Exact match
   const exactMatch = contacts.find(
-    c => c.name.toLowerCase() === normalizedName ||
+    c => c.name?.toLowerCase() === normalizedName ||
          c.firstName?.toLowerCase() === normalizedName ||
          c.lastName?.toLowerCase() === normalizedName
   );
   if (exactMatch) return exactMatch;
   
-  // Fuzzy match - first name match
   const firstNameMatch = contacts.find(
     c => c.firstName?.toLowerCase() === normalizedName
   );
@@ -166,7 +158,7 @@ function findContactByName(name: string, contacts: Contact[]): Contact | undefin
  * Create a task from an extracted action item
  */
 async function createTaskFromActionItem(
-  actionItem: InsertLifelogActionItem,
+  actionItem: InsertMemoryActionItem,
   contact?: Contact
 ): Promise<string | undefined> {
   try {
@@ -174,7 +166,7 @@ async function createTaskFromActionItem(
       title: actionItem.content,
       description: actionItem.sourceQuote 
         ? `Extracted from conversation: "${actionItem.sourceQuote}"`
-        : "Extracted from Limitless conversation",
+        : "Extracted from Omi conversation",
       priority: actionItem.priority || "medium",
       category: "personal",
       status: "pending",
@@ -189,18 +181,18 @@ async function createTaskFromActionItem(
 }
 
 /**
- * Process a single lifelog to extract action items
+ * Process a single memory to extract action items
  * Returns simplified result for real-time processing
  */
-export async function processLifelogForActionItems(
-  lifelog: Lifelog,
+export async function processMemoryForActionItems(
+  memory: OmiMemoryData,
   autoCreateTasks: boolean = true
 ): Promise<{
   extracted: number;
   tasksCreated: number;
   duplicates: number;
 }> {
-  const { text, speakers } = extractTranscriptText(lifelog);
+  const { text, speakers } = extractTranscriptText(memory);
   
   if (text.length < 50) {
     return { extracted: 0, tasksCreated: 0, duplicates: 0 };
@@ -220,18 +212,15 @@ export async function processLifelogForActionItems(
   for (const item of extractedItems) {
     const offsetMs = item.startOffsetMs || 0;
     
-    // Check for duplicates
-    if (checkActionItemExists(lifelog.id, offsetMs)) {
+    if (checkMemoryActionItemExists(memory.id, offsetMs)) {
       duplicates++;
       continue;
     }
     
-    // Find matching contact
     const contact = item.assignee ? findContactByName(item.assignee, contacts) : undefined;
     
-    // Create the action item record
-    const actionItemData: InsertLifelogActionItem = {
-      lifelogId: lifelog.id,
+    const actionItemData: InsertMemoryActionItem = {
+      memoryId: memory.id,
       content: item.task,
       assignee: item.assignee || null,
       dueDate: item.dueDate || null,
@@ -243,13 +232,12 @@ export async function processLifelogForActionItems(
       processedAt: now,
     };
     
-    const savedItem = createLifelogActionItem(actionItemData);
+    const savedItem = createMemoryActionItem(actionItemData);
     
-    // Auto-create task if enabled
     if (autoCreateTasks) {
       const taskId = await createTaskFromActionItem(actionItemData, contact);
       if (taskId) {
-        updateLifelogActionItem(savedItem.id, {
+        updateMemoryActionItem(savedItem.id, {
           status: "created_task",
           linkedTaskId: taskId,
         });
@@ -258,7 +246,7 @@ export async function processLifelogForActionItems(
     }
   }
   
-  console.log(`[ActionItemExtractor] Processed ${lifelog.id}: ${extractedItems.length} extracted, ${created} tasks created, ${duplicates} duplicates skipped`);
+  console.log(`[ActionItemExtractor] Processed ${memory.id}: ${extractedItems.length} extracted, ${created} tasks created, ${duplicates} duplicates skipped`);
   
   return {
     extracted: extractedItems.length,
@@ -268,10 +256,10 @@ export async function processLifelogForActionItems(
 }
 
 /**
- * Process multiple lifelogs for action items
+ * Process multiple memories for action items
  */
-export async function processLifelogsForActionItems(
-  lifelogs: Lifelog[],
+export async function processMemoriesForActionItems(
+  memories: OmiMemoryData[],
   autoCreateTasks: boolean = true
 ): Promise<{
   totalExtracted: number;
@@ -283,10 +271,10 @@ export async function processLifelogsForActionItems(
   let totalCreated = 0;
   let totalDuplicates = 0;
   
-  for (const lifelog of lifelogs) {
-    const result = await processLifelogForActionItems(lifelog, autoCreateTasks);
+  for (const memory of memories) {
+    const result = await processMemoryForActionItems(memory, autoCreateTasks);
     totalExtracted += result.extracted;
-    totalCreated += result.created;
+    totalCreated += result.tasksCreated;
     totalDuplicates += result.duplicates;
   }
   
@@ -294,6 +282,6 @@ export async function processLifelogsForActionItems(
     totalExtracted,
     totalCreated,
     totalDuplicates,
-    processedCount: lifelogs.length,
+    processedCount: memories.length,
   };
 }

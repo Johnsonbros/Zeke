@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from "uuid";
 import {
   extractPeopleFromRecentLifelogs,
   type ExtractedPerson,
-} from "./limitless";
+} from "./omi";
 import {
   createContact,
   findSimilarContact,
@@ -73,21 +73,21 @@ export async function processPeopleFromLifelogs(hours: number = 4): Promise<Proc
         if (existingContact) {
           incrementContactInteraction(existingContact.id);
           result.updatedContacts++;
-          console.log(`[PeopleProcessor] Updated interaction for existing contact: ${existingContact.name}`);
+          console.log(`[PeopleProcessor] Updated interaction for existing contact: ${existingContact.firstName} ${existingContact.lastName || ''}`);
         } else {
           const uniquePhonePlaceholder = `auto-${uuidv4()}`;
           
           const newContact = createContact({
-            name: person.name,
+            firstName: person.name,
             phoneNumber: uniquePhonePlaceholder,
             relationship: "",
             accessLevel: "unknown",
             isAutoCreated: true,
-            notes: `Auto-created from lifelog: ${person.lifelogTitle}\nContext: ${person.context.substring(0, 200)}`,
+            notes: `Auto-created from memory: ${person.memoryTitle}\nContext: ${person.context.substring(0, 200)}`,
           });
           
           result.newContacts++;
-          console.log(`[PeopleProcessor] Created new contact: ${newContact.name} (${newContact.id})`);
+          console.log(`[PeopleProcessor] Created new contact: ${newContact.firstName} ${newContact.lastName || ''} (${newContact.id})`);
         }
       } catch (error: any) {
         const errorMsg = `Failed to process person ${person.name}: ${error.message}`;

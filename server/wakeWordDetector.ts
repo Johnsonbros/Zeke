@@ -5,7 +5,7 @@
  * and extracts the command that follows.
  */
 
-import type { Lifelog, ContentNode } from "./limitless";
+import type { Lifelog, ContentNode } from "./omi";
 
 export interface DetectedCommand {
   lifelogId: string;

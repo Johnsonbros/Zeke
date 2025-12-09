@@ -181,7 +181,7 @@ export function resetVoiceConversation(): void {
 export interface VoiceCommandRequest {
   text: string;           // Command with wake word stripped
   rawText: string;        // Original full text including wake word
-  source: string;         // "limitless_pendant"
+  source: string;         // "omi_pendant"
   startedAt: number;      // Unix timestamp ms
   endedAt: number;        // Unix timestamp ms
 }
@@ -203,7 +203,7 @@ export function validateVoiceCommandRequest(body: any): VoiceCommandRequest | nu
   return {
     text: text.trim(),
     rawText: typeof rawText === "string" ? rawText : text,
-    source: typeof source === "string" ? source : "limitless_pendant",
+    source: typeof source === "string" ? source : "omi_pendant",
     startedAt: typeof startedAt === "number" ? startedAt : Date.now(),
     endedAt: typeof endedAt === "number" ? endedAt : Date.now(),
   };

@@ -1,8 +1,8 @@
 /**
  * Voice Pipeline - Main Entry Point
  * 
- * Orchestrates the Limitless lifelog → transcript → ZEKE command pipeline.
- * Uses the Limitless API's transcripts directly when available, which is
+ * Orchestrates the Omi memory → transcript → ZEKE command pipeline.
+ * Uses the Omi API's transcripts directly when available, which is
  * more reliable than real-time audio streaming.
  * 
  * Provides a clean API for starting/stopping the voice pipeline and
@@ -11,11 +11,11 @@
 
 import { log } from "../logger";
 import { 
-  LimitlessListener, 
-  getLimitlessListener, 
+  OmiListener, 
+  getOmiListener, 
   isVoicePipelineAvailable,
   type TranscriptChunk 
-} from "./limitlessListener";
+} from "./omiListener";
 import { 
   isTranscriptionAvailable,
 } from "./transcriber";
@@ -34,7 +34,7 @@ import {
 export interface VoicePipelineStatus {
   available: boolean;
   running: boolean;
-  limitlessConfigured: boolean;
+  omiConfigured: boolean;
   transcriptionConfigured: boolean;
   listenerStatus?: {
     running: boolean;
@@ -53,7 +53,7 @@ export interface VoicePipelineStatus {
 }
 
 // Pipeline state
-let listener: LimitlessListener | null = null;
+let listener: OmiListener | null = null;
 let utteranceStream: UtteranceStream | null = null;
 let isInitialized = false;
 let commandsProcessed = 0;
@@ -63,11 +63,11 @@ let lastCommandAt: number | null = null;
  * Initialize the voice pipeline components
  * 
  * This sets up the chain:
- *   LimitlessListener → UtteranceStream → VoiceCommandHandler
+ *   OmiListener → UtteranceStream → VoiceCommandHandler
  * 
- * The new approach uses Limitless API transcripts directly instead of
+ * The new approach uses Omi API transcripts directly instead of
  * streaming raw audio and transcribing with Whisper. This is more reliable
- * since the Limitless API doesn't support true real-time audio streaming.
+ * since the Omi API doesn't support true real-time audio streaming.
  */
 export function initializeVoicePipeline(): boolean {
   if (isInitialized) {
@@ -75,9 +75,9 @@ export function initializeVoicePipeline(): boolean {
     return true;
   }
 
-  // Check if Limitless is available - this is the minimum requirement
+  // Check if Omi is available - this is the minimum requirement
   if (!isVoicePipelineAvailable()) {
-    log("Voice pipeline not available - LIMITLESS_API_KEY not configured", "voice");
+    log("Voice pipeline not available - OMI_API_KEY not configured", "voice");
     isInitialized = true;  // Mark as initialized so status endpoint works
     return false;
   }
@@ -105,13 +105,11 @@ export function initializeVoicePipeline(): boolean {
     },
   });
 
-  // Initialize Limitless listener with transcript handler
-  listener = new LimitlessListener({
-    pollIntervalMs: 10000,  // Poll every 10 seconds
-    lookbackMinutes: 5,     // Look back 5 minutes for new lifelogs
+  // Initialize Omi listener with transcript handler
+  listener = new OmiListener({
     onTranscript: async (chunk: TranscriptChunk) => {
       try {
-        log(`New transcript from lifelog ${chunk.lifelogId}: "${chunk.text.substring(0, 50)}..."`, "voice");
+        log(`New transcript from memory ${chunk.memoryId}: "${chunk.text.substring(0, 50)}..."`, "voice");
         
         // Feed transcript to utterance stream for wake word detection
         // Create a TranscriptionResult-compatible object
@@ -127,7 +125,7 @@ export function initializeVoicePipeline(): boolean {
       }
     },
     onError: (error: Error) => {
-      log(`LimitlessListener error: ${error.message}`, "voice");
+      log(`OmiListener error: ${error.message}`, "voice");
     },
   });
 
@@ -184,14 +182,14 @@ export function stopVoicePipeline(): void {
  * Get the current status of the voice pipeline
  */
 export function getVoicePipelineStatus(): VoicePipelineStatus {
-  const limitlessConfigured = isVoicePipelineAvailable();
+  const omiConfigured = isVoicePipelineAvailable();
   const transcriptionConfigured = isTranscriptionAvailable();
-  const available = limitlessConfigured;  // Transcription not required with new approach
+  const available = omiConfigured;  // Transcription not required with new approach
 
   return {
     available,
     running: !!(listener?.getStatus().running),
-    limitlessConfigured,
+    omiConfigured,
     transcriptionConfigured,
     listenerStatus: listener?.getStatus(),
     streamStatus: utteranceStream?.getStatus(),
@@ -221,12 +219,12 @@ export function resetVoicePipeline(): void {
 
 // Export all components for direct access if needed
 export { 
-  LimitlessListener, 
+  OmiListener, 
   isVoicePipelineAvailable,
-  registerLifelogHandler,
-  unregisterLifelogHandler,
-  type LifelogHandler
-} from "./limitlessListener";
+  registerMemoryHandler as registerLifelogHandler,
+  unregisterMemoryHandler as unregisterLifelogHandler,
+  type MemoryHandler as LifelogHandler
+} from "./omiListener";
 export { 
   WhisperTranscriber, 
   MockTranscriber, 

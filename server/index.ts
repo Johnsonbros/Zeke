@@ -7,8 +7,8 @@ import { log } from "./logger";
 import { initializeGroceryAutoClear } from "./jobs/groceryAutoClear";
 import { initializeConversationSummarizer } from "./jobs/conversationSummarizer";
 import { initializeVoicePipeline, startVoicePipeline, isVoicePipelineAvailable } from "./voice";
-import { initializeLimitlessDigest } from "./limitlessDigest";
-import { initializeLimitlessProcessor } from "./jobs/limitlessProcessor";
+import { initializeOmiDigest } from "./omiDigest";
+import { initializeOmiProcessor } from "./jobs/omiProcessor";
 import { initializePredictionScheduler } from "./predictionScheduler";
 
 export { log };
@@ -86,13 +86,13 @@ app.use((req, res, next) => {
       }
     }
   } else {
-    log("Voice pipeline not available - LIMITLESS_API_KEY not configured", "startup");
+    log("Voice pipeline not available - OMI_API_KEY not configured", "startup");
   }
   
-  // Initialize Limitless enhanced features (daily digest + processor)
-  initializeLimitlessDigest();
-  initializeLimitlessProcessor();
-  log("Limitless enhanced features initialized", "startup");
+  // Initialize Omi enhanced features (daily digest + processor)
+  initializeOmiDigest();
+  initializeOmiProcessor();
+  log("Omi enhanced features initialized", "startup");
 
   // Initialize prediction scheduler (pattern discovery, anomaly detection, prediction generation)
   initializePredictionScheduler();

@@ -1,7 +1,7 @@
 /**
- * Limitless Analytics Aggregator
+ * Omi Analytics Aggregator
  * 
- * Computes daily analytics from lifelogs and stores pre-aggregated data.
+ * Computes daily analytics from memories and stores pre-aggregated data.
  * Features:
  * - Daily conversation counts and durations
  * - Speaker frequency analysis
@@ -12,48 +12,38 @@
 
 import * as cron from "node-cron";
 import {
-  createOrUpdateLimitlessAnalyticsDaily,
-  getLimitlessAnalyticsByDate,
-  getRecentLimitlessAnalytics,
+  createOrUpdateOmiAnalyticsDaily,
+  getOmiAnalyticsByDate,
+  getRecentOmiAnalytics,
   getMeetingsByDate,
-  getLifelogActionItemsByLifelog,
+  getMemoryActionItemsByMemory,
 } from "../db";
 import type { 
-  InsertLimitlessAnalyticsDaily, 
+  InsertOmiAnalyticsDaily, 
   SpeakerStat, 
   TopicStat, 
   HourDistributionItem 
 } from "@shared/schema";
-import type { Lifelog, ContentNode } from "../limitless";
+import type { OmiMemoryData, TranscriptSegment } from "../omi";
 
 let scheduledTask: cron.ScheduledTask | null = null;
 
 /**
- * Extract speaker statistics from lifelogs
+ * Extract speaker statistics from memories
  */
-function extractSpeakerStats(lifelogs: Lifelog[]): SpeakerStat[] {
+function extractSpeakerStats(memories: OmiMemoryData[]): SpeakerStat[] {
   const speakerMap = new Map<string, { count: number; durationMs: number }>();
   
-  for (const lifelog of lifelogs) {
-    const duration = new Date(lifelog.endTime).getTime() - new Date(lifelog.startTime).getTime();
+  for (const memory of memories) {
+    const duration = new Date(memory.finishedAt).getTime() - new Date(memory.startedAt).getTime();
     const speakers = new Set<string>();
     
-    function extractSpeakers(node: ContentNode) {
-      if (node.speakerName && node.speakerName !== "user") {
-        speakers.add(node.speakerName);
-      }
-      if (node.children) {
-        for (const child of node.children) {
-          extractSpeakers(child);
-        }
+    for (const segment of memory.transcriptSegments || []) {
+      if (segment.speaker && !segment.isUser) {
+        speakers.add(segment.speaker);
       }
     }
     
-    for (const content of lifelog.contents || []) {
-      extractSpeakers(content);
-    }
-    
-    // Distribute duration evenly among speakers
     const durationPerSpeaker = speakers.size > 0 ? duration / speakers.size : 0;
     
     for (const speaker of speakers) {
@@ -72,16 +62,15 @@ function extractSpeakerStats(lifelogs: Lifelog[]): SpeakerStat[] {
       durationMinutes: Math.round(stats.durationMs / (1000 * 60)),
     }))
     .sort((a, b) => b.count - a.count)
-    .slice(0, 20); // Top 20 speakers
+    .slice(0, 20);
 }
 
 /**
- * Extract topics from lifelogs using simple keyword extraction
+ * Extract topics from memories using simple keyword extraction
  */
-function extractTopicStats(lifelogs: Lifelog[]): TopicStat[] {
+function extractTopicStats(memories: OmiMemoryData[]): TopicStat[] {
   const topicCounts = new Map<string, number>();
   
-  // Common topics/keywords to track
   const topicKeywords = [
     "meeting", "project", "deadline", "review", "call", "email",
     "lunch", "dinner", "coffee", "family", "kids", "school",
@@ -90,8 +79,8 @@ function extractTopicStats(lifelogs: Lifelog[]): TopicStat[] {
     "shopping", "groceries", "plans", "schedule", "appointment",
   ];
   
-  for (const lifelog of lifelogs) {
-    const fullText = extractFullText(lifelog).toLowerCase();
+  for (const memory of memories) {
+    const fullText = extractFullText(memory).toLowerCase();
     
     for (const topic of topicKeywords) {
       if (fullText.includes(topic)) {
@@ -103,28 +92,23 @@ function extractTopicStats(lifelogs: Lifelog[]): TopicStat[] {
   return Array.from(topicCounts.entries())
     .map(([topic, frequency]) => ({ topic, frequency }))
     .sort((a, b) => b.frequency - a.frequency)
-    .slice(0, 15); // Top 15 topics
+    .slice(0, 15);
 }
 
 /**
- * Extract full text from a lifelog
+ * Extract full text from a memory
  */
-function extractFullText(lifelog: Lifelog): string {
+function extractFullText(memory: OmiMemoryData): string {
   const parts: string[] = [];
   
-  function extractText(node: ContentNode) {
-    if (node.content) {
-      parts.push(node.content);
-    }
-    if (node.children) {
-      for (const child of node.children) {
-        extractText(child);
-      }
-    }
+  if (memory.transcript) {
+    parts.push(memory.transcript);
   }
   
-  for (const content of lifelog.contents || []) {
-    extractText(content);
+  for (const segment of memory.transcriptSegments || []) {
+    if (segment.text) {
+      parts.push(segment.text);
+    }
   }
   
   return parts.join(" ");
@@ -133,11 +117,11 @@ function extractFullText(lifelog: Lifelog): string {
 /**
  * Compute hour-by-hour distribution
  */
-function computeHourDistribution(lifelogs: Lifelog[]): HourDistributionItem[] {
+function computeHourDistribution(memories: OmiMemoryData[]): HourDistributionItem[] {
   const hourCounts = new Array(24).fill(0);
   
-  for (const lifelog of lifelogs) {
-    const hour = new Date(lifelog.startTime).getHours();
+  for (const memory of memories) {
+    const hour = new Date(memory.startedAt).getHours();
     hourCounts[hour]++;
   }
   
@@ -148,59 +132,44 @@ function computeHourDistribution(lifelogs: Lifelog[]): HourDistributionItem[] {
  * Aggregate analytics for a specific date
  */
 export async function aggregateAnalyticsForDate(
-  date: string, // YYYY-MM-DD format
-  lifelogs: Lifelog[]
-): Promise<InsertLimitlessAnalyticsDaily> {
-  // Filter lifelogs for the specific date
-  const dateLifelogs = lifelogs.filter(l => 
-    l.startTime.startsWith(date)
+  date: string,
+  memories: OmiMemoryData[]
+): Promise<InsertOmiAnalyticsDaily> {
+  const dateMemories = memories.filter(m => 
+    m.startedAt.startsWith(date)
   );
   
-  // Calculate totals
   let totalDurationMinutes = 0;
   const uniqueSpeakers = new Set<string>();
   
-  for (const lifelog of dateLifelogs) {
-    const duration = new Date(lifelog.endTime).getTime() - new Date(lifelog.startTime).getTime();
+  for (const memory of dateMemories) {
+    const duration = new Date(memory.finishedAt).getTime() - new Date(memory.startedAt).getTime();
     totalDurationMinutes += Math.round(duration / (1000 * 60));
     
-    function extractSpeakers(node: ContentNode) {
-      if (node.speakerName) {
-        uniqueSpeakers.add(node.speakerName);
+    for (const segment of memory.transcriptSegments || []) {
+      if (segment.speaker) {
+        uniqueSpeakers.add(segment.speaker);
       }
-      if (node.children) {
-        for (const child of node.children) {
-          extractSpeakers(child);
-        }
-      }
-    }
-    
-    for (const content of lifelog.contents || []) {
-      extractSpeakers(content);
     }
   }
   
-  // Get meeting count for the day
   const meetings = getMeetingsByDate(date);
   
-  // Count action items extracted for this date's lifelogs
   let actionItemsExtracted = 0;
-  for (const lifelog of dateLifelogs) {
-    const items = getLifelogActionItemsByLifelog(lifelog.id);
+  for (const memory of dateMemories) {
+    const items = getMemoryActionItemsByMemory(memory.id);
     actionItemsExtracted += items.length;
   }
   
-  // Extract stats
-  const speakerStats = extractSpeakerStats(dateLifelogs);
-  const topicStats = extractTopicStats(dateLifelogs);
-  const hourDistribution = computeHourDistribution(dateLifelogs);
+  const speakerStats = extractSpeakerStats(dateMemories);
+  const topicStats = extractTopicStats(dateMemories);
+  const hourDistribution = computeHourDistribution(dateMemories);
   
-  // Count starred lifelogs (if API provides this)
-  const starredCount = dateLifelogs.filter(l => l.starred).length;
+  const starredCount = dateMemories.filter(m => !m.discarded).length;
   
   return {
     date,
-    totalConversations: dateLifelogs.length,
+    totalConversations: dateMemories.length,
     totalDurationMinutes,
     uniqueSpeakers: uniqueSpeakers.size,
     speakerStats: JSON.stringify(speakerStats),
@@ -216,19 +185,19 @@ export async function aggregateAnalyticsForDate(
  * Run analytics aggregation for today and store results
  */
 export async function runDailyAnalyticsAggregation(
-  lifelogs: Lifelog[]
+  memories: OmiMemoryData[]
 ): Promise<{ date: string; success: boolean }> {
   const today = new Date().toISOString().split("T")[0];
   
   try {
-    const analytics = await aggregateAnalyticsForDate(today, lifelogs);
-    createOrUpdateLimitlessAnalyticsDaily(analytics);
+    const analytics = await aggregateAnalyticsForDate(today, memories);
+    createOrUpdateOmiAnalyticsDaily(analytics);
     
-    console.log(`[LimitlessAnalytics] Aggregated analytics for ${today}: ${analytics.totalConversations} conversations, ${analytics.totalDurationMinutes} min`);
+    console.log(`[OmiAnalytics] Aggregated analytics for ${today}: ${analytics.totalConversations} conversations, ${analytics.totalDurationMinutes} min`);
     
     return { date: today, success: true };
   } catch (error) {
-    console.error(`[LimitlessAnalytics] Failed to aggregate for ${today}:`, error);
+    console.error(`[OmiAnalytics] Failed to aggregate for ${today}:`, error);
     return { date: today, success: false };
   }
 }
@@ -244,7 +213,7 @@ export function getWeeklyTrends(): {
   peakHours: number[];
   trend: "increasing" | "decreasing" | "stable";
 } {
-  const analytics = getRecentLimitlessAnalytics(7);
+  const analytics = getRecentOmiAnalytics(7);
   
   if (analytics.length === 0) {
     return {
@@ -257,7 +226,6 @@ export function getWeeklyTrends(): {
     };
   }
   
-  // Aggregate stats
   let totalConversations = 0;
   let totalDuration = 0;
   const speakerAgg = new Map<string, { count: number; duration: number }>();
@@ -292,24 +260,20 @@ export function getWeeklyTrends(): {
     }
   }
   
-  // Compute averages
   const days = analytics.length;
   const averageConversations = Math.round(totalConversations / days);
   const averageDuration = Math.round(totalDuration / days);
   
-  // Top speakers
   const topSpeakers = Array.from(speakerAgg.entries())
     .map(([name, stats]) => ({ name, count: stats.count, durationMinutes: stats.duration }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
   
-  // Top topics
   const topTopics = Array.from(topicAgg.entries())
     .map(([topic, frequency]) => ({ topic, frequency }))
     .sort((a, b) => b.frequency - a.frequency)
     .slice(0, 5);
   
-  // Peak hours (hours with most conversations)
   const peakHours = hourCounts
     .map((count, hour) => ({ hour, count }))
     .filter(h => h.count > 0)
@@ -317,7 +281,6 @@ export function getWeeklyTrends(): {
     .slice(0, 3)
     .map(h => h.hour);
   
-  // Determine trend (compare first half vs second half of week)
   let trend: "increasing" | "decreasing" | "stable" = "stable";
   if (analytics.length >= 4) {
     const midpoint = Math.floor(analytics.length / 2);
@@ -346,22 +309,21 @@ export function getWeeklyTrends(): {
  * Schedule nightly analytics aggregation
  */
 export function scheduleAnalyticsAggregation(
-  fetchLifelogs: () => Promise<Lifelog[]>
+  fetchMemories: () => Promise<OmiMemoryData[]>
 ): void {
   if (scheduledTask) {
     scheduledTask.stop();
   }
   
-  // Run at 2 AM daily
   scheduledTask = cron.schedule(
     "0 2 * * *",
     async () => {
-      console.log("[LimitlessAnalytics] Running nightly aggregation...");
+      console.log("[OmiAnalytics] Running nightly aggregation...");
       try {
-        const lifelogs = await fetchLifelogs();
-        await runDailyAnalyticsAggregation(lifelogs);
+        const memories = await fetchMemories();
+        await runDailyAnalyticsAggregation(memories);
       } catch (error) {
-        console.error("[LimitlessAnalytics] Nightly aggregation failed:", error);
+        console.error("[OmiAnalytics] Nightly aggregation failed:", error);
       }
     },
     {
@@ -369,7 +331,7 @@ export function scheduleAnalyticsAggregation(
     }
   );
   
-  console.log("[LimitlessAnalytics] Scheduled nightly aggregation at 2 AM EST");
+  console.log("[OmiAnalytics] Scheduled nightly aggregation at 2 AM EST");
 }
 
 /**
@@ -379,6 +341,6 @@ export function stopAnalyticsAggregation(): void {
   if (scheduledTask) {
     scheduledTask.stop();
     scheduledTask = null;
-    console.log("[LimitlessAnalytics] Stopped analytics aggregation schedule");
+    console.log("[OmiAnalytics] Stopped analytics aggregation schedule");
   }
 }

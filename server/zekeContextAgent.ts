@@ -14,7 +14,7 @@
  */
 
 import * as cron from "node-cron";
-import { getRecentLifelogs, checkLimitlessConnection } from "./limitless";
+import { getRecentLifelogs, checkOmiConnection } from "./omi";
 import { detectCommandsInLifelogs, isActionableCommand, type DetectedCommand } from "./wakeWordDetector";
 import { parseCommand, generateFriendlyMessage, validateAction, type ParsedAction } from "./commandParser";
 import { executeTool } from "./tools";
@@ -101,11 +101,11 @@ export async function processContextCommands(hours?: number): Promise<Processing
     const lookbackHours = hours ?? settings.lookbackHours;
     console.log(`[ContextAgent] Starting scan for last ${lookbackHours} hours of lifelogs...`);
     
-    // Check Limitless connection
-    const connection = await checkLimitlessConnection();
+    // Check Omi connection
+    const connection = await checkOmiConnection();
     if (!connection.connected) {
-      console.log("[ContextAgent] Limitless not connected:", connection.error);
-      result.errors.push(`Limitless connection failed: ${connection.error}`);
+      console.log("[ContextAgent] Omi not connected:", connection.error);
+      result.errors.push(`Omi connection failed: ${connection.error}`);
       return result;
     }
     
@@ -275,8 +275,9 @@ async function executeAction(
         }
         
         // Generate a friendly message
+        const contactName = `${action.targetContact.firstName} ${action.targetContact.lastName || ''}`.trim();
         const friendlyMessage = await generateFriendlyMessage(
-          action.targetPerson || action.targetContact.name,
+          action.targetPerson || contactName,
           action.originalCommand,
           detected.context
         );
@@ -285,7 +286,7 @@ async function executeAction(
         
         return { 
           success: true, 
-          message: `Sent message to ${action.targetContact.name}: "${friendlyMessage}"` 
+          message: `Sent message to ${contactName}: "${friendlyMessage}"` 
         };
       }
       

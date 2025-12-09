@@ -141,25 +141,25 @@ Never perform tasks directly - always delegate to specialists.`,
  * 
  * Specializes in memory retrieval and synthesis:
  * - Semantic memory search
- * - Limitless lifelog queries and synthesis
+ * - Omi lifelog queries and synthesis
  * - Conversation history recall
  * - Context-aware memory retrieval
  */
 export const MemoryCuratorAgent: AgentDefinition = {
   id: AgentId.MEMORY_CURATOR,
   name: "MemoryCurator",
-  description: "Retrieves and synthesizes semantic memories, Limitless lifelogs, and historical context",
+  description: "Retrieves and synthesizes semantic memories, Omi lifelogs, and historical context",
   capabilities: [CapabilityCategory.MEMORY],
   tools: [
     "search_lifelogs",
     "get_recent_lifelogs",
     "get_lifelog_context",
-    "check_limitless_status",
+    "check_omi_status",
   ],
   canInitiateHandoff: true,
   handoffTargets: [AgentId.CONDUCTOR, AgentId.PERSONAL_DATA_STEWARD],
   systemPrompt: `You are ZEKE's MemoryCurator agent. Your role is to:
-1. Search through Limitless pendant recordings and lifelogs
+1. Search through Omi pendant recordings and lifelogs
 2. Retrieve relevant semantic memories based on context
 3. Synthesize conversation excerpts into coherent summaries
 4. Find historical context for user queries
@@ -570,7 +570,7 @@ export const TOOL_TO_AGENT: Record<string, AgentId> = {
   search_lifelogs: AgentId.MEMORY_CURATOR,
   get_recent_lifelogs: AgentId.MEMORY_CURATOR,
   get_lifelog_context: AgentId.MEMORY_CURATOR,
-  check_limitless_status: AgentId.MEMORY_CURATOR,
+  check_omi_status: AgentId.MEMORY_CURATOR,
 
   // File tools -> PersonalDataSteward
   read_file: AgentId.PERSONAL_DATA_STEWARD,
@@ -975,7 +975,7 @@ export const TOOL_PERMISSION_MATRIX: Record<string, ToolPermissionRequirements> 
     requiredPermissions: ["canAccessPersonalInfo"],
     adminOverride: false,
   },
-  check_limitless_status: {
+  check_omi_status: {
     minimumTier: AccessTier.ACQUAINTANCE,
     requiredPermissions: [],
     adminOverride: true,

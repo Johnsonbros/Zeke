@@ -111,6 +111,8 @@ import type {
   InsertLifelogActionItem,
   LimitlessAnalyticsDaily,
   InsertLimitlessAnalyticsDaily,
+  OmiAnalyticsDaily,
+  InsertOmiAnalyticsDaily,
   Prediction,
   InsertPrediction,
   Pattern,
@@ -1332,6 +1334,26 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
   CREATE UNIQUE INDEX IF NOT EXISTS idx_limitless_analytics_daily_date ON limitless_analytics_daily(date);
+`);
+
+// Create omi_analytics_daily table for pre-aggregated Omi analytics
+db.exec(`
+  CREATE TABLE IF NOT EXISTS omi_analytics_daily (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL UNIQUE,
+    total_conversations INTEGER NOT NULL DEFAULT 0,
+    total_duration_minutes INTEGER NOT NULL DEFAULT 0,
+    unique_speakers INTEGER NOT NULL DEFAULT 0,
+    speaker_stats TEXT NOT NULL DEFAULT '[]',
+    topic_stats TEXT NOT NULL DEFAULT '[]',
+    hour_distribution TEXT NOT NULL DEFAULT '[]',
+    meeting_count INTEGER NOT NULL DEFAULT 0,
+    action_items_extracted INTEGER NOT NULL DEFAULT 0,
+    starred_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_omi_analytics_daily_date ON omi_analytics_daily(date);
 `);
 
 // ============================================
@@ -6959,6 +6981,285 @@ export function getLimitlessSummariesInRange(startDate: string, endDate: string)
       ORDER BY date DESC, created_at DESC
     `).all(startDate, endDate) as LimitlessSummaryRow[];
     return rows.map(mapLimitlessSummary);
+  });
+}
+
+// ============================================
+// OMI SUMMARY FUNCTIONS
+// ============================================
+
+import type { OmiSummary, InsertOmiSummary } from "@shared/schema";
+
+interface OmiSummaryRow {
+  id: string;
+  date: string;
+  timeframe_start: string;
+  timeframe_end: string;
+  summary_title: string;
+  key_discussions: string;
+  action_items: string;
+  insights: string | null;
+  people_interacted: string | null;
+  topics_discussed: string | null;
+  memory_ids: string;
+  memory_count: number;
+  total_duration_minutes: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapOmiSummary(row: OmiSummaryRow): OmiSummary {
+  return {
+    id: row.id,
+    date: row.date,
+    timeframeStart: row.timeframe_start,
+    timeframeEnd: row.timeframe_end,
+    summaryTitle: row.summary_title,
+    keyDiscussions: row.key_discussions,
+    actionItems: row.action_items,
+    insights: row.insights,
+    peopleInteracted: row.people_interacted,
+    topicsDiscussed: row.topics_discussed,
+    memoryIds: row.memory_ids,
+    memoryCount: row.memory_count,
+    totalDurationMinutes: row.total_duration_minutes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function getOmiSummaries(limit: number = 30): OmiSummary[] {
+  return wrapDbOperation("getOmiSummaries", () => {
+    const rows = db.prepare(`
+      SELECT * FROM omi_summaries ORDER BY date DESC, created_at DESC LIMIT ?
+    `).all(limit) as OmiSummaryRow[];
+    return rows.map(mapOmiSummary);
+  });
+}
+
+export function getOmiSummaryByDate(date: string): OmiSummary | undefined {
+  return wrapDbOperation("getOmiSummaryByDate", () => {
+    const row = db.prepare(`
+      SELECT * FROM omi_summaries WHERE date = ? ORDER BY created_at DESC LIMIT 1
+    `).get(date) as OmiSummaryRow | undefined;
+    return row ? mapOmiSummary(row) : undefined;
+  });
+}
+
+export function getOmiSummaryById(id: string): OmiSummary | undefined {
+  return wrapDbOperation("getOmiSummaryById", () => {
+    const row = db.prepare(`
+      SELECT * FROM omi_summaries WHERE id = ?
+    `).get(id) as OmiSummaryRow | undefined;
+    return row ? mapOmiSummary(row) : undefined;
+  });
+}
+
+export function createOmiSummary(data: InsertOmiSummary): OmiSummary {
+  return wrapDbOperation("createOmiSummary", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO omi_summaries (
+        id, date, timeframe_start, timeframe_end, summary_title,
+        key_discussions, action_items, insights, people_interacted,
+        topics_discussed, memory_ids, memory_count, total_duration_minutes,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.date,
+      data.timeframeStart,
+      data.timeframeEnd,
+      data.summaryTitle,
+      data.keyDiscussions,
+      data.actionItems,
+      data.insights || null,
+      data.peopleInteracted || null,
+      data.topicsDiscussed || null,
+      data.memoryIds,
+      data.memoryCount,
+      data.totalDurationMinutes || null,
+      now,
+      now
+    );
+    
+    return getOmiSummaryById(id)!;
+  });
+}
+
+export function deleteOmiSummary(id: string): boolean {
+  return wrapDbOperation("deleteOmiSummary", () => {
+    const result = db.prepare(`DELETE FROM omi_summaries WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function getOmiSummariesInRange(startDate: string, endDate: string): OmiSummary[] {
+  return wrapDbOperation("getOmiSummariesInRange", () => {
+    const rows = db.prepare(`
+      SELECT * FROM omi_summaries 
+      WHERE date >= ? AND date <= ?
+      ORDER BY date DESC, created_at DESC
+    `).all(startDate, endDate) as OmiSummaryRow[];
+    return rows.map(mapOmiSummary);
+  });
+}
+
+// ============================================
+// OMI MEETING & ACTION ITEM ALIAS FUNCTIONS
+// ============================================
+
+// Alias for Omi - meetings can use memoryId in place of lifelogId
+export function getMeetingByMemoryId(memoryId: string): Meeting | undefined {
+  return wrapDbOperation("getMeetingByMemoryId", () => {
+    const row = db.prepare(`SELECT * FROM meetings WHERE lifelog_id = ?`).get(memoryId) as MeetingRow | undefined;
+    return row ? mapMeeting(row) : undefined;
+  });
+}
+
+// Alias for Omi - action items can use memoryId in place of lifelogId
+export function getMemoryActionItemsByMemory(memoryId: string): LifelogActionItem[] {
+  return wrapDbOperation("getMemoryActionItemsByMemory", () => {
+    const rows = db.prepare(`
+      SELECT * FROM lifelog_action_items 
+      WHERE lifelog_id = ? 
+      ORDER BY created_at DESC
+    `).all(memoryId) as LifelogActionItemRow[];
+    return rows.map(mapLifelogActionItem);
+  });
+}
+
+export function createMemoryActionItem(data: InsertLifelogActionItem): LifelogActionItem {
+  return createLifelogActionItem(data);
+}
+
+export function checkMemoryActionItemExists(memoryId: string, sourceOffsetMs: number): boolean {
+  return checkActionItemExists(memoryId, sourceOffsetMs);
+}
+
+export function updateMemoryActionItem(id: string, updates: { status?: string; linkedTaskId?: string; linkedContactId?: string }): LifelogActionItem | undefined {
+  return updateLifelogActionItem(id, updates);
+}
+
+// ============================================
+// OMI ANALYTICS DAILY FUNCTIONS
+// ============================================
+
+interface OmiAnalyticsDailyRow {
+  id: string;
+  date: string;
+  total_conversations: number;
+  total_duration_minutes: number;
+  unique_speakers: number;
+  speaker_stats: string;
+  topic_stats: string;
+  hour_distribution: string;
+  meeting_count: number;
+  action_items_extracted: number;
+  starred_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapOmiAnalyticsDaily(row: OmiAnalyticsDailyRow): OmiAnalyticsDaily {
+  return {
+    id: row.id,
+    date: row.date,
+    totalConversations: row.total_conversations,
+    totalDurationMinutes: row.total_duration_minutes,
+    uniqueSpeakers: row.unique_speakers,
+    speakerStats: row.speaker_stats,
+    topicStats: row.topic_stats,
+    hourDistribution: row.hour_distribution,
+    meetingCount: row.meeting_count,
+    actionItemsExtracted: row.action_items_extracted,
+    starredCount: row.starred_count,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function createOrUpdateOmiAnalyticsDaily(data: InsertOmiAnalyticsDaily): OmiAnalyticsDaily {
+  return wrapDbOperation("createOrUpdateOmiAnalyticsDaily", () => {
+    const existing = getOmiAnalyticsByDate(data.date);
+    const now = getCurrentTimestamp();
+    
+    if (existing) {
+      db.prepare(`
+        UPDATE omi_analytics_daily 
+        SET total_conversations = ?, total_duration_minutes = ?, unique_speakers = ?,
+            speaker_stats = ?, topic_stats = ?, hour_distribution = ?,
+            meeting_count = ?, action_items_extracted = ?, starred_count = ?, updated_at = ?
+        WHERE id = ?
+      `).run(
+        data.totalConversations,
+        data.totalDurationMinutes,
+        data.uniqueSpeakers,
+        data.speakerStats,
+        data.topicStats,
+        data.hourDistribution,
+        data.meetingCount,
+        data.actionItemsExtracted,
+        data.starredCount,
+        now,
+        existing.id
+      );
+      return getOmiAnalyticsByDate(data.date)!;
+    }
+    
+    const id = uuidv4();
+    db.prepare(`
+      INSERT INTO omi_analytics_daily (id, date, total_conversations, total_duration_minutes, unique_speakers, speaker_stats, topic_stats, hour_distribution, meeting_count, action_items_extracted, starred_count, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.date,
+      data.totalConversations,
+      data.totalDurationMinutes,
+      data.uniqueSpeakers,
+      data.speakerStats,
+      data.topicStats,
+      data.hourDistribution,
+      data.meetingCount,
+      data.actionItemsExtracted,
+      data.starredCount,
+      now,
+      now
+    );
+    
+    return getOmiAnalyticsByDate(data.date)!;
+  });
+}
+
+export function getOmiAnalyticsByDate(date: string): OmiAnalyticsDaily | undefined {
+  return wrapDbOperation("getOmiAnalyticsByDate", () => {
+    const row = db.prepare(`SELECT * FROM omi_analytics_daily WHERE date = ?`).get(date) as OmiAnalyticsDailyRow | undefined;
+    return row ? mapOmiAnalyticsDaily(row) : undefined;
+  });
+}
+
+export function getOmiAnalyticsInRange(startDate: string, endDate: string): OmiAnalyticsDaily[] {
+  return wrapDbOperation("getOmiAnalyticsInRange", () => {
+    const rows = db.prepare(`
+      SELECT * FROM omi_analytics_daily 
+      WHERE date >= ? AND date <= ?
+      ORDER BY date DESC
+    `).all(startDate, endDate) as OmiAnalyticsDailyRow[];
+    return rows.map(mapOmiAnalyticsDaily);
+  });
+}
+
+export function getRecentOmiAnalytics(days: number = 7): OmiAnalyticsDaily[] {
+  return wrapDbOperation("getRecentOmiAnalytics", () => {
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const rows = db.prepare(`
+      SELECT * FROM omi_analytics_daily 
+      WHERE date >= ?
+      ORDER BY date DESC
+    `).all(startDate) as OmiAnalyticsDailyRow[];
+    return rows.map(mapOmiAnalyticsDaily);
   });
 }
 

@@ -11,7 +11,7 @@ architecture. It includes:
 - OpsPlannerAgent: Scheduling, task management, and grocery specialist
 - ResearchScoutAgent: Information retrieval and search specialist
 - SafetyAuditorAgent: Security validation and user guidance specialist
-- LimitlessAnalystAgent: Lifelog data preprocessor and context curator
+- OmiAnalystAgent: Lifelog data preprocessor and context curator
 - Handoff protocols for inter-agent communication
 
 The architecture follows a conductor-specialist pattern where a central
@@ -82,11 +82,11 @@ from .safety_auditor import (
     get_safety_auditor,
 )
 
-from .limitless_analyst import (
-    LimitlessAnalystAgent,
+from .omi_analyst import (
+    OmiAnalystAgent,
     ContextBundle,
     LifelogOverviewResult,
-    get_limitless_analyst,
+    get_omi_analyst,
 )
 
 from .foresight_strategist import (
@@ -146,10 +146,10 @@ __all__ = [
     "PermissionCheckResult",
     "ValidationResult",
     "get_safety_auditor",
-    "LimitlessAnalystAgent",
+    "OmiAnalystAgent",
     "ContextBundle",
     "LifelogOverviewResult",
-    "get_limitless_analyst",
+    "get_omi_analyst",
     "ForesightStrategistAgent",
     "get_foresight_strategist",
     "TraceContext",

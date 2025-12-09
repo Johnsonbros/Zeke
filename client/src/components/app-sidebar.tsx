@@ -129,9 +129,9 @@ const mainNavItems = [
     description: "Wake word detection",
   },
   {
-    title: "Limitless Analytics",
+    title: "Omi Analytics",
     icon: Mic,
-    href: "/limitless",
+    href: "/omi",
     description: "AI conversation insights",
   },
   {

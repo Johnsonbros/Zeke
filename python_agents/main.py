@@ -29,7 +29,7 @@ from .agents import (
     get_ops_planner,
     get_research_scout,
     get_safety_auditor,
-    get_limitless_analyst,
+    get_omi_analyst,
     get_foresight_strategist,
 )
 
@@ -58,7 +58,7 @@ def get_configured_conductor() -> ConductorAgent:
         conductor.register_specialist(get_ops_planner())
         conductor.register_specialist(get_research_scout())
         conductor.register_specialist(get_safety_auditor())
-        conductor.register_specialist(get_limitless_analyst())
+        conductor.register_specialist(get_omi_analyst())
         conductor.register_specialist(get_foresight_strategist())
         _specialists_registered = True
         logger.info("All specialist agents registered with conductor")

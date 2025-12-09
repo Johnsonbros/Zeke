@@ -44,7 +44,7 @@ import {
   getLifelogLocationContexts,
 } from "./db";
 import { getSmartMemoryContext } from "./semanticMemory";
-import { getRecentLifelogs, getLifelogOverview } from "./limitless";
+import { getRecentMemories, getMemoryOverview } from "./omi";
 import { getUpcomingEvents } from "./googleCalendar";
 import { getConversationContext } from "./conversationSummarizer";
 import { contextCache, CACHE_TTL, createCacheKey } from "./contextCache";
@@ -123,7 +123,7 @@ export const ROUTE_BUNDLES: Record<string, RouteConfig> = {
   },
   "/chat": {
     primary: ["memory", "conversation"],
-    secondary: ["tasks", "calendar", "limitless", "knowledgegraph"],
+    secondary: ["tasks", "calendar", "omi", "knowledgegraph"],
     tertiary: ["locations", "contacts"],
   },
   "/tasks": {
@@ -138,7 +138,7 @@ export const ROUTE_BUNDLES: Record<string, RouteConfig> = {
   },
   "/memory": {
     primary: ["memory"],
-    secondary: ["contacts", "limitless", "knowledgegraph"],
+    secondary: ["contacts", "omi", "knowledgegraph"],
     tertiary: ["tasks"],
   },
   "/contacts": {
@@ -156,8 +156,8 @@ export const ROUTE_BUNDLES: Record<string, RouteConfig> = {
     secondary: ["memory"],
     tertiary: ["tasks"],
   },
-  "/limitless": {
-    primary: ["limitless"],
+  "/omi": {
+    primary: ["omi"],
     secondary: ["memory", "contacts", "knowledgegraph"],
     tertiary: ["tasks"],
   },
@@ -179,7 +179,7 @@ export const ROUTE_BUNDLES: Record<string, RouteConfig> = {
   // SMS fallback - used when route is unknown (SMS conversations)
   "sms": {
     primary: ["memory", "conversation"],
-    secondary: ["tasks", "calendar", "grocery", "limitless", "knowledgegraph"],
+    secondary: ["tasks", "calendar", "grocery", "omi", "knowledgegraph"],
     tertiary: ["locations", "contacts"],
   },
 };
@@ -704,38 +704,38 @@ function formatActivityType(activity: ActivityType | undefined): string {
 }
 
 /**
- * Build the Limitless/lifelog context bundle (enhanced with location context)
+ * Build the Omi memory context bundle (enhanced with location context)
  */
-export async function buildLimitlessBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
+export async function buildOmiBundle(ctx: AppContext, maxTokens: number): Promise<ContextBundle> {
   const parts: string[] = [];
   
   try {
-    // Get lifelog overview
-    const overview = await getLifelogOverview();
+    // Get memory overview
+    const overview = await getMemoryOverview();
     
     if (overview && overview.connected) {
-      parts.push(`## Limitless Pendant Data`);
-      parts.push(`Today: ${overview.today.count} conversations, Yesterday: ${overview.yesterday.count}, Last 7 days: ${overview.last7Days.count}`);
+      parts.push(`## Omi Memory Data`);
+      parts.push(`Today: ${overview.today.count} memories, Yesterday: ${overview.yesterday.count}, Last 7 days: ${overview.last7Days.count}`);
       
       if (overview.mostRecent) {
         parts.push(`Most recent: "${overview.mostRecent.title}" (${overview.mostRecent.age})`);
       }
       
-      // If the user message seems to be asking about conversations, search
-      const lifelogKeywords = ["today", "earlier", "conversation", "said", "talked", "meeting", "discussed", "mentioned", "where"];
-      const hasLifelogIntent = lifelogKeywords.some(k => ctx.userMessage.toLowerCase().includes(k));
+      // If the user message seems to be asking about memories, search
+      const memoryKeywords = ["today", "earlier", "conversation", "said", "talked", "meeting", "discussed", "mentioned", "where"];
+      const hasMemoryIntent = memoryKeywords.some(k => ctx.userMessage.toLowerCase().includes(k));
       
-      // Check if asking about location-specific conversations
+      // Check if asking about location-specific memories
       const locationKeywords = ["where", "place", "location", "at the", "when i was at"];
       const hasLocationIntent = locationKeywords.some(k => ctx.userMessage.toLowerCase().includes(k));
       
-      if (hasLifelogIntent && overview.today.count > 0) {
-        // Get recent lifelogs
-        const recent = await getRecentLifelogs(24, 5);
+      if (hasMemoryIntent && overview.today.count > 0) {
+        // Get recent memories
+        const recent = await getRecentMemories(24, 5);
         if (recent && recent.length > 0) {
-          // Get location context for these lifelogs
-          const lifelogIds = recent.map((l: any) => l.id);
-          const locationContexts = getLifelogLocationContexts(lifelogIds);
+          // Get location context for these memories
+          const memoryIds = recent.map((l: any) => l.id);
+          const locationContexts = getLifelogLocationContexts(memoryIds);
           
           // Build a map for quick lookup
           const locationMap = new Map(locationContexts.map(lc => [lc.lifelogId, lc]));
@@ -758,18 +758,18 @@ export async function buildLimitlessBundle(ctx: AppContext, maxTokens: number): 
             
             return `- "${l.title}" at ${timeStr}${locationStr}`;
           }).join("\n");
-          parts.push(`### Recent Conversations\n${recentList}`);
+          parts.push(`### Recent Memories\n${recentList}`);
           
-          // If user is asking about location-specific conversations
+          // If user is asking about location-specific memories
           if (hasLocationIntent) {
-            // Get location-tagged lifelogs with places
-            const locatedLifelogs = getRecentLifelogLocations(10)
+            // Get location-tagged memories with places
+            const locatedMemories = getRecentLifelogLocations(10)
               .filter((ll: LifelogLocation) => ll.savedPlaceName);
             
-            if (locatedLifelogs.length > 0) {
+            if (locatedMemories.length > 0) {
               // Group by place
               const byPlace = new Map<string, LifelogLocation[]>();
-              for (const ll of locatedLifelogs) {
+              for (const ll of locatedMemories) {
                 const placeName = ll.savedPlaceName || "Unknown";
                 if (!byPlace.has(placeName)) {
                   byPlace.set(placeName, []);
@@ -779,26 +779,26 @@ export async function buildLimitlessBundle(ctx: AppContext, maxTokens: number): 
               
               const placesList = Array.from(byPlace.entries())
                 .slice(0, 3)
-                .map(([place, lifelogs]) => {
-                  const titles = lifelogs.slice(0, 2).map(ll => `"${ll.lifelogTitle}"`).join(", ");
-                  return `- **${place}**: ${titles}${lifelogs.length > 2 ? ` (+${lifelogs.length - 2} more)` : ""}`;
+                .map(([place, memories]) => {
+                  const titles = memories.slice(0, 2).map(ll => `"${ll.lifelogTitle}"`).join(", ");
+                  return `- **${place}**: ${titles}${memories.length > 2 ? ` (+${memories.length - 2} more)` : ""}`;
                 }).join("\n");
-              parts.push(`### Conversations by Location\n${placesList}`);
+              parts.push(`### Memories by Location\n${placesList}`);
             }
           }
         }
       }
     } else {
-      parts.push(`## Limitless Pendant\nNot connected or no API key configured.`);
+      parts.push(`## Omi Memory\nNot connected or no API key configured.`);
     }
   } catch (error) {
-    console.error("Error building limitless bundle:", error);
-    parts.push(`## Limitless Pendant\nUnable to fetch data.`);
+    console.error("Error building omi bundle:", error);
+    parts.push(`## Omi Memory\nUnable to fetch data.`);
   }
   
   const content = truncateToTokens(parts.join("\n\n"), maxTokens);
   return {
-    name: "limitless",
+    name: "omi",
     priority: "secondary",
     content,
     tokenEstimate: estimateTokens(content),
@@ -1203,7 +1203,7 @@ const BUNDLE_BUILDERS: Record<string, (ctx: AppContext, maxTokens: number) => Pr
   calendar: buildCalendarBundle,
   grocery: buildGroceryBundle,
   locations: buildLocationsBundle,
-  limitless: buildLimitlessBundle,
+  omi: buildOmiBundle,
   contacts: buildContactsBundle,
   sms: buildSmsBundle,
   food: buildFoodBundle,
@@ -1434,9 +1434,9 @@ export function detectIntent(userMessage: string): string {
     return "locations";
   }
   
-  // Limitless/conversation-related
-  if (/\b(today|earlier|conversation|said|talked|meeting|discussed|mentioned|pendant|lifelog)\b/.test(lowerMessage)) {
-    return "limitless";
+  // Omi/memory-related
+  if (/\b(today|earlier|conversation|said|talked|meeting|discussed|mentioned|pendant|omi|memory)\b/.test(lowerMessage)) {
+    return "omi";
   }
   
   // Memory-related

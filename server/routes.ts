@@ -241,9 +241,9 @@ import {
   generateDailySummary,
   getConversationAnalytics,
   getMorningBriefingEnhancement,
-  getLimitlessSummaries,
+  getOmiSummaries,
   getRecentLifelogs,
-} from "./limitless";
+} from "./omi";
 import {
   recordConversationSignal,
   recordMemoryUsage,
@@ -260,6 +260,7 @@ import {
   validateVoiceCommandRequest,
   processVoiceCommand,
 } from "./voice";
+import { processOmiWebhook, getOmiListenerStatus } from "./voice/omiListener";
 import {
   getConversationQualityStats,
   getOverallQualityStats,
@@ -339,7 +340,7 @@ import {
   buildCalendarBundle,
   buildGroceryBundle,
   buildLocationsBundle,
-  buildLimitlessBundle,
+  buildOmiBundle,
   buildContactsBundle,
   buildProfileBundle,
   buildConversationBundle,
@@ -1198,6 +1199,51 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Twilio webhook error:", error);
       res.status(200).send("OK"); // Always return 200 to prevent retries
+    }
+  });
+
+  // Omi wearable webhook - receives real-time memory updates
+  app.post("/api/omi/webhook", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Omi webhook received:`, JSON.stringify(req.body).substring(0, 200));
+      
+      const payload = req.body;
+      
+      if (!payload || !payload.event) {
+        console.log("Invalid Omi webhook payload - missing event type");
+        return res.status(400).json({ message: "Missing event type" });
+      }
+      
+      // Immediately acknowledge receipt
+      res.status(200).json({ received: true });
+      
+      // Process webhook asynchronously
+      try {
+        await processOmiWebhook(payload);
+        console.log(`[Omi] Webhook processed successfully: ${payload.event}`);
+      } catch (processError: any) {
+        console.error("[Omi] Webhook processing error:", processError);
+      }
+    } catch (error: any) {
+      console.error("Omi webhook error:", error);
+      res.status(500).json({ message: "Webhook processing failed" });
+    }
+  });
+
+  // GET /api/omi/status - Get Omi listener status
+  app.get("/api/omi/status", async (_req, res) => {
+    try {
+      const status = getOmiListenerStatus();
+      res.json({
+        ...status,
+        type: "webhook-based",
+        message: status.running 
+          ? "Omi listener is active and receiving webhooks" 
+          : "Omi listener is not running - configure OMI_USER_ID to enable"
+      });
+    } catch (error: any) {
+      console.error("Omi status error:", error);
+      res.status(500).json({ message: "Failed to get Omi status" });
     }
   });
   
@@ -3193,7 +3239,7 @@ export async function registerRoutes(
     },
     memory: {
       tools: memoryToolNames,
-      description: "Access to Limitless pendant lifelogs and conversation memory"
+      description: "Access to Omi pendant lifelogs and conversation memory"
     },
     utilities: {
       tools: utilityToolNames,
@@ -3408,7 +3454,7 @@ export async function registerRoutes(
       
       const validDomains = [
         "global", "memory", "tasks", "calendar", "grocery",
-        "locations", "limitless", "contacts", "profile", "conversation"
+        "locations", "omi", "contacts", "profile", "conversation"
       ];
       
       if (!validDomains.includes(domain)) {
@@ -3452,8 +3498,8 @@ export async function registerRoutes(
         case "locations":
           bundle = await buildLocationsBundle(ctx, DEFAULT_TOKEN_BUDGET.tertiary);
           break;
-        case "limitless":
-          bundle = await buildLimitlessBundle(ctx, DEFAULT_TOKEN_BUDGET.primary);
+        case "omi":
+          bundle = await buildOmiBundle(ctx, DEFAULT_TOKEN_BUDGET.primary);
           break;
         case "contacts":
           bundle = await buildContactsBundle(ctx, DEFAULT_TOKEN_BUDGET.secondary);
@@ -4354,7 +4400,7 @@ export async function registerRoutes(
     try {
       const hours = parseInt(req.query.hours as string) || 24;
       
-      // Get recent lifelogs from Limitless
+      // Get recent lifelogs from Omi
       const recentLifelogs = await getRecentLifelogs(hours, 50);
       
       if (!recentLifelogs || recentLifelogs.length === 0) {
@@ -5032,24 +5078,24 @@ export async function registerRoutes(
   });
 
   // ============================================
-  // LIMITLESS AI SUMMARY ROUTES
+  // OMI AI SUMMARY ROUTES
   // ============================================
 
-  // GET /api/limitless/summaries - Get all cached summaries
-  app.get("/api/limitless/summaries", async (req, res) => {
+  // GET /api/omi/summaries - Get all cached summaries
+  app.get("/api/omi/summaries", async (req, res) => {
     try {
       const limit = parseInt(req.query.limit as string) || 30;
-      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching Limitless summaries (limit: ${limit})`);
-      const summaries = getLimitlessSummaries(limit);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching Omi summaries (limit: ${limit})`);
+      const summaries = getOmiSummaries(limit);
       res.json(summaries);
     } catch (error: any) {
-      console.error("Get Limitless summaries error:", error);
+      console.error("Get Omi summaries error:", error);
       res.status(500).json({ error: error.message || "Failed to get summaries" });
     }
   });
 
-  // GET /api/limitless/summary/:date - Get or generate summary for a specific date
-  app.get("/api/limitless/summary/:date", async (req, res) => {
+  // GET /api/omi/summary/:date - Get or generate summary for a specific date
+  app.get("/api/omi/summary/:date", async (req, res) => {
     try {
       const { date } = req.params;
       const forceRegenerate = req.query.regenerate === "true";
@@ -5059,7 +5105,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
       }
       
-      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Getting Limitless summary for ${date} (regenerate: ${forceRegenerate})`);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Getting Omi summary for ${date} (regenerate: ${forceRegenerate})`);
       
       const result = await generateDailySummary(date, forceRegenerate);
       
@@ -5069,13 +5115,13 @@ export async function registerRoutes(
       
       res.json(result);
     } catch (error: any) {
-      console.error("Get Limitless summary error:", error);
+      console.error("Get Omi summary error:", error);
       res.status(500).json({ error: error.message || "Failed to get summary" });
     }
   });
 
-  // GET /api/limitless/analytics - Get conversation analytics for a date range
-  app.get("/api/limitless/analytics", async (req, res) => {
+  // GET /api/omi/analytics - Get conversation analytics for a date range
+  app.get("/api/omi/analytics", async (req, res) => {
     try {
       const { start, end, days } = req.query;
       
@@ -5096,7 +5142,7 @@ export async function registerRoutes(
         endDate = endDateObj.toISOString().split("T")[0];
       }
       
-      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching Limitless analytics (${startDate} to ${endDate})`);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching Omi analytics (${startDate} to ${endDate})`);
       
       const analytics = await getConversationAnalytics(startDate, endDate);
       res.json({
@@ -5104,15 +5150,15 @@ export async function registerRoutes(
         ...analytics,
       });
     } catch (error: any) {
-      console.error("Get Limitless analytics error:", error);
+      console.error("Get Omi analytics error:", error);
       res.status(500).json({ error: error.message || "Failed to get analytics" });
     }
   });
 
-  // GET /api/limitless/morning-briefing - Get enhanced morning briefing content
-  app.get("/api/limitless/morning-briefing", async (req, res) => {
+  // GET /api/omi/morning-briefing - Get enhanced morning briefing content
+  app.get("/api/omi/morning-briefing", async (req, res) => {
     try {
-      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching Limitless morning briefing enhancement`);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching Omi morning briefing enhancement`);
       const briefingData = await getMorningBriefingEnhancement();
       res.json(briefingData);
     } catch (error: any) {
@@ -5121,12 +5167,12 @@ export async function registerRoutes(
     }
   });
 
-  // GET /api/limitless/recent - Test endpoint for recent lifelogs from API
-  app.get("/api/limitless/recent", async (req, res) => {
+  // GET /api/omi/recent - Test endpoint for recent memories from API
+  app.get("/api/omi/recent", async (req, res) => {
     try {
       const hours = parseInt(req.query.hours as string) || 4;
       const limit = parseInt(req.query.limit as string) || 10;
-      console.log(`[AUDIT] [${new Date().toISOString()}] Testing Limitless API: fetching ${limit} lifelogs from last ${hours} hours`);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Testing Omi API: fetching ${limit} memories from last ${hours} hours`);
       const lifelogs = await getRecentLifelogs(hours, limit);
       res.json({
         count: lifelogs.length,
@@ -5139,13 +5185,13 @@ export async function registerRoutes(
         })),
       });
     } catch (error: any) {
-      console.error("Get recent lifelogs error:", error);
-      res.status(500).json({ error: error.message || "Failed to get recent lifelogs" });
+      console.error("Get recent memories error:", error);
+      res.status(500).json({ error: error.message || "Failed to get recent memories" });
     }
   });
 
-  // POST /api/limitless/generate-summary - Manually trigger summary generation for a date
-  app.post("/api/limitless/generate-summary", async (req, res) => {
+  // POST /api/omi/generate-summary - Manually trigger summary generation for a date
+  app.post("/api/omi/generate-summary", async (req, res) => {
     try {
       const { date, forceRegenerate = false } = req.body;
       
@@ -5158,7 +5204,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
       }
       
-      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Generating Limitless summary for ${date} (force: ${forceRegenerate})`);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Generating Omi summary for ${date} (force: ${forceRegenerate})`);
       
       const result = await generateDailySummary(date, forceRegenerate);
       
@@ -5172,54 +5218,54 @@ export async function registerRoutes(
         summary: result.summary,
       });
     } catch (error: any) {
-      console.error("Generate Limitless summary error:", error);
+      console.error("Generate Omi summary error:", error);
       res.status(500).json({ error: error.message || "Failed to generate summary" });
     }
   });
 
   // ============================================
-  // LIMITLESS ENHANCED FEATURES API
+  // OMI ENHANCED FEATURES API
   // ============================================
   
   // Daily Digest API routes
   const { 
-    getLimitlessDigestPreferences, 
-    updateLimitlessDigestPreferences, 
+    getOmiDigestPreferences, 
+    updateOmiDigestPreferences, 
     sendDailyDigest,
     configureDigest,
     getDigestStatus 
-  } = await import("./limitlessDigest");
+  } = await import("./omiDigest");
   
   // Meeting Intelligence API routes
   const { 
     processLifelogAsMeeting, 
     processLifelogsForMeetings 
-  } = await import("./jobs/limitlessMeetings");
+  } = await import("./jobs/omiMeetings");
   
   // Action Item Extractor API routes
   const { 
     processLifelogForActionItems, 
     processLifelogsForActionItems 
-  } = await import("./jobs/limitlessActionItems");
+  } = await import("./jobs/omiActionItems");
   
   // Analytics API routes
   const { 
     runDailyAnalyticsAggregation, 
     getWeeklyTrends 
-  } = await import("./jobs/limitlessAnalytics");
+  } = await import("./jobs/omiAnalytics");
   
   // Conversation Search API routes
   const { 
     searchConversations, 
     answerConversationQuestion 
-  } = await import("./jobs/limitlessSearch");
+  } = await import("./jobs/omiSearch");
   
-  // GET /api/limitless/digest/status - Get digest configuration status
-  app.get("/api/limitless/digest/status", async (req, res) => {
+  // GET /api/omi/digest/status - Get digest configuration status
+  app.get("/api/omi/digest/status", async (req, res) => {
     try {
-      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Getting Limitless digest status`);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Getting Omi digest status`);
       const status = getDigestStatus();
-      const prefs = getLimitlessDigestPreferences();
+      const prefs = getOmiDigestPreferences();
       res.json({ ...status, preferences: prefs });
     } catch (error: any) {
       console.error("Get digest status error:", error);
@@ -5227,8 +5273,8 @@ export async function registerRoutes(
     }
   });
   
-  // POST /api/limitless/digest/configure - Configure the daily digest
-  app.post("/api/limitless/digest/configure", async (req, res) => {
+  // POST /api/omi/digest/configure - Configure the daily digest
+  app.post("/api/omi/digest/configure", async (req, res) => {
     try {
       const { phoneNumber, sendTime } = req.body;
       
@@ -5236,7 +5282,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Phone number is required" });
       }
       
-      console.log(`[AUDIT] [${new Date().toISOString()}] Configuring Limitless digest for ${phoneNumber} at ${sendTime || "20:00"}`);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Configuring Omi digest for ${phoneNumber} at ${sendTime || "20:00"}`);
       const prefs = configureDigest(phoneNumber, sendTime || "20:00");
       res.json({ success: true, preferences: prefs });
     } catch (error: any) {
@@ -5245,11 +5291,11 @@ export async function registerRoutes(
     }
   });
   
-  // PATCH /api/limitless/digest/preferences - Update digest preferences
-  app.patch("/api/limitless/digest/preferences", async (req, res) => {
+  // PATCH /api/omi/digest/preferences - Update digest preferences
+  app.patch("/api/omi/digest/preferences", async (req, res) => {
     try {
-      console.log(`[AUDIT] [${new Date().toISOString()}] Updating Limitless digest preferences`);
-      const prefs = updateLimitlessDigestPreferences(req.body);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Updating Omi digest preferences`);
+      const prefs = updateOmiDigestPreferences(req.body);
       res.json({ success: true, preferences: prefs });
     } catch (error: any) {
       console.error("Update digest preferences error:", error);
@@ -5257,10 +5303,10 @@ export async function registerRoutes(
     }
   });
   
-  // POST /api/limitless/digest/send - Manually trigger a digest send
-  app.post("/api/limitless/digest/send", async (req, res) => {
+  // POST /api/omi/digest/send - Manually trigger a digest send
+  app.post("/api/omi/digest/send", async (req, res) => {
     try {
-      console.log(`[AUDIT] [${new Date().toISOString()}] Manually triggering Limitless digest`);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Manually triggering Omi digest`);
       const result = await sendDailyDigest();
       res.json(result);
     } catch (error: any) {
@@ -5269,11 +5315,11 @@ export async function registerRoutes(
     }
   });
   
-  // GET /api/limitless/meetings - Get all meetings
-  app.get("/api/limitless/meetings", async (req, res) => {
+  // GET /api/omi/meetings - Get all meetings
+  app.get("/api/omi/meetings", async (req, res) => {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
-      console.log(`[AUDIT] [${new Date().toISOString()}] Fetching Limitless meetings (limit: ${limit})`);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Fetching Omi meetings (limit: ${limit})`);
       const meetings = getAllMeetings(limit);
       res.json(meetings);
     } catch (error: any) {
@@ -5282,11 +5328,11 @@ export async function registerRoutes(
     }
   });
   
-  // GET /api/limitless/meetings/date/:date - Get meetings for a specific date
-  app.get("/api/limitless/meetings/date/:date", async (req, res) => {
+  // GET /api/omi/meetings/date/:date - Get meetings for a specific date
+  app.get("/api/omi/meetings/date/:date", async (req, res) => {
     try {
       const { date } = req.params;
-      console.log(`[AUDIT] [${new Date().toISOString()}] Fetching Limitless meetings for ${date}`);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Fetching Omi meetings for ${date}`);
       const meetings = getMeetingsByDate(date);
       res.json(meetings);
     } catch (error: any) {
@@ -5295,12 +5341,12 @@ export async function registerRoutes(
     }
   });
   
-  // GET /api/limitless/action-items - Get extracted action items
-  app.get("/api/limitless/action-items", async (req, res) => {
+  // GET /api/omi/action-items - Get extracted action items
+  app.get("/api/omi/action-items", async (req, res) => {
     try {
       const status = req.query.status as string;
       const limit = parseInt(req.query.limit as string) || 50;
-      console.log(`[AUDIT] [${new Date().toISOString()}] Fetching Limitless action items (status: ${status || "all"}, limit: ${limit})`);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Fetching Omi action items (status: ${status || "all"}, limit: ${limit})`);
       
       let items;
       if (status === "pending") {
@@ -5315,8 +5361,8 @@ export async function registerRoutes(
     }
   });
   
-  // POST /api/limitless/action-items/extract - Extract action items from recent lifelogs
-  app.post("/api/limitless/action-items/extract", async (req, res) => {
+  // POST /api/omi/action-items/extract - Extract action items from recent lifelogs
+  app.post("/api/omi/action-items/extract", async (req, res) => {
     try {
       const { autoCreateTasks = true, hours = 4 } = req.body;
       console.log(`[AUDIT] [${new Date().toISOString()}] Extracting action items from last ${hours} hours`);
@@ -5330,8 +5376,8 @@ export async function registerRoutes(
     }
   });
   
-  // GET /api/limitless/weekly-trends - Get weekly conversation trends
-  app.get("/api/limitless/weekly-trends", async (req, res) => {
+  // GET /api/omi/weekly-trends - Get weekly conversation trends
+  app.get("/api/omi/weekly-trends", async (req, res) => {
     try {
       console.log(`[AUDIT] [${new Date().toISOString()}] Fetching weekly trends`);
       const trends = getWeeklyTrends();
@@ -5342,8 +5388,8 @@ export async function registerRoutes(
     }
   });
   
-  // POST /api/limitless/analytics/aggregate - Manually run analytics aggregation
-  app.post("/api/limitless/analytics/aggregate", async (req, res) => {
+  // POST /api/omi/analytics/aggregate - Manually run analytics aggregation
+  app.post("/api/omi/analytics/aggregate", async (req, res) => {
     try {
       const { hours = 24 } = req.body;
       console.log(`[AUDIT] [${new Date().toISOString()}] Running analytics aggregation for last ${hours} hours`);
@@ -5357,8 +5403,8 @@ export async function registerRoutes(
     }
   });
   
-  // GET /api/limitless/search - Search conversations
-  app.get("/api/limitless/search", async (req, res) => {
+  // GET /api/omi/search - Search conversations
+  app.get("/api/omi/search", async (req, res) => {
     try {
       const query = req.query.q as string;
       const limit = parseInt(req.query.limit as string) || 10;
@@ -5378,8 +5424,8 @@ export async function registerRoutes(
     }
   });
   
-  // POST /api/limitless/ask - Ask a question about conversations
-  app.post("/api/limitless/ask", async (req, res) => {
+  // POST /api/omi/ask - Ask a question about conversations
+  app.post("/api/omi/ask", async (req, res) => {
     try {
       const { question, hours = 72 } = req.body;
       
@@ -5398,8 +5444,8 @@ export async function registerRoutes(
     }
   });
   
-  // POST /api/limitless/meetings/detect - Detect meetings from recent lifelogs
-  app.post("/api/limitless/meetings/detect", async (req, res) => {
+  // POST /api/omi/meetings/detect - Detect meetings from recent lifelogs
+  app.post("/api/omi/meetings/detect", async (req, res) => {
     try {
       const { hours = 4 } = req.body;
       console.log(`[AUDIT] [${new Date().toISOString()}] Detecting meetings from last ${hours} hours`);
@@ -5413,17 +5459,17 @@ export async function registerRoutes(
     }
   });
   
-  // Limitless Processor API routes
+  // Omi Processor API routes
   const { 
     getProcessorStatus, 
     processRecentLifelogs, 
     updateProcessorConfig 
-  } = await import("./jobs/limitlessProcessor");
+  } = await import("./jobs/omiProcessor");
   
-  // GET /api/limitless/processor/status - Get processor status
-  app.get("/api/limitless/processor/status", async (req, res) => {
+  // GET /api/omi/processor/status - Get processor status
+  app.get("/api/omi/processor/status", async (req, res) => {
     try {
-      console.log(`[AUDIT] [${new Date().toISOString()}] Getting Limitless processor status`);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Getting Omi processor status`);
       const status = getProcessorStatus();
       res.json(status);
     } catch (error: any) {
@@ -5432,10 +5478,10 @@ export async function registerRoutes(
     }
   });
   
-  // POST /api/limitless/processor/run - Manually run the processor
-  app.post("/api/limitless/processor/run", async (req, res) => {
+  // POST /api/omi/processor/run - Manually run the processor
+  app.post("/api/omi/processor/run", async (req, res) => {
     try {
-      console.log(`[AUDIT] [${new Date().toISOString()}] Manually running Limitless processor`);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Manually running Omi processor`);
       const result = await processRecentLifelogs();
       res.json({ success: true, ...result });
     } catch (error: any) {
@@ -5444,10 +5490,10 @@ export async function registerRoutes(
     }
   });
   
-  // PATCH /api/limitless/processor/config - Update processor configuration
-  app.patch("/api/limitless/processor/config", async (req, res) => {
+  // PATCH /api/omi/processor/config - Update processor configuration
+  app.patch("/api/omi/processor/config", async (req, res) => {
     try {
-      console.log(`[AUDIT] [${new Date().toISOString()}] Updating Limitless processor config`);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Updating Omi processor config`);
       const config = updateProcessorConfig(req.body);
       res.json({ success: true, config });
     } catch (error: any) {

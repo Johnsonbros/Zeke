@@ -133,7 +133,7 @@ CAPABILITY_TO_AGENT: dict[CapabilityCategory, list[AgentId]] = {
     CapabilityCategory.GROCERY: [AgentId.OPS_PLANNER],
     CapabilityCategory.PROFILE: [AgentId.PERSONAL_DATA_STEWARD],
     CapabilityCategory.SYSTEM: [AgentId.SAFETY_AUDITOR, AgentId.OPS_PLANNER, AgentId.MEMORY_CURATOR],
-    CapabilityCategory.LIMITLESS: [AgentId.LIMITLESS_ANALYST],
+    CapabilityCategory.OMI: [AgentId.OMI_ANALYST],
     CapabilityCategory.PREDICTION: [AgentId.FORESIGHT_STRATEGIST],
 }
 
@@ -144,7 +144,7 @@ INTENT_TO_AGENT: dict[IntentType, AgentId] = {
     IntentType.UNKNOWN: AgentId.SAFETY_AUDITOR,
     IntentType.MORNING_BRIEFING: AgentId.OPS_PLANNER,
     IntentType.SAVE_MEMORY: AgentId.MEMORY_CURATOR,
-    IntentType.LIFELOG_QUERY: AgentId.LIMITLESS_ANALYST,
+    IntentType.LIFELOG_QUERY: AgentId.OMI_ANALYST,
     IntentType.VIEW_PREDICTIONS: AgentId.FORESIGHT_STRATEGIST,
     IntentType.ANALYZE_PATTERNS: AgentId.FORESIGHT_STRATEGIST,
     IntentType.DETECT_ANOMALIES: AgentId.FORESIGHT_STRATEGIST,
@@ -262,7 +262,7 @@ You have access to the following specialist agents:
 - ResearchScout: Performs web searches, Perplexity queries, and information gathering
 - PersonalDataSteward: Manages profile data, preferences, known facts, and file operations
 - SafetyAuditor: Performs permission checks, response validation, and guardrail enforcement
-- LimitlessAnalyst: Preprocesses Limitless pendant lifelog data, creates curated context bundles for queries about recorded conversations
+- OmiAnalyst: Preprocesses Omi pendant lifelog data, creates curated context bundles for queries about recorded conversations
 
 When classifying intents:
 - communication: SMS, check-ins, contact management
@@ -270,7 +270,7 @@ When classifying intents:
 - task_management: Tasks, to-dos
 - information: Web search, research, weather, time
 - memory: Recalling facts, conversation history
-- limitless: Lifelog queries, pendant recordings, recorded conversations
+- omi: Lifelog queries, pendant recordings, recorded conversations
 - grocery: Shopping list management
 - profile: User preferences, personal data, file operations
 - system: Status checks, help, morning briefing
@@ -287,8 +287,8 @@ INTENT_CLASSIFICATION_SCHEMA = {
     "properties": {
         "category": {
             "type": "string",
-            "enum": ["communication", "scheduling", "task_management", "information", "memory", "limitless", "grocery", "profile", "system"],
-            "description": "The high-level intent category. Use 'limitless' for lifelog queries about pendant recordings and conversations."
+            "enum": ["communication", "scheduling", "task_management", "information", "memory", "omi", "grocery", "profile", "system"],
+            "description": "The high-level intent category. Use 'omi' for lifelog queries about pendant recordings and conversations."
         },
         "intent_type": {
             "type": "string",
@@ -373,7 +373,7 @@ class ConductorAgent(BaseAgent):
                 AgentId.RESEARCH_SCOUT,
                 AgentId.PERSONAL_DATA_STEWARD,
                 AgentId.SAFETY_AUDITOR,
-                AgentId.LIMITLESS_ANALYST,
+                AgentId.OMI_ANALYST,
             ],
         )
         self.specialist_agents: dict[AgentId, BaseAgent] = {}
@@ -545,7 +545,7 @@ Always call the classify_intent tool with your classification.""",
             (["weather"], CapabilityCategory.INFORMATION, IntentType.WEATHER),
             (["time", "what time"], CapabilityCategory.INFORMATION, IntentType.TIME),
             (["remember", "recall", "what did"], CapabilityCategory.MEMORY, IntentType.RECALL_FACT),
-            (["lifelog", "pendant", "recording", "limitless", "conversation recording"], CapabilityCategory.MEMORY, IntentType.LIFELOG_QUERY),
+            (["lifelog", "pendant", "recording", "omi", "conversation recording"], CapabilityCategory.MEMORY, IntentType.LIFELOG_QUERY),
             (["grocery", "groceries", "shopping list"], CapabilityCategory.GROCERY, IntentType.CHECK_LIST),
             (["add to list", "buy"], CapabilityCategory.GROCERY, IntentType.ADD_ITEM),
             (["profile", "preference", "setting"], CapabilityCategory.PROFILE, IntentType.PROFILE_QUERY),

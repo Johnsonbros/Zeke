@@ -127,7 +127,7 @@ Be intelligent, proactive, and helpful. Your goal is to make Nate's life easier 
             # Pattern and context analysis
             ToolDefinition(
                 name="build_fused_context",
-                description="Build comprehensive context from all data sources (calendar, tasks, location, grocery, limitless, weather, patterns)",
+                description="Build comprehensive context from all data sources (calendar, tasks, location, grocery, omi, weather, patterns)",
                 parameters={
                     "type": "object",
                     "properties": {

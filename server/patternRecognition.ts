@@ -15,7 +15,7 @@ import {
   calendarEvents,
   locationHistory,
   groceryItems,
-  limitlessLifelogs,
+  omiMemories,
   messages,
 } from "../shared/schema.js";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
@@ -501,7 +501,7 @@ export async function analyzeGroceryPatterns(daysBack: number = 90): Promise<Ins
 }
 
 /**
- * Analyzes conversation and interaction patterns from Limitless lifelogs
+ * Analyzes conversation and interaction patterns from Omi lifelogs
  */
 export async function analyzeConversationPatterns(daysBack: number = 90): Promise<InsertPattern[]> {
   const patterns: InsertPattern[] = [];
@@ -511,11 +511,11 @@ export async function analyzeConversationPatterns(daysBack: number = 90): Promis
   try {
     const lifelogs = await db
       .select()
-      .from(limitlessLifelogs)
+      .from(omiMemories)
       .where(
         and(
-          gte(limitlessLifelogs.startTimestamp, startDate.toISOString()),
-          eq(limitlessLifelogs.processedSuccessfully, true)
+          gte(omiMemories.startTimestamp, startDate.toISOString()),
+          eq(omiMemories.processedSuccessfully, true)
         )
       );
 
@@ -559,7 +559,7 @@ export async function analyzeConversationPatterns(daysBack: number = 90): Promis
         }),
         frequency: "daily",
         strength: (Object.values(conversationsByHour).reduce((a, b) => Math.max(a, b), 0) / lifelogs.length).toString(),
-        dataSource: "limitless",
+        dataSource: "omi",
         sampleSize: lifelogs.length,
         timeRangeStart: startDate.toISOString(),
         timeRangeEnd: now.toISOString(),

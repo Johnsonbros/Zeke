@@ -35,7 +35,7 @@ type CacheInvalidationDomain =
   | "grocery" 
   | "contacts" 
   | "locations" 
-  | "limitless" 
+  | "omi" 
   | "profile"
   | "conversation"
   | "all";
@@ -58,7 +58,7 @@ class ContextCache {
     // Initialize domain tracking
     const domains: CacheInvalidationDomain[] = [
       "tasks", "calendar", "memory", "grocery", "contacts", 
-      "locations", "limitless", "profile", "conversation", "all"
+      "locations", "omi", "profile", "conversation", "all"
     ];
     domains.forEach(d => this.domainKeys.set(d, new Set()));
   }
@@ -287,7 +287,7 @@ export const CACHE_TTL = {
   grocery: 30000,      // 30 seconds - grocery items can change
   contacts: 300000,    // 5 minutes - contacts rarely change
   locations: 60000,    // 1 minute - location data
-  limitless: 30000,    // 30 seconds - lifelogs update frequently
+  omi: 30000,          // 30 seconds - Omi memories update frequently
   profile: 600000,     // 10 minutes - profile rarely changes
   conversation: 10000, // 10 seconds - conversation context is dynamic
   global: 300000,      // 5 minutes - global context is stable
@@ -306,7 +306,7 @@ export const invalidateCache = {
   grocery: () => contextCache.invalidateDomain("grocery"),
   contacts: () => contextCache.invalidateDomain("contacts"),
   locations: () => contextCache.invalidateDomain("locations"),
-  limitless: () => contextCache.invalidateDomain("limitless"),
+  omi: () => contextCache.invalidateDomain("omi"),
   profile: () => contextCache.invalidateDomain("profile"),
   conversation: (conversationId?: string) => {
     if (conversationId) {

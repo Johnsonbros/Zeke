@@ -3,7 +3,7 @@ Memory Curator Agent - ZEKE's memory and context specialist.
 
 This module implements the Memory Curator agent responsible for:
 - Semantic memory retrieval via Node.js bridge
-- Limitless lifelog synthesis from pendant recordings
+- Omi lifelog synthesis from pendant recordings
 - Context enrichment by combining memory sources
 - Memory storage for future retrieval
 
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 MEMORY_CURATOR_INSTRUCTIONS = """You are the Memory Curator, ZEKE's memory and context specialist. Your role is to:
 1. Retrieve relevant memories and facts about Nate
-2. Search Limitless lifelogs for past conversations and commitments
+2. Search Omi lifelogs for past conversations and commitments
 3. Provide rich context to help other agents respond accurately
 4. Remember that Nate is the only user - all context is about him
 
@@ -55,7 +55,7 @@ When responding to memory queries:
 
 You have access to:
 - Semantic memory search for stored facts and preferences
-- Limitless lifelog search for recorded conversations
+- Omi lifelog search for recorded conversations
 - Context synthesis to combine multiple sources
 
 Always be thorough but concise. If no relevant memory is found, say so clearly
@@ -84,7 +84,7 @@ class MemoryResult:
 @dataclass
 class LifelogEntry:
     """
-    A single lifelog entry from Limitless pendant.
+    A single lifelog entry from Omi pendant.
     
     Attributes:
         id: Unique identifier for the lifelog
@@ -127,7 +127,7 @@ class MemoryCuratorAgent(BaseAgent):
     
     This agent is responsible for:
     - Retrieving relevant semantic memories via Node.js bridge
-    - Searching and synthesizing Limitless lifelog recordings
+    - Searching and synthesizing Omi lifelog recordings
     - Combining memory sources to provide enriched context
     - Storing new memories extracted from conversations
     
@@ -182,18 +182,18 @@ class MemoryCuratorAgent(BaseAgent):
             logger.error(f"get_lifelog_context execution failed: {e}")
             return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
     
-    async def _handle_check_limitless_status(self, ctx: Any, args: str) -> str:
-        """Handler for check_limitless_status tool - routes through Node.js bridge."""
+    async def _handle_check_omi_status(self, ctx: Any, args: str) -> str:
+        """Handler for check_omi_status tool - routes through Node.js bridge."""
         try:
             arguments = json.loads(args) if isinstance(args, str) else args
         except json.JSONDecodeError as e:
             return json.dumps({"success": False, "error": f"Invalid JSON arguments: {str(e)}"})
         
         try:
-            result = await self.bridge.execute_tool("check_limitless_status", arguments)
+            result = await self.bridge.execute_tool("check_omi_status", arguments)
             return json.dumps(result)
         except Exception as e:
-            logger.error(f"check_limitless_status execution failed: {e}")
+            logger.error(f"check_omi_status execution failed: {e}")
             return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
     
     def __init__(self):
@@ -201,7 +201,7 @@ class MemoryCuratorAgent(BaseAgent):
         tool_definitions = [
             ToolDefinition(
                 name="search_lifelogs",
-                description="Search through Nate's recorded conversations and lifelogs from the Limitless pendant. Uses hybrid search (semantic + keyword) to find relevant conversations by topic, person, or content. Perfect for questions like 'What did Bob say about the project?' or 'Find the conversation where we discussed pricing'.",
+                description="Search through Nate's recorded conversations and lifelogs from the Omi pendant. Uses hybrid search (semantic + keyword) to find relevant conversations by topic, person, or content. Perfect for questions like 'What did Bob say about the project?' or 'Find the conversation where we discussed pricing'.",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -228,7 +228,7 @@ class MemoryCuratorAgent(BaseAgent):
             ),
             ToolDefinition(
                 name="get_recent_lifelogs",
-                description="Get recent recorded conversations from Nate's Limitless pendant. Useful for context about what happened today or in the last few hours.",
+                description="Get recent recorded conversations from Nate's Omi pendant. Useful for context about what happened today or in the last few hours.",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -269,14 +269,14 @@ class MemoryCuratorAgent(BaseAgent):
                 handler=self._handle_get_lifelog_context,
             ),
             ToolDefinition(
-                name="check_limitless_status",
-                description="Check if the Limitless pendant API is connected and working properly.",
+                name="check_omi_status",
+                description="Check if the Omi pendant API is connected and working properly.",
                 parameters={
                     "type": "object",
                     "properties": {},
                     "required": [],
                 },
-                handler=self._handle_check_limitless_status,
+                handler=self._handle_check_omi_status,
             ),
         ]
         
@@ -354,10 +354,10 @@ class MemoryCuratorAgent(BaseAgent):
         starred_only: bool = False
     ) -> list[LifelogEntry]:
         """
-        Search Limitless lifelogs for relevant conversations.
+        Search Omi lifelogs for relevant conversations.
         
         Uses hybrid search (semantic + keyword) to find relevant conversations
-        by topic, person, or content from Limitless pendant recordings.
+        by topic, person, or content from Omi pendant recordings.
         
         Args:
             query: Search query (semantic or keyword-based)
@@ -404,7 +404,7 @@ class MemoryCuratorAgent(BaseAgent):
         today_only: bool = False
     ) -> list[LifelogEntry]:
         """
-        Get recent lifelog entries from Limitless pendant.
+        Get recent lifelog entries from Omi pendant.
         
         Useful for getting context about what happened recently or today.
         
@@ -471,9 +471,9 @@ class MemoryCuratorAgent(BaseAgent):
             logger.error(f"Failed to get lifelog context: {e}")
             return ""
     
-    async def check_limitless_status(self) -> dict[str, Any]:
+    async def check_omi_status(self) -> dict[str, Any]:
         """
-        Check if the Limitless pendant API is connected and working.
+        Check if the Omi pendant API is connected and working.
         
         Returns:
             dict: Status information with keys:
@@ -481,13 +481,13 @@ class MemoryCuratorAgent(BaseAgent):
                 - error: str | None - Error message if not connected
         """
         try:
-            result = await self.bridge.execute_tool("check_limitless_status", {})
+            result = await self.bridge.execute_tool("check_omi_status", {})
             return {
                 "connected": result.get("connected", False),
                 "error": result.get("error"),
             }
         except Exception as e:
-            logger.error(f"Failed to check Limitless status: {e}")
+            logger.error(f"Failed to check Omi status: {e}")
             return {
                 "connected": False,
                 "error": str(e),

@@ -15,7 +15,7 @@ import {
   getAllMemoryNotes,
 } from "../db";
 import { resolvePendingMemory, getAllPendingMemories } from "../agent";
-import { getMorningBriefingEnhancement } from "../limitless";
+import { getMorningBriefingEnhancement } from "../omi";
 import { getUpcomingEvents } from "../googleCalendar";
 
 export const utilityToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
@@ -367,22 +367,22 @@ export async function executeUtilityTool(
         } catch (e) {
         }
         
-        // Add Limitless conversation highlights from yesterday
+        // Add Omi conversation highlights from yesterday
         try {
-          const limitlessData = await getMorningBriefingEnhancement();
+          const omiData = await getMorningBriefingEnhancement();
           
-          if (limitlessData.recentSummary) {
+          if (omiData.recentSummary) {
             briefingParts.push(`\nYesterday's Conversations:`);
-            briefingParts.push(`  ${limitlessData.recentSummary.summaryTitle}`);
+            briefingParts.push(`  ${omiData.recentSummary.summaryTitle}`);
             
             // Add key highlights
-            if (limitlessData.keyHighlights.length > 0) {
-              briefingParts.push(`  Highlights: ${limitlessData.keyHighlights[0].split("] ")[1]?.substring(0, 150) || limitlessData.keyHighlights[0].substring(0, 150)}`);
+            if (omiData.keyHighlights.length > 0) {
+              briefingParts.push(`  Highlights: ${omiData.keyHighlights[0].split("] ")[1]?.substring(0, 150) || omiData.keyHighlights[0].substring(0, 150)}`);
             }
             
             // Add pending action items from conversations
-            if (limitlessData.pendingActionItems.length > 0) {
-              const topItems = limitlessData.pendingActionItems.slice(0, 3);
+            if (omiData.pendingActionItems.length > 0) {
+              const topItems = omiData.pendingActionItems.slice(0, 3);
               briefingParts.push(`  Action items from conversations:`);
               for (const item of topItems) {
                 briefingParts.push(`    ${item}`);
@@ -390,13 +390,13 @@ export async function executeUtilityTool(
             }
             
             // Add follow-up reminders
-            if (limitlessData.upcomingFollowUps.length > 0) {
-              briefingParts.push(`  Note: ${limitlessData.upcomingFollowUps[0]}`);
+            if (omiData.upcomingFollowUps.length > 0) {
+              briefingParts.push(`  Note: ${omiData.upcomingFollowUps[0]}`);
             }
           }
         } catch (e) {
-          // Limitless enhancement is optional, don't fail the briefing
-          console.log("Limitless enhancement unavailable:", e);
+          // Omi enhancement is optional, don't fail the briefing
+          console.log("Omi enhancement unavailable:", e);
         }
         
         briefingParts.push("\nHave a great day!");

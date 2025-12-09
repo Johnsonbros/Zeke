@@ -444,7 +444,7 @@ async function discover_new_patterns(params?: { daysBack?: number }): Promise<To
 export const predictionToolDefinitions = [
   {
     name: "build_fused_context",
-    description: "Build a comprehensive fused context from multiple data sources (calendar, tasks, location, grocery, Limitless lifelogs, etc.) for predictive intelligence analysis.",
+    description: "Build a comprehensive fused context from multiple data sources (calendar, tasks, location, grocery, Omi lifelogs, etc.) for predictive intelligence analysis.",
     parameters: {
       type: "object",
       properties: {},

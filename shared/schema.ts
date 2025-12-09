@@ -1354,11 +1354,11 @@ export type UpdateSavedRecipe = z.infer<typeof updateSavedRecipeSchema>;
 export type SavedRecipe = typeof savedRecipes.$inferSelect;
 
 // ============================================
-// LIMITLESS AI SUMMARY SYSTEM
+// OMI AI SUMMARY SYSTEM
 // ============================================
 
-// Limitless daily summaries table - stores AI-generated summaries of lifelog conversations
-export const limitlessSummaries = sqliteTable("limitless_summaries", {
+// Omi daily summaries table - stores AI-generated summaries of memory conversations
+export const omiSummaries = sqliteTable("omi_summaries", {
   id: text("id").primaryKey(),
   date: text("date").notNull(), // YYYY-MM-DD format
   timeframeStart: text("timeframe_start").notNull(),
@@ -1369,24 +1369,24 @@ export const limitlessSummaries = sqliteTable("limitless_summaries", {
   insights: text("insights"), // JSON array of notable insights/observations
   peopleInteracted: text("people_interacted"), // JSON array of people mentioned/spoken to
   topicsDiscussed: text("topics_discussed"), // JSON array of main topics
-  lifelogIds: text("lifelog_ids").notNull(), // JSON array of source lifelog IDs
-  lifelogCount: integer("lifelog_count").notNull(),
+  memoryIds: text("memory_ids").notNull(), // JSON array of source Omi memory IDs
+  memoryCount: integer("memory_count").notNull(),
   totalDurationMinutes: integer("total_duration_minutes"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
 
-export const insertLimitlessSummarySchema = createInsertSchema(limitlessSummaries).omit({
+export const insertOmiSummarySchema = createInsertSchema(omiSummaries).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export type InsertLimitlessSummary = z.infer<typeof insertLimitlessSummarySchema>;
-export type LimitlessSummary = typeof limitlessSummaries.$inferSelect;
+export type InsertOmiSummary = z.infer<typeof insertOmiSummarySchema>;
+export type OmiSummary = typeof omiSummaries.$inferSelect;
 
-// Limitless lifelogs cache - stores processed lifelogs for local data fusion
-export const limitlessLifelogs = sqliteTable("limitless_lifelogs", {
+// Omi memories cache - stores processed memories for local data fusion
+export const omiMemories = sqliteTable("omi_memories", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
   markdown: text("markdown"),
@@ -1400,14 +1400,14 @@ export const limitlessLifelogs = sqliteTable("limitless_lifelogs", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const insertLimitlessLifelogSchema = createInsertSchema(limitlessLifelogs).omit({
+export const insertOmiMemorySchema = createInsertSchema(omiMemories).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export type InsertLimitlessLifelog = z.infer<typeof insertLimitlessLifelogSchema>;
-export type LimitlessLifelog = typeof limitlessLifelogs.$inferSelect;
+export type InsertOmiMemory = z.infer<typeof insertOmiMemorySchema>;
+export type OmiMemory = typeof omiMemories.$inferSelect;
 
 // Weather records table - stores weather data for contextual predictions
 export const weatherRecords = sqliteTable("weather_records", {
@@ -1428,15 +1428,15 @@ export const insertWeatherRecordSchema = createInsertSchema(weatherRecords).omit
 export type InsertWeatherRecord = z.infer<typeof insertWeatherRecordSchema>;
 export type WeatherRecord = typeof weatherRecords.$inferSelect;
 
-// Parsed types for JSON fields in Limitless summaries
-export interface LimitlessDiscussionPoint {
+// Parsed types for JSON fields in Omi summaries
+export interface OmiDiscussionPoint {
   title: string;
   summary: string;
   participants?: string[];
   timeframe?: string;
 }
 
-export interface LimitlessActionItem {
+export interface OmiActionItem {
   task: string;
   priority: "high" | "medium" | "low";
   assignee?: string;
@@ -1444,13 +1444,13 @@ export interface LimitlessActionItem {
   context?: string;
 }
 
-export interface LimitlessInsight {
+export interface OmiInsight {
   observation: string;
   category: "decision" | "idea" | "concern" | "opportunity" | "personal" | "other";
   importance: "high" | "medium" | "low";
 }
 
-export interface LimitlessAnalytics {
+export interface OmiAnalytics {
   dateRange: {
     start: string;
     end: string;
@@ -1792,7 +1792,7 @@ export const nlAutomationLogs = sqliteTable("nl_automation_logs", {
 export type NLAutomationLog = typeof nlAutomationLogs.$inferSelect;
 
 // ============================================
-// LIMITLESS ENHANCED FEATURES
+// OMI ENHANCED FEATURES
 // ============================================
 
 // Meetings table - tracks multi-speaker conversations detected as meetings
@@ -1862,8 +1862,8 @@ export const insertLifelogActionItemSchema = createInsertSchema(lifelogActionIte
 export type InsertLifelogActionItem = z.infer<typeof insertLifelogActionItemSchema>;
 export type LifelogActionItem = typeof lifelogActionItems.$inferSelect;
 
-// Limitless analytics daily table - pre-aggregated daily analytics
-export const limitlessAnalyticsDaily = sqliteTable("limitless_analytics_daily", {
+// Omi analytics daily table - pre-aggregated daily analytics
+export const omiAnalyticsDaily = sqliteTable("omi_analytics_daily", {
   id: text("id").primaryKey(),
   date: text("date").notNull(), // YYYY-MM-DD format
   totalConversations: integer("total_conversations").notNull().default(0),
@@ -1879,14 +1879,14 @@ export const limitlessAnalyticsDaily = sqliteTable("limitless_analytics_daily", 
   updatedAt: text("updated_at").notNull(),
 });
 
-export const insertLimitlessAnalyticsDailySchema = createInsertSchema(limitlessAnalyticsDaily).omit({
+export const insertOmiAnalyticsDailySchema = createInsertSchema(omiAnalyticsDaily).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export type InsertLimitlessAnalyticsDaily = z.infer<typeof insertLimitlessAnalyticsDailySchema>;
-export type LimitlessAnalyticsDaily = typeof limitlessAnalyticsDaily.$inferSelect;
+export type InsertOmiAnalyticsDaily = z.infer<typeof insertOmiAnalyticsDailySchema>;
+export type OmiAnalyticsDaily = typeof omiAnalyticsDaily.$inferSelect;
 
 // Parsed types for analytics JSON fields
 export interface SpeakerStat {
@@ -1905,8 +1905,8 @@ export interface HourDistributionItem {
   count: number;
 }
 
-// Limitless digest preferences
-export interface LimitlessDigestPreferences {
+// Omi digest preferences
+export interface OmiDigestPreferences {
   enabled: boolean;
   phoneNumber?: string;
   sendTime: string; // HH:MM format, defaults to "20:00"
@@ -2060,7 +2060,7 @@ export const patterns = sqliteTable("patterns", {
   strength: text("strength").notNull(), // 0-1 scale for pattern strength
 
   // Data context
-  dataSource: text("data_source").notNull(), // e.g., "calendar", "tasks", "location", "limitless"
+  dataSource: text("data_source").notNull(), // e.g., "calendar", "tasks", "location", "omi"
   sampleSize: integer("sample_size").notNull(), // Number of data points analyzed
   timeRangeStart: text("time_range_start").notNull(),
   timeRangeEnd: text("time_range_end").notNull(),

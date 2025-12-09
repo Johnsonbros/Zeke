@@ -22,7 +22,7 @@ import {
   extractPeopleFromRecentLifelogs,
   searchPersonInLifelogs,
   type ExtractedPerson,
-} from "../limitless";
+} from "../omi";
 
 export const peopleToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
@@ -285,7 +285,7 @@ export const peopleToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "extract_people_from_lifelogs",
-      description: "Scan recent lifelogs from the Limitless pendant and extract all people who were in conversations with Nate. Use this to discover new people to track. ZEKE should use this proactively to find and auto-create contacts for people Nate interacts with.",
+      description: "Scan recent lifelogs from the Omi pendant and extract all people who were in conversations with Nate. Use this to discover new people to track. ZEKE should use this proactively to find and auto-create contacts for people Nate interacts with.",
       parameters: {
         type: "object",
         properties: {
@@ -778,7 +778,7 @@ export async function executePeopleTool(
         console.error("Failed to extract people from lifelogs:", error);
         return JSON.stringify({
           success: false,
-          error: error.message || "Failed to extract people from lifelogs. Make sure Limitless API is configured.",
+          error: error.message || "Failed to extract people from lifelogs. Make sure Omi API is configured.",
         });
       }
     }
@@ -814,7 +814,7 @@ export async function executePeopleTool(
         console.error("Failed to search person history:", error);
         return JSON.stringify({
           success: false,
-          error: error.message || "Failed to search person history. Make sure Limitless API is configured.",
+          error: error.message || "Failed to search person history. Make sure Omi API is configured.",
         });
       }
     }

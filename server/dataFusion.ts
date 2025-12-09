@@ -2,7 +2,7 @@
  * Data Fusion Layer
  *
  * Combines and correlates data from multiple sources (calendar, tasks, location, grocery,
- * Limitless lifelogs, etc.) to create rich contextual insights for predictive intelligence.
+ * Omi lifelogs, etc.) to create rich contextual insights for predictive intelligence.
  */
 
 import { db } from "./db";
@@ -12,7 +12,7 @@ import {
   locationHistory,
   savedPlaces,
   groceryItems,
-  limitlessLifelogs,
+  omiMemories,
   messages,
   weatherRecords,
   memoryNotes,
@@ -75,7 +75,7 @@ export interface FusedContext {
   lastShoppingDate?: Date;
   daysSinceLastShopping?: number;
 
-  // Conversation context (from Limitless)
+  // Conversation context (from Omi)
   recentConversationTopics: string[];
   conversationsToday: number;
   lastConversationTime?: Date;
@@ -276,22 +276,22 @@ export async function buildFusedContext(
     daysSinceLastShopping = (now.getTime() - lastShoppingDate.getTime()) / (1000 * 60 * 60 * 24);
   }
 
-  // Conversation context (from Limitless)
+  // Conversation context (from Omi)
   const todayConversations = await db
     .select()
-    .from(limitlessLifelogs)
+    .from(omiMemories)
     .where(
       and(
-        gte(limitlessLifelogs.startTimestamp, todayStart.toISOString()),
-        eq(limitlessLifelogs.processedSuccessfully, true)
+        gte(omiMemories.startTimestamp, todayStart.toISOString()),
+        eq(omiMemories.processedSuccessfully, true)
       )
     );
 
   const recentConversations = await db
     .select()
-    .from(limitlessLifelogs)
-    .where(eq(limitlessLifelogs.processedSuccessfully, true))
-    .orderBy(desc(limitlessLifelogs.startTimestamp))
+    .from(omiMemories)
+    .where(eq(omiMemories.processedSuccessfully, true))
+    .orderBy(desc(omiMemories.startTimestamp))
     .limit(5);
 
   const recentConversationTopics = recentConversations
@@ -530,11 +530,11 @@ export async function correlateEvents(
 
   const recentConversations = await db
     .select()
-    .from(limitlessLifelogs)
+    .from(omiMemories)
     .where(
       and(
-        gte(limitlessLifelogs.startTimestamp, windowStart.toISOString()),
-        eq(limitlessLifelogs.processedSuccessfully, true)
+        gte(omiMemories.startTimestamp, windowStart.toISOString()),
+        eq(omiMemories.processedSuccessfully, true)
       )
     );
 

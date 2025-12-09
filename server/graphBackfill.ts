@@ -18,7 +18,7 @@ import {
   getExtractionSummary,
 } from "./entityExtractor";
 import { getKnowledgeGraphStats } from "./knowledgeGraph";
-import { getRecentLifelogs, type Lifelog } from "./limitless";
+import { getRecentLifelogs, type OmiMemoryData } from "./omi";
 
 interface BackfillProgress {
   domain: string;
@@ -147,8 +147,8 @@ async function backfillTasks(): Promise<BackfillProgress> {
 }
 
 /**
- * Backfill lifelogs into the knowledge graph
- * Note: Lifelogs are fetched from the Limitless API, so we get recent ones only
+ * Backfill memories into the knowledge graph
+ * Note: Memories are fetched from the Omi API, so we get recent ones only
  */
 async function backfillLifelogs(): Promise<BackfillProgress> {
   const progress: BackfillProgress = {
@@ -162,18 +162,18 @@ async function backfillLifelogs(): Promise<BackfillProgress> {
   };
 
   try {
-    // Fetch recent lifelogs from Limitless API (last 7 days, up to 100)
-    const lifelogs = await getRecentLifelogs(168, 100);
-    progress.total = lifelogs.length;
-    console.log(`[GraphBackfill] Processing ${lifelogs.length} recent lifelogs...`);
+    // Fetch recent memories from Omi API (last 7 days, up to 100)
+    const memories = await getRecentLifelogs(168, 100);
+    progress.total = memories.length;
+    console.log(`[GraphBackfill] Processing ${memories.length} recent memories...`);
 
-    for (const lifelog of lifelogs) {
+    for (const memory of memories) {
       try {
-        // Extract transcript text from markdown
-        const transcriptText = lifelog.markdown || lifelog.summary || "";
+        // Extract transcript text from memory
+        const transcriptText = memory.transcript || memory.structured?.overview || "";
         const result = await processLifelogForEntities(
-          lifelog.id,
-          lifelog.title || "Untitled",
+          memory.id,
+          memory.structured?.title || "Untitled",
           transcriptText
         );
         progress.entitiesCreated += result.entities.length;
@@ -181,10 +181,10 @@ async function backfillLifelogs(): Promise<BackfillProgress> {
         progress.processed++;
 
         if (progress.processed % 10 === 0) {
-          console.log(`[GraphBackfill] Lifelogs: ${progress.processed}/${progress.total}`);
+          console.log(`[GraphBackfill] Memories: ${progress.processed}/${progress.total}`);
         }
       } catch (error) {
-        console.error(`[GraphBackfill] Error processing lifelog ${lifelog.id}:`, error);
+        console.error(`[GraphBackfill] Error processing memory ${memory.id}:`, error);
         progress.errors++;
       }
     }
@@ -216,14 +216,14 @@ export async function previewBackfill(limit: number = 5): Promise<{
     extraction: getExtractionSummary(extractAllFromText(`${t.title} ${t.description || ""}`))
   }));
 
-  // Fetch recent lifelogs from API
+  // Fetch recent memories from Omi API
   let lifelogs: { id: string; title: string; extraction: string }[] = [];
   try {
-    const recentLifelogs = await getRecentLifelogs(72, limit);
-    lifelogs = recentLifelogs.map(l => ({
-      id: l.id,
-      title: l.title || "Untitled",
-      extraction: getExtractionSummary(extractAllFromText(`${l.title || ""} ${l.markdown || ""}`))
+    const recentMemories = await getRecentLifelogs(72, limit);
+    lifelogs = recentMemories.map((m: OmiMemoryData) => ({
+      id: m.id,
+      title: m.structured?.title || "Untitled",
+      extraction: getExtractionSummary(extractAllFromText(`${m.structured?.title || ""} ${m.transcript || ""}`))
     }));
   } catch (error) {
     console.log("[GraphBackfill] Could not fetch lifelogs for preview:", error);

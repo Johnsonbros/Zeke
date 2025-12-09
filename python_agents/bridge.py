@@ -161,7 +161,7 @@ class NodeBridge:
                 - "calendar": Upcoming events and schedule
                 - "grocery": Grocery list items
                 - "locations": Saved places and current location
-                - "limitless": Recent Limitless pendant recordings
+                - "omi": Recent Omi wearable recordings
                 - "contacts": Contact information
                 - "profile": Full user profile details
                 - "conversation": Conversation summary and recent messages

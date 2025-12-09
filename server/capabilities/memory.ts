@@ -1,25 +1,25 @@
 import type OpenAI from "openai";
 import type { ToolPermissions } from "../tools";
 import {
-  searchLifelogs,
-  getRecentLifelogs,
-  getTodaysLifelogs,
-  getLifelogContext,
+  searchMemories,
+  getRecentMemories,
+  getTodaysMemories,
+  getMemoryContext,
   extractConversationContent,
-  checkLimitlessConnection,
-  getLifelogOverview,
+  checkOmiConnection,
+  getMemoryOverview,
   generateDailySummary,
-  getLimitlessSummaryByDate,
-  type Lifelog,
-} from "../limitless";
+  getOmiSummaryByDate,
+  type OmiMemory,
+} from "../omi";
 import { createMemoryWithEmbedding } from "../semanticMemory";
 
 export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
-      name: "get_lifelog_overview",
-      description: "ALWAYS use this first when Nate asks about his lifelog data or what was recorded. Returns a quick overview of available Limitless lifelog data including: today's conversations, yesterday's conversations, last 7 days count, and the most recent recording with its age. This helps understand what data is available before doing specific searches.",
+      name: "get_memory_overview",
+      description: "ALWAYS use this first when Nate asks about his memory data or what was recorded. Returns a quick overview of available Omi memory data including: today's memories, yesterday's memories, last 7 days count, and the most recent recording with its age. This helps understand what data is available before doing specific searches.",
       parameters: {
         type: "object",
         properties: {},
@@ -30,8 +30,8 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
-      name: "search_lifelogs",
-      description: "Search through Nate's recorded conversations and lifelogs from the Limitless pendant. Uses hybrid search (semantic + keyword) to find relevant conversations by topic, person, or content. Perfect for questions like 'What did Bob say about the project?' or 'Find the conversation where we discussed pricing'. Searches across ALL available data unless a specific date is provided.",
+      name: "search_memories",
+      description: "Search through Nate's recorded conversations and memories from the Omi device. Uses hybrid search (semantic + keyword) to find relevant conversations by topic, person, or content. Perfect for questions like 'What did Bob say about the project?' or 'Find the conversation where we discussed pricing'. Searches across ALL available data unless a specific date is provided.",
       parameters: {
         type: "object",
         properties: {
@@ -49,7 +49,7 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
           },
           starred_only: {
             type: "boolean",
-            description: "Only return starred/important conversations",
+            description: "Only return starred/important memories",
           },
         },
         required: ["query"],
@@ -59,8 +59,8 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
-      name: "get_recent_lifelogs",
-      description: "Get recent recorded conversations from Nate's Limitless pendant. Default is 24 hours - use a larger value (48, 72, or more) when looking for 'recent' conversations that might be from earlier today or yesterday. Use get_lifelog_overview first if unsure what data is available.",
+      name: "get_recent_memories",
+      description: "Get recent recorded conversations from Nate's Omi device. Default is 24 hours - use a larger value (48, 72, or more) when looking for 'recent' conversations that might be from earlier today or yesterday. Use get_memory_overview first if unsure what data is available.",
       parameters: {
         type: "object",
         properties: {
@@ -74,7 +74,7 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
           },
           today_only: {
             type: "boolean",
-            description: "Only get conversations from today (since midnight)",
+            description: "Only get memories from today (since midnight)",
           },
         },
         required: [],
@@ -84,8 +84,8 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
-      name: "get_lifelog_context",
-      description: "Get relevant lifelog context for a specific topic. Returns formatted conversation excerpts that can help answer questions about what was discussed. Searches the last 72 hours by default. Use this before answering questions that might benefit from real-world context.",
+      name: "get_memory_context",
+      description: "Get relevant memory context for a specific topic. Returns formatted conversation excerpts that can help answer questions about what was discussed. Searches the last 72 hours by default. Use this before answering questions that might benefit from real-world context.",
       parameters: {
         type: "object",
         properties: {
@@ -95,7 +95,7 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
           },
           max_results: {
             type: "number",
-            description: "Maximum number of conversations to include (default 5)",
+            description: "Maximum number of memories to include (default 5)",
           },
         },
         required: ["topic"],
@@ -105,8 +105,8 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
-      name: "check_limitless_status",
-      description: "Check if the Limitless pendant API is connected and working properly. Use get_lifelog_overview instead for a more informative check that also shows available data.",
+      name: "check_omi_status",
+      description: "Check if the Omi device API is connected and working properly. Use get_memory_overview instead for a more informative check that also shows available data.",
       parameters: {
         type: "object",
         properties: {},
@@ -181,11 +181,11 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
 ];
 
 export const memoryToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
-  get_lifelog_overview: (p) => p.canAccessPersonalInfo,
-  search_lifelogs: (p) => p.canAccessPersonalInfo,
-  get_recent_lifelogs: (p) => p.canAccessPersonalInfo,
-  get_lifelog_context: (p) => p.canAccessPersonalInfo,
-  check_limitless_status: () => true,
+  get_memory_overview: (p) => p.canAccessPersonalInfo,
+  search_memories: (p) => p.canAccessPersonalInfo,
+  get_recent_memories: (p) => p.canAccessPersonalInfo,
+  get_memory_context: (p) => p.canAccessPersonalInfo,
+  check_omi_status: () => true,
   generate_daily_summary: (p) => p.isAdmin,
   get_daily_summary: (p) => p.canAccessPersonalInfo,
   create_memory: (p) => p.canAccessPersonalInfo,
@@ -196,14 +196,14 @@ export async function executeMemoryTool(
   args: Record<string, unknown>
 ): Promise<string | null> {
   switch (toolName) {
-    case "get_lifelog_overview": {
+    case "get_memory_overview": {
       try {
-        const overview = await getLifelogOverview();
+        const overview = await getMemoryOverview();
         
         if (!overview.connected) {
           return JSON.stringify({
             success: false,
-            error: "Unable to connect to Limitless API. Make sure the API key is configured.",
+            error: "Unable to connect to Omi API. Make sure the API key is configured.",
           });
         }
         
@@ -219,23 +219,23 @@ export async function executeMemoryTool(
             mostRecent: overview.mostRecent,
           },
           summary: overview.today.count > 0
-            ? `Found ${overview.today.count} conversation(s) today, ${overview.yesterday.count} yesterday, and ${overview.last7Days.count} total in the last 7 days.${overview.mostRecent ? ` Most recent was "${overview.mostRecent.title}" (${overview.mostRecent.age}).` : ""}`
+            ? `Found ${overview.today.count} memory(s) today, ${overview.yesterday.count} yesterday, and ${overview.last7Days.count} total in the last 7 days.${overview.mostRecent ? ` Most recent was "${overview.mostRecent.title}" (${overview.mostRecent.age}).` : ""}`
             : overview.yesterday.count > 0
-            ? `No conversations today, but found ${overview.yesterday.count} yesterday and ${overview.last7Days.count} total in the last 7 days.${overview.mostRecent ? ` Most recent was "${overview.mostRecent.title}" (${overview.mostRecent.age}).` : ""}`
+            ? `No memories today, but found ${overview.yesterday.count} yesterday and ${overview.last7Days.count} total in the last 7 days.${overview.mostRecent ? ` Most recent was "${overview.mostRecent.title}" (${overview.mostRecent.age}).` : ""}`
             : overview.last7Days.count > 0
-            ? `No recent conversations. Found ${overview.last7Days.count} in the last 7 days on these dates: ${overview.last7Days.dates.join(", ")}.${overview.mostRecent ? ` Most recent was "${overview.mostRecent.title}" (${overview.mostRecent.age}).` : ""}`
-            : "No conversations found in the last 7 days. The pendant may not be recording or syncing.",
+            ? `No recent memories. Found ${overview.last7Days.count} in the last 7 days on these dates: ${overview.last7Days.dates.join(", ")}.${overview.mostRecent ? ` Most recent was "${overview.mostRecent.title}" (${overview.mostRecent.age}).` : ""}`
+            : "No memories found in the last 7 days. The device may not be recording or syncing.",
         });
       } catch (error: any) {
-        console.error("Failed to get lifelog overview:", error);
+        console.error("Failed to get memory overview:", error);
         return JSON.stringify({
           success: false,
-          error: error.message || "Failed to get lifelog overview.",
+          error: error.message || "Failed to get memory overview.",
         });
       }
     }
     
-    case "search_lifelogs": {
+    case "search_memories": {
       const { query, limit, date, starred_only } = args as {
         query: string;
         limit?: number;
@@ -244,44 +244,44 @@ export async function executeMemoryTool(
       };
       
       try {
-        const lifelogs = await searchLifelogs(query, {
+        const memories = await searchMemories(query, {
           limit: limit ?? 5,
           date,
           isStarred: starred_only,
         });
         
-        if (lifelogs.length === 0) {
+        if (memories.length === 0) {
           return JSON.stringify({
             success: true,
-            message: `No conversations found matching "${query}"`,
+            message: `No memories found matching "${query}"`,
             results: [],
           });
         }
         
-        const results = lifelogs.map((log: Lifelog) => ({
-          id: log.id,
-          title: log.title,
-          startTime: log.startTime,
-          endTime: log.endTime,
-          isStarred: log.isStarred,
-          excerpt: log.markdown?.substring(0, 500) || extractConversationContent(log).substring(0, 500),
+        const results = memories.map((mem: OmiMemory) => ({
+          id: mem.id,
+          title: mem.title,
+          startTime: mem.startTime,
+          endTime: mem.endTime,
+          isStarred: mem.isStarred,
+          excerpt: mem.markdown?.substring(0, 500) || extractConversationContent(mem).substring(0, 500),
         }));
         
         return JSON.stringify({
           success: true,
-          message: `Found ${lifelogs.length} conversation(s) matching "${query}"`,
+          message: `Found ${memories.length} memory(s) matching "${query}"`,
           results,
         });
       } catch (error: any) {
-        console.error("Failed to search lifelogs:", error);
+        console.error("Failed to search memories:", error);
         return JSON.stringify({
           success: false,
-          error: error.message || "Failed to search lifelogs. Make sure Limitless API key is configured.",
+          error: error.message || "Failed to search memories. Make sure Omi API key is configured.",
         });
       }
     }
     
-    case "get_recent_lifelogs": {
+    case "get_recent_memories": {
       const { hours, limit, today_only } = args as {
         hours?: number;
         limit?: number;
@@ -289,62 +289,62 @@ export async function executeMemoryTool(
       };
       
       try {
-        let lifelogs: Lifelog[];
+        let memories: OmiMemory[];
         
         if (today_only) {
-          lifelogs = await getTodaysLifelogs(limit ?? 10);
+          memories = await getTodaysMemories(limit ?? 10);
         } else {
-          lifelogs = await getRecentLifelogs(hours ?? 24, limit ?? 10);
+          memories = await getRecentMemories(hours ?? 24, limit ?? 10);
         }
         
-        if (lifelogs.length === 0) {
+        if (memories.length === 0) {
           return JSON.stringify({
             success: true,
             message: today_only 
-              ? "No conversations recorded today" 
-              : `No conversations in the last ${hours ?? 24} hours`,
+              ? "No memories recorded today" 
+              : `No memories in the last ${hours ?? 24} hours`,
             results: [],
           });
         }
         
-        const results = lifelogs.map((log: Lifelog) => ({
-          id: log.id,
-          title: log.title,
-          startTime: log.startTime,
-          endTime: log.endTime,
-          isStarred: log.isStarred,
-          excerpt: log.markdown?.substring(0, 300) || extractConversationContent(log).substring(0, 300),
+        const results = memories.map((mem: OmiMemory) => ({
+          id: mem.id,
+          title: mem.title,
+          startTime: mem.startTime,
+          endTime: mem.endTime,
+          isStarred: mem.isStarred,
+          excerpt: mem.markdown?.substring(0, 300) || extractConversationContent(mem).substring(0, 300),
         }));
         
         return JSON.stringify({
           success: true,
-          message: `Found ${lifelogs.length} recent conversation(s)`,
+          message: `Found ${memories.length} recent memory(s)`,
           results,
         });
       } catch (error: any) {
-        console.error("Failed to get recent lifelogs:", error);
+        console.error("Failed to get recent memories:", error);
         return JSON.stringify({
           success: false,
-          error: error.message || "Failed to get recent lifelogs. Make sure Limitless API key is configured.",
+          error: error.message || "Failed to get recent memories. Make sure Omi API key is configured.",
         });
       }
     }
     
-    case "get_lifelog_context": {
+    case "get_memory_context": {
       const { topic, max_results } = args as {
         topic: string;
         max_results?: number;
       };
       
       try {
-        const context = await getLifelogContext(topic, {
+        const context = await getMemoryContext(topic, {
           maxResults: max_results ?? 5,
         });
         
         if (!context) {
           return JSON.stringify({
             success: true,
-            message: `No relevant conversations found for "${topic}"`,
+            message: `No relevant memories found for "${topic}"`,
             context: "",
           });
         }
@@ -355,31 +355,31 @@ export async function executeMemoryTool(
           context,
         });
       } catch (error: any) {
-        console.error("Failed to get lifelog context:", error);
+        console.error("Failed to get memory context:", error);
         return JSON.stringify({
           success: false,
-          error: error.message || "Failed to get lifelog context. Make sure Limitless API key is configured.",
+          error: error.message || "Failed to get memory context. Make sure Omi API key is configured.",
         });
       }
     }
     
-    case "check_limitless_status": {
+    case "check_omi_status": {
       try {
-        const status = await checkLimitlessConnection();
+        const status = await checkOmiConnection();
         return JSON.stringify({
           success: true,
           connected: status.connected,
           error: status.error,
           message: status.connected 
-            ? "Limitless pendant API is connected and working" 
-            : `Limitless connection failed: ${status.error}`,
+            ? "Omi device API is connected and working" 
+            : `Omi connection failed: ${status.error}`,
         });
       } catch (error: any) {
-        console.error("Failed to check Limitless status:", error);
+        console.error("Failed to check Omi status:", error);
         return JSON.stringify({
           success: false,
           connected: false,
-          error: error.message || "Failed to check Limitless status",
+          error: error.message || "Failed to check Omi status",
         });
       }
     }
@@ -452,7 +452,7 @@ export async function executeMemoryTool(
       const targetDate = date || new Date().toISOString().split("T")[0];
       
       try {
-        const summary = getLimitlessSummaryByDate(targetDate);
+        const summary = getOmiSummaryByDate(targetDate);
         
         if (!summary) {
           return JSON.stringify({
@@ -559,11 +559,11 @@ export async function executeMemoryTool(
 }
 
 export const memoryToolNames = [
-  "get_lifelog_overview",
-  "search_lifelogs",
-  "get_recent_lifelogs",
-  "get_lifelog_context",
-  "check_limitless_status",
+  "get_memory_overview",
+  "search_memories",
+  "get_recent_memories",
+  "get_memory_context",
+  "check_omi_status",
   "generate_daily_summary",
   "get_daily_summary",
   "create_memory",

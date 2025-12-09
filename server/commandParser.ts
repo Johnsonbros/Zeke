@@ -77,7 +77,7 @@ export interface ParseResult {
   error?: string;
 }
 
-const COMMAND_PARSING_PROMPT = `You are ZEKE, Nate's personal AI assistant. You've detected a voice command directed at you through the Limitless pendant lifelog.
+const COMMAND_PARSING_PROMPT = `You are ZEKE, Nate's personal AI assistant. You've detected a voice command directed at you through the Omi pendant lifelog.
 
 Your job is to parse this command and extract the structured action Nate wants you to take.
 

@@ -1,14 +1,14 @@
 """
-Limitless Analyst Agent - ZEKE's lifelog data preprocessor.
+Omi Analyst Agent - ZEKE's lifelog data preprocessor.
 
-This module implements the Limitless Analyst agent responsible for:
-- Fetching and analyzing lifelog data from the Limitless pendant
+This module implements the Omi Analyst agent responsible for:
+- Fetching and analyzing lifelog data from the Omi wearable
 - Creating structured context bundles with token limits
 - Prioritizing relevant information for the current query
 - Providing curated context to other agents
 
-The Limitless Analyst works as a preprocessing layer, extracting relevant
-information from pendant recordings and packaging it for consumption by
+The Omi Analyst works as a preprocessing layer, extracting relevant
+information from wearable recordings and packaging it for consumption by
 other specialist agents.
 """
 
@@ -36,8 +36,8 @@ from ..bridge import get_bridge
 logger = logging.getLogger(__name__)
 
 
-LIMITLESS_ANALYST_INSTRUCTIONS = """You are the Limitless Analyst, ZEKE's lifelog data preprocessor. Your role is to:
-1. Fetch and analyze lifelog data from Nate's Limitless pendant
+OMI_ANALYST_INSTRUCTIONS = """You are the Omi Analyst, ZEKE's lifelog data preprocessor. Your role is to:
+1. Fetch and analyze lifelog data from Nate's Omi wearable
 2. Create structured context bundles with token limits (~2000 tokens max)
 3. Prioritize relevant information based on the current query
 4. Extract key points, action items, and important quotes
@@ -74,7 +74,7 @@ most recent and most relevant information."""
 @dataclass
 class ContextBundle:
     """
-    Curated context bundle from Limitless lifelog data.
+    Curated context bundle from Omi lifelog data.
     
     Attributes:
         summary: Brief summary of relevant content
@@ -125,7 +125,7 @@ class LifelogOverviewResult:
     Result from get_lifelog_overview.
     
     Attributes:
-        connected: Whether the Limitless API is connected
+        connected: Whether the Omi API is connected
         today_count: Number of conversations today
         yesterday_count: Number of conversations yesterday
         last_7_days_count: Number of conversations in last 7 days
@@ -140,22 +140,22 @@ class LifelogOverviewResult:
     most_recent_age: str = ""
 
 
-class LimitlessAnalystAgent(BaseAgent):
+class OmiAnalystAgent(BaseAgent):
     """
-    Limitless Analyst Agent - ZEKE's lifelog data preprocessor.
+    Omi Analyst Agent - ZEKE's lifelog data preprocessor.
     
     This agent is responsible for:
-    - Fetching lifelog data from the Limitless pendant via Node.js bridge
+    - Fetching lifelog data from the Omi wearable via Node.js bridge
     - Analyzing and filtering data for relevance to queries
     - Creating structured context bundles with token limits
     - Providing curated context to other specialist agents
     
-    The Limitless Analyst is a preprocessing agent that helps other agents
+    The Omi Analyst is a preprocessing agent that helps other agents
     access relevant lifelog information efficiently.
     
     Attributes:
-        agent_id: LIMITLESS_ANALYST
-        capabilities: [LIMITLESS]
+        agent_id: OMI_ANALYST
+        capabilities: [OMI]
         handoff_targets: [CONDUCTOR, MEMORY_CURATOR]
     """
     
@@ -263,11 +263,11 @@ class LimitlessAnalystAgent(BaseAgent):
             return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
     
     def __init__(self):
-        """Initialize the Limitless Analyst agent with its tools and configuration."""
+        """Initialize the Omi Analyst agent with its tools and configuration."""
         tool_definitions = [
             ToolDefinition(
                 name="get_lifelog_overview",
-                description="Get a quick overview of available Limitless lifelog data including: today's conversations, yesterday's conversations, last 7 days count, and the most recent recording. Use this FIRST to understand what data is available before doing specific searches.",
+                description="Get a quick overview of available Omi lifelog data including: today's conversations, yesterday's conversations, last 7 days count, and the most recent recording. Use this FIRST to understand what data is available before doing specific searches.",
                 parameters={
                     "type": "object",
                     "properties": {},
@@ -277,7 +277,7 @@ class LimitlessAnalystAgent(BaseAgent):
             ),
             ToolDefinition(
                 name="search_lifelogs",
-                description="Search through recorded conversations from the Limitless pendant. Uses hybrid search (semantic + keyword) to find relevant conversations by topic, person, or content. Perfect for questions like 'What did Bob say about the project?' or 'Find the conversation where we discussed pricing'.",
+                description="Search through recorded conversations from the Omi wearable. Uses hybrid search (semantic + keyword) to find relevant conversations by topic, person, or content. Perfect for questions like 'What did Bob say about the project?' or 'Find the conversation where we discussed pricing'.",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -304,7 +304,7 @@ class LimitlessAnalystAgent(BaseAgent):
             ),
             ToolDefinition(
                 name="get_recent_lifelogs",
-                description="Get recent recorded conversations from the Limitless pendant. Default is 24 hours - use a larger value (48, 72, or more) when looking for 'recent' conversations that might be from earlier today or yesterday.",
+                description="Get recent recorded conversations from the Omi wearable. Default is 24 hours - use a larger value (48, 72, or more) when looking for 'recent' conversations that might be from earlier today or yesterday.",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -390,11 +390,11 @@ class LimitlessAnalystAgent(BaseAgent):
         ]
         
         super().__init__(
-            agent_id=AgentId.LIMITLESS_ANALYST,
-            name="Limitless Analyst",
-            description="ZEKE's lifelog data preprocessor. Fetches and analyzes Limitless pendant data, creating curated context bundles for other agents.",
-            instructions=LIMITLESS_ANALYST_INSTRUCTIONS,
-            capabilities=[CapabilityCategory.LIMITLESS],
+            agent_id=AgentId.OMI_ANALYST,
+            name="Omi Analyst",
+            description="ZEKE's lifelog data preprocessor. Fetches and analyzes Omi wearable data, creating curated context bundles for other agents.",
+            instructions=OMI_ANALYST_INSTRUCTIONS,
+            capabilities=[CapabilityCategory.OMI],
             tools=tool_definitions,
             handoff_targets=[
                 AgentId.CONDUCTOR,
@@ -516,7 +516,7 @@ class LimitlessAnalystAgent(BaseAgent):
         try:
             overview = await self.get_lifelog_overview()
             if not overview.connected:
-                bundle.summary = "Limitless API is not connected. Unable to retrieve lifelog data."
+                bundle.summary = "Omi API is not connected. Unable to retrieve lifelog data."
                 bundle.token_estimate = self._estimate_tokens(bundle.summary)
                 return bundle
             
@@ -669,7 +669,7 @@ class LimitlessAnalystAgent(BaseAgent):
     
     async def _execute(self, input_text: str, context: AgentContext) -> str:
         """
-        Execute the Limitless Analyst's main logic.
+        Execute the Omi Analyst's main logic.
         
         This method:
         1. Analyzes the input query to understand what lifelog context is needed
@@ -695,7 +695,7 @@ class LimitlessAnalystAgent(BaseAgent):
             return json.dumps(result, indent=2)
             
         except Exception as e:
-            logger.error(f"Limitless Analyst execution failed: {e}")
+            logger.error(f"Omi Analyst execution failed: {e}")
             error_result = {
                 "success": False,
                 "error": str(e),
@@ -706,17 +706,17 @@ class LimitlessAnalystAgent(BaseAgent):
             return json.dumps(error_result, indent=2)
 
 
-_limitless_analyst_instance: LimitlessAnalystAgent | None = None
+_omi_analyst_instance: OmiAnalystAgent | None = None
 
 
-def get_limitless_analyst() -> LimitlessAnalystAgent:
+def get_omi_analyst() -> OmiAnalystAgent:
     """
-    Get the singleton Limitless Analyst agent instance.
+    Get the singleton Omi Analyst agent instance.
     
     Returns:
-        LimitlessAnalystAgent: The singleton agent instance
+        OmiAnalystAgent: The singleton agent instance
     """
-    global _limitless_analyst_instance
-    if _limitless_analyst_instance is None:
-        _limitless_analyst_instance = LimitlessAnalystAgent()
-    return _limitless_analyst_instance
+    global _omi_analyst_instance
+    if _omi_analyst_instance is None:
+        _omi_analyst_instance = OmiAnalystAgent()
+    return _omi_analyst_instance

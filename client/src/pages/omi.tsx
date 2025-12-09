@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 import { format, parseISO, subDays } from "date-fns";
 
-interface LimitlessSummary {
+interface OmiSummary {
   id: string;
   date: string;
   summaryTitle: string;
@@ -96,7 +96,7 @@ const COLORS = [
   "hsl(15, 50%, 40%)",
 ];
 
-function SummaryCard({ summary }: { summary: LimitlessSummary }) {
+function SummaryCard({ summary }: { summary: OmiSummary }) {
   const [expanded, setExpanded] = useState(false);
 
   const safeJsonParse = (jsonStr: string | null | undefined): unknown[] => {
@@ -484,18 +484,18 @@ function TopTopicsChart({ topTopics }: { topTopics: AnalyticsData["topTopics"] }
   );
 }
 
-export default function LimitlessPage() {
+export default function OmiPage() {
   const [daysRange, setDaysRange] = useState(7);
   const { toast } = useToast();
 
-  const summariesQuery = useQuery<LimitlessSummary[]>({
-    queryKey: ["/api/limitless/summaries", 30],
+  const summariesQuery = useQuery<OmiSummary[]>({
+    queryKey: ["/api/omi/summaries", 30],
   });
 
   const analyticsQuery = useQuery<AnalyticsData>({
-    queryKey: ["/api/limitless/analytics", daysRange],
+    queryKey: ["/api/omi/analytics", daysRange],
     queryFn: async () => {
-      const res = await fetch(`/api/limitless/analytics?days=${daysRange}`);
+      const res = await fetch(`/api/omi/analytics?days=${daysRange}`);
       if (!res.ok) throw new Error("Failed to fetch analytics");
       return res.json();
     },
@@ -504,15 +504,15 @@ export default function LimitlessPage() {
   const generateTodayMutation = useMutation({
     mutationFn: async () => {
       const today = new Date().toISOString().split("T")[0];
-      const res = await apiRequest("POST", "/api/limitless/generate-summary", {
+      const res = await apiRequest("POST", "/api/omi/generate-summary", {
         date: today,
         forceRegenerate: false,
       });
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/limitless/summaries"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/limitless/analytics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/omi/summaries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/omi/analytics"] });
       toast({
         title: "Summary Generated",
         description: "Today's conversation summary has been created.",
@@ -537,7 +537,7 @@ export default function LimitlessPage() {
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl font-semibold" data-testid="page-title">
-                Limitless Analytics
+                Omi Analytics
               </h1>
               <p className="text-sm text-muted-foreground">
                 AI-powered insights from your daily conversations
@@ -562,7 +562,7 @@ export default function LimitlessPage() {
       <ScrollArea className="flex-1">
         <div className="p-4 sm:p-6 space-y-6">
           <Tabs defaultValue="analytics" className="w-full">
-            <TabsList className="mb-4" data-testid="tabs-limitless">
+            <TabsList className="mb-4" data-testid="tabs-omi">
               <TabsTrigger value="analytics" data-testid="tab-analytics">
                 <TrendingUp className="h-4 w-4 mr-2" />
                 Analytics

@@ -122,18 +122,18 @@ class SafetyAuditorAgent(BaseAgent):
         handoff_targets: [CONDUCTOR]
     """
     
-    async def _handle_check_limitless_status(self, ctx: Any, args: str) -> str:
-        """Handler for check_limitless_status tool - routes through Node.js bridge."""
+    async def _handle_check_omi_status(self, ctx: Any, args: str) -> str:
+        """Handler for check_omi_status tool - routes through Node.js bridge."""
         try:
             arguments = json.loads(args) if isinstance(args, str) else args
         except json.JSONDecodeError as e:
             return json.dumps({"error": f"Invalid JSON arguments: {str(e)}"})
         
         try:
-            result = await self.bridge.execute_tool("check_limitless_status", arguments)
+            result = await self.bridge.execute_tool("check_omi_status", arguments)
             return json.dumps(result)
         except Exception as e:
-            logger.error(f"check_limitless_status execution failed: {e}")
+            logger.error(f"check_omi_status execution failed: {e}")
             return json.dumps({
                 "success": False,
                 "error": f"Status check failed: {str(e)}",
@@ -158,9 +158,9 @@ class SafetyAuditorAgent(BaseAgent):
         """Initialize the Safety Auditor agent with its tools and configuration."""
         tool_definitions = [
             ToolDefinition(
-                name="check_limitless_status",
+                name="check_omi_status",
                 description=(
-                    "Check if the Limitless pendant API is connected and working properly. "
+                    "Check if the Omi pendant API is connected and working properly. "
                     "Use this when users ask about pendant connectivity, lifelog availability, "
                     "or when troubleshooting why conversation recordings aren't available."
                 ),
@@ -169,7 +169,7 @@ class SafetyAuditorAgent(BaseAgent):
                     "properties": {},
                     "required": [],
                 },
-                handler=self._handle_check_limitless_status,
+                handler=self._handle_check_omi_status,
             ),
             ToolDefinition(
                 name="get_current_time",

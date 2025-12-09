@@ -1,7 +1,7 @@
 /**
- * Limitless Conversation Search Enhancement
+ * Omi Conversation Search Enhancement
  * 
- * Provides natural language search over lifelog data.
+ * Provides natural language search over memory data.
  * Features:
  * - Semantic search across conversation transcripts
  * - Time-based filtering
@@ -11,7 +11,7 @@
  */
 
 import OpenAI from "openai";
-import type { Lifelog, ContentNode } from "../limitless";
+import type { OmiMemoryData, TranscriptSegment } from "../omi";
 
 let openai: OpenAI | null = null;
 
@@ -26,7 +26,7 @@ function getOpenAIClient(): OpenAI {
 }
 
 export interface SearchResult {
-  lifelogId: string;
+  memoryId: string;
   title: string;
   startTime: string;
   endTime: string;
@@ -96,7 +96,6 @@ Return JSON object only.`,
     };
     
   } catch (error) {
-    // Fallback to simple keyword extraction
     return {
       keywords: query.toLowerCase().split(/\s+/).filter(w => w.length > 2),
       speakers: [],
@@ -108,9 +107,9 @@ Return JSON object only.`,
 }
 
 /**
- * Extract full text and metadata from a lifelog
+ * Extract full text and metadata from a memory
  */
-function extractLifelogContent(lifelog: Lifelog): {
+function extractMemoryContent(memory: OmiMemoryData): {
   text: string;
   speakers: string[];
   title: string;
@@ -118,33 +117,28 @@ function extractLifelogContent(lifelog: Lifelog): {
   const textParts: string[] = [];
   const speakers = new Set<string>();
   
-  function processNode(node: ContentNode) {
-    if (node.speakerName) {
-      speakers.add(node.speakerName);
-    }
-    if (node.content) {
-      textParts.push(node.content);
-    }
-    if (node.children) {
-      for (const child of node.children) {
-        processNode(child);
-      }
-    }
+  if (memory.transcript) {
+    textParts.push(memory.transcript);
   }
   
-  for (const content of lifelog.contents || []) {
-    processNode(content);
+  for (const segment of memory.transcriptSegments || []) {
+    if (segment.speaker && !segment.isUser) {
+      speakers.add(segment.speaker);
+    }
+    if (segment.text) {
+      textParts.push(segment.text);
+    }
   }
   
   return {
     text: textParts.join(" "),
     speakers: Array.from(speakers),
-    title: lifelog.title || "Untitled Conversation",
+    title: memory.structured?.title || "Untitled Conversation",
   };
 }
 
 /**
- * Calculate relevance score for a lifelog against parsed query
+ * Calculate relevance score for a memory against parsed query
  */
 function calculateRelevance(
   content: { text: string; speakers: string[]; title: string },
@@ -155,21 +149,17 @@ function calculateRelevance(
   const textLower = content.text.toLowerCase();
   const titleLower = content.title.toLowerCase();
   
-  // Keyword matches (weighted by position)
   for (const keyword of query.keywords) {
     const keywordLower = keyword.toLowerCase();
     
-    // Title match (high weight)
     if (titleLower.includes(keywordLower)) {
       score += 30;
     }
     
-    // Content match
     const index = textLower.indexOf(keywordLower);
     if (index !== -1) {
       score += 10;
       
-      // Extract snippet around match
       if (!matchedSnippet) {
         const start = Math.max(0, index - 50);
         const end = Math.min(content.text.length, index + keyword.length + 50);
@@ -178,7 +168,6 @@ function calculateRelevance(
     }
   }
   
-  // Speaker matches (high weight)
   for (const querySpeaker of query.speakers) {
     const speakerLower = querySpeaker.toLowerCase();
     for (const speaker of content.speakers) {
@@ -189,14 +178,12 @@ function calculateRelevance(
     }
   }
   
-  // Topic matches
   for (const topic of query.topics) {
     if (textLower.includes(topic.toLowerCase())) {
       score += 5;
     }
   }
   
-  // Fallback snippet
   if (!matchedSnippet && content.text.length > 0) {
     matchedSnippet = content.text.substring(0, 100) + "...";
   }
@@ -205,18 +192,18 @@ function calculateRelevance(
 }
 
 /**
- * Filter lifelogs by date range
+ * Filter memories by date range
  */
 function filterByDateRange(
-  lifelogs: Lifelog[],
+  memories: OmiMemoryData[],
   dateRange?: { start?: string; end?: string }
-): Lifelog[] {
+): OmiMemoryData[] {
   if (!dateRange || (!dateRange.start && !dateRange.end)) {
-    return lifelogs;
+    return memories;
   }
   
-  return lifelogs.filter(lifelog => {
-    const date = lifelog.startTime.split("T")[0];
+  return memories.filter(memory => {
+    const date = memory.startedAt.split("T")[0];
     if (dateRange.start && date < dateRange.start) return false;
     if (dateRange.end && date > dateRange.end) return false;
     return true;
@@ -227,7 +214,7 @@ function filterByDateRange(
  * Search conversations using natural language query
  */
 export async function searchConversations(
-  lifelogs: Lifelog[],
+  memories: OmiMemoryData[],
   query: string,
   limit: number = 10
 ): Promise<{
@@ -235,40 +222,35 @@ export async function searchConversations(
   parsedQuery: ParsedQuery;
   totalMatches: number;
 }> {
-  // Parse the query
   const parsedQuery = await parseSearchQuery(query);
   
-  // Filter by date range if specified
-  const filteredLifelogs = filterByDateRange(lifelogs, parsedQuery.dateRange);
+  const filteredMemories = filterByDateRange(memories, parsedQuery.dateRange);
   
-  // Score all lifelogs
   const scoredResults: Array<{
-    lifelog: Lifelog;
+    memory: OmiMemoryData;
     content: { text: string; speakers: string[]; title: string };
     score: number;
     matchedSnippet: string;
   }> = [];
   
-  for (const lifelog of filteredLifelogs) {
-    const content = extractLifelogContent(lifelog);
+  for (const memory of filteredMemories) {
+    const content = extractMemoryContent(memory);
     const { score, matchedSnippet } = calculateRelevance(content, parsedQuery);
     
     if (score > 0) {
-      scoredResults.push({ lifelog, content, score, matchedSnippet });
+      scoredResults.push({ memory, content, score, matchedSnippet });
     }
   }
   
-  // Sort by relevance
   scoredResults.sort((a, b) => b.score - a.score);
   
-  // Take top results
   const topResults = scoredResults.slice(0, limit);
   
   const results: SearchResult[] = topResults.map(r => ({
-    lifelogId: r.lifelog.id,
+    memoryId: r.memory.id,
     title: r.content.title,
-    startTime: r.lifelog.startTime,
-    endTime: r.lifelog.endTime,
+    startTime: r.memory.startedAt,
+    endTime: r.memory.finishedAt,
     relevanceScore: r.score,
     matchedSnippet: r.matchedSnippet,
     speakers: r.content.speakers,
@@ -285,15 +267,14 @@ export async function searchConversations(
  * Answer a question about conversations using AI
  */
 export async function answerConversationQuestion(
-  lifelogs: Lifelog[],
+  memories: OmiMemoryData[],
   question: string
 ): Promise<{
   answer: string;
   sourceConversations: string[];
   confidence: "high" | "medium" | "low";
 }> {
-  // First search for relevant conversations
-  const searchResults = await searchConversations(lifelogs, question, 5);
+  const searchResults = await searchConversations(memories, question, 5);
   
   if (searchResults.results.length === 0) {
     return {
@@ -303,17 +284,16 @@ export async function answerConversationQuestion(
     };
   }
   
-  // Build context from top results
   const contextParts: string[] = [];
   const sourceIds: string[] = [];
   
   for (const result of searchResults.results) {
-    const lifelog = lifelogs.find(l => l.id === result.lifelogId);
-    if (lifelog) {
-      const { text, speakers } = extractLifelogContent(lifelog);
-      const truncatedText = text.substring(0, 1500); // Limit per conversation
+    const memory = memories.find(m => m.id === result.memoryId);
+    if (memory) {
+      const { text, speakers } = extractMemoryContent(memory);
+      const truncatedText = text.substring(0, 1500);
       contextParts.push(`[Conversation: ${result.title}, Speakers: ${speakers.join(", ")}]\n${truncatedText}`);
-      sourceIds.push(result.lifelogId);
+      sourceIds.push(result.memoryId);
     }
   }
   
@@ -355,7 +335,7 @@ Return JSON with:
     };
     
   } catch (error) {
-    console.error("[LimitlessSearch] AI answer generation failed:", error);
+    console.error("[OmiSearch] AI answer generation failed:", error);
     return {
       answer: "I had trouble analyzing the conversations. Please try again.",
       sourceConversations: sourceIds,

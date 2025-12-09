@@ -31,8 +31,8 @@ export function onLocationChange(): void {
   invalidateCache.locations();
 }
 
-export function onLimitlessChange(): void {
-  invalidateCache.limitless();
+export function onOmiChange(): void {
+  invalidateCache.omi();
 }
 
 export function onProfileChange(): void {

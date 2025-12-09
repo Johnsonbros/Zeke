@@ -1,5 +1,5 @@
 /**
- * Limitless Meeting Intelligence
+ * Omi Meeting Intelligence
  * 
  * Detects multi-speaker conversations and logs them as formal meetings.
  * Features:
@@ -13,11 +13,11 @@
 import OpenAI from "openai";
 import {
   createMeeting,
-  getMeetingByLifelogId,
+  getMeetingByMemoryId,
   updateMeeting,
 } from "../db";
 import type { InsertMeeting, MeetingParticipant, MeetingActionItem } from "@shared/schema";
-import type { Lifelog, ContentNode } from "../limitless";
+import type { OmiMemoryData, TranscriptSegment } from "../omi";
 
 let openai: OpenAI | null = null;
 
@@ -40,9 +40,9 @@ interface MeetingSummaryResult {
 }
 
 /**
- * Extract speakers and their content from a lifelog
+ * Extract speakers and their content from a memory
  */
-function extractSpeakersAndContent(lifelog: Lifelog): {
+function extractSpeakersAndContent(memory: OmiMemoryData): {
   participants: MeetingParticipant[];
   transcript: string;
   userSpoke: boolean;
@@ -50,27 +50,17 @@ function extractSpeakersAndContent(lifelog: Lifelog): {
   const speakerMap = new Map<string, { content: string[]; isUser: boolean }>();
   const textParts: string[] = [];
   
-  function processNode(node: ContentNode) {
-    if (node.speakerName && node.content) {
-      if (!speakerMap.has(node.speakerName)) {
-        speakerMap.set(node.speakerName, {
-          content: [],
-          isUser: node.speakerIdentifier === "user",
-        });
-      }
-      speakerMap.get(node.speakerName)!.content.push(node.content);
-      textParts.push(`[${node.speakerName}]: ${node.content}`);
-    }
+  for (const segment of memory.transcriptSegments || []) {
+    const speakerName = segment.isUser ? "You" : (segment.speaker || "Unknown");
     
-    if (node.children) {
-      for (const child of node.children) {
-        processNode(child);
-      }
+    if (!speakerMap.has(speakerName)) {
+      speakerMap.set(speakerName, {
+        content: [],
+        isUser: segment.isUser,
+      });
     }
-  }
-  
-  for (const content of lifelog.contents || []) {
-    processNode(content);
+    speakerMap.get(speakerName)!.content.push(segment.text);
+    textParts.push(`[${speakerName}]: ${segment.text}`);
   }
   
   const participants: MeetingParticipant[] = [];
@@ -93,11 +83,11 @@ function extractSpeakersAndContent(lifelog: Lifelog): {
 }
 
 /**
- * Calculate meeting duration in minutes from lifelog timestamps
+ * Calculate meeting duration in minutes from memory timestamps
  */
-function calculateDuration(lifelog: Lifelog): number {
-  const start = new Date(lifelog.startTime).getTime();
-  const end = new Date(lifelog.endTime).getTime();
+function calculateDuration(memory: OmiMemoryData): number {
+  const start = new Date(memory.startedAt).getTime();
+  const end = new Date(memory.finishedAt).getTime();
   return Math.round((end - start) / (1000 * 60));
 }
 
@@ -112,12 +102,8 @@ function qualifiesAsMeeting(
   participants: MeetingParticipant[],
   durationMinutes: number
 ): boolean {
-  // At least 2 speakers (including the user)
   if (participants.length < 2) return false;
-  
-  // Minimum duration of 5 minutes
   if (durationMinutes < 5) return false;
-  
   return true;
 }
 
@@ -154,7 +140,7 @@ Meeting info:
         },
         {
           role: "user",
-          content: transcript.substring(0, 6000), // Limit transcript length
+          content: transcript.substring(0, 6000),
         },
       ],
       response_format: { type: "json_object" },
@@ -193,26 +179,23 @@ Meeting info:
 }
 
 /**
- * Process a lifelog and create a meeting record if it qualifies
+ * Process a memory and create a meeting record if it qualifies
  */
-export async function processLifelogAsMeeting(
-  lifelog: Lifelog
+export async function processMemoryAsMeeting(
+  memory: OmiMemoryData
 ): Promise<{
   isMeeting: boolean;
   meetingId?: string;
   reason?: string;
 }> {
-  // Check if meeting already exists for this lifelog
-  const existingMeeting = getMeetingByLifelogId(lifelog.id);
+  const existingMeeting = getMeetingByMemoryId(memory.id);
   if (existingMeeting) {
     return { isMeeting: true, meetingId: existingMeeting.id, reason: "already processed" };
   }
   
-  // Extract participants and content
-  const { participants, transcript, userSpoke } = extractSpeakersAndContent(lifelog);
-  const durationMinutes = calculateDuration(lifelog);
+  const { participants, transcript, userSpoke } = extractSpeakersAndContent(memory);
+  const durationMinutes = calculateDuration(memory);
   
-  // Check if it qualifies as a meeting
   if (!qualifiesAsMeeting(participants, durationMinutes)) {
     return {
       isMeeting: false,
@@ -220,15 +203,13 @@ export async function processLifelogAsMeeting(
     };
   }
   
-  // Generate AI summary
   const summaryResult = await generateMeetingSummary(transcript, participants, durationMinutes);
   
-  // Create meeting record
   const meetingData: InsertMeeting = {
-    lifelogId: lifelog.id,
+    memoryId: memory.id,
     title: summaryResult.title,
-    startTime: lifelog.startTime,
-    endTime: lifelog.endTime,
+    startTime: memory.startedAt,
+    endTime: memory.finishedAt,
     durationMinutes,
     participants: JSON.stringify(participants),
     topics: JSON.stringify(summaryResult.topics),
@@ -248,16 +229,16 @@ export async function processLifelogAsMeeting(
 }
 
 /**
- * Process a single lifelog for meeting detection (real-time hook)
+ * Process a single memory for meeting detection (real-time hook)
  * Returns simplified result for real-time processing
  */
-export async function processLifelogForMeeting(
-  lifelog: Lifelog
+export async function processMemoryForMeeting(
+  memory: OmiMemoryData
 ): Promise<{
   created: boolean;
   meetingId?: string;
 }> {
-  const result = await processLifelogAsMeeting(lifelog);
+  const result = await processMemoryAsMeeting(memory);
   return {
     created: result.isMeeting && result.reason !== "already processed",
     meetingId: result.meetingId,
@@ -265,10 +246,10 @@ export async function processLifelogForMeeting(
 }
 
 /**
- * Process multiple lifelogs for meeting detection
+ * Process multiple memories for meeting detection
  */
-export async function processLifelogsForMeetings(
-  lifelogs: Lifelog[]
+export async function processMemoriesForMeetings(
+  memories: OmiMemoryData[]
 ): Promise<{
   meetingsCreated: number;
   nonMeetings: number;
@@ -278,8 +259,8 @@ export async function processLifelogsForMeetings(
   let nonMeetings = 0;
   let alreadyProcessed = 0;
   
-  for (const lifelog of lifelogs) {
-    const result = await processLifelogAsMeeting(lifelog);
+  for (const memory of memories) {
+    const result = await processMemoryAsMeeting(memory);
     
     if (result.isMeeting) {
       if (result.reason === "already processed") {
@@ -305,11 +286,11 @@ export async function processLifelogsForMeetings(
  * Re-analyze an existing meeting to update its summary
  */
 export async function reanalyzeMeeting(
-  lifelog: Lifelog,
+  memory: OmiMemoryData,
   meetingId: string
 ): Promise<boolean> {
-  const { participants, transcript } = extractSpeakersAndContent(lifelog);
-  const durationMinutes = calculateDuration(lifelog);
+  const { participants, transcript } = extractSpeakersAndContent(memory);
+  const durationMinutes = calculateDuration(memory);
   
   const summaryResult = await generateMeetingSummary(transcript, participants, durationMinutes);
   

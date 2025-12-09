@@ -108,7 +108,7 @@ class AgentId(str, Enum):
     RESEARCH_SCOUT = "research_scout"
     PERSONAL_DATA_STEWARD = "personal_data_steward"
     SAFETY_AUDITOR = "safety_auditor"
-    LIMITLESS_ANALYST = "limitless_analyst"
+    OMI_ANALYST = "omi_analyst"
     FORESIGHT_STRATEGIST = "foresight_strategist"
 
 
@@ -130,7 +130,7 @@ class CapabilityCategory(str, Enum):
     GROCERY = "grocery"
     PROFILE = "profile"
     SYSTEM = "system"
-    LIMITLESS = "limitless"
+    OMI = "omi"
     PREDICTION = "prediction"
 
 

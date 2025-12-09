@@ -1,7 +1,7 @@
 /**
- * Limitless Daily Digest - Automated Evening SMS Summaries
+ * Omi Daily Digest - Automated Evening SMS Summaries
  * 
- * Sends a daily SMS summary of conversations captured by the Limitless pendant.
+ * Sends a daily SMS summary of conversations captured by the Omi wearable.
  * Features:
  * - Configurable send time (default 8pm)
  * - Character-aware SMS formatting
@@ -16,16 +16,15 @@ import {
   getContactByPhone,
   getLocationHistoryInRange,
   findNearbyPlaces,
-  getRecentLifelogLocations
 } from "./db";
-import { generateDailySummary, getLifelogOverview } from "./limitless";
+import { generateDailySummary, getMemoryOverview } from "./omi";
 import { queueNotification } from "./notificationBatcher";
 import { isMasterAdmin } from "@shared/schema";
-import type { LimitlessDigestPreferences, LimitlessDiscussionPoint, LimitlessActionItem } from "@shared/schema";
+import type { OmiDigestPreferences, OmiDiscussionPoint, OmiActionItem } from "@shared/schema";
 
 let scheduledTask: cron.ScheduledTask | null = null;
 
-const DEFAULT_PREFERENCES: LimitlessDigestPreferences = {
+const DEFAULT_PREFERENCES: OmiDigestPreferences = {
   enabled: false,
   sendTime: "20:00",
   includeSummary: true,
@@ -37,8 +36,8 @@ const DEFAULT_PREFERENCES: LimitlessDigestPreferences = {
 /**
  * Get current digest preferences
  */
-export function getLimitlessDigestPreferences(): LimitlessDigestPreferences {
-  const prefData = getPreference("limitless_digest_prefs")?.value;
+export function getOmiDigestPreferences(): OmiDigestPreferences {
+  const prefData = getPreference("omi_digest_prefs")?.value;
   if (prefData) {
     try {
       return { ...DEFAULT_PREFERENCES, ...JSON.parse(prefData) };
@@ -52,16 +51,15 @@ export function getLimitlessDigestPreferences(): LimitlessDigestPreferences {
 /**
  * Update digest preferences
  */
-export function updateLimitlessDigestPreferences(updates: Partial<LimitlessDigestPreferences>): LimitlessDigestPreferences {
-  const current = getLimitlessDigestPreferences();
+export function updateOmiDigestPreferences(updates: Partial<OmiDigestPreferences>): OmiDigestPreferences {
+  const current = getOmiDigestPreferences();
   const updated = { ...current, ...updates };
   
   setPreference({
-    key: "limitless_digest_prefs",
+    key: "omi_digest_prefs",
     value: JSON.stringify(updated),
   });
   
-  // Reschedule if time changed or enabled state changed
   if (updates.sendTime !== undefined || updates.enabled !== undefined) {
     if (updated.enabled && updated.phoneNumber) {
       scheduleDigest(updated.sendTime);
@@ -82,27 +80,23 @@ function analyzeDailyLocationPatterns(date: string): {
   totalPlaces: number;
 } {
   try {
-    // Get today's date range
     const startDate = new Date(date);
     startDate.setHours(0, 0, 0, 0);
     const endDate = new Date(date);
     endDate.setHours(23, 59, 59, 999);
 
-    // Get location history for the day
     const locationHistory = getLocationHistoryInRange(startDate.toISOString(), endDate.toISOString());
 
     if (locationHistory.length === 0) {
       return { placesVisited: [], totalPlaces: 0 };
     }
 
-    // Track places visited with their visit counts
     const placeVisits = new Map<string, number>();
 
-    // Check each location point against saved places
     for (const loc of locationHistory) {
       const lat = parseFloat(loc.latitude);
       const lng = parseFloat(loc.longitude);
-      const nearbyPlaces = findNearbyPlaces(lat, lng, 150); // 150m radius
+      const nearbyPlaces = findNearbyPlaces(lat, lng, 150);
 
       if (nearbyPlaces.length > 0) {
         const closestPlace = nearbyPlaces[0];
@@ -111,7 +105,6 @@ function analyzeDailyLocationPatterns(date: string): {
       }
     }
 
-    // Sort places by visit frequency
     const sortedPlaces = Array.from(placeVisits.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([name]) => name);
@@ -133,8 +126,8 @@ function analyzeDailyLocationPatterns(date: string): {
 function formatDigestForSms(
   summary: {
     summaryTitle: string;
-    keyDiscussions: LimitlessDiscussionPoint[];
-    actionItems: LimitlessActionItem[];
+    keyDiscussions: OmiDiscussionPoint[];
+    actionItems: OmiActionItem[];
     peopleInteracted: string[];
   },
   locationAnalysis: {
@@ -146,12 +139,10 @@ function formatDigestForSms(
 ): string {
   const parts: string[] = [];
 
-  // Header
   parts.push(`ZEKE DAILY DIGEST`);
   parts.push(`${summary.summaryTitle}`);
   parts.push("");
 
-  // Key discussions (limit to top 2)
   if (summary.keyDiscussions.length > 0) {
     parts.push("Highlights:");
     const topDiscussions = summary.keyDiscussions.slice(0, 2);
@@ -162,7 +153,6 @@ function formatDigestForSms(
     parts.push("");
   }
 
-  // Action items (limit to top 3)
   const highPriorityItems = summary.actionItems.filter(a => a.priority === "high");
   const itemsToShow = highPriorityItems.length > 0
     ? highPriorityItems.slice(0, 3)
@@ -177,20 +167,18 @@ function formatDigestForSms(
     parts.push("");
   }
 
-  // Location insights (NEW!)
   if (locationAnalysis.totalPlaces > 0) {
     const placesLine = locationAnalysis.placesVisited.slice(0, 3).join(", ");
     if (locationAnalysis.totalPlaces === 1) {
-      parts.push(`📍 Location: ${placesLine}`);
+      parts.push(`Location: ${placesLine}`);
     } else if (locationAnalysis.totalPlaces === 2) {
-      parts.push(`📍 Locations: ${placesLine}`);
+      parts.push(`Locations: ${placesLine}`);
     } else {
-      parts.push(`📍 Places visited: ${placesLine}${locationAnalysis.totalPlaces > 3 ? ` +${locationAnalysis.totalPlaces - 3} more` : ""}`);
+      parts.push(`Places visited: ${placesLine}${locationAnalysis.totalPlaces > 3 ? ` +${locationAnalysis.totalPlaces - 3} more` : ""}`);
     }
     parts.push("");
   }
 
-  // People interacted with
   if (summary.peopleInteracted.length > 0) {
     const people = summary.peopleInteracted.slice(0, 5).join(", ");
     parts.push(`People: ${people}`);
@@ -198,7 +186,6 @@ function formatDigestForSms(
 
   let message = parts.join("\n");
 
-  // Truncate if too long
   if (message.length > maxLength) {
     message = message.substring(0, maxLength - 3) + "...";
   }
@@ -214,18 +201,17 @@ export async function sendDailyDigest(): Promise<{
   message?: string;
   error?: string;
 }> {
-  const prefs = getLimitlessDigestPreferences();
+  const prefs = getOmiDigestPreferences();
   
   if (!prefs.enabled) {
     return { success: false, error: "Digest is not enabled" };
   }
   
   if (!prefs.phoneNumber) {
-    console.log("[LimitlessDigest] No phone number configured");
+    console.log("[OmiDigest] No phone number configured");
     return { success: false, error: "No phone number configured" };
   }
   
-  // Access control check
   let isAuthorized = false;
   let authInfo = "unknown";
   
@@ -243,23 +229,21 @@ export async function sendDailyDigest(): Promise<{
   }
   
   if (!isAuthorized) {
-    console.log(`[LimitlessDigest] ACCESS DENIED: Phone ${prefs.phoneNumber} is not authorized (${authInfo})`);
+    console.log(`[OmiDigest] ACCESS DENIED: Phone ${prefs.phoneNumber} is not authorized (${authInfo})`);
     return { success: false, error: "Phone number not authorized for digest" };
   }
   
   try {
-    // Check if there are any conversations today
-    const overview = await getLifelogOverview();
+    const overview = await getMemoryOverview();
     if (!overview.connected) {
-      return { success: false, error: "Limitless API not connected" };
+      return { success: false, error: "Omi API not connected" };
     }
     
     if (overview.today.count === 0) {
-      console.log("[LimitlessDigest] No conversations today, skipping digest");
+      console.log("[OmiDigest] No conversations today, skipping digest");
       return { success: true, message: "No conversations to digest" };
     }
     
-    // Generate the summary for today
     const today = new Date().toISOString().split("T")[0];
     const result = await generateDailySummary(today);
     
@@ -267,21 +251,18 @@ export async function sendDailyDigest(): Promise<{
       return { success: false, error: "Failed to generate summary" };
     }
     
-    // Parse the summary JSON fields
-    const keyDiscussions: LimitlessDiscussionPoint[] = result.summary.keyDiscussions 
+    const keyDiscussions: OmiDiscussionPoint[] = result.summary.keyDiscussions 
       ? JSON.parse(result.summary.keyDiscussions)
       : [];
-    const actionItems: LimitlessActionItem[] = result.summary.actionItems
+    const actionItems: OmiActionItem[] = result.summary.actionItems
       ? JSON.parse(result.summary.actionItems)
       : [];
     const peopleInteracted: string[] = result.summary.peopleInteracted
       ? JSON.parse(result.summary.peopleInteracted)
       : [];
 
-    // Analyze location patterns for today
     const locationAnalysis = analyzeDailyLocationPatterns(today);
 
-    // Format for SMS
     const smsContent = formatDigestForSms(
       {
         summaryTitle: result.summary.summaryTitle,
@@ -293,7 +274,6 @@ export async function sendDailyDigest(): Promise<{
       prefs.maxSmsLength
     );
     
-    // Queue the notification (respects quiet hours and batching)
     await queueNotification({
       recipientPhone: prefs.phoneNumber,
       title: "Daily Digest",
@@ -302,11 +282,11 @@ export async function sendDailyDigest(): Promise<{
       priority: "normal",
     });
     
-    console.log(`[LimitlessDigest] Queued daily digest for ${prefs.phoneNumber} (${authInfo})`);
+    console.log(`[OmiDigest] Queued daily digest for ${prefs.phoneNumber} (${authInfo})`);
     return { success: true, message: `Digest sent to ${prefs.phoneNumber}` };
     
   } catch (error: any) {
-    console.error("[LimitlessDigest] Error sending digest:", error);
+    console.error("[OmiDigest] Error sending digest:", error);
     return { success: false, error: error.message || "Failed to send digest" };
   }
 }
@@ -317,7 +297,7 @@ export async function sendDailyDigest(): Promise<{
 export function scheduleDigest(time: string = "20:00"): void {
   if (scheduledTask) {
     scheduledTask.stop();
-    console.log("[LimitlessDigest] Stopped existing schedule");
+    console.log("[OmiDigest] Stopped existing schedule");
   }
   
   const [hours, minutes] = time.split(":").map(Number);
@@ -326,12 +306,12 @@ export function scheduleDigest(time: string = "20:00"): void {
   scheduledTask = cron.schedule(
     cronExpression,
     async () => {
-      console.log("[LimitlessDigest] Running scheduled daily digest...");
+      console.log("[OmiDigest] Running scheduled daily digest...");
       const result = await sendDailyDigest();
       if (result.success) {
-        console.log(`[LimitlessDigest] ${result.message}`);
+        console.log(`[OmiDigest] ${result.message}`);
       } else {
-        console.log(`[LimitlessDigest] ${result.error}`);
+        console.log(`[OmiDigest] ${result.error}`);
       }
     },
     {
@@ -339,7 +319,7 @@ export function scheduleDigest(time: string = "20:00"): void {
     }
   );
   
-  console.log(`[LimitlessDigest] Scheduled at ${time} (America/New_York) - Cron: ${cronExpression}`);
+  console.log(`[OmiDigest] Scheduled at ${time} (America/New_York) - Cron: ${cronExpression}`);
 }
 
 /**
@@ -349,22 +329,22 @@ export function stopDigest(): void {
   if (scheduledTask) {
     scheduledTask.stop();
     scheduledTask = null;
-    console.log("[LimitlessDigest] Stopped digest schedule");
+    console.log("[OmiDigest] Stopped digest schedule");
   }
 }
 
 /**
  * Configure the daily digest
  */
-export function configureDigest(phoneNumber: string, time: string = "20:00"): LimitlessDigestPreferences {
-  const prefs = updateLimitlessDigestPreferences({
+export function configureDigest(phoneNumber: string, time: string = "20:00"): OmiDigestPreferences {
+  const prefs = updateOmiDigestPreferences({
     enabled: true,
     phoneNumber,
     sendTime: time,
   });
   
   scheduleDigest(time);
-  console.log(`[LimitlessDigest] Configured: ${phoneNumber} at ${time}`);
+  console.log(`[OmiDigest] Configured: ${phoneNumber} at ${time}`);
   
   return prefs;
 }
@@ -372,14 +352,14 @@ export function configureDigest(phoneNumber: string, time: string = "20:00"): Li
 /**
  * Initialize the digest scheduler on server startup
  */
-export function initializeLimitlessDigest(): void {
-  const prefs = getLimitlessDigestPreferences();
+export function initializeOmiDigest(): void {
+  const prefs = getOmiDigestPreferences();
   
   if (prefs.enabled && prefs.phoneNumber) {
     scheduleDigest(prefs.sendTime);
-    console.log(`[LimitlessDigest] Restored schedule for ${prefs.phoneNumber} at ${prefs.sendTime}`);
+    console.log(`[OmiDigest] Restored schedule for ${prefs.phoneNumber} at ${prefs.sendTime}`);
   } else {
-    console.log("[LimitlessDigest] Not configured or disabled");
+    console.log("[OmiDigest] Not configured or disabled");
   }
 }
 
@@ -393,7 +373,7 @@ export function getDigestStatus(): {
   sendTime: string;
   isScheduled: boolean;
 } {
-  const prefs = getLimitlessDigestPreferences();
+  const prefs = getOmiDigestPreferences();
   
   return {
     configured: Boolean(prefs.phoneNumber),
