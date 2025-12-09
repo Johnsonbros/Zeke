@@ -10,7 +10,8 @@ user interactions. It:
 - Handles fallback logic when specialists fail
 """
 
-from dataclasses import dataclass, field
+import asyncio
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any
 import logging
@@ -349,6 +350,38 @@ class ConductorAgent(BaseAgent):
         """
         self.specialist_agents[agent.agent_id] = agent
         logger.info(f"Registered specialist agent: {agent.name} ({agent.agent_id})")
+    
+    def _clone_context_for_parallel(self, context: AgentContext) -> AgentContext:
+        """
+        Create an isolated copy of AgentContext for parallel execution.
+        
+        Uses dataclasses.replace with shallow copies of mutable dict fields.
+        Preserves trace_context reference (not deepcopied) as it's shared state
+        that should not be duplicated.
+        
+        DESIGN CONSTRAINT: Parallel agents (Phase 2) should treat context as
+        READ-ONLY. Context mutations during parallel execution are not merged
+        back to the shared context. This is by design because:
+        - MemoryCurator runs first (Phase 1) to enrich context before parallel phase
+        - Parallel agents (ResearchScout, OpsPlanner, etc.) use context to inform
+          responses but don't need to persist state changes
+        - SafetyAuditor runs last (Phase 3) with the full response history
+        
+        If an agent needs to mutate shared context, it should be added to
+        Phase 1 (before parallel) or Phase 3 (after parallel) instead.
+        
+        Args:
+            context: The original context to clone
+            
+        Returns:
+            AgentContext: A new context instance with copied mutable fields
+        """
+        return replace(
+            context,
+            memory_context=context.memory_context.copy() if context.memory_context else {},
+            user_profile=context.user_profile.copy() if context.user_profile else {},
+            metadata=context.metadata.copy() if context.metadata else {},
+        )
     
     def _get_classification_agent(self) -> Agent:
         """Get or create the intent classification agent."""
@@ -988,9 +1021,11 @@ Always call the classify_intent tool with your classification.""",
         It classifies intent, enriches context, routes to specialists,
         manages handoffs, and composes the final response.
         
-        For multi-agent coordination requests, this method ensures all target
-        agents are called in sequence, with MemoryCurator first for context
-        gathering and SafetyAuditor last for validation.
+        For multi-agent coordination requests, this method uses a three-phase
+        execution strategy for optimal performance:
+        1. MemoryCurator runs first (if needed) to gather context
+        2. Independent specialists run in parallel using asyncio.gather()
+        3. SafetyAuditor runs last (if needed) for validation
         
         Args:
             input_text: The user's input message
@@ -1030,27 +1065,103 @@ Always call the classify_intent tool with your classification.""",
             metadata=context.metadata,
         )
         
-        # Iterate through ALL target agents for proper multi-agent coordination
-        for agent_id in intent.target_agents:
-            if agent_id == AgentId.CONDUCTOR:
-                continue
-            
+        # Partition agents into phases for optimized execution:
+        # Phase 1: MemoryCurator (sequential - enriches context for others)
+        # Phase 2: All other specialists except SafetyAuditor (parallel)
+        # Phase 3: SafetyAuditor (sequential - validates final responses)
+        target_agents = [a for a in intent.target_agents if a != AgentId.CONDUCTOR]
+        
+        phase1_agents: list[AgentId] = []
+        phase2_agents: list[AgentId] = []
+        phase3_agents: list[AgentId] = []
+        
+        for agent_id in target_agents:
+            if agent_id == AgentId.MEMORY_CURATOR:
+                phase1_agents.append(agent_id)
+            elif agent_id == AgentId.SAFETY_AUDITOR:
+                phase3_agents.append(agent_id)
+            else:
+                phase2_agents.append(agent_id)
+        
+        # Phase 1: Execute MemoryCurator first (context enrichment)
+        for agent_id in phase1_agents:
             self.create_handoff(
                 target_agent=agent_id,
                 intent=intent,
                 context=handoff_context,
                 reason=HandoffReason.CAPABILITY_REQUIRED,
             )
-            
             response = await self.execute_with_agent(agent_id, input_text, context)
             responses.append(response)
             agents_called.append(agent_id)
-            
             handoff_context.prior_responses.append(response)
             
-            # Enrich context with memory results for subsequent agents
             if agent_id == AgentId.MEMORY_CURATOR and response.success:
                 context.memory_context["enriched"] = response.content
+        
+        # Phase 2: Execute independent specialists in parallel
+        # Each parallel agent gets an isolated context copy to avoid race conditions
+        if phase2_agents:
+            for agent_id in phase2_agents:
+                self.create_handoff(
+                    target_agent=agent_id,
+                    intent=intent,
+                    context=handoff_context,
+                    reason=HandoffReason.CAPABILITY_REQUIRED,
+                )
+            
+            if len(phase2_agents) == 1:
+                response = await self.execute_with_agent(phase2_agents[0], input_text, context)
+                responses.append(response)
+                agents_called.append(phase2_agents[0])
+                handoff_context.prior_responses.append(response)
+            else:
+                # Create isolated context copies for each parallel agent
+                # This prevents race conditions from concurrent context mutations
+                # Uses safe cloning that preserves shared references (trace_context)
+                # but isolates mutable dict fields
+                context_copies = [self._clone_context_for_parallel(context) for _ in phase2_agents]
+                
+                parallel_tasks = [
+                    self.execute_with_agent(agent_id, input_text, ctx_copy)
+                    for agent_id, ctx_copy in zip(phase2_agents, context_copies)
+                ]
+                parallel_responses = await asyncio.gather(*parallel_tasks, return_exceptions=True)
+                
+                # Collect all parallel responses and update handoff context
+                parallel_agent_responses: list[AgentResponse] = []
+                for agent_id, result in zip(phase2_agents, parallel_responses):
+                    if isinstance(result, Exception):
+                        logger.error(f"Parallel execution failed for {agent_id}: {result}")
+                        error_response = AgentResponse(
+                            agent_id=agent_id,
+                            success=False,
+                            content="",
+                            error=str(result),
+                            processing_time_ms=0,
+                        )
+                        parallel_agent_responses.append(error_response)
+                    else:
+                        parallel_agent_responses.append(result)
+                    agents_called.append(agent_id)
+                
+                # Add all parallel responses to main lists after collection
+                # This ensures proper ordering and complete handoff context for Phase 3
+                responses.extend(parallel_agent_responses)
+                handoff_context.prior_responses.extend(parallel_agent_responses)
+        
+        # Phase 3: Execute SafetyAuditor last (validation)
+        for agent_id in phase3_agents:
+            self.create_handoff(
+                target_agent=agent_id,
+                intent=intent,
+                context=handoff_context,
+                reason=HandoffReason.CAPABILITY_REQUIRED,
+            )
+            response = await self.execute_with_agent(agent_id, input_text, context)
+            responses.append(response)
+            agents_called.append(agent_id)
+            handoff_context.prior_responses.append(response)
         
         if not responses:
             primary_agent = self.route_to_agent(intent)
