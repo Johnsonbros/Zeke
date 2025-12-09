@@ -119,9 +119,9 @@ interface GetMemoriesParams {
 }
 
 function getApiKey(): string {
-  const apiKey = process.env.OMI_API_KEY;
+  const apiKey = process.env.OMI_API_KEY || process.env.OMI_DEV_API_KEY;
   if (!apiKey) {
-    throw new Error("OMI_API_KEY is not configured. Please add it to your secrets.");
+    throw new Error("OMI_API_KEY or OMI_DEV_API_KEY is not configured. Please add it to your secrets.");
   }
   return apiKey;
 }

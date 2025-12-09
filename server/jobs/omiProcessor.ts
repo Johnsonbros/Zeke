@@ -226,8 +226,8 @@ export function getProcessorStatus(): {
  * Should be called during server startup
  */
 export function initializeOmiProcessor(): void {
-  if (!process.env.OMI_API_KEY) {
-    console.log("[OmiProcessor] Not starting - OMI_API_KEY not configured");
+  if (!process.env.OMI_API_KEY && !process.env.OMI_DEV_API_KEY) {
+    console.log("[OmiProcessor] Not starting - OMI_API_KEY or OMI_DEV_API_KEY not configured");
     return;
   }
   

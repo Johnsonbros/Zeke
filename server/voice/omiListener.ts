@@ -148,7 +148,7 @@ export class OmiListener {
    * Check if the Omi API key is configured
    */
   isConfigured(): boolean {
-    return !!process.env.OMI_API_KEY;
+    return !!(process.env.OMI_API_KEY || process.env.OMI_DEV_API_KEY);
   }
 
   /**
@@ -311,7 +311,7 @@ export function resetOmiListener(): void {
  * Check if the voice pipeline is available (API key configured)
  */
 export function isVoicePipelineAvailable(): boolean {
-  return !!process.env.OMI_API_KEY;
+  return !!(process.env.OMI_API_KEY || process.env.OMI_DEV_API_KEY);
 }
 
 /**

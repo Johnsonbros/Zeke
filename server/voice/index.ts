@@ -77,7 +77,7 @@ export function initializeVoicePipeline(): boolean {
 
   // Check if Omi is available - this is the minimum requirement
   if (!isVoicePipelineAvailable()) {
-    log("Voice pipeline not available - OMI_API_KEY not configured", "voice");
+    log("Voice pipeline not available - OMI_API_KEY or OMI_DEV_API_KEY not configured", "voice");
     isInitialized = true;  // Mark as initialized so status endpoint works
     return false;
   }
