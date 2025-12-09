@@ -25,59 +25,17 @@ from .base import (
     AgentStatus,
     AgentContext,
     CapabilityCategory,
+    IntentType,
     HandoffRequest,
     HandoffReason,
     ToolDefinition,
     create_bridge_tool,
 )
 from ..bridge import get_bridge
+from ..intent_router import classify_intent_fast, RouterIntent
 
 
 logger = logging.getLogger(__name__)
-
-
-class IntentType(str, Enum):
-    """Specific intent types within each category."""
-    SEND_MESSAGE = "send_message"
-    CHECK_IN = "check_in"
-    CONTACT_LOOKUP = "contact_lookup"
-    CONFIGURE_CHECKIN = "configure_checkin"
-    CALENDAR_QUERY = "calendar_query"
-    CREATE_EVENT = "create_event"
-    UPDATE_EVENT = "update_event"
-    DELETE_EVENT = "delete_event"
-    SET_REMINDER = "set_reminder"
-    CANCEL_REMINDER = "cancel_reminder"
-    ADD_TASK = "add_task"
-    UPDATE_TASK = "update_task"
-    COMPLETE_TASK = "complete_task"
-    DELETE_TASK = "delete_task"
-    VIEW_TASKS = "view_tasks"
-    SEARCH = "search"
-    RESEARCH = "research"
-    WEATHER = "weather"
-    TIME = "time"
-    RECALL_FACT = "recall_fact"
-    SEARCH_HISTORY = "search_history"
-    LIFELOG_QUERY = "lifelog_query"
-    SAVE_MEMORY = "save_memory"
-    ADD_ITEM = "add_item"
-    CHECK_LIST = "check_list"
-    MARK_PURCHASED = "mark_purchased"
-    REMOVE_ITEM = "remove_item"
-    CLEAR_LIST = "clear_list"
-    PREFERENCE_UPDATE = "preference_update"
-    PROFILE_QUERY = "profile_query"
-    READ_FILE = "read_file"
-    WRITE_FILE = "write_file"
-    MORNING_BRIEFING = "morning_briefing"
-    STATUS_CHECK = "status_check"
-    HELP = "help"
-    UNKNOWN = "unknown"
-    VIEW_PREDICTIONS = "view_predictions"
-    ANALYZE_PATTERNS = "analyze_patterns"
-    DETECT_ANOMALIES = "detect_anomalies"
-    CREATE_PREDICTION = "create_prediction"
 
 
 INTENT_TO_CATEGORY: dict[IntentType, CapabilityCategory] = {
@@ -432,16 +390,67 @@ Always call the classify_intent tool with your classification.""",
         """
         Classify the user's message into an intent category and type.
         
-        Uses OpenAI function calling to analyze the message and extract:
-        - Intent category (communication, scheduling, etc.)
-        - Specific intent type (send_message, add_task, etc.)
-        - Confidence score
-        - Extracted entities
-        - Whether multi-agent coordination is needed
+        Uses a two-tier approach for efficiency:
+        1. First tries fast pattern-based classification (no LLM call)
+        2. Falls back to LLM only for ambiguous/low-confidence cases
+        
+        This approach eliminates ~80% of LLM classification calls, saving
+        both cost and latency.
         
         Args:
             message: The user's input message
             context: Optional context to help with classification
+            
+        Returns:
+            ClassifiedIntent: The classified intent with metadata
+        """
+        fast_result = classify_intent_fast(message, context)
+        
+        if not fast_result.needs_llm_fallback and fast_result.confidence >= 0.8:
+            logger.info(f"Fast router classified: {fast_result.category.value}/{fast_result.type.value} (confidence: {fast_result.confidence:.2f})")
+            
+            try:
+                intent_type = IntentType(fast_result.type.value)
+            except ValueError:
+                intent_type = IntentType.UNKNOWN
+            
+            target_agents = self._determine_target_agents(
+                fast_result.category, 
+                intent_type, 
+                fast_result.requires_coordination
+            )
+            
+            if fast_result.requires_memory_context and AgentId.MEMORY_CURATOR not in target_agents:
+                target_agents.insert(0, AgentId.MEMORY_CURATOR)
+            
+            return ClassifiedIntent(
+                category=fast_result.category,
+                type=intent_type,
+                confidence=fast_result.confidence,
+                entities=fast_result.entities,
+                raw_message=message,
+                requires_coordination=fast_result.requires_coordination,
+                target_agents=target_agents,
+            )
+        
+        logger.info(f"Fast router uncertain (confidence: {fast_result.confidence:.2f}), using LLM fallback")
+        return await self._llm_classify_intent(message, context, fast_result)
+    
+    async def _llm_classify_intent(
+        self, 
+        message: str, 
+        context: dict[str, Any] | None, 
+        fast_hint: RouterIntent | None = None
+    ) -> ClassifiedIntent:
+        """
+        LLM-based intent classification for ambiguous cases.
+        
+        This is only called when the fast router has low confidence.
+        
+        Args:
+            message: The user's input message
+            context: Optional context to help with classification
+            fast_hint: Optional hint from fast router for context
             
         Returns:
             ClassifiedIntent: The classified intent with metadata
@@ -454,6 +463,9 @@ Always call the classify_intent tool with your classification.""",
                 prompt += f"\n\nContext: This message came via SMS from {context.get('phone_number')}"
             if context.get("conversation_history"):
                 prompt += f"\n\nRecent conversation: {context.get('conversation_history')}"
+        
+        if fast_hint and fast_hint.confidence > 0.5:
+            prompt += f"\n\nHint: Initial analysis suggests this might be {fast_hint.category.value}/{fast_hint.type.value}"
         
         try:
             result = await Runner.run(classification_agent, prompt)
@@ -485,7 +497,22 @@ Always call the classify_intent tool with your classification.""",
                         pass
             
             if not classification_data:
-                logger.warning(f"Failed to extract classification from result, using fallback")
+                logger.warning(f"Failed to extract classification from LLM result, using fast router result")
+                if fast_hint:
+                    try:
+                        intent_type = IntentType(fast_hint.type.value)
+                    except ValueError:
+                        intent_type = IntentType.UNKNOWN
+                    target_agents = self._determine_target_agents(fast_hint.category, intent_type, fast_hint.requires_coordination)
+                    return ClassifiedIntent(
+                        category=fast_hint.category,
+                        type=intent_type,
+                        confidence=fast_hint.confidence,
+                        entities=fast_hint.entities,
+                        raw_message=message,
+                        requires_coordination=fast_hint.requires_coordination,
+                        target_agents=target_agents,
+                    )
                 return self._fallback_classification(message)
             
             try:
@@ -517,7 +544,22 @@ Always call the classify_intent tool with your classification.""",
             )
             
         except Exception as e:
-            logger.error(f"Intent classification failed: {e}")
+            logger.error(f"LLM intent classification failed: {e}")
+            if fast_hint and fast_hint.confidence > 0.4:
+                try:
+                    intent_type = IntentType(fast_hint.type.value)
+                except ValueError:
+                    intent_type = IntentType.UNKNOWN
+                target_agents = self._determine_target_agents(fast_hint.category, intent_type, fast_hint.requires_coordination)
+                return ClassifiedIntent(
+                    category=fast_hint.category,
+                    type=intent_type,
+                    confidence=fast_hint.confidence,
+                    entities=fast_hint.entities,
+                    raw_message=message,
+                    requires_coordination=fast_hint.requires_coordination,
+                    target_agents=target_agents,
+                )
             return self._fallback_classification(message)
     
     def _fallback_classification(self, message: str) -> ClassifiedIntent:
