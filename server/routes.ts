@@ -6920,6 +6920,194 @@ export async function registerRoutes(
 
   // Note: Voice pipeline is initialized in server/index.ts at startup
   // Use POST /api/voice/start to begin listening
+
+  // ============================================
+  // INTEGRATIONS STATUS ENDPOINT
+  // ============================================
+
+  // GET /api/integrations/status - Get integration status for admin panel
+  app.get("/api/integrations/status", async (_req, res) => {
+    try {
+      const domain = process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost:5000";
+
+      const webhooks = [
+        {
+          name: "Omi Webhook",
+          path: "/api/omi/webhook",
+          method: "POST",
+          description: "Receives conversation data from Omi pendant. Configure this URL in your Omi device settings.",
+        },
+        {
+          name: "Twilio SMS Webhook",
+          path: "/api/twilio/webhook",
+          method: "POST",
+          description: "Receives incoming SMS messages from Twilio. Set as your Twilio phone number's webhook URL.",
+        },
+        {
+          name: "Twilio Status Callback",
+          path: "/api/twilio/status",
+          method: "POST",
+          description: "Receives SMS delivery status updates from Twilio.",
+        },
+        {
+          name: "Voice Command",
+          path: "/internal/voice-command",
+          method: "POST",
+          description: "Internal endpoint for voice pipeline to send detected commands.",
+        },
+      ];
+
+      const apiKeys = [
+        {
+          name: "OpenAI API Key",
+          envVar: "OPENAI_API_KEY",
+          configured: !!process.env.OPENAI_API_KEY,
+          description: "Required for AI responses and embeddings",
+          required: true,
+        },
+        {
+          name: "Twilio Account SID",
+          envVar: "TWILIO_ACCOUNT_SID",
+          configured: !!process.env.TWILIO_ACCOUNT_SID,
+          description: "Twilio account identifier for SMS",
+          required: false,
+        },
+        {
+          name: "Twilio Auth Token",
+          envVar: "TWILIO_AUTH_TOKEN",
+          configured: !!process.env.TWILIO_AUTH_TOKEN,
+          description: "Twilio authentication token",
+          required: false,
+        },
+        {
+          name: "Twilio Phone Number",
+          envVar: "TWILIO_PHONE_NUMBER",
+          configured: !!process.env.TWILIO_PHONE_NUMBER,
+          description: "Your Twilio phone number for sending SMS",
+          required: false,
+        },
+        {
+          name: "Omi API Key",
+          envVar: "OMI_API_KEY",
+          configured: !!(process.env.OMI_API_KEY || process.env.OMI_DEV_API_KEY),
+          description: "API key for Omi pendant integration",
+          required: false,
+        },
+        {
+          name: "Google Calendar Credentials",
+          envVar: "GOOGLE_CALENDAR_CREDENTIALS",
+          configured: !!process.env.GOOGLE_CALENDAR_CREDENTIALS,
+          description: "Google Calendar API service account credentials",
+          required: false,
+        },
+        {
+          name: "Google Calendar ID",
+          envVar: "GOOGLE_CALENDAR_ID",
+          configured: !!process.env.GOOGLE_CALENDAR_ID,
+          description: "Target Google Calendar ID",
+          required: false,
+        },
+        {
+          name: "OpenWeatherMap API Key",
+          envVar: "OPENWEATHERMAP_API_KEY",
+          configured: !!process.env.OPENWEATHERMAP_API_KEY,
+          description: "API key for weather data",
+          required: false,
+        },
+        {
+          name: "Perplexity API Key",
+          envVar: "PERPLEXITY_API_KEY",
+          configured: !!process.env.PERPLEXITY_API_KEY,
+          description: "API key for enhanced web search",
+          required: false,
+        },
+        {
+          name: "Limitless API Key",
+          envVar: "LIMITLESS_API_KEY",
+          configured: !!process.env.LIMITLESS_API_KEY,
+          description: "API key for Limitless pendant integration (legacy)",
+          required: false,
+        },
+        {
+          name: "Master Admin Phone",
+          envVar: "MASTER_ADMIN_PHONE",
+          configured: !!process.env.MASTER_ADMIN_PHONE,
+          description: "Phone number for admin notifications",
+          required: false,
+        },
+        {
+          name: "Internal Bridge Key",
+          envVar: "INTERNAL_BRIDGE_KEY",
+          configured: !!process.env.INTERNAL_BRIDGE_KEY,
+          description: "Internal service communication key",
+          required: false,
+        },
+        {
+          name: "Session Secret",
+          envVar: "SESSION_SECRET",
+          configured: !!process.env.SESSION_SECRET,
+          description: "Session encryption key",
+          required: true,
+        },
+      ];
+
+      const services = [
+        {
+          name: "OpenAI",
+          icon: "openai",
+          status: process.env.OPENAI_API_KEY ? "connected" : "not_configured",
+          description: "AI responses, embeddings, and text generation",
+          requiredKeys: ["OPENAI_API_KEY"],
+        },
+        {
+          name: "Twilio SMS",
+          icon: "twilio",
+          status: (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER) 
+            ? "connected" 
+            : (process.env.TWILIO_ACCOUNT_SID || process.env.TWILIO_AUTH_TOKEN) 
+              ? "partial" 
+              : "not_configured",
+          description: "Send and receive SMS messages",
+          requiredKeys: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER"],
+        },
+        {
+          name: "Omi Pendant",
+          icon: "omi",
+          status: (process.env.OMI_API_KEY || process.env.OMI_DEV_API_KEY) ? "connected" : "not_configured",
+          description: "Voice conversation recording and analysis",
+          requiredKeys: ["OMI_API_KEY"],
+        },
+        {
+          name: "Google Calendar",
+          icon: "calendar",
+          status: (process.env.GOOGLE_CALENDAR_CREDENTIALS && process.env.GOOGLE_CALENDAR_ID) 
+            ? "connected" 
+            : (process.env.GOOGLE_CALENDAR_CREDENTIALS || process.env.GOOGLE_CALENDAR_ID) 
+              ? "partial" 
+              : "not_configured",
+          description: "Calendar events and scheduling",
+          requiredKeys: ["GOOGLE_CALENDAR_CREDENTIALS", "GOOGLE_CALENDAR_ID"],
+        },
+        {
+          name: "Weather",
+          icon: "weather",
+          status: process.env.OPENWEATHERMAP_API_KEY ? "connected" : "not_configured",
+          description: "Weather forecasts and alerts",
+          requiredKeys: ["OPENWEATHERMAP_API_KEY"],
+        },
+      ];
+
+      res.json({
+        domain,
+        webhooks,
+        apiKeys,
+        services,
+      });
+    } catch (error: any) {
+      console.error("Get integrations status error:", error);
+      res.status(500).json({ error: error.message || "Failed to get integrations status" });
+    }
+  });
   
   return httpServer;
 }

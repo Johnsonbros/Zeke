@@ -22,6 +22,7 @@ import ListsPage from "@/pages/lists";
 import MealsPage from "@/pages/meals";
 import OmiPage from "@/pages/omi";
 import KnowledgeGraphPage from "@/pages/knowledge-graph";
+import IntegrationsPage from "@/pages/integrations";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 
@@ -44,6 +45,7 @@ function Router() {
       <Route path="/context-agent" component={ContextAgentPage} />
       <Route path="/omi" component={OmiPage} />
       <Route path="/knowledge-graph" component={KnowledgeGraphPage} />
+      <Route path="/integrations" component={IntegrationsPage} />
       <Route component={NotFound} />
     </Switch>
   );

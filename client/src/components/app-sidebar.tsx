@@ -140,6 +140,12 @@ const mainNavItems = [
     href: "/knowledge-graph",
     description: "Explore entity connections",
   },
+  {
+    title: "Integrations",
+    icon: Settings,
+    href: "/integrations",
+    description: "Webhooks, API keys & services",
+  },
 ];
 
 export function AppSidebar() {
