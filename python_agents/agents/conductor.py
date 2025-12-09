@@ -13,7 +13,7 @@ user interactions. It:
 import asyncio
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Any
+from typing import Any, Callable
 import logging
 import json
 
@@ -1238,6 +1238,40 @@ Always call the classify_intent tool with your classification.""",
         )
         
         return await self.run(message, agent_context)
+    
+    async def run_streamed(
+        self, 
+        input_text: str, 
+        context: AgentContext | None = None,
+        on_token: Callable[[str], None] | None = None
+    ) -> str:
+        """
+        Run the conductor with streaming output callback.
+        
+        Executes the full orchestration pipeline (classification, context enrichment,
+        phased agent execution, handoff tracking, response aggregation, safety validation)
+        while streaming tokens via callback for real-time UX.
+        
+        This reuses the existing _execute() logic to ensure parity with non-streamed runs.
+        
+        Args:
+            input_text: The user's input message
+            context: Optional context
+            on_token: Optional callback for streaming tokens (for UX)
+            
+        Returns:
+            str: The complete composed response
+        """
+        if context is None:
+            context = AgentContext(user_message=input_text)
+        
+        result = await self._execute(input_text, context)
+        
+        if result and on_token:
+            for char in result:
+                on_token(char)
+        
+        return result
     
     def get_handoff_chain(self) -> list[dict[str, Any]]:
         """

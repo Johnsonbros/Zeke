@@ -18,6 +18,7 @@ import json
 
 from agents import Agent, Runner
 from agents.tool import Tool, FunctionTool
+from openai.types.responses import ResponseTextDeltaEvent
 
 from ..bridge import get_bridge, NodeBridge
 from ..tracing import TraceContext, get_tracing_logger, create_trace_context
@@ -392,6 +393,72 @@ class BaseAgent(ABC):
         except Exception as e:
             self.status = AgentStatus.ERROR
             logger.error(f"Agent {self.name} error: {e}")
+            trace_logger.log_agent_error(trace_ctx, self.agent_id.value, str(e), span_id)
+            raise
+    
+    async def run_streamed(
+        self, 
+        input_text: str, 
+        context: AgentContext | None = None,
+        on_token: Callable[[str], None] | None = None
+    ) -> str:
+        """
+        Run the agent with real-time streaming output via OpenAI Agents SDK.
+        
+        Uses Runner.run_streamed() to stream tokens as they are generated,
+        invoking the on_token callback for each text delta. This enables
+        real-time UX updates while preserving the full agent pipeline.
+        
+        Falls back to non-streamed execution if no callback is provided.
+        
+        Args:
+            input_text: The user's input message
+            context: Optional context for the agent
+            on_token: Optional callback invoked for each token delta (for streaming UX)
+            
+        Returns:
+            str: The complete response (same as run())
+        """
+        if on_token is None:
+            return await self.run(input_text, context)
+        
+        if context is None:
+            context = AgentContext(user_message=input_text)
+        
+        trace_ctx = context.ensure_trace_context()
+        span_id = trace_ctx.create_span(f"agent_stream:{self.agent_id.value}")
+        trace_logger.log_agent_start(trace_ctx, self.agent_id.value, span_id=span_id)
+        
+        self.status = AgentStatus.PROCESSING
+        
+        try:
+            accumulated_text = ""
+            stream_result = Runner.run_streamed(self.openai_agent, input_text)
+            
+            async for event in stream_result.stream_events():
+                if event.type == "raw_response_event":
+                    if isinstance(event.data, ResponseTextDeltaEvent):
+                        delta = event.data.delta
+                        if delta:
+                            accumulated_text += delta
+                            on_token(delta)
+            
+            final_output = stream_result.final_output
+            result = final_output if final_output else accumulated_text
+            
+            self.status = AgentStatus.IDLE
+            
+            result_preview = result[:100] if len(result) > 100 else result
+            trace_logger.log_agent_complete(
+                trace_ctx, 
+                self.agent_id.value, 
+                result_preview=result_preview,
+                span_id=span_id
+            )
+            return result
+        except Exception as e:
+            self.status = AgentStatus.ERROR
+            logger.error(f"Agent {self.name} streaming error: {e}")
             trace_logger.log_agent_error(trace_ctx, self.agent_id.value, str(e), span_id)
             raise
     
