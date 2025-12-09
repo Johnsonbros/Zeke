@@ -1056,12 +1056,12 @@ db.exec(`
 `);
 
 // ============================================
-// LIMITLESS AI SUMMARY SYSTEM TABLES
+// OMI AI SUMMARY SYSTEM TABLES
 // ============================================
 
-// Create limitless_summaries table for AI-generated daily summaries
+// Create omi_summaries table for AI-generated daily summaries
 db.exec(`
-  CREATE TABLE IF NOT EXISTS limitless_summaries (
+  CREATE TABLE IF NOT EXISTS omi_summaries (
     id TEXT PRIMARY KEY,
     date TEXT NOT NULL,
     timeframe_start TEXT NOT NULL,
@@ -1078,9 +1078,31 @@ db.exec(`
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
-  CREATE INDEX IF NOT EXISTS idx_limitless_summaries_date ON limitless_summaries(date);
-  CREATE INDEX IF NOT EXISTS idx_limitless_summaries_created ON limitless_summaries(created_at);
+  CREATE INDEX IF NOT EXISTS idx_omi_summaries_date ON omi_summaries(date);
+  CREATE INDEX IF NOT EXISTS idx_omi_summaries_created ON omi_summaries(created_at);
 `);
+
+// Migration: Copy data from legacy limitless_summaries table if it exists
+try {
+  const tableExists = db.prepare(`
+    SELECT name FROM sqlite_master WHERE type='table' AND name='limitless_summaries'
+  `).get();
+  
+  if (tableExists) {
+    const existingData = db.prepare(`SELECT COUNT(*) as count FROM limitless_summaries`).get() as { count: number };
+    if (existingData && existingData.count > 0) {
+      const omiCount = db.prepare(`SELECT COUNT(*) as count FROM omi_summaries`).get() as { count: number };
+      if (!omiCount || omiCount.count === 0) {
+        db.exec(`
+          INSERT INTO omi_summaries SELECT * FROM limitless_summaries
+        `);
+        console.log(`[DB] Migrated ${existingData.count} summaries from limitless_summaries to omi_summaries`);
+      }
+    }
+  }
+} catch (error) {
+  console.log("[DB] No legacy limitless_summaries table to migrate");
+}
 
 // ============================================
 // CROSS-DOMAIN ENTITY LINKING SYSTEM TABLES
