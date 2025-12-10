@@ -10,11 +10,13 @@ This agent handles:
 
 The Safety Auditor acts as a final validation layer for sensitive operations
 and ensures all responses adhere to ZEKE's safety guidelines.
+
+Uses OpenAI Agents SDK native guardrails for efficient input/output screening.
 """
 
 import json
 import logging
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from dataclasses import dataclass
 
 from .base import (
@@ -26,7 +28,79 @@ from .base import (
     ToolDefinition,
 )
 
+if TYPE_CHECKING:
+    from agents import Agent, RunContextWrapper
+
 logger = logging.getLogger(__name__)
+
+
+SENSITIVE_PATTERNS = [
+    "api_key",
+    "api key", 
+    "secret",
+    "password",
+    "token",
+    "bearer ",
+    "sk-",
+    "pk_",
+    "database_url",
+    "connection_string",
+]
+
+
+def _create_sensitive_data_guardrail():
+    """
+    Factory function to create SDK output guardrail lazily.
+    
+    This avoids circular import issues by deferring the import of
+    agents SDK types until runtime.
+    
+    Returns:
+        OutputGuardrail: Configured guardrail for sensitive data detection
+    """
+    from agents import GuardrailFunctionOutput, OutputGuardrail, RunContextWrapper, Agent
+    
+    def sensitive_data_guardrail(
+        ctx: RunContextWrapper[None],
+        agent: Agent,
+        output: str
+    ) -> GuardrailFunctionOutput:
+        """
+        SDK-native output guardrail for detecting sensitive data leakage.
+        
+        This is a lightweight pattern-based check that runs after agent output
+        without requiring an additional LLM call.
+        """
+        lower_output = output.lower()
+        
+        for pattern in SENSITIVE_PATTERNS:
+            if pattern in lower_output:
+                logger.warning(f"Output guardrail triggered: sensitive pattern '{pattern}' detected")
+                return GuardrailFunctionOutput(
+                    tripwire_triggered=True,
+                    output_info=f"Blocked: response contains sensitive data pattern '{pattern}'"
+                )
+        
+        return GuardrailFunctionOutput(
+            tripwire_triggered=False,
+            output_info="Output validated successfully"
+        )
+    
+    return OutputGuardrail(
+        guardrail_function=sensitive_data_guardrail,
+        name="sensitive_data_filter"
+    )
+
+
+_sdk_output_guardrail_cache: Any = None
+
+
+def get_sdk_output_guardrail():
+    """Get or create the SDK output guardrail (cached singleton)."""
+    global _sdk_output_guardrail_cache
+    if _sdk_output_guardrail_cache is None:
+        _sdk_output_guardrail_cache = _create_sensitive_data_guardrail()
+    return _sdk_output_guardrail_cache
 
 
 @dataclass
@@ -296,7 +370,8 @@ class SafetyAuditorAgent(BaseAgent):
         Execute the Safety Auditor agent's main logic.
         
         This method processes help requests, status checks, permission
-        validations, and unknown intent handling.
+        validations, and unknown intent handling. Uses SDK-native output
+        guardrails for efficient content validation.
         
         Args:
             input_text: The user's input message
@@ -305,6 +380,8 @@ class SafetyAuditorAgent(BaseAgent):
         Returns:
             str: The agent's response
         """
+        from agents import Agent, Runner, OutputGuardrailTripwireTriggered
+        
         self.status = AgentStatus.PROCESSING
         
         try:
@@ -324,25 +401,24 @@ class SafetyAuditorAgent(BaseAgent):
             
             full_instructions += "\n\nREMEMBER: Be helpful and guide the user. Even if something isn't possible, offer alternatives."
             
-            from agents import Agent, Runner
+            sdk_guardrail = get_sdk_output_guardrail()
             
             agent = Agent(
                 name=self.name,
                 instructions=full_instructions,
                 tools=self.tools,
+                output_guardrails=[sdk_guardrail],
             )
             
-            result = await Runner.run(agent, input_text)
-            
-            validation = self.validate_response(result.final_output, context)
-            
-            if not validation.valid:
-                logger.warning(f"Response validation failed: {validation.issues}")
+            try:
+                result = await Runner.run(agent, input_text)
+                self.status = AgentStatus.IDLE
+                return result.final_output
+                
+            except OutputGuardrailTripwireTriggered as guardrail_error:
+                logger.warning(f"Output guardrail triggered: {guardrail_error}")
                 self.status = AgentStatus.IDLE
                 return "I apologize, but I need to rephrase my response. Let me try again with clearer information."
-            
-            self.status = AgentStatus.IDLE
-            return result.final_output
             
         except Exception as e:
             self.status = AgentStatus.ERROR
