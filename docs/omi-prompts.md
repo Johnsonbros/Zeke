@@ -276,7 +276,7 @@ In addition to webhooks (push-based), ZEKE can proactively query Omi's cloud API
 ### Setup
 
 1. Get your API key from the [Omi Developer Portal](https://docs.omi.me/developer)
-2. Add the secret `OMI_API_KEY` to your Replit environment
+2. Add the secret `OMI_MCP_API_KEY` (or `OMI_API_KEY`) to your Replit environment
 
 ### Available Tools
 
