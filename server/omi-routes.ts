@@ -611,6 +611,35 @@ export function registerOmiRoutes(app: Express): void {
     }
   });
 
+  app.post("/api/omi/audio-bytes", async (req: Request, res: Response) => {
+    try {
+      const payload = req.body;
+      const now = new Date().toISOString();
+
+      const log = await createOmiWebhookLog({
+        triggerType: "audio_bytes",
+        omiSessionId: payload.session_id,
+        rawPayload: JSON.stringify(payload),
+        status: "received",
+        receivedAt: now,
+      });
+
+      console.log(`[Omi] Received audio bytes: session=${payload.session_id}, size=${JSON.stringify(payload).length} bytes`);
+
+      res.json({ 
+        success: true, 
+        logId: log.id,
+        message: "Audio bytes received"
+      });
+    } catch (error) {
+      console.error("[Omi] Audio bytes error:", error);
+      res.status(500).json({ 
+        success: false, 
+        error: error instanceof Error ? error.message : "Unknown error" 
+      });
+    }
+  });
+
   app.post("/api/omi/query", async (req: Request, res: Response) => {
     try {
       const parsed = omiQueryRequestSchema.safeParse(req.body);
