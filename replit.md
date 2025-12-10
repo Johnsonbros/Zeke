@@ -19,8 +19,8 @@ ZEKE employs a multi-agent architecture with a Node.js + TypeScript (Express) ba
 The core is a multi-agent system in Python, with specialized agents like Conductor, Memory Curator, Comms Pilot, Ops Planner, Research Scout, and Safety Auditor. A TypeScript Context Router system provides domain-specific context bundles to Python agents, supporting a dual-context strategy for efficiency. The UI features a dark theme with a coral red accent and Poppins font, designed as a dashboard-first interface with global sidebar navigation.
 
 Key technical implementations and features include:
-- **Context Router System**: An intelligent, multi-layered context assembly system using token-budgeted bundles.
-- **Context Bundle Caching**: High-performance in-memory LRU cache with TTL-based expiration and domain-specific invalidation.
+- **Context Router System**: An intelligent, multi-layered context assembly system using token-budgeted bundles with parallel bundle assembly for independent context types.
+- **Context Bundle Caching**: High-performance in-memory LRU cache with priority-based eviction, model-aware TTL configurations, predictive prefetching, and domain-specific invalidation. Supports cache warming for common routes and access pattern tracking.
 - **Conversation Summarization System**: Automatically compresses older conversation history into bullet summaries using GPT-4o-mini.
 - **Memory Model**: Optimized for a single user, storing long-term memory with semantic search and confidence scoring.
 - **Reminders & Automations**: Scheduled jobs for recurring tasks, AI Task Breakdown, Smart Grocery Suggestions, and Proactive Task Follow-up.
@@ -32,6 +32,7 @@ Key technical implementations and features include:
 - **Food Preference Intelligence System**: Tracks preferences, restrictions, and recipes, with AI-powered generation and grocery integration.
 - **Smart Notification Batching**: Intelligent SMS notification system that queues, batches, and respects quiet hours, with urgent bypass.
 - **Natural Language Automation Builder**: Converts natural language phrases into structured automations with intelligent parsing, supporting various trigger and action types.
+- **Enhanced NLP Parser**: Multi-stage pipeline with intent classification, entity extraction, temporal resolution, and context disambiguation via knowledge graph integration. Features parallel processing for independent stages and automatic fallback to basic parser.
 - **Autonomous Automation Creation**: ZEKE can autonomously create scheduled automations like weather reports via natural language.
 - **AI-Powered Weather Briefings**: Personalized, narrative-style weather reports generated using GPT-4o-mini, including actionable advice.
 - **Severe Weather Monitoring & Family Alerts**: Automatic background monitoring for dangerous conditions and SMS alerts to family members with safety recommendations.

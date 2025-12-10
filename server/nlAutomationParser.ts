@@ -12,8 +12,17 @@ import type {
   NotifyActionConfig,
   InsertNLAutomation
 } from "@shared/schema";
+import { 
+  enhancedNLParser, 
+  type EnhancedParseResult,
+  type IntentClassification,
+  type ExtractedEntity,
+  type TemporalResolution 
+} from "./enhancedNLParser";
 
 const openai = new OpenAI();
+
+const USE_ENHANCED_PARSER = true;
 
 interface ParsedAutomation {
   name: string;
@@ -149,9 +158,52 @@ Output: {
   }
 }`;
 
-export async function parseNaturalLanguageAutomation(phrase: string): Promise<ParseResult> {
+export async function parseNaturalLanguageAutomation(
+  phrase: string,
+  options: { useEnhanced?: boolean; includeContext?: boolean } = {}
+): Promise<ParseResult & { enhanced?: EnhancedParseResult }> {
+  const { useEnhanced = USE_ENHANCED_PARSER, includeContext = true } = options;
+  
   try {
-    console.log(`[NLAutomationParser] Parsing phrase: "${phrase}"`);
+    console.log(`[NLAutomationParser] Parsing phrase: "${phrase}" (enhanced: ${useEnhanced})`);
+
+    if (useEnhanced) {
+      const enhancedResult = await enhancedNLParser.parse(phrase, {
+        includeContext,
+        maxContextTokens: 500,
+      });
+
+      if (enhancedResult.success && enhancedResult.automation) {
+        console.log(`[NLAutomationParser] Enhanced parser succeeded with ${enhancedResult.processingStages.length} stages`);
+        
+        const automation = enhancedResult.automation;
+        const triggerConfig = typeof automation.triggerConfig === "string" 
+          ? automation.triggerConfig 
+          : JSON.stringify(automation.triggerConfig);
+        const actionConfig = typeof automation.actionConfig === "string"
+          ? automation.actionConfig
+          : JSON.stringify(automation.actionConfig);
+        const conditions = automation.conditions 
+          ? (typeof automation.conditions === "string" ? automation.conditions : JSON.stringify(automation.conditions))
+          : undefined;
+        
+        return {
+          success: true,
+          automation: {
+            name: automation.name,
+            triggerType: automation.triggerType,
+            triggerConfig,
+            actionType: automation.actionType,
+            actionConfig,
+            conditions,
+            explanation: automation.explanation || ""
+          },
+          enhanced: enhancedResult,
+        };
+      }
+
+      console.log(`[NLAutomationParser] Enhanced parser failed, falling back to basic parser`);
+    }
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -184,7 +236,6 @@ export async function parseNaturalLanguageAutomation(phrase: string): Promise<Pa
 
     const automation = parsed.automation;
     
-    // Validate required fields
     if (!automation.name || !automation.triggerType || !automation.triggerConfig || 
         !automation.actionType || !automation.actionConfig) {
       return {
@@ -193,7 +244,6 @@ export async function parseNaturalLanguageAutomation(phrase: string): Promise<Pa
       };
     }
 
-    // Stringify configs if they're objects
     const triggerConfig = typeof automation.triggerConfig === "string" 
       ? automation.triggerConfig 
       : JSON.stringify(automation.triggerConfig);
@@ -294,3 +344,11 @@ export function getActionDescription(automation: { actionType: string; actionCon
 }
 
 export type { ParsedAutomation, ParseResult };
+export { 
+  enhancedNLParser,
+  type EnhancedParseResult,
+  type IntentClassification,
+  type ExtractedEntity,
+  type TemporalResolution,
+  type IntentCategory,
+} from "./enhancedNLParser";

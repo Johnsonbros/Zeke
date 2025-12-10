@@ -1308,48 +1308,67 @@ export async function assembleContext(
     };
   }
   
-  // Build primary bundles
-  for (const bundleName of routeConfig.primary) {
+  // PARALLEL CONTEXT BUNDLE ASSEMBLY
+  // Build primary and secondary bundles in parallel for better performance
+  const primaryPromises = routeConfig.primary.map(async (bundleName) => {
     const builder = BUNDLE_BUILDERS[bundleName];
-    if (builder) {
-      try {
-        const bundle = await builder(ctx, budget.primary);
-        bundle.priority = "primary";
-        bundles.push(bundle);
-      } catch (error) {
-        console.error(`Error building ${bundleName} bundle:`, error);
-      }
+    if (!builder) return null;
+    try {
+      const bundle = await builder(ctx, budget.primary);
+      bundle.priority = "primary";
+      return bundle;
+    } catch (error) {
+      console.error(`Error building ${bundleName} bundle:`, error);
+      return null;
     }
+  });
+
+  const secondaryPromises = routeConfig.secondary.map(async (bundleName) => {
+    const builder = BUNDLE_BUILDERS[bundleName];
+    if (!builder) return null;
+    try {
+      const bundle = await builder(ctx, budget.secondary);
+      bundle.priority = "secondary";
+      return bundle;
+    } catch (error) {
+      console.error(`Error building ${bundleName} bundle:`, error);
+      return null;
+    }
+  });
+
+  // Execute all primary and secondary bundle builds in parallel
+  const [primaryResults, secondaryResults] = await Promise.all([
+    Promise.all(primaryPromises),
+    Promise.all(secondaryPromises),
+  ]);
+
+  // Add successful bundles
+  for (const bundle of primaryResults) {
+    if (bundle) bundles.push(bundle);
+  }
+  for (const bundle of secondaryResults) {
+    if (bundle) bundles.push(bundle);
   }
   
-  // Build secondary bundles
-  for (const bundleName of routeConfig.secondary) {
-    const builder = BUNDLE_BUILDERS[bundleName];
-    if (builder) {
-      try {
-        const bundle = await builder(ctx, budget.secondary);
-        bundle.priority = "secondary";
-        bundles.push(bundle);
-      } catch (error) {
-        console.error(`Error building ${bundleName} bundle:`, error);
-      }
-    }
-  }
-  
-  // Build tertiary bundles if we have token budget
+  // Build tertiary bundles if we have token budget (also in parallel)
   const usedTokens = bundles.reduce((sum, b) => sum + b.tokenEstimate, 0);
   if (usedTokens < budget.total - budget.tertiary && routeConfig.tertiary) {
-    for (const bundleName of routeConfig.tertiary) {
+    const tertiaryPromises = routeConfig.tertiary.map(async (bundleName) => {
       const builder = BUNDLE_BUILDERS[bundleName];
-      if (builder) {
-        try {
-          const bundle = await builder(ctx, budget.tertiary);
-          bundle.priority = "tertiary";
-          bundles.push(bundle);
-        } catch (error) {
-          console.error(`Error building ${bundleName} bundle:`, error);
-        }
+      if (!builder) return null;
+      try {
+        const bundle = await builder(ctx, budget.tertiary);
+        bundle.priority = "tertiary";
+        return bundle;
+      } catch (error) {
+        console.error(`Error building ${bundleName} bundle:`, error);
+        return null;
       }
+    });
+    
+    const tertiaryResults = await Promise.all(tertiaryPromises);
+    for (const bundle of tertiaryResults) {
+      if (bundle) bundles.push(bundle);
     }
   }
   
