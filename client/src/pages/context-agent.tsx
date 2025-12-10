@@ -437,7 +437,7 @@ export default function ContextAgentPage() {
               <Brain className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p className="text-lg font-medium">No commands detected yet</p>
               <p className="text-sm mt-1">
-                Say "Hey ZEKE" followed by a command to your Limitless pendant
+                Say "Hey ZEKE" followed by a command to your Omi pendant
               </p>
             </div>
           ) : (

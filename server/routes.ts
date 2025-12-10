@@ -7022,13 +7022,6 @@ export async function registerRoutes(
           required: false,
         },
         {
-          name: "Limitless API Key",
-          envVar: "LIMITLESS_API_KEY",
-          configured: !!process.env.LIMITLESS_API_KEY,
-          description: "API key for Limitless pendant integration (legacy)",
-          required: false,
-        },
-        {
           name: "Master Admin Phone",
           envVar: "MASTER_ADMIN_PHONE",
           configured: !!process.env.MASTER_ADMIN_PHONE,

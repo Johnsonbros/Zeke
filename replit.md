@@ -16,7 +16,7 @@ ZEKE is a single-user personal AI assistant for Nate Johnson, designed for high-
 ## System Architecture
 ZEKE employs a multi-agent architecture with a Node.js + TypeScript (Express) backend, a Python FastAPI microservice for agent orchestration, and a React frontend with Tailwind CSS and shadcn/ui components. SQLite serves as the persistent data store.
 
-The core is a multi-agent system in Python, with specialized agents like Conductor, Memory Curator, Comms Pilot, Ops Planner, Research Scout, Safety Auditor, and Limitless Analyst. A TypeScript Context Router system provides domain-specific context bundles to Python agents, supporting a dual-context strategy for efficiency. The UI features a dark theme with a coral red accent and Poppins font, designed as a dashboard-first interface with global sidebar navigation.
+The core is a multi-agent system in Python, with specialized agents like Conductor, Memory Curator, Comms Pilot, Ops Planner, Research Scout, and Safety Auditor. A TypeScript Context Router system provides domain-specific context bundles to Python agents, supporting a dual-context strategy for efficiency. The UI features a dark theme with a coral red accent and Poppins font, designed as a dashboard-first interface with global sidebar navigation.
 
 Key technical implementations and features include:
 - **Context Router System**: An intelligent, multi-layered context assembly system using token-budgeted bundles.
@@ -24,10 +24,10 @@ Key technical implementations and features include:
 - **Conversation Summarization System**: Automatically compresses older conversation history into bullet summaries using GPT-4o-mini.
 - **Memory Model**: Optimized for a single user, storing long-term memory with semantic search and confidence scoring.
 - **Reminders & Automations**: Scheduled jobs for recurring tasks, AI Task Breakdown, Smart Grocery Suggestions, and Proactive Task Follow-up.
-- **Tooling**: Integrates various AI tools for communication (SMS), task management, calendar, weather, web search, file operations, and Limitless pendant lifelogs.
-- **Limitless Pendant Integration**: Connects to the Limitless API for accessing and semantically searching recorded conversations.
-- **Voice Pipeline**: Processes voice input from Limitless Pendant lifelogs through the same agent pipeline as SMS/web, with wake word detection.
-- **Limitless-GPS Deep Integration**: Correlates lifelog timestamps with GPS location history to enrich memories with location context and detect activity patterns.
+- **Tooling**: Integrates various AI tools for communication (SMS), task management, calendar, weather, web search, file operations, and Omi pendant lifelogs.
+- **Omi Pendant Integration**: Connects to the Omi API for accessing and semantically searching recorded conversations.
+- **Voice Pipeline**: Processes voice input from Omi Pendant lifelogs through the same agent pipeline as SMS/web, with wake word detection.
+- **Omi-GPS Deep Integration**: Correlates lifelog timestamps with GPS location history to enrich memories with location context and detect activity patterns.
 - **Automatic People Tracking System**: Extracts and tracks relationships, updating contacts and linking memories.
 - **Food Preference Intelligence System**: Tracks preferences, restrictions, and recipes, with AI-powered generation and grocery integration.
 - **Smart Notification Batching**: Intelligent SMS notification system that queues, batches, and respects quiet hours, with urgent bypass.
@@ -36,7 +36,7 @@ Key technical implementations and features include:
 - **AI-Powered Weather Briefings**: Personalized, narrative-style weather reports generated using GPT-4o-mini, including actionable advice.
 - **Severe Weather Monitoring & Family Alerts**: Automatic background monitoring for dangerous conditions and SMS alerts to family members with safety recommendations.
 - **Predictive Task Scheduling**: Analyzes task completion patterns to generate AI-powered scheduling suggestions.
-- **Limitless Enhanced Features**: Includes Daily Digest for conversation summaries, Action Item Extraction from transcripts, Meeting Intelligence for multi-speaker conversations, Conversation Search over lifelogs, and Analytics & Pattern Detection.
+- **Omi Enhanced Features**: Includes Daily Digest for conversation summaries, Action Item Extraction from transcripts, Meeting Intelligence for multi-speaker conversations, Conversation Search over lifelogs, and Analytics & Pattern Detection.
 - **Knowledge Graph System**: Unified graph database interconnecting all data domains (memories, tasks, calendar, contacts, locations, lifelogs) for multi-hop reasoning, temporal awareness, and anticipatory intelligence, with a dedicated Explorer UI.
 
 ## External Dependencies
@@ -47,4 +47,4 @@ Key technical implementations and features include:
 - **Google Calendar API**: Calendar integration.
 - **OpenWeatherMap API**: Weather data.
 - **DuckDuckGo API**: Fallback web search.
-- **Limitless API**: Accessing lifelogs from the Limitless pendant.
+- **Omi API**: Accessing lifelogs from the Omi pendant.
