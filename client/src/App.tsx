@@ -88,7 +88,7 @@ function AppContent() {
               <span className="font-semibold text-base">ZEKE</span>
             </div>
           </header>
-          <main className="flex-1 overflow-hidden pb-20 md:pb-0">
+          <main className="flex-1 overflow-hidden pb-6 md:pb-0">
             <Router />
           </main>
         </SidebarInset>
