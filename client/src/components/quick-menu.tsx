@@ -359,14 +359,22 @@ export function QuickMenu({ className }: QuickMenuProps) {
       data-testid="quick-menu-container"
     >
       <div
-        className="flex justify-center py-2 cursor-pointer"
+        className={cn(
+          "flex justify-center cursor-pointer transition-all duration-200",
+          isOpen ? "py-2" : "py-1"
+        )}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onClick={() => !isEditing && setIsOpen(!isOpen)}
         data-testid="quick-menu-handle"
       >
-        <div className="w-10 h-1 bg-muted-foreground/30 rounded-full" />
+        <div className={cn(
+          "rounded-full transition-all duration-200",
+          isOpen 
+            ? "w-10 h-1 bg-muted-foreground/30" 
+            : "w-16 h-[3px] bg-muted-foreground/40"
+        )} />
       </div>
 
       <AnimatePresence>
