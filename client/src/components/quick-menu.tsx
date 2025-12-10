@@ -358,25 +358,6 @@ export function QuickMenu({ className }: QuickMenuProps) {
       className={cn("fixed bottom-0 left-0 right-0 z-50 md:hidden", className)}
       data-testid="quick-menu-container"
     >
-      <div
-        className={cn(
-          "flex justify-center cursor-pointer transition-all duration-200",
-          isOpen ? "py-2" : "py-1"
-        )}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onClick={() => !isEditing && setIsOpen(!isOpen)}
-        data-testid="quick-menu-handle"
-      >
-        <div className={cn(
-          "rounded-full transition-all duration-200",
-          isOpen 
-            ? "w-10 h-1 bg-muted-foreground/30" 
-            : "w-16 h-[3px] bg-muted-foreground/40"
-        )} />
-      </div>
-
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -387,6 +368,16 @@ export function QuickMenu({ className }: QuickMenuProps) {
             className="bg-background/95 backdrop-blur-lg border-t border-border overflow-hidden"
             data-testid="quick-menu-panel"
           >
+            <div
+              className="flex justify-center py-2 cursor-pointer"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              onClick={() => !isEditing && setIsOpen(false)}
+              data-testid="quick-menu-handle-open"
+            >
+              <div className="w-10 h-1 bg-muted-foreground/30 rounded-full" />
+            </div>
             <div className="p-4 pb-6 safe-area-inset-bottom">
               {isEditing && (
                 <div className="flex items-center justify-between mb-4">
@@ -449,6 +440,19 @@ export function QuickMenu({ className }: QuickMenuProps) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {!isOpen && (
+        <div
+          className="flex justify-center pb-1 cursor-pointer"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onClick={() => setIsOpen(true)}
+          data-testid="quick-menu-handle-closed"
+        >
+          <div className="w-12 h-[3px] bg-muted-foreground/50 rounded-full" />
+        </div>
+      )}
 
       <AnimatePresence>
         {showAddMenu && (
