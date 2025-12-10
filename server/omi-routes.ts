@@ -190,7 +190,7 @@ async function processMemoryWebhook(payload: OmiMemoryTriggerPayload, logId: str
     await updateOmiWebhookLog(logId, { status: "processing" });
 
     if (OMI_COMMANDS_ENABLED) {
-      const commandDetection = await detectZekeCommand(transcript);
+      const commandDetection = await detectZekeCommand(transcript, payload.segments);
       if (commandDetection.isCommand && commandDetection.confidence === "high" && commandDetection.command) {
         console.log(`[Omi] Detected Zeke command (confidence: ${commandDetection.confidence}): "${commandDetection.command.substring(0, 80)}..."`);
         
@@ -293,9 +293,10 @@ interface ZekeCommandDetection {
   confidence: "high" | "medium" | "low";
 }
 
-async function detectZekeCommand(transcript: string): Promise<ZekeCommandDetection> {
-  const lowerTranscript = transcript.toLowerCase();
-  
+async function detectZekeCommand(
+  transcript: string,
+  segments?: Array<{ speaker: number; text: string }>
+): Promise<ZekeCommandDetection> {
   const wakeWords = ["hey zeke", "zeke,", "hey z,", "okay zeke", "ok zeke"];
   const actionPatterns = [
     /remind me to/i,
@@ -311,6 +312,29 @@ async function detectZekeCommand(transcript: string): Promise<ZekeCommandDetecti
     /look\s+up/i,
   ];
   
+  if (segments && segments.length > 0) {
+    for (const segment of segments) {
+      if (segment.speaker !== 0) continue;
+      
+      const lowerText = segment.text.toLowerCase();
+      const hasWakeWord = wakeWords.some(wake => lowerText.includes(wake));
+      const hasActionPattern = actionPatterns.some(pattern => pattern.test(segment.text));
+      
+      if (hasWakeWord && hasActionPattern) {
+        const wakeMatch = wakeWords.find(wake => lowerText.includes(wake));
+        const wakeIndex = wakeMatch ? lowerText.indexOf(wakeMatch) : 0;
+        const command = segment.text.slice(wakeIndex + (wakeMatch?.length || 0)).trim();
+        
+        return {
+          isCommand: true,
+          command: command || segment.text,
+          confidence: "high",
+        };
+      }
+    }
+  }
+  
+  const lowerTranscript = transcript.toLowerCase();
   const hasWakeWord = wakeWords.some(wake => lowerTranscript.includes(wake));
   const hasActionPattern = actionPatterns.some(pattern => pattern.test(transcript));
   

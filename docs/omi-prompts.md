@@ -139,10 +139,8 @@ OMI_COMMANDS_ENABLED=true
 ```
 Only enable this in trusted single-user deployments where you control the Omi device.
 
-**Known Limitations**:
-- Omi doesn't provide reliable speaker identification, so commands from any speaker in a conversation may trigger execution
-- Commands mentioned in quotes or discussed third-party ("John said, hey Zeke remind me...") could potentially trigger
-- For this reason, this feature is designed for single-user deployments where the Omi device owner is the authorized user
+**Speaker Filtering**:
+When segment data is available, commands are only accepted from speaker 0 (the primary speaker/device owner). This prevents commands from other conversation participants from triggering actions.
 
 ### Real-time Transcript Webhook (Optional)
 
