@@ -6955,6 +6955,12 @@ export async function registerRoutes(
           method: "POST",
           description: "Internal endpoint for voice pipeline to send detected commands.",
         },
+        {
+          name: "Overland GPS",
+          path: "/api/location/overland",
+          method: "POST",
+          description: "Receives GPS location data from Overland app. Configure this URL in Overland settings.",
+        },
       ];
 
       const apiKeys = [
