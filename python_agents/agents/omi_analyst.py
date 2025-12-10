@@ -6,6 +6,7 @@ This module implements the Omi Analyst agent responsible for:
 - Creating structured context bundles with token limits
 - Prioritizing relevant information for the current query
 - Providing curated context to other agents
+- Direct access to Omi Developer API for memories and conversations
 
 The Omi Analyst works as a preprocessing layer, extracting relevant
 information from wearable recordings and packaging it for consumption by
@@ -16,9 +17,14 @@ from dataclasses import dataclass, field
 from typing import Any
 import logging
 import json
+import os
+import httpx
 
 from agents import Agent, Runner
 from agents.tool import Tool
+
+OMI_API_KEY = os.environ.get("OMI_API_KEY", "")
+OMI_API_BASE_URL = os.environ.get("OMI_API_BASE_URL", "https://api.omi.me/v1/dev")
 
 from .base import (
     BaseAgent,
@@ -42,6 +48,7 @@ OMI_ANALYST_INSTRUCTIONS = """You are the Omi Analyst, ZEKE's lifelog data prepr
 3. Prioritize relevant information based on the current query
 4. Extract key points, action items, and important quotes
 5. Persist important insights to long-term memory
+6. Access Omi's complete cloud data when needed
 
 Always prioritize:
 - Finding the most relevant conversations for the query
@@ -56,6 +63,12 @@ When processing lifelog data:
 - Use get_lifelog_context for topic-specific extraction
 - Use get_daily_summary for cached summaries
 - When you find important action items, commitments, or key facts about people, use save_lifelog_insight to persist them for future reference
+
+For direct Omi cloud access (requires OMI_API_KEY):
+- Use get_omi_memories to fetch all memories from Omi's cloud
+- Use get_omi_conversations to get full conversation history with transcripts
+- Use get_omi_action_items to retrieve todos from Omi
+- Use create_omi_memory to sync important information back to Omi
 
 Your output should always be a structured JSON context bundle that other agents
 can easily consume. Include:
@@ -262,6 +275,162 @@ class OmiAnalystAgent(BaseAgent):
             logger.error(f"save_lifelog_insight execution failed: {e}")
             return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
     
+    async def _handle_get_omi_memories(self, ctx: Any, args: str) -> str:
+        """Handler for get_omi_memories tool - fetches memories from Omi Developer API."""
+        if not OMI_API_KEY:
+            return json.dumps({"success": False, "error": "OMI_API_KEY not configured. Set it in environment variables."})
+        
+        try:
+            arguments = json.loads(args) if isinstance(args, str) and args else {}
+        except json.JSONDecodeError as e:
+            return json.dumps({"success": False, "error": f"Invalid JSON arguments: {str(e)}"})
+        
+        try:
+            params = {}
+            if arguments.get("limit"):
+                params["limit"] = arguments["limit"]
+            if arguments.get("offset"):
+                params["offset"] = arguments["offset"]
+            if arguments.get("categories"):
+                params["categories"] = ",".join(arguments["categories"])
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{OMI_API_BASE_URL}/user/memories",
+                    headers={"Authorization": f"Bearer {OMI_API_KEY}"},
+                    params=params,
+                    timeout=30.0
+                )
+                
+                if response.status_code == 200:
+                    memories = response.json()
+                    return json.dumps({"success": True, "memories": memories, "count": len(memories)})
+                else:
+                    return json.dumps({"success": False, "error": f"Omi API error: {response.status_code}", "details": response.text})
+        except Exception as e:
+            logger.error(f"get_omi_memories execution failed: {e}")
+            return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
+    
+    async def _handle_get_omi_conversations(self, ctx: Any, args: str) -> str:
+        """Handler for get_omi_conversations tool - fetches conversations from Omi Developer API."""
+        if not OMI_API_KEY:
+            return json.dumps({"success": False, "error": "OMI_API_KEY not configured. Set it in environment variables."})
+        
+        try:
+            arguments = json.loads(args) if isinstance(args, str) and args else {}
+        except json.JSONDecodeError as e:
+            return json.dumps({"success": False, "error": f"Invalid JSON arguments: {str(e)}"})
+        
+        try:
+            params = {}
+            if arguments.get("limit"):
+                params["limit"] = arguments["limit"]
+            if arguments.get("offset"):
+                params["offset"] = arguments["offset"]
+            if arguments.get("include_transcript"):
+                params["include_transcript"] = str(arguments["include_transcript"]).lower()
+            if arguments.get("categories"):
+                params["categories"] = ",".join(arguments["categories"])
+            if arguments.get("start_date"):
+                params["start_date"] = arguments["start_date"]
+            if arguments.get("end_date"):
+                params["end_date"] = arguments["end_date"]
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{OMI_API_BASE_URL}/user/conversations",
+                    headers={"Authorization": f"Bearer {OMI_API_KEY}"},
+                    params=params,
+                    timeout=30.0
+                )
+                
+                if response.status_code == 200:
+                    conversations = response.json()
+                    return json.dumps({"success": True, "conversations": conversations, "count": len(conversations)})
+                else:
+                    return json.dumps({"success": False, "error": f"Omi API error: {response.status_code}", "details": response.text})
+        except Exception as e:
+            logger.error(f"get_omi_conversations execution failed: {e}")
+            return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
+    
+    async def _handle_create_omi_memory(self, ctx: Any, args: str) -> str:
+        """Handler for create_omi_memory tool - creates a memory in Omi via Developer API."""
+        if not OMI_API_KEY:
+            return json.dumps({"success": False, "error": "OMI_API_KEY not configured. Set it in environment variables."})
+        
+        try:
+            arguments = json.loads(args) if isinstance(args, str) else args
+        except json.JSONDecodeError as e:
+            return json.dumps({"success": False, "error": f"Invalid JSON arguments: {str(e)}"})
+        
+        if not arguments.get("content"):
+            return json.dumps({"success": False, "error": "content is required"})
+        
+        try:
+            payload = {
+                "content": arguments["content"]
+            }
+            if arguments.get("category"):
+                payload["category"] = arguments["category"]
+            if arguments.get("visibility"):
+                payload["visibility"] = arguments["visibility"]
+            if arguments.get("tags"):
+                payload["tags"] = arguments["tags"]
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{OMI_API_BASE_URL}/user/memories",
+                    headers={
+                        "Authorization": f"Bearer {OMI_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json=payload,
+                    timeout=30.0
+                )
+                
+                if response.status_code in [200, 201]:
+                    memory = response.json()
+                    return json.dumps({"success": True, "memory": memory})
+                else:
+                    return json.dumps({"success": False, "error": f"Omi API error: {response.status_code}", "details": response.text})
+        except Exception as e:
+            logger.error(f"create_omi_memory execution failed: {e}")
+            return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
+    
+    async def _handle_get_omi_action_items(self, ctx: Any, args: str) -> str:
+        """Handler for get_omi_action_items tool - fetches action items from Omi Developer API."""
+        if not OMI_API_KEY:
+            return json.dumps({"success": False, "error": "OMI_API_KEY not configured. Set it in environment variables."})
+        
+        try:
+            arguments = json.loads(args) if isinstance(args, str) and args else {}
+        except json.JSONDecodeError as e:
+            return json.dumps({"success": False, "error": f"Invalid JSON arguments: {str(e)}"})
+        
+        try:
+            params = {}
+            if arguments.get("limit"):
+                params["limit"] = arguments["limit"]
+            if arguments.get("completed") is not None:
+                params["completed"] = str(arguments["completed"]).lower()
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{OMI_API_BASE_URL}/user/action-items",
+                    headers={"Authorization": f"Bearer {OMI_API_KEY}"},
+                    params=params,
+                    timeout=30.0
+                )
+                
+                if response.status_code == 200:
+                    action_items = response.json()
+                    return json.dumps({"success": True, "action_items": action_items, "count": len(action_items)})
+                else:
+                    return json.dumps({"success": False, "error": f"Omi API error: {response.status_code}", "details": response.text})
+        except Exception as e:
+            logger.error(f"get_omi_action_items execution failed: {e}")
+            return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
+    
     def __init__(self):
         """Initialize the Omi Analyst agent with its tools and configuration."""
         tool_definitions = [
@@ -386,6 +555,115 @@ class OmiAnalystAgent(BaseAgent):
                     "required": ["content", "insight_type"],
                 },
                 handler=self._handle_save_lifelog_insight,
+            ),
+            ToolDefinition(
+                name="get_omi_memories",
+                description="Fetch memories directly from Omi's cloud API. Returns stored memories with their content and categories. Use this to access Omi's full memory database rather than just webhook-pushed data.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "limit": {
+                            "type": "number",
+                            "description": "Maximum number of memories to return (default 25, max 100)",
+                        },
+                        "offset": {
+                            "type": "number",
+                            "description": "Number of memories to skip for pagination",
+                        },
+                        "categories": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Filter by categories (e.g., ['personal', 'work'])",
+                        },
+                    },
+                    "required": [],
+                },
+                handler=self._handle_get_omi_memories,
+            ),
+            ToolDefinition(
+                name="get_omi_conversations",
+                description="Fetch conversations directly from Omi's cloud API. Returns recorded conversations with summaries and optionally full transcripts. Use this for complete access to Omi conversation history.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "limit": {
+                            "type": "number",
+                            "description": "Maximum number of conversations to return (default 25)",
+                        },
+                        "offset": {
+                            "type": "number",
+                            "description": "Number of conversations to skip for pagination",
+                        },
+                        "include_transcript": {
+                            "type": "boolean",
+                            "description": "Include full transcript segments (default false)",
+                        },
+                        "categories": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Filter by categories (e.g., ['personal', 'business'])",
+                        },
+                        "start_date": {
+                            "type": "string",
+                            "description": "Filter by start date (ISO 8601 format)",
+                        },
+                        "end_date": {
+                            "type": "string",
+                            "description": "Filter by end date (ISO 8601 format)",
+                        },
+                    },
+                    "required": [],
+                },
+                handler=self._handle_get_omi_conversations,
+            ),
+            ToolDefinition(
+                name="create_omi_memory",
+                description="Create a new memory in Omi's cloud. This syncs information back to the Omi app so it appears in the user's Omi memories.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "content": {
+                            "type": "string",
+                            "description": "The memory content (1-500 characters)",
+                        },
+                        "category": {
+                            "type": "string",
+                            "enum": ["interesting", "system", "manual"],
+                            "description": "Memory category (defaults to manual)",
+                        },
+                        "visibility": {
+                            "type": "string",
+                            "enum": ["public", "private"],
+                            "description": "Visibility setting (default private)",
+                        },
+                        "tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Tags to associate with the memory",
+                        },
+                    },
+                    "required": ["content"],
+                },
+                handler=self._handle_create_omi_memory,
+            ),
+            ToolDefinition(
+                name="get_omi_action_items",
+                description="Fetch action items/tasks from Omi's cloud API. Returns todo items extracted from conversations or manually created.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "limit": {
+                            "type": "number",
+                            "description": "Maximum number of action items to return (default 100)",
+                        },
+                        "completed": {
+                            "type": "boolean",
+                            "description": "Filter by completion status (true/false/omit for all)",
+                        },
+                    },
+                    "required": [],
+                },
+                handler=self._handle_get_omi_action_items,
             ),
         ]
         
