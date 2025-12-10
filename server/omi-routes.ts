@@ -25,9 +25,14 @@ import {
   createContact,
   updateContact,
   createContactNote,
+  createConversation,
+  createMessage,
 } from "./db";
+import { chat, getAdminPermissions } from "./agent";
 
 const openai = new OpenAI();
+
+const OMI_COMMANDS_ENABLED = process.env.OMI_COMMANDS_ENABLED === "true";
 
 interface ExtractionResult {
   people: OmiExtractedPerson[];
@@ -184,6 +189,23 @@ async function processMemoryWebhook(payload: OmiMemoryTriggerPayload, logId: str
   try {
     await updateOmiWebhookLog(logId, { status: "processing" });
 
+    if (OMI_COMMANDS_ENABLED) {
+      const commandDetection = await detectZekeCommand(transcript);
+      if (commandDetection.isCommand && commandDetection.confidence === "high" && commandDetection.command) {
+        console.log(`[Omi] Detected Zeke command (confidence: ${commandDetection.confidence}): "${commandDetection.command.substring(0, 80)}..."`);
+        
+        const commandResult = await executeDetectedCommand(
+          commandDetection.command,
+          logId,
+          payload.memory.id
+        );
+        
+        if (commandResult.success) {
+          console.log(`[Omi] Command executed successfully, continuing with extraction...`);
+        }
+      }
+    }
+
     const extraction = await extractFromTranscript(transcript);
     
     const createdMemoryNoteIds: string[] = [];
@@ -265,7 +287,185 @@ async function processMemoryWebhook(payload: OmiMemoryTriggerPayload, logId: str
   }
 }
 
-async function queryZekeKnowledge(query: string, limit: number = 10): Promise<OmiQueryResponse> {
+interface ZekeCommandDetection {
+  isCommand: boolean;
+  command?: string;
+  confidence: "high" | "medium" | "low";
+}
+
+async function detectZekeCommand(transcript: string): Promise<ZekeCommandDetection> {
+  const lowerTranscript = transcript.toLowerCase();
+  
+  const wakeWords = ["hey zeke", "zeke,", "hey z,", "okay zeke", "ok zeke"];
+  const actionPatterns = [
+    /remind me to/i,
+    /set a reminder/i,
+    /text\s+\w+/i,
+    /message\s+\w+/i,
+    /send\s+a?\s*(text|message)/i,
+    /add\s+.+\s+to\s+(my\s+)?(grocery|shopping|task)/i,
+    /create\s+a?\s*task/i,
+    /schedule\s+/i,
+    /what('s|s)\s+(the\s+)?weather/i,
+    /search\s+(for\s+)?/i,
+    /look\s+up/i,
+  ];
+  
+  const hasWakeWord = wakeWords.some(wake => lowerTranscript.includes(wake));
+  const hasActionPattern = actionPatterns.some(pattern => pattern.test(transcript));
+  
+  if (hasWakeWord && hasActionPattern) {
+    const wakeMatch = wakeWords.find(wake => lowerTranscript.includes(wake));
+    const wakeIndex = wakeMatch ? lowerTranscript.indexOf(wakeMatch) : 0;
+    const command = transcript.slice(wakeIndex + (wakeMatch?.length || 0)).trim();
+    
+    return {
+      isCommand: true,
+      command: command || transcript,
+      confidence: "high",
+    };
+  }
+  
+  return { isCommand: false, confidence: "low" };
+}
+
+async function routeToAgentPipeline(
+  message: string,
+  source: "omi_query" | "omi_command"
+): Promise<{ response: string; conversationId: string; executedTools?: string[] }> {
+  const conversation = createConversation({ source: "omi" as any });
+  
+  createMessage({
+    conversationId: conversation.id,
+    role: "user",
+    content: message,
+    source: "omi" as any,
+  });
+  
+  const userPermissions = getAdminPermissions();
+  
+  let aiResponse: string;
+  let executedTools: string[] = [];
+  
+  try {
+    const pythonResponse = await fetch('http://127.0.0.1:5001/api/agents/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        conversation_id: conversation.id,
+        metadata: {
+          source,
+          permissions: userPermissions,
+          is_admin: true,
+          trusted_single_user_deployment: true,
+          from_omi: true,
+        }
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+    
+    if (pythonResponse.ok) {
+      const result = await pythonResponse.json() as { 
+        response: string; 
+        trace_id?: string; 
+        metadata?: { 
+          completion_status?: string;
+          tools_called?: string[];
+        } 
+      };
+      aiResponse = result.response;
+      executedTools = result.metadata?.tools_called || [];
+      console.log(`[Omi Agent] trace_id=${result.trace_id}, status=${result.metadata?.completion_status}, tools=${executedTools.join(",")}`);
+    } else {
+      throw new Error(`Python agent returned ${pythonResponse.status}`);
+    }
+  } catch (pythonError) {
+    console.warn('[Omi Agent] Python agent unavailable, using fallback:', pythonError);
+    aiResponse = await chat(conversation.id, message, true, undefined, userPermissions);
+  }
+  
+  const toolMetadata = executedTools.length > 0 
+    ? `\n\n[Tools executed: ${executedTools.join(", ")}]` 
+    : "";
+  
+  createMessage({
+    conversationId: conversation.id,
+    role: "assistant",
+    content: aiResponse + toolMetadata,
+    source: "omi" as any,
+  });
+  
+  console.log(`[Omi Agent] Persisted conversation ${conversation.id} with ${executedTools.length} tool(s) executed`);
+  
+  return { response: aiResponse, conversationId: conversation.id, executedTools };
+}
+
+async function executeDetectedCommand(
+  command: string,
+  logId: string,
+  memoryId: string
+): Promise<{ success: boolean; response: string; executedTools?: string[] }> {
+  console.log(`[Omi Command] Executing detected command from memory ${memoryId}: "${command.substring(0, 100)}..."`);
+  
+  try {
+    const result = await routeToAgentPipeline(command, "omi_command");
+    
+    console.log(`[Omi Command] Executed successfully: conversationId=${result.conversationId}, tools=${result.executedTools?.join(",") || "none"}`);
+    
+    return {
+      success: true,
+      response: result.response,
+      executedTools: result.executedTools,
+    };
+  } catch (error) {
+    console.error("[Omi Command] Execution failed:", error);
+    return {
+      success: false,
+      response: error instanceof Error ? error.message : "Command execution failed",
+    };
+  }
+}
+
+async function queryZekeKnowledge(
+  query: string, 
+  limit: number = 10,
+  executeActions: boolean = false
+): Promise<OmiQueryResponse & { actionExecuted?: boolean; executedTools?: string[] }> {
+  if (executeActions && OMI_COMMANDS_ENABLED) {
+    try {
+      const result = await routeToAgentPipeline(query, "omi_query");
+      
+      const memories = await getAllMemoryNotes();
+      const contacts = await getAllContacts();
+      
+      const relevantMemories = memories
+        .filter(m => !m.isSuperseded)
+        .slice(0, limit)
+        .map(m => ({
+          id: m.id,
+          content: m.content,
+          type: m.type,
+          confidence: parseFloat(m.confidenceScore || "0.8"),
+        }));
+
+      const relatedPeople = contacts.slice(0, 5).map(c => ({
+        name: `${c.firstName} ${c.lastName}`.trim(),
+        context: c.relationship || c.accessLevel,
+      }));
+      
+      return {
+        answer: result.response,
+        relevantMemories,
+        relatedPeople,
+        actionExecuted: true,
+        executedTools: result.executedTools,
+      };
+    } catch (error) {
+      console.error("[Omi] Error routing to agent pipeline:", error);
+    }
+  }
+  
   const memories = await getAllMemoryNotes();
   const contacts = await getAllContacts();
 
@@ -309,6 +509,7 @@ Answer naturally and helpfully. If you don't have enough information, say so.`;
       answer: response.choices[0]?.message?.content || "I couldn't find relevant information.",
       relevantMemories,
       relatedPeople,
+      actionExecuted: false,
     };
   } catch (error) {
     console.error("[Omi] Error querying knowledge:", error);
@@ -316,6 +517,7 @@ Answer naturally and helpfully. If you don't have enough information, say so.`;
       answer: "I encountered an error while searching my knowledge.",
       relevantMemories: [],
       relatedPeople: [],
+      actionExecuted: false,
     };
   }
 }
@@ -395,8 +597,8 @@ export function registerOmiRoutes(app: Express): void {
         });
       }
 
-      const { query, limit } = parsed.data;
-      const response = await queryZekeKnowledge(query, limit);
+      const { query, limit, executeActions } = parsed.data;
+      const response = await queryZekeKnowledge(query, limit, executeActions);
 
       res.json(response);
     } catch (error) {

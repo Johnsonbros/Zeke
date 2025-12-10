@@ -2263,6 +2263,7 @@ export const omiQueryRequestSchema = z.object({
   sessionId: z.string().optional(),
   context: z.string().optional(),
   limit: z.number().optional().default(10),
+  executeActions: z.boolean().optional().default(false),
 });
 
 export type OmiQueryRequest = z.infer<typeof omiQueryRequestSchema>;

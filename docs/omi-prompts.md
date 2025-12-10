@@ -117,10 +117,32 @@ This combination allows Zeke to:
 - Timestamps
 
 **What Zeke does**:
+- Detects commands (e.g., "Hey Zeke, remind me to..." or "text Mom...")
+- Executes detected commands through Zeke's full agent pipeline
 - Extracts people, topics, action items, and insights
 - Creates memory notes in the knowledge base
 - Creates tasks for action items
 - Links information to existing contacts
+
+**Command Detection** (requires `OMI_COMMANDS_ENABLED=true`):
+When enabled, Zeke listens for wake words combined with action patterns:
+- Wake words: "Hey Zeke", "Zeke,", "Hey Z,", "OK Zeke"  
+- Actions: remind me, text [name], add to grocery list, create task, schedule, search for, etc.
+
+Commands require BOTH a wake word AND an action pattern to trigger execution.
+When detected, Zeke executes the command using the same tools available via SMS and web chat.
+
+**Security Note**: Command execution is disabled by default. To enable:
+```bash
+# Add to your environment variables
+OMI_COMMANDS_ENABLED=true
+```
+Only enable this in trusted single-user deployments where you control the Omi device.
+
+**Known Limitations**:
+- Omi doesn't provide reliable speaker identification, so commands from any speaker in a conversation may trigger execution
+- Commands mentioned in quotes or discussed third-party ("John said, hey Zeke remind me...") could potentially trigger
+- For this reason, this feature is designed for single-user deployments where the Omi device owner is the authorized user
 
 ### Real-time Transcript Webhook (Optional)
 
@@ -138,7 +160,7 @@ If you want Omi to query Zeke's knowledge during chat, use the Chat Tools featur
 
 **Method**: POST
 
-**Body**:
+**Body (read-only query)**:
 ```json
 {
   "query": "What do I know about Sarah?",
@@ -146,13 +168,31 @@ If you want Omi to query Zeke's knowledge during chat, use the Chat Tools featur
 }
 ```
 
+**Body (with action execution)**:
+```json
+{
+  "query": "Add milk to my grocery list",
+  "executeActions": true
+}
+```
+
+When `executeActions` is true AND `OMI_COMMANDS_ENABLED=true` is set, Zeke routes the query through the full agent pipeline, enabling:
+- Creating/updating tasks
+- Adding items to grocery list
+- Sending SMS messages
+- Searching the web
+- Checking weather
+- Managing calendar events
+- Any other Zeke tool capability
+
 **Response**:
 ```json
 {
-  "answer": "Based on my notes, Sarah is...",
+  "answer": "I've added milk to your grocery list.",
   "relevantMemories": [...],
   "relatedPeople": [...],
-  "suggestedActions": [...]
+  "actionExecuted": true,
+  "executedTools": ["add_grocery_item"]
 }
 ```
 
