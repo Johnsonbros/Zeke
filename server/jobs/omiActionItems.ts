@@ -17,7 +17,7 @@ import {
   createTask,
   getAllContacts,
 } from "../db";
-import type { InsertMemoryActionItem, InsertTask, Contact } from "@shared/schema";
+import type { InsertLifelogActionItem, InsertTask, Contact } from "@shared/schema";
 import type { OmiMemoryData, TranscriptSegment } from "../omi";
 
 let openai: OpenAI | null = null;
@@ -140,7 +140,7 @@ function findContactByName(name: string, contacts: Contact[]): Contact | undefin
   const normalizedName = name.toLowerCase().trim();
   
   const exactMatch = contacts.find(
-    c => c.name?.toLowerCase() === normalizedName ||
+    c => `${c.firstName} ${c.lastName}`.toLowerCase() === normalizedName ||
          c.firstName?.toLowerCase() === normalizedName ||
          c.lastName?.toLowerCase() === normalizedName
   );
@@ -158,7 +158,7 @@ function findContactByName(name: string, contacts: Contact[]): Contact | undefin
  * Create a task from an extracted action item
  */
 async function createTaskFromActionItem(
-  actionItem: InsertMemoryActionItem,
+  actionItem: InsertLifelogActionItem,
   contact?: Contact
 ): Promise<string | undefined> {
   try {
@@ -219,8 +219,8 @@ export async function processMemoryForActionItems(
     
     const contact = item.assignee ? findContactByName(item.assignee, contacts) : undefined;
     
-    const actionItemData: InsertMemoryActionItem = {
-      memoryId: memory.id,
+    const actionItemData: InsertLifelogActionItem = {
+      lifelogId: memory.id,
       content: item.task,
       assignee: item.assignee || null,
       dueDate: item.dueDate || null,

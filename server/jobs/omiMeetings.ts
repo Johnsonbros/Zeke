@@ -66,7 +66,7 @@ function extractSpeakersAndContent(memory: OmiMemoryData): {
   const participants: MeetingParticipant[] = [];
   let userSpoke = false;
   
-  for (const [name, data] of speakerMap) {
+  for (const [name, data] of Array.from(speakerMap.entries())) {
     participants.push({
       name,
       speakerIdentifier: data.isUser ? "user" : null,
@@ -206,7 +206,7 @@ export async function processMemoryAsMeeting(
   const summaryResult = await generateMeetingSummary(transcript, participants, durationMinutes);
   
   const meetingData: InsertMeeting = {
-    memoryId: memory.id,
+    lifelogId: memory.id,
     title: summaryResult.title,
     startTime: memory.startedAt,
     endTime: memory.finishedAt,

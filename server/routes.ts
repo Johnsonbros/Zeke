@@ -37,6 +37,7 @@ import {
   getAllContacts,
   getContact,
   getContactByPhone,
+  searchContacts,
   createContact,
   updateContact,
   deleteContact,
@@ -243,6 +244,7 @@ import {
   getMorningBriefingEnhancement,
   getOmiSummaries,
   getRecentLifelogs,
+  getRecentMemories,
 } from "./omi";
 import {
   recordConversationSignal,
@@ -511,7 +513,7 @@ export async function registerRoutes(
   const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN 
     ? getTwilioClient() 
     : null;
-  const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER || null;
+  const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER ?? undefined;
   
   // Set up SMS callback for tools (reminders and send_sms tool)
   setSendSmsCallback(async (phone: string, message: string, source?: string) => {
@@ -662,7 +664,7 @@ export async function registerRoutes(
   
   // Initialize smart notification batching
   setNotificationSmsCallback(async (phone: string, message: string) => {
-    if (!twilioClient) {
+    if (!twilioClient || !twilioFromNumber) {
       console.log("[NotificationBatcher] Twilio not configured, cannot send SMS");
       throw new Error("Twilio not configured");
     }
@@ -707,7 +709,7 @@ export async function registerRoutes(
 
   // Initialize NL Automation system
   setNLAutomationSmsCallback(async (phone: string, message: string) => {
-    if (!twilioClient) {
+    if (!twilioClient || !twilioFromNumber) {
       console.log("[NLAutomation] Twilio not configured, cannot send SMS");
       throw new Error("Twilio not configured");
     }
@@ -752,7 +754,7 @@ export async function registerRoutes(
   
   // Start ZEKE Context Agent for wake word detection
   setContextAgentSmsCallback(async (phone: string, message: string, source?: string) => {
-    if (!twilioClient) {
+    if (!twilioClient || !twilioFromNumber) {
       console.log("[ContextAgent] Twilio not configured, cannot send SMS");
       throw new Error("Twilio not configured");
     }
@@ -797,7 +799,7 @@ export async function registerRoutes(
 
   // Set up location check-in SMS callback and auto-start monitor
   setLocationCheckInSmsCallback(async (phone: string, message: string) => {
-    if (!twilioClient) {
+    if (!twilioClient || !twilioFromNumber) {
       console.log("[LocationCheckIn] Twilio not configured, cannot send SMS");
       throw new Error("Twilio not configured");
     }
@@ -1271,7 +1273,12 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid request body" });
       }
       
-      const note = createMemoryNote(parsed.data);
+      const { embedding, ...restData } = parsed.data;
+      const noteInput = {
+        ...restData,
+        embedding: undefined, // Embeddings are generated server-side
+      };
+      const note = createMemoryNote(noteInput);
       res.json(note);
     } catch (error: any) {
       console.error("Create memory error:", error);
@@ -3325,7 +3332,10 @@ export async function registerRoutes(
   app.get("/api/tools/catalog", requireInternalApiKey, (req, res) => {
     try {
       const tools = toolDefinitions.map((tool) => {
-        const func = tool.function;
+        if (tool.type !== 'function' || !('function' in tool)) {
+          return null;
+        }
+        const func = (tool as { type: 'function'; function: { name: string; description?: string; parameters?: unknown } }).function;
         const toolName = func.name;
         const capabilities = getToolCapability(toolName);
         
@@ -3342,6 +3352,7 @@ export async function registerRoutes(
             canAccessTasks: false,
             canAccessGrocery: false,
             canSetReminders: false,
+            canQueryMemory: false,
           };
           
           // Test each permission flag
@@ -3360,7 +3371,7 @@ export async function registerRoutes(
         };
       });
       
-      res.json({ tools });
+      res.json({ tools: tools.filter(Boolean) });
     } catch (error: any) {
       console.error("Catalog fetch error:", error);
       res.status(500).json({ error: error.message || "Failed to fetch tools catalog" });
@@ -4981,7 +4992,7 @@ export async function registerRoutes(
       
       const mealEntry = createMealHistoryEntry({
         name: recipe.name,
-        mealType: recipe.mealType || "dinner",
+        mealType: (recipe.mealType === "dessert" ? "snack" : recipe.mealType) || "dinner",
         cuisine: recipe.cuisine || null,
         rating: rating || null,
         notes: `Cooked from saved recipe`,
@@ -5243,14 +5254,14 @@ export async function registerRoutes(
   
   // Meeting Intelligence API routes
   const { 
-    processLifelogAsMeeting, 
-    processLifelogsForMeetings 
+    processMemoryAsMeeting, 
+    processMemoriesForMeetings 
   } = await import("./jobs/omiMeetings");
   
   // Action Item Extractor API routes
   const { 
-    processLifelogForActionItems, 
-    processLifelogsForActionItems 
+    processMemoryForActionItems, 
+    processMemoriesForActionItems 
   } = await import("./jobs/omiActionItems");
   
   // Analytics API routes
@@ -5372,8 +5383,8 @@ export async function registerRoutes(
       const { autoCreateTasks = true, hours = 4 } = req.body;
       console.log(`[AUDIT] [${new Date().toISOString()}] Extracting action items from last ${hours} hours`);
       
-      const lifelogs = await getRecentLifelogs(hours);
-      const result = await processLifelogsForActionItems(lifelogs, autoCreateTasks);
+      const memories = await getRecentMemories(hours);
+      const result = await processMemoriesForActionItems(memories, autoCreateTasks);
       res.json({ success: true, ...result });
     } catch (error: any) {
       console.error("Extract action items error:", error);
@@ -5399,8 +5410,8 @@ export async function registerRoutes(
       const { hours = 24 } = req.body;
       console.log(`[AUDIT] [${new Date().toISOString()}] Running analytics aggregation for last ${hours} hours`);
       
-      const lifelogs = await getRecentLifelogs(hours);
-      const result = await runDailyAnalyticsAggregation(lifelogs);
+      const memories = await getRecentMemories(hours);
+      const result = await runDailyAnalyticsAggregation(memories);
       res.json(result);
     } catch (error: any) {
       console.error("Run analytics aggregation error:", error);
@@ -5420,8 +5431,8 @@ export async function registerRoutes(
       
       console.log(`[AUDIT] [${new Date().toISOString()}] Searching conversations: "${query}"`);
       
-      const lifelogs = await getRecentLifelogs(72); // Search last 3 days
-      const result = await searchConversations(lifelogs, query, limit);
+      const memories = await getRecentMemories(72); // Search last 3 days
+      const result = await searchConversations(memories, query, limit);
       res.json(result);
     } catch (error: any) {
       console.error("Search conversations error:", error);
@@ -5440,8 +5451,8 @@ export async function registerRoutes(
       
       console.log(`[AUDIT] [${new Date().toISOString()}] Answering question about conversations: "${question}"`);
       
-      const lifelogs = await getRecentLifelogs(hours);
-      const result = await answerConversationQuestion(lifelogs, question);
+      const memories = await getRecentMemories(hours);
+      const result = await answerConversationQuestion(memories, question);
       res.json(result);
     } catch (error: any) {
       console.error("Answer question error:", error);
@@ -5455,8 +5466,8 @@ export async function registerRoutes(
       const { hours = 4 } = req.body;
       console.log(`[AUDIT] [${new Date().toISOString()}] Detecting meetings from last ${hours} hours`);
       
-      const lifelogs = await getRecentLifelogs(hours);
-      const result = await processLifelogsForMeetings(lifelogs);
+      const memories = await getRecentMemories(hours);
+      const result = await processMemoriesForMeetings(memories);
       res.json({ success: true, ...result });
     } catch (error: any) {
       console.error("Detect meetings error:", error);
@@ -5467,7 +5478,7 @@ export async function registerRoutes(
   // Omi Processor API routes
   const { 
     getProcessorStatus, 
-    processRecentLifelogs, 
+    processRecentMemories, 
     updateProcessorConfig 
   } = await import("./jobs/omiProcessor");
   
@@ -5487,7 +5498,7 @@ export async function registerRoutes(
   app.post("/api/omi/processor/run", async (req, res) => {
     try {
       console.log(`[AUDIT] [${new Date().toISOString()}] Manually running Omi processor`);
-      const result = await processRecentLifelogs();
+      const result = await processRecentMemories();
       res.json({ success: true, ...result });
     } catch (error: any) {
       console.error("Run processor error:", error);
@@ -5788,7 +5799,7 @@ export async function registerRoutes(
       let entities = findEntitiesByLabel(q.trim());
       
       if (type) {
-        const validTypes: EntityType[] = ["person", "location", "topic", "date"];
+        const validTypes: EntityType[] = ["person", "location", "topic", "task", "memory", "calendar_event", "grocery_item", "conversation"];
         if (!validTypes.includes(type)) {
           return res.status(400).json({ 
             error: `Invalid type. Must be one of: ${validTypes.join(", ")}` 
@@ -5850,7 +5861,7 @@ export async function registerRoutes(
     try {
       const { domain, itemId } = req.params;
       
-      const validDomains: EntityDomain[] = ["memory", "task", "conversation", "contact", "place"];
+      const validDomains: EntityDomain[] = ["memory", "task", "conversation", "contact", "location", "calendar", "grocery"];
       if (!validDomains.includes(domain as EntityDomain)) {
         return res.status(400).json({ 
           error: `Invalid domain. Must be one of: ${validDomains.join(", ")}` 
@@ -5876,7 +5887,7 @@ export async function registerRoutes(
     try {
       const { domain, itemId } = req.params;
       
-      const validDomains: EntityDomain[] = ["memory", "task", "conversation", "contact", "place"];
+      const validDomains: EntityDomain[] = ["memory", "task", "conversation", "contact", "location", "calendar", "grocery"];
       if (!validDomains.includes(domain as EntityDomain)) {
         return res.status(400).json({ 
           error: `Invalid domain. Must be one of: ${validDomains.join(", ")}` 
@@ -5906,7 +5917,9 @@ export async function registerRoutes(
         task: [],
         conversation: [],
         contact: [],
-        place: []
+        location: [],
+        calendar: [],
+        grocery: []
       };
       
       const itemEntityMap = new Map<string, { 
@@ -5941,9 +5954,9 @@ export async function registerRoutes(
         }
       }
       
-      for (const [key, data] of itemEntityMap.entries()) {
+      for (const [key, data] of Array.from(itemEntityMap.entries())) {
         const [itemDomain, relatedItemId] = key.split(":");
-        const avgConfidence = data.confidences.reduce((a, b) => a + b, 0) / data.confidences.length;
+        const avgConfidence = data.confidences.reduce((a: number, b: number) => a + b, 0) / data.confidences.length;
         const entityCount = data.entityIds.length;
         const relevanceScore = avgConfidence * (1 + Math.log(entityCount + 1));
         
