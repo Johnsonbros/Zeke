@@ -774,7 +774,9 @@ Always call the classify_intent tool with your classification.""",
         try:
             memory_result = await bridge.get_memory_context(message, limit=5)
             if memory_result:
-                context.memory_context = memory_result.get("memories", {})
+                if not context.memory_context:
+                    context.memory_context = {}
+                context.memory_context["memories"] = memory_result.get("memories", [])
             
             profile_result = await bridge.get_user_profile()
             if profile_result:

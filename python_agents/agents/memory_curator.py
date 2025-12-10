@@ -493,27 +493,32 @@ class MemoryCuratorAgent(BaseAgent):
                 "error": str(e),
             }
     
-    async def synthesize_context(self, message: str) -> SynthesizedContext:
+    async def synthesize_context(
+        self, 
+        message: str, 
+        prefetched_memories: list[dict] | None = None
+    ) -> SynthesizedContext:
         """
         Combine all memory sources into a unified context.
         
         This method:
-        1. Searches semantic memories for relevant facts
+        1. Uses prefetched memories if available, otherwise fetches them
         2. Searches lifelogs for relevant conversations
         3. Extracts action items and commitments from lifelogs
         4. Creates a synthesized summary for use by other agents
         
         Args:
             message: The message/query to synthesize context for
+            prefetched_memories: Optional pre-fetched memories from Conductor's
+                                 context enrichment to avoid duplicate API calls
             
         Returns:
             SynthesizedContext: Combined context from all sources
         """
         context = SynthesizedContext()
         
-        memory_result = await self.get_memory_context(message, limit=5)
-        if memory_result.get("success"):
-            for mem in memory_result.get("memories", []):
+        if prefetched_memories is not None:
+            for mem in prefetched_memories:
                 context.semantic_memories.append(MemoryResult(
                     source="semantic",
                     content=mem.get("content", ""),
@@ -521,6 +526,18 @@ class MemoryCuratorAgent(BaseAgent):
                     timestamp=mem.get("timestamp"),
                     metadata=mem.get("metadata", {}),
                 ))
+            logger.debug(f"Using {len(prefetched_memories)} pre-fetched memories")
+        else:
+            memory_result = await self.get_memory_context(message, limit=5)
+            if memory_result.get("success"):
+                for mem in memory_result.get("memories", []):
+                    context.semantic_memories.append(MemoryResult(
+                        source="semantic",
+                        content=mem.get("content", ""),
+                        relevance_score=mem.get("relevance_score", 0),
+                        timestamp=mem.get("timestamp"),
+                        metadata=mem.get("metadata", {}),
+                    ))
         
         lifelogs = await self.search_lifelogs(message, limit=5)
         context.lifelog_entries = lifelogs
@@ -633,7 +650,7 @@ class MemoryCuratorAgent(BaseAgent):
         Execute the Memory Curator's main logic.
         
         This method:
-        1. Synthesizes context from all memory sources
+        1. Synthesizes context from all memory sources (reusing Conductor's pre-fetch)
         2. Persists enriched context for downstream agents
         3. Uses the OpenAI agent to process and respond
         4. Returns enriched context or answers memory-related queries
@@ -648,7 +665,14 @@ class MemoryCuratorAgent(BaseAgent):
         if not hasattr(context, 'memory_context') or context.memory_context is None:
             context.memory_context = {}
         
-        synthesized = await self.synthesize_context(input_text)
+        prefetched_memories = None
+        if context.memory_context:
+            raw_memories = context.memory_context.get("memories", [])
+            if raw_memories:
+                prefetched_memories = raw_memories
+                logger.debug(f"Reusing {len(raw_memories)} memories from Conductor context")
+        
+        synthesized = await self.synthesize_context(input_text, prefetched_memories)
         
         context.memory_context["enriched_context"] = {
             "summary": synthesized.summary,
