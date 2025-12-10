@@ -638,7 +638,7 @@ function LocationWidget({
         </div>
       </CardHeader>
       <CardContent className="space-y-3 sm:space-y-4">
-        <div className="h-[150px] rounded-lg overflow-hidden border">
+        <div className="h-[150px] rounded-lg overflow-hidden border relative z-0">
           <MapContainer
             center={mapCenter}
             zoom={13}
