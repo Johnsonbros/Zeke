@@ -39,6 +39,7 @@ Key technical implementations and features include:
 - **Predictive Task Scheduling**: Analyzes task completion patterns to generate AI-powered scheduling suggestions.
 - **Omi Enhanced Features**: Includes Daily Digest for conversation summaries, Action Item Extraction from transcripts, Meeting Intelligence for multi-speaker conversations, Conversation Search over lifelogs, and Analytics & Pattern Detection.
 - **Knowledge Graph System**: Unified graph database interconnecting all data domains (memories, tasks, calendar, contacts, locations, lifelogs) for multi-hop reasoning, temporal awareness, and anticipatory intelligence, with a dedicated Explorer UI.
+- **Realtime Chunk Idempotency Layer**: In-memory idempotency tracking for incoming realtime chunks via `POST /api/realtime-chunk`. Prevents duplicate processing by tracking idempotency keys (explicit or derived from payload fields). First requests return 200, duplicates return 409.
 
 ## External Dependencies
 - **OpenAI API**: AI responses, agent logic, and text embeddings.
