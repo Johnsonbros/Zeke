@@ -7024,6 +7024,12 @@ export async function registerRoutes(
           description: "Receives live transcript segments during Omi conversations.",
         },
         {
+          name: "Omi Audio Bytes",
+          path: "/api/omi/audio-bytes",
+          method: "POST",
+          description: "Receives raw audio data from Omi device.",
+        },
+        {
           name: "Omi Day Summary",
           path: "/api/omi/day-summary",
           method: "POST",
