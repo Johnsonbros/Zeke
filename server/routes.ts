@@ -7027,7 +7027,7 @@ export async function registerRoutes(
           name: "Omi Audio Bytes",
           path: "/api/omi/audio-bytes",
           method: "POST",
-          description: "Receives raw audio data from Omi device.",
+          description: "Receives raw PCM16 audio bytes. Query params: sample_rate (default 16000), uid. Content-Type: application/octet-stream",
         },
         {
           name: "Omi Day Summary",

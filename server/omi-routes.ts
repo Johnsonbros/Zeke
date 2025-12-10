@@ -611,25 +611,54 @@ export function registerOmiRoutes(app: Express): void {
     }
   });
 
+  // Audio bytes endpoint - accepts raw PCM16 audio data
+  // Format: POST /api/omi/audio-bytes?sample_rate=16000&uid=user123
+  // Content-Type: application/octet-stream
+  // Body: raw PCM16 audio bytes
   app.post("/api/omi/audio-bytes", async (req: Request, res: Response) => {
     try {
-      const payload = req.body;
       const now = new Date().toISOString();
+      const sampleRate = parseInt(req.query.sample_rate as string) || 16000;
+      const uid = req.query.uid as string || "unknown";
+      
+      // Get raw audio bytes from request body
+      let audioBytes: Buffer;
+      if (Buffer.isBuffer(req.body)) {
+        audioBytes = req.body;
+      } else if (typeof req.body === 'object' && req.body.type === 'Buffer') {
+        audioBytes = Buffer.from(req.body.data);
+      } else {
+        // Handle case where body might be parsed differently
+        audioBytes = Buffer.from(req.body || []);
+      }
+      
+      const audioSize = audioBytes.length;
+      const durationSeconds = audioSize / (sampleRate * 2); // 2 bytes per sample (PCM16)
 
       const log = await createOmiWebhookLog({
         triggerType: "audio_bytes",
-        omiSessionId: payload.session_id,
-        rawPayload: JSON.stringify(payload),
+        omiSessionId: uid,
+        rawPayload: JSON.stringify({
+          uid,
+          sample_rate: sampleRate,
+          audio_size_bytes: audioSize,
+          duration_seconds: durationSeconds.toFixed(2),
+          received_at: now,
+        }),
         status: "received",
         receivedAt: now,
       });
 
-      console.log(`[Omi] Received audio bytes: session=${payload.session_id}, size=${JSON.stringify(payload).length} bytes`);
+      console.log(`[Omi] Received audio bytes: uid=${uid}, sample_rate=${sampleRate}, size=${audioSize} bytes, duration=${durationSeconds.toFixed(2)}s`);
 
+      // Return 200 OK quickly as per Omi best practices
       res.json({ 
+        status: "ok",
         success: true, 
         logId: log.id,
-        message: "Audio bytes received"
+        message: "Audio bytes received",
+        audio_size: audioSize,
+        duration_seconds: parseFloat(durationSeconds.toFixed(2)),
       });
     } catch (error) {
       console.error("[Omi] Audio bytes error:", error);

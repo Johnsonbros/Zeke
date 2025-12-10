@@ -22,6 +22,12 @@ declare module "http" {
   }
 }
 
+// Raw body parser for audio streaming endpoints (must be before JSON parser)
+app.use('/api/omi/audio-bytes', express.raw({ 
+  type: 'application/octet-stream',
+  limit: '10mb' 
+}));
+
 app.use(
   express.json({
     verify: (req, _res, buf) => {
