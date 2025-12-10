@@ -1,0 +1,121 @@
+# ZEKE Twin Seed - Integration Instructions
+
+## Overview
+This folder contains a complete export of ZEKE's data, memories, and personality configuration. Use this to initialize a new ZEKE instance with full continuity.
+
+## Export Date
+Generated: December 10, 2025
+
+## Folder Structure
+
+```
+twin_seed/
+├── core/                    # Essential operational data
+│   ├── tasks.jsonl          # All tasks with hierarchy
+│   ├── preferences.jsonl    # User preferences (key-value)
+│   ├── saved_places.jsonl   # Location data
+│   ├── active_reminders.jsonl
+│   ├── custom_lists.jsonl
+│   └── custom_list_items.jsonl
+│
+├── memories/                # Long-term memory storage
+│   └── all_memories.jsonl   # All semantic memories with embeddings
+│
+├── conversations/           # Full conversation history
+│   ├── conversations.jsonl  # Conversation metadata
+│   └── messages.jsonl       # All messages (full fidelity)
+│
+├── relationships/           # People and connections
+│   ├── contacts.jsonl       # All contacts with permissions
+│   ├── contact_notes.jsonl  # Notes about contacts
+│   └── family_members.jsonl # Family configuration
+│
+├── patterns/               # Behavioral patterns and automations
+│   ├── automations.jsonl   # Scheduled automations
+│   ├── nl_automations.jsonl # Natural language automations
+│   ├── food_preferences.jsonl
+│   ├── dietary_restrictions.jsonl
+│   ├── meetings.jsonl       # Meeting history from Limitless
+│   └── lifelog_action_items.jsonl
+│
+├── knowledge_graph/         # Entity relationships
+│   ├── entities.jsonl       # All tracked entities
+│   └── entity_links.jsonl   # Relationships between entities
+│
+└── profile/                 # Personality and configuration
+    ├── zeke_profile.md      # Core personality definition
+    ├── zeke_knowledge.md    # Knowledge base
+    └── replit.md            # System documentation
+```
+
+## Integration Steps for New ZEKE Instance
+
+### 1. Database Initialization
+Create your SQLite database with the same schema, then import the JSONL files:
+
+```javascript
+// Example: Import memories
+const memories = fs.readFileSync('twin_seed/memories/all_memories.jsonl', 'utf8')
+  .split('\n')
+  .filter(Boolean)
+  .map(JSON.parse);
+
+for (const memory of memories) {
+  await db.run(`INSERT INTO memory_notes (...) VALUES (...)`, memory);
+}
+```
+
+### 2. Profile Files
+Copy the profile files to the appropriate locations:
+- `zeke_profile.md` → Project root
+- `zeke_knowledge.md` → Project root
+- `replit.md` → Project root (adapt as needed)
+
+### 3. Embeddings
+The memories include pre-computed embeddings. If using a different embedding model, you may need to regenerate them:
+```javascript
+for (const memory of memories) {
+  if (!memory.embedding || useNewModel) {
+    memory.embedding = await generateEmbedding(memory.content);
+  }
+}
+```
+
+### 4. Contact Permissions
+Contacts include access level configurations. Review and apply as needed for the new system.
+
+### 5. Knowledge Graph
+Import entities first, then entity_links (they reference entity IDs).
+
+## Data Formats
+
+### JSONL Files
+Each line is a valid JSON object. Parse line by line:
+```javascript
+const data = fs.readFileSync(file, 'utf8')
+  .split('\n')
+  .filter(line => line.trim())
+  .map(JSON.parse);
+```
+
+### Embeddings
+Stored as JSON string arrays of floats (OpenAI text-embedding-3-small format, 1536 dimensions).
+
+## Key Data Points
+
+- **User**: Nate Johnson
+- **Location**: Abington, MA (America/New_York timezone)
+- **Communication Style**: Direct, professional, no fluff
+- **Family**: Wife Shakita, daughters Aurora and Carolina
+- **Business**: CEO, Johnson Bros. Plumbing & Drain Cleaning
+
+## Notes for Agent Integration
+
+When initializing the new ZEKE, instruct it to:
+1. Read `zeke_profile.md` first to understand personality
+2. Import all memories to establish context
+3. Load contacts to understand relationships
+4. Review conversation history for communication patterns
+5. Apply preferences and automations
+
+The goal is seamless continuity - ZEKE should "remember" everything from before the migration.
