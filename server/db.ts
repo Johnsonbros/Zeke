@@ -1870,8 +1870,8 @@ interface SavedRecipeRow {
   updated_at: string;
 }
 
-// Limitless summary row type
-interface LimitlessSummaryRow {
+// Omi summary row type
+interface OmiSummaryRow {
   id: string;
   date: string;
   timeframe_start: string;
@@ -7178,6 +7178,12 @@ export function getRecentOmiAnalytics(days: number = 7): OmiAnalyticsDaily[] {
   });
 }
 
+// Legacy aliases for backward compatibility
+export const createOrUpdateLimitlessAnalyticsDaily = createOrUpdateOmiAnalyticsDaily;
+export const getLimitlessAnalyticsByDate = getOmiAnalyticsByDate;
+export const getLimitlessAnalyticsInRange = getOmiAnalyticsInRange;
+export const getRecentLimitlessAnalytics = getRecentOmiAnalytics;
+
 // ============================================
 // CONVERSATION QUALITY METRICS FUNCTIONS
 // ============================================
@@ -9266,126 +9272,6 @@ export function checkActionItemExists(lifelogId: string, sourceOffsetMs: number)
       WHERE lifelog_id = ? AND source_offset_ms = ?
     `).get(lifelogId, sourceOffsetMs);
     return Boolean(row);
-  });
-}
-
-// ============================================
-// OMI ENHANCED FEATURES - DAILY ANALYTICS
-// ============================================
-
-interface LimitlessAnalyticsDailyRow {
-  id: string;
-  date: string;
-  total_conversations: number;
-  total_duration_minutes: number;
-  unique_speakers: number;
-  speaker_stats: string;
-  topic_stats: string;
-  hour_distribution: string;
-  meeting_count: number;
-  action_items_extracted: number;
-  starred_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
-function mapLimitlessAnalyticsDaily(row: LimitlessAnalyticsDailyRow): OmiAnalyticsDaily {
-  return {
-    id: row.id,
-    date: row.date,
-    totalConversations: row.total_conversations,
-    totalDurationMinutes: row.total_duration_minutes,
-    uniqueSpeakers: row.unique_speakers,
-    speakerStats: row.speaker_stats,
-    topicStats: row.topic_stats,
-    hourDistribution: row.hour_distribution,
-    meetingCount: row.meeting_count,
-    actionItemsExtracted: row.action_items_extracted,
-    starredCount: row.starred_count,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-export function createOrUpdateLimitlessAnalyticsDaily(data: InsertOmiAnalyticsDaily): OmiAnalyticsDaily {
-  return wrapDbOperation("createOrUpdateLimitlessAnalyticsDaily", () => {
-    const existing = getLimitlessAnalyticsByDate(data.date);
-    const now = getCurrentTimestamp();
-    
-    if (existing) {
-      db.prepare(`
-        UPDATE limitless_analytics_daily 
-        SET total_conversations = ?, total_duration_minutes = ?, unique_speakers = ?,
-            speaker_stats = ?, topic_stats = ?, hour_distribution = ?,
-            meeting_count = ?, action_items_extracted = ?, starred_count = ?, updated_at = ?
-        WHERE id = ?
-      `).run(
-        data.totalConversations,
-        data.totalDurationMinutes,
-        data.uniqueSpeakers,
-        data.speakerStats,
-        data.topicStats,
-        data.hourDistribution,
-        data.meetingCount,
-        data.actionItemsExtracted,
-        data.starredCount,
-        now,
-        existing.id
-      );
-      return getLimitlessAnalyticsByDate(data.date)!;
-    }
-    
-    const id = uuidv4();
-    db.prepare(`
-      INSERT INTO limitless_analytics_daily (id, date, total_conversations, total_duration_minutes, unique_speakers, speaker_stats, topic_stats, hour_distribution, meeting_count, action_items_extracted, starred_count, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      data.date,
-      data.totalConversations,
-      data.totalDurationMinutes,
-      data.uniqueSpeakers,
-      data.speakerStats,
-      data.topicStats,
-      data.hourDistribution,
-      data.meetingCount,
-      data.actionItemsExtracted,
-      data.starredCount,
-      now,
-      now
-    );
-    
-    return getLimitlessAnalyticsByDate(data.date)!;
-  });
-}
-
-export function getLimitlessAnalyticsByDate(date: string): OmiAnalyticsDaily | undefined {
-  return wrapDbOperation("getLimitlessAnalyticsByDate", () => {
-    const row = db.prepare(`SELECT * FROM limitless_analytics_daily WHERE date = ?`).get(date) as LimitlessAnalyticsDailyRow | undefined;
-    return row ? mapLimitlessAnalyticsDaily(row) : undefined;
-  });
-}
-
-export function getLimitlessAnalyticsInRange(startDate: string, endDate: string): OmiAnalyticsDaily[] {
-  return wrapDbOperation("getLimitlessAnalyticsInRange", () => {
-    const rows = db.prepare(`
-      SELECT * FROM limitless_analytics_daily 
-      WHERE date >= ? AND date <= ?
-      ORDER BY date DESC
-    `).all(startDate, endDate) as LimitlessAnalyticsDailyRow[];
-    return rows.map(mapLimitlessAnalyticsDaily);
-  });
-}
-
-export function getRecentLimitlessAnalytics(days: number = 7): OmiAnalyticsDaily[] {
-  return wrapDbOperation("getRecentLimitlessAnalytics", () => {
-    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const rows = db.prepare(`
-      SELECT * FROM limitless_analytics_daily 
-      WHERE date >= ?
-      ORDER BY date DESC
-    `).all(startDate) as LimitlessAnalyticsDailyRow[];
-    return rows.map(mapLimitlessAnalyticsDaily);
   });
 }
 

@@ -578,7 +578,7 @@ export async function analyzeConversationPatterns(daysBack: number = 90): Promis
       }),
       frequency: "continuous",
       strength: "0.75",
-      dataSource: "limitless",
+      dataSource: "omi",
       sampleSize: lifelogs.length,
       timeRangeStart: startDate.toISOString(),
       timeRangeEnd: now.toISOString(),

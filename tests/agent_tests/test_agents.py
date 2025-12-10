@@ -283,7 +283,7 @@ class TestMemoryCuratorAgent:
         agent = MemoryCuratorAgent()
         
         tool_names = [t.name for t in agent._tool_definitions]
-        expected_tools = ["search_lifelogs", "get_recent_lifelogs", "get_lifelog_context", "check_limitless_status"]
+        expected_tools = ["search_lifelogs", "get_recent_lifelogs", "get_lifelog_context", "check_omi_status"]
         
         assert len(agent._tool_definitions) == len(expected_tools)
         for expected in expected_tools:
