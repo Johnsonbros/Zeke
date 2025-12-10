@@ -438,14 +438,14 @@ export function QuickMenu({ className }: QuickMenuProps) {
 
       {!isOpen && (
         <div
-          className="flex justify-center items-end pb-2 pt-4 cursor-pointer safe-area-inset-bottom"
+          className="flex justify-center items-center py-1 cursor-pointer"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
           onClick={() => setIsOpen(true)}
           data-testid="quick-menu-handle-closed"
         >
-          <div className="w-10 h-1 bg-muted-foreground/40 rounded-full" />
+          <div className="w-8 h-1 bg-muted-foreground/30 rounded-full" />
         </div>
       )}
 
