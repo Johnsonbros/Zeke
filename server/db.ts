@@ -109,8 +109,6 @@ import type {
   InsertMeeting,
   LifelogActionItem,
   InsertLifelogActionItem,
-  LimitlessAnalyticsDaily,
-  InsertLimitlessAnalyticsDaily,
   OmiAnalyticsDaily,
   InsertOmiAnalyticsDaily,
   Prediction,
@@ -1291,7 +1289,7 @@ db.exec(`
 console.log("Natural language automation tables initialized");
 
 // ============================================
-// LIMITLESS ENHANCED FEATURES TABLES
+// OMI ENHANCED FEATURES TABLES
 // ============================================
 
 // Create meetings table for multi-speaker conversation tracking
@@ -1494,7 +1492,7 @@ db.exec(`
 `);
 
 console.log("Predictive intelligence system tables initialized");
-console.log("Limitless enhanced features tables initialized");
+console.log("Omi enhanced features tables initialized");
 
 // Seed initial family members if table is empty
 try {
@@ -6902,111 +6900,6 @@ export function searchRecipes(query: string): SavedRecipe[] {
 }
 
 // ============================================
-// LIMITLESS SUMMARY FUNCTIONS
-// ============================================
-
-import type { LimitlessSummary, InsertLimitlessSummary } from "@shared/schema";
-
-function mapLimitlessSummary(row: LimitlessSummaryRow): LimitlessSummary {
-  return {
-    id: row.id,
-    date: row.date,
-    timeframeStart: row.timeframe_start,
-    timeframeEnd: row.timeframe_end,
-    summaryTitle: row.summary_title,
-    keyDiscussions: row.key_discussions,
-    actionItems: row.action_items,
-    insights: row.insights,
-    peopleInteracted: row.people_interacted,
-    topicsDiscussed: row.topics_discussed,
-    lifelogIds: row.lifelog_ids,
-    lifelogCount: row.lifelog_count,
-    totalDurationMinutes: row.total_duration_minutes,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-export function getLimitlessSummaries(limit: number = 30): LimitlessSummary[] {
-  return wrapDbOperation("getLimitlessSummaries", () => {
-    const rows = db.prepare(`
-      SELECT * FROM limitless_summaries ORDER BY date DESC, created_at DESC LIMIT ?
-    `).all(limit) as LimitlessSummaryRow[];
-    return rows.map(mapLimitlessSummary);
-  });
-}
-
-export function getLimitlessSummaryByDate(date: string): LimitlessSummary | undefined {
-  return wrapDbOperation("getLimitlessSummaryByDate", () => {
-    const row = db.prepare(`
-      SELECT * FROM limitless_summaries WHERE date = ? ORDER BY created_at DESC LIMIT 1
-    `).get(date) as LimitlessSummaryRow | undefined;
-    return row ? mapLimitlessSummary(row) : undefined;
-  });
-}
-
-export function getLimitlessSummaryById(id: string): LimitlessSummary | undefined {
-  return wrapDbOperation("getLimitlessSummaryById", () => {
-    const row = db.prepare(`
-      SELECT * FROM limitless_summaries WHERE id = ?
-    `).get(id) as LimitlessSummaryRow | undefined;
-    return row ? mapLimitlessSummary(row) : undefined;
-  });
-}
-
-export function createLimitlessSummary(data: InsertLimitlessSummary): LimitlessSummary {
-  return wrapDbOperation("createLimitlessSummary", () => {
-    const id = uuidv4();
-    const now = getCurrentTimestamp();
-    
-    db.prepare(`
-      INSERT INTO limitless_summaries (
-        id, date, timeframe_start, timeframe_end, summary_title,
-        key_discussions, action_items, insights, people_interacted,
-        topics_discussed, lifelog_ids, lifelog_count, total_duration_minutes,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      data.date,
-      data.timeframeStart,
-      data.timeframeEnd,
-      data.summaryTitle,
-      data.keyDiscussions,
-      data.actionItems,
-      data.insights || null,
-      data.peopleInteracted || null,
-      data.topicsDiscussed || null,
-      data.lifelogIds,
-      data.lifelogCount,
-      data.totalDurationMinutes || null,
-      now,
-      now
-    );
-    
-    return getLimitlessSummaryById(id)!;
-  });
-}
-
-export function deleteLimitlessSummary(id: string): boolean {
-  return wrapDbOperation("deleteLimitlessSummary", () => {
-    const result = db.prepare(`DELETE FROM limitless_summaries WHERE id = ?`).run(id);
-    return result.changes > 0;
-  });
-}
-
-export function getLimitlessSummariesInRange(startDate: string, endDate: string): LimitlessSummary[] {
-  return wrapDbOperation("getLimitlessSummariesInRange", () => {
-    const rows = db.prepare(`
-      SELECT * FROM limitless_summaries 
-      WHERE date >= ? AND date <= ?
-      ORDER BY date DESC, created_at DESC
-    `).all(startDate, endDate) as LimitlessSummaryRow[];
-    return rows.map(mapLimitlessSummary);
-  });
-}
-
-// ============================================
 // OMI SUMMARY FUNCTIONS
 // ============================================
 
@@ -9083,7 +8976,7 @@ export function getNLAutomationStats(): {
 }
 
 // ============================================
-// LIMITLESS ENHANCED FEATURES - MEETINGS
+// OMI ENHANCED FEATURES - MEETINGS
 // ============================================
 
 interface MeetingRow {
@@ -9240,7 +9133,7 @@ export function deleteMeeting(id: string): boolean {
 }
 
 // ============================================
-// LIMITLESS ENHANCED FEATURES - ACTION ITEMS
+// OMI ENHANCED FEATURES - ACTION ITEMS
 // ============================================
 
 interface LifelogActionItemRow {
@@ -9377,7 +9270,7 @@ export function checkActionItemExists(lifelogId: string, sourceOffsetMs: number)
 }
 
 // ============================================
-// LIMITLESS ENHANCED FEATURES - DAILY ANALYTICS
+// OMI ENHANCED FEATURES - DAILY ANALYTICS
 // ============================================
 
 interface LimitlessAnalyticsDailyRow {
@@ -9396,7 +9289,7 @@ interface LimitlessAnalyticsDailyRow {
   updated_at: string;
 }
 
-function mapLimitlessAnalyticsDaily(row: LimitlessAnalyticsDailyRow): LimitlessAnalyticsDaily {
+function mapLimitlessAnalyticsDaily(row: LimitlessAnalyticsDailyRow): OmiAnalyticsDaily {
   return {
     id: row.id,
     date: row.date,
@@ -9414,7 +9307,7 @@ function mapLimitlessAnalyticsDaily(row: LimitlessAnalyticsDailyRow): LimitlessA
   };
 }
 
-export function createOrUpdateLimitlessAnalyticsDaily(data: InsertLimitlessAnalyticsDaily): LimitlessAnalyticsDaily {
+export function createOrUpdateLimitlessAnalyticsDaily(data: InsertOmiAnalyticsDaily): OmiAnalyticsDaily {
   return wrapDbOperation("createOrUpdateLimitlessAnalyticsDaily", () => {
     const existing = getLimitlessAnalyticsByDate(data.date);
     const now = getCurrentTimestamp();
@@ -9466,14 +9359,14 @@ export function createOrUpdateLimitlessAnalyticsDaily(data: InsertLimitlessAnaly
   });
 }
 
-export function getLimitlessAnalyticsByDate(date: string): LimitlessAnalyticsDaily | undefined {
+export function getLimitlessAnalyticsByDate(date: string): OmiAnalyticsDaily | undefined {
   return wrapDbOperation("getLimitlessAnalyticsByDate", () => {
     const row = db.prepare(`SELECT * FROM limitless_analytics_daily WHERE date = ?`).get(date) as LimitlessAnalyticsDailyRow | undefined;
     return row ? mapLimitlessAnalyticsDaily(row) : undefined;
   });
 }
 
-export function getLimitlessAnalyticsInRange(startDate: string, endDate: string): LimitlessAnalyticsDaily[] {
+export function getLimitlessAnalyticsInRange(startDate: string, endDate: string): OmiAnalyticsDaily[] {
   return wrapDbOperation("getLimitlessAnalyticsInRange", () => {
     const rows = db.prepare(`
       SELECT * FROM limitless_analytics_daily 
@@ -9484,7 +9377,7 @@ export function getLimitlessAnalyticsInRange(startDate: string, endDate: string)
   });
 }
 
-export function getRecentLimitlessAnalytics(days: number = 7): LimitlessAnalyticsDaily[] {
+export function getRecentLimitlessAnalytics(days: number = 7): OmiAnalyticsDaily[] {
   return wrapDbOperation("getRecentLimitlessAnalytics", () => {
     const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const rows = db.prepare(`
