@@ -2173,3 +2173,184 @@ export interface PredictionWithDetails extends Prediction {
   anticipatoryAction?: AnticipatoryAction;
   feedback?: PredictionFeedback;
 }
+
+// ============================================
+// OMI WEBHOOK INTEGRATION SYSTEM
+// ============================================
+
+// Status of Omi webhook processing
+export const omiWebhookStatuses = ["received", "processing", "processed", "skipped", "failed"] as const;
+export type OmiWebhookStatus = typeof omiWebhookStatuses[number];
+
+// Types of Omi webhook triggers
+export const omiTriggerTypes = ["memory_created", "transcript_segment", "audio_bytes"] as const;
+export type OmiTriggerType = typeof omiTriggerTypes[number];
+
+// Omi webhook lifelogs - stores raw webhook data from Omi app
+export const omiWebhookLogs = sqliteTable("omi_webhook_logs", {
+  id: text("id").primaryKey(),
+  triggerType: text("trigger_type", { enum: omiTriggerTypes }).notNull(),
+  omiSessionId: text("omi_session_id"), // Session ID from Omi
+  omiMemoryId: text("omi_memory_id"), // Memory ID from Omi (for memory triggers)
+  
+  // Raw data from webhook
+  rawPayload: text("raw_payload").notNull(), // Full JSON payload
+  transcript: text("transcript"), // Extracted transcript text
+  
+  // Processing status
+  status: text("status", { enum: omiWebhookStatuses }).notNull().default("received"),
+  processedAt: text("processed_at"),
+  errorMessage: text("error_message"),
+  
+  // Extracted data (JSON)
+  extractedPeople: text("extracted_people"), // JSON array of people mentioned
+  extractedTopics: text("extracted_topics"), // JSON array of topics
+  extractedActionItems: text("extracted_action_items"), // JSON array of action items
+  extractedInsights: text("extracted_insights"), // JSON array of insights
+  extractedEmotions: text("extracted_emotions"), // JSON emotional context
+  
+  // Linking to Zeke's memory system
+  createdMemoryNoteIds: text("created_memory_note_ids"), // JSON array of created memory note IDs
+  createdContactIds: text("created_contact_ids"), // JSON array of new/updated contact IDs
+  createdTaskIds: text("created_task_ids"), // JSON array of created task IDs
+  
+  // Metadata
+  speakerCount: integer("speaker_count"),
+  durationSeconds: integer("duration_seconds"),
+  receivedAt: text("received_at").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertOmiWebhookLogSchema = createInsertSchema(omiWebhookLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertOmiWebhookLog = z.infer<typeof insertOmiWebhookLogSchema>;
+export type OmiWebhookLog = typeof omiWebhookLogs.$inferSelect;
+
+// Parsed types for Omi extraction
+export interface OmiExtractedPerson {
+  name: string;
+  context: string; // How they were mentioned
+  relationship?: string; // Inferred relationship
+  sentiment?: "positive" | "neutral" | "negative";
+}
+
+export interface OmiExtractedTopic {
+  topic: string;
+  relevance: "high" | "medium" | "low";
+  category?: string;
+}
+
+export interface OmiExtractedActionItem {
+  task: string;
+  owner?: string;
+  dueDate?: string;
+  priority: "high" | "medium" | "low";
+  context: string;
+}
+
+export interface OmiExtractedInsight {
+  insight: string;
+  type: "decision" | "idea" | "preference" | "goal" | "concern" | "fact";
+  confidence: "high" | "medium" | "low";
+}
+
+// Omi Chat Query request/response types
+export const omiQueryRequestSchema = z.object({
+  query: z.string().min(1),
+  sessionId: z.string().optional(),
+  context: z.string().optional(),
+  limit: z.number().optional().default(10),
+});
+
+export type OmiQueryRequest = z.infer<typeof omiQueryRequestSchema>;
+
+export interface OmiQueryResponse {
+  answer: string;
+  relevantMemories: Array<{
+    id: string;
+    content: string;
+    type: string;
+    confidence: number;
+  }>;
+  relatedPeople: Array<{
+    name: string;
+    context: string;
+  }>;
+  suggestedActions?: string[];
+}
+
+// Omi Memory Trigger webhook payload (from Omi docs)
+export interface OmiMemoryTriggerPayload {
+  memory: {
+    id: string;
+    created_at: string;
+    started_at: string;
+    finished_at: string;
+    transcript: string;
+    transcript_segments: Array<{
+      text: string;
+      speaker: string;
+      speaker_id: number;
+      is_user: boolean;
+      start: number;
+      end: number;
+    }>;
+    photos: string[];
+    structured: {
+      title: string;
+      overview: string;
+      emoji: string;
+      category: string;
+      action_items: Array<{
+        description: string;
+        completed: boolean;
+      }>;
+      events: Array<{
+        title: string;
+        description: string;
+        start: string;
+        duration: number;
+        created: boolean;
+      }>;
+    };
+    apps_response: Array<{
+      app_id: string;
+      content: string;
+    }>;
+    discarded: boolean;
+    deleted: boolean;
+    source: string;
+    language: string;
+    external_data: Record<string, unknown> | null;
+    postprocessing: {
+      status: string;
+      model: string;
+    } | null;
+    status: string;
+  };
+  session_id: string;
+  segments: Array<{
+    text: string;
+    speaker: string;
+    speaker_id: number;
+    is_user: boolean;
+    start: number;
+    end: number;
+  }>;
+}
+
+// Omi Realtime Transcript webhook payload
+export interface OmiTranscriptPayload {
+  session_id: string;
+  segments: Array<{
+    text: string;
+    speaker: string;
+    speaker_id: number;
+    is_user: boolean;
+    start: number;
+    end: number;
+  }>;
+}

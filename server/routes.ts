@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { registerOmiRoutes } from "./omi-routes";
 import { 
   createConversation, 
   getConversation, 
@@ -7168,6 +7169,9 @@ export async function registerRoutes(
       res.status(500).json({ error: error.message || "Failed to get integrations status" });
     }
   });
+  
+  // Register Omi integration routes
+  registerOmiRoutes(app);
   
   return httpServer;
 }

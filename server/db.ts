@@ -119,7 +119,11 @@ import type {
   InsertAnticipatoryAction,
   PredictionFeedback,
   InsertPredictionFeedback,
-  PredictionWithDetails
+  PredictionWithDetails,
+  OmiWebhookLog,
+  InsertOmiWebhookLog,
+  OmiWebhookStatus,
+  OmiTriggerType
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -1492,6 +1496,38 @@ db.exec(`
 `);
 
 console.log("Predictive intelligence system tables initialized");
+
+// Create omi_webhook_logs table for Omi integration
+db.exec(`
+  CREATE TABLE IF NOT EXISTS omi_webhook_logs (
+    id TEXT PRIMARY KEY,
+    trigger_type TEXT NOT NULL,
+    omi_session_id TEXT,
+    omi_memory_id TEXT,
+    raw_payload TEXT NOT NULL,
+    transcript TEXT,
+    status TEXT NOT NULL DEFAULT 'received',
+    processed_at TEXT,
+    error_message TEXT,
+    extracted_people TEXT,
+    extracted_topics TEXT,
+    extracted_action_items TEXT,
+    extracted_insights TEXT,
+    extracted_emotions TEXT,
+    created_memory_note_ids TEXT,
+    created_contact_ids TEXT,
+    created_task_ids TEXT,
+    speaker_count INTEGER,
+    duration_seconds INTEGER,
+    received_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_omi_webhook_logs_session ON omi_webhook_logs(omi_session_id);
+  CREATE INDEX IF NOT EXISTS idx_omi_webhook_logs_status ON omi_webhook_logs(status);
+  CREATE INDEX IF NOT EXISTS idx_omi_webhook_logs_received ON omi_webhook_logs(received_at);
+`);
+
+console.log("Omi webhook integration table initialized");
 console.log("Omi enhanced features tables initialized");
 
 // Seed initial family members if table is empty
@@ -9824,6 +9860,186 @@ export function getPredictionWithDetails(id: string): PredictionWithDetails | un
       anticipatoryAction: actions[0], // Most recent
       feedback: feedbacks[0], // Most recent
     };
+  });
+}
+
+// ============================================
+// OMI WEBHOOK LOG OPERATIONS
+// ============================================
+
+interface OmiWebhookLogRow {
+  id: string;
+  trigger_type: string;
+  omi_session_id: string | null;
+  omi_memory_id: string | null;
+  raw_payload: string;
+  transcript: string | null;
+  status: string;
+  processed_at: string | null;
+  error_message: string | null;
+  extracted_people: string | null;
+  extracted_topics: string | null;
+  extracted_action_items: string | null;
+  extracted_insights: string | null;
+  extracted_emotions: string | null;
+  created_memory_note_ids: string | null;
+  created_contact_ids: string | null;
+  created_task_ids: string | null;
+  speaker_count: number | null;
+  duration_seconds: number | null;
+  received_at: string;
+  created_at: string;
+}
+
+function mapOmiWebhookLog(row: OmiWebhookLogRow): OmiWebhookLog {
+  return {
+    id: row.id,
+    triggerType: row.trigger_type as OmiTriggerType,
+    omiSessionId: row.omi_session_id,
+    omiMemoryId: row.omi_memory_id,
+    rawPayload: row.raw_payload,
+    transcript: row.transcript,
+    status: row.status as OmiWebhookStatus,
+    processedAt: row.processed_at,
+    errorMessage: row.error_message,
+    extractedPeople: row.extracted_people,
+    extractedTopics: row.extracted_topics,
+    extractedActionItems: row.extracted_action_items,
+    extractedInsights: row.extracted_insights,
+    extractedEmotions: row.extracted_emotions,
+    createdMemoryNoteIds: row.created_memory_note_ids,
+    createdContactIds: row.created_contact_ids,
+    createdTaskIds: row.created_task_ids,
+    speakerCount: row.speaker_count,
+    durationSeconds: row.duration_seconds,
+    receivedAt: row.received_at,
+    createdAt: row.created_at,
+  };
+}
+
+export function createOmiWebhookLog(data: InsertOmiWebhookLog): OmiWebhookLog {
+  return wrapDbOperation("createOmiWebhookLog", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+
+    db.prepare(`
+      INSERT INTO omi_webhook_logs (
+        id, trigger_type, omi_session_id, omi_memory_id, raw_payload, transcript,
+        status, processed_at, error_message, extracted_people, extracted_topics,
+        extracted_action_items, extracted_insights, extracted_emotions,
+        created_memory_note_ids, created_contact_ids, created_task_ids,
+        speaker_count, duration_seconds, received_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.triggerType,
+      data.omiSessionId || null,
+      data.omiMemoryId || null,
+      data.rawPayload,
+      data.transcript || null,
+      data.status || "received",
+      data.processedAt || null,
+      data.errorMessage || null,
+      data.extractedPeople || null,
+      data.extractedTopics || null,
+      data.extractedActionItems || null,
+      data.extractedInsights || null,
+      data.extractedEmotions || null,
+      data.createdMemoryNoteIds || null,
+      data.createdContactIds || null,
+      data.createdTaskIds || null,
+      data.speakerCount || null,
+      data.durationSeconds || null,
+      data.receivedAt,
+      now
+    );
+
+    return getOmiWebhookLog(id)!;
+  });
+}
+
+export function getOmiWebhookLog(id: string): OmiWebhookLog | undefined {
+  return wrapDbOperation("getOmiWebhookLog", () => {
+    const row = db.prepare(`SELECT * FROM omi_webhook_logs WHERE id = ?`).get(id) as OmiWebhookLogRow | undefined;
+    return row ? mapOmiWebhookLog(row) : undefined;
+  });
+}
+
+export function getOmiWebhookLogs(limit: number = 50): OmiWebhookLog[] {
+  return wrapDbOperation("getOmiWebhookLogs", () => {
+    const rows = db.prepare(`
+      SELECT * FROM omi_webhook_logs ORDER BY received_at DESC LIMIT ?
+    `).all(limit) as OmiWebhookLogRow[];
+    return rows.map(mapOmiWebhookLog);
+  });
+}
+
+export function updateOmiWebhookLog(id: string, data: Partial<InsertOmiWebhookLog>): OmiWebhookLog | undefined {
+  return wrapDbOperation("updateOmiWebhookLog", () => {
+    const updates: string[] = [];
+    const values: (string | number | null)[] = [];
+
+    if (data.status !== undefined) {
+      updates.push("status = ?");
+      values.push(data.status);
+    }
+    if (data.processedAt !== undefined) {
+      updates.push("processed_at = ?");
+      values.push(data.processedAt);
+    }
+    if (data.errorMessage !== undefined) {
+      updates.push("error_message = ?");
+      values.push(data.errorMessage);
+    }
+    if (data.extractedPeople !== undefined) {
+      updates.push("extracted_people = ?");
+      values.push(data.extractedPeople);
+    }
+    if (data.extractedTopics !== undefined) {
+      updates.push("extracted_topics = ?");
+      values.push(data.extractedTopics);
+    }
+    if (data.extractedActionItems !== undefined) {
+      updates.push("extracted_action_items = ?");
+      values.push(data.extractedActionItems);
+    }
+    if (data.extractedInsights !== undefined) {
+      updates.push("extracted_insights = ?");
+      values.push(data.extractedInsights);
+    }
+    if (data.extractedEmotions !== undefined) {
+      updates.push("extracted_emotions = ?");
+      values.push(data.extractedEmotions);
+    }
+    if (data.createdMemoryNoteIds !== undefined) {
+      updates.push("created_memory_note_ids = ?");
+      values.push(data.createdMemoryNoteIds);
+    }
+    if (data.createdContactIds !== undefined) {
+      updates.push("created_contact_ids = ?");
+      values.push(data.createdContactIds);
+    }
+    if (data.createdTaskIds !== undefined) {
+      updates.push("created_task_ids = ?");
+      values.push(data.createdTaskIds);
+    }
+    if (data.speakerCount !== undefined) {
+      updates.push("speaker_count = ?");
+      values.push(data.speakerCount);
+    }
+    if (data.durationSeconds !== undefined) {
+      updates.push("duration_seconds = ?");
+      values.push(data.durationSeconds);
+    }
+
+    if (updates.length === 0) {
+      return getOmiWebhookLog(id);
+    }
+
+    values.push(id);
+    db.prepare(`UPDATE omi_webhook_logs SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+
+    return getOmiWebhookLog(id);
   });
 }
 
