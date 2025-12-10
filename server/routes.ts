@@ -7000,20 +7000,6 @@ export async function registerRoutes(
           required: false,
         },
         {
-          name: "Google Calendar Credentials",
-          envVar: "GOOGLE_CALENDAR_CREDENTIALS",
-          configured: !!process.env.GOOGLE_CALENDAR_CREDENTIALS,
-          description: "Google Calendar API service account credentials",
-          required: false,
-        },
-        {
-          name: "Google Calendar ID",
-          envVar: "GOOGLE_CALENDAR_ID",
-          configured: !!process.env.GOOGLE_CALENDAR_ID,
-          description: "Target Google Calendar ID",
-          required: false,
-        },
-        {
           name: "OpenWeatherMap API Key",
           envVar: "OPENWEATHERMAP_API_KEY",
           configured: !!process.env.OPENWEATHERMAP_API_KEY,
@@ -7079,13 +7065,9 @@ export async function registerRoutes(
         {
           name: "Google Calendar",
           icon: "calendar",
-          status: (process.env.GOOGLE_CALENDAR_CREDENTIALS && process.env.GOOGLE_CALENDAR_ID) 
-            ? "connected" 
-            : (process.env.GOOGLE_CALENDAR_CREDENTIALS || process.env.GOOGLE_CALENDAR_ID) 
-              ? "partial" 
-              : "not_configured",
-          description: "Calendar events and scheduling",
-          requiredKeys: ["GOOGLE_CALENDAR_CREDENTIALS", "GOOGLE_CALENDAR_ID"],
+          status: process.env.REPLIT_CONNECTORS_HOSTNAME ? "connected" : "not_configured",
+          description: "Calendar events and scheduling via Replit connector",
+          requiredKeys: [],
         },
         {
           name: "Weather",
