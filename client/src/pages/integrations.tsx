@@ -112,23 +112,23 @@ function WebhookCard({
 function ApiKeyStatus({ apiKey }: { apiKey: IntegrationStatus["apiKeys"][0] }) {
   return (
     <div 
-      className="flex items-center justify-between p-3 rounded-lg border"
+      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg border"
       data-testid={`apikey-status-${apiKey.envVar.toLowerCase()}`}
     >
-      <div className="flex items-center gap-3">
-        <div className={`p-2 rounded-lg ${apiKey.configured ? "bg-green-500/10" : "bg-destructive/10"}`}>
+      <div className="flex items-center gap-3 min-w-0">
+        <div className={`p-2 rounded-lg shrink-0 ${apiKey.configured ? "bg-green-500/10" : "bg-destructive/10"}`}>
           {apiKey.configured ? (
             <Check className="h-4 w-4 text-green-500" />
           ) : (
             <X className="h-4 w-4 text-destructive" />
           )}
         </div>
-        <div>
-          <p className="text-sm font-medium">{apiKey.name}</p>
-          <p className="text-xs text-muted-foreground">{apiKey.envVar}</p>
+        <div className="min-w-0">
+          <p className="text-sm font-medium truncate">{apiKey.name}</p>
+          <p className="text-xs text-muted-foreground truncate">{apiKey.envVar}</p>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 shrink-0 ml-11 sm:ml-0">
         {apiKey.required && !apiKey.configured && (
           <Badge variant="destructive" className="text-xs">Required</Badge>
         )}
@@ -175,31 +175,31 @@ function ServiceCard({ service }: { service: IntegrationStatus["services"][0] })
   return (
     <Card data-testid={`service-card-${service.name.toLowerCase().replace(/\s+/g, "-")}`}>
       <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg ${getStatusColor(service.status)}`}>
-              <Icon className="h-5 w-5" />
+        <div className="flex flex-col gap-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className={`p-2 rounded-lg shrink-0 ${getStatusColor(service.status)}`}>
+                <Icon className="h-5 w-5" />
+              </div>
+              <h3 className="text-sm font-medium truncate">{service.name}</h3>
             </div>
-            <div>
-              <h3 className="text-sm font-medium">{service.name}</h3>
-              <p className="text-xs text-muted-foreground line-clamp-2">
-                {service.description}
-              </p>
-            </div>
+            <Badge 
+              variant={service.status === "connected" ? "default" : "secondary"}
+              className="shrink-0"
+            >
+              {getStatusLabel(service.status)}
+            </Badge>
           </div>
-          <Badge 
-            variant={service.status === "connected" ? "default" : "secondary"}
-            className="shrink-0"
-          >
-            {getStatusLabel(service.status)}
-          </Badge>
+          <p className="text-xs text-muted-foreground line-clamp-2 ml-11">
+            {service.description}
+          </p>
         </div>
         {service.requiredKeys.length > 0 && (
           <div className="mt-3 pt-3 border-t">
             <p className="text-xs text-muted-foreground mb-1">Required keys:</p>
             <div className="flex flex-wrap gap-1">
               {service.requiredKeys.map((key) => (
-                <Badge key={key} variant="outline" className="text-xs">
+                <Badge key={key} variant="outline" className="text-xs font-mono">
                   {key}
                 </Badge>
               ))}
@@ -285,31 +285,37 @@ export default function IntegrationsPage() {
               </CardContent>
             </Card>
           ) : statusQuery.data ? (
-            <Tabs defaultValue="webhooks" className="w-full">
-              <TabsList className="mb-4" data-testid="tabs-integrations">
-                <TabsTrigger value="webhooks" data-testid="tab-webhooks">
-                  <Webhook className="h-4 w-4 mr-2" />
-                  Webhooks
-                </TabsTrigger>
-                <TabsTrigger value="apikeys" data-testid="tab-apikeys">
-                  <Key className="h-4 w-4 mr-2" />
-                  API Keys ({configuredCount}/{totalKeys})
-                </TabsTrigger>
-                <TabsTrigger value="services" data-testid="tab-services">
-                  <Link2 className="h-4 w-4 mr-2" />
-                  Services ({connectedServices}/{totalServices})
-                </TabsTrigger>
-              </TabsList>
+            <Tabs defaultValue="services" className="w-full">
+              <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 mb-4">
+                <TabsList className="inline-flex w-auto min-w-full sm:w-full" data-testid="tabs-integrations">
+                  <TabsTrigger value="webhooks" className="flex-1 sm:flex-initial" data-testid="tab-webhooks">
+                    <Webhook className="h-4 w-4 mr-1.5 sm:mr-2" />
+                    <span className="hidden xs:inline">Webhooks</span>
+                    <span className="xs:hidden">Hooks</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="apikeys" className="flex-1 sm:flex-initial" data-testid="tab-apikeys">
+                    <Key className="h-4 w-4 mr-1.5 sm:mr-2" />
+                    <span className="hidden sm:inline">API Keys</span>
+                    <span className="sm:hidden">Keys</span>
+                    <span className="ml-1">({configuredCount}/{totalKeys})</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="services" className="flex-1 sm:flex-initial" data-testid="tab-services">
+                    <Link2 className="h-4 w-4 mr-1.5 sm:mr-2" />
+                    <span>Services</span>
+                    <span className="ml-1">({connectedServices}/{totalServices})</span>
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
               <TabsContent value="webhooks" className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <h2 className="text-lg font-medium">Webhook Endpoints</h2>
-                    <p className="text-sm text-muted-foreground">
+                    <h2 className="text-base sm:text-lg font-medium">Webhook Endpoints</h2>
+                    <p className="text-xs sm:text-sm text-muted-foreground">
                       Configure these URLs in your external services
                     </p>
                   </div>
-                  <Button variant="outline" size="sm" onClick={copyAllWebhooks} data-testid="button-copy-all-webhooks">
+                  <Button variant="outline" size="sm" onClick={copyAllWebhooks} className="self-start sm:self-auto" data-testid="button-copy-all-webhooks">
                     <Copy className="h-4 w-4 mr-2" />
                     Copy All
                   </Button>
