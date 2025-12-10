@@ -2,8 +2,7 @@
  * Omi Memory Listener
  * 
  * Receives real-time memory updates from the Omi wearable via webhooks.
- * Unlike the polling-based Limitless approach, Omi pushes data to us
- * when new memories are created, updated, or deleted.
+ * Omi pushes data to us when new memories are created, updated, or deleted.
  * 
  * Webhook Events:
  *   - memory_created: New memory captured
