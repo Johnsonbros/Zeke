@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, forwardRef } from "react";
 import { motion, AnimatePresence, PanInfo, useDragControls } from "framer-motion";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -115,7 +115,7 @@ interface DraggableItemProps {
   totalItems: number;
 }
 
-function DraggableShortcut({ 
+const DraggableShortcut = forwardRef<HTMLDivElement, DraggableItemProps>(function DraggableShortcut({ 
   shortcut, 
   index, 
   isEditing, 
@@ -124,7 +124,7 @@ function DraggableShortcut({
   onReorder,
   onStartEditing,
   totalItems,
-}: DraggableItemProps) {
+}, ref) {
   const Icon = iconMap[shortcut.icon] || LayoutDashboard;
   const dragControls = useDragControls();
   const [isDragging, setIsDragging] = useState(false);
@@ -202,8 +202,8 @@ function DraggableShortcut({
         data-testid={`quick-menu-item-${shortcut.id}`}
       >
         <div className="relative">
-          <div className="w-16 h-16 rounded-2xl bg-accent/80 flex items-center justify-center border border-border/50">
-            <Icon className="h-7 w-7 text-foreground" />
+          <div className="w-14 h-14 rounded-2xl bg-accent/80 flex items-center justify-center border border-border/50">
+            <Icon className="h-6 w-6 text-foreground" />
           </div>
           <Button
             size="icon"
@@ -218,7 +218,7 @@ function DraggableShortcut({
             <X className="h-3 w-3" />
           </Button>
         </div>
-        <span className="text-[10px] text-muted-foreground truncate max-w-[56px]">
+        <span className="text-[10px] text-muted-foreground truncate max-w-[64px]">
           {shortcut.title}
         </span>
       </motion.div>
@@ -229,23 +229,23 @@ function DraggableShortcut({
     <Link href={shortcut.href}>
       <motion.div
         layout
-        className="flex flex-col items-center gap-1"
+        className="flex flex-col items-center gap-1.5"
         whileTap={{ scale: 0.95 }}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
         onTouchMove={handleTouchMove}
         data-testid={`quick-menu-link-${shortcut.id}`}
       >
-        <div className="w-16 h-16 rounded-2xl bg-accent/50 flex items-center justify-center hover-elevate active-elevate-2 transition-all">
-          <Icon className="h-7 w-7 text-foreground" />
+        <div className="w-14 h-14 rounded-2xl bg-accent/50 flex items-center justify-center hover-elevate active-elevate-2 transition-all">
+          <Icon className="h-6 w-6 text-foreground" />
         </div>
-        <span className="text-[10px] text-muted-foreground truncate max-w-[64px]">
+        <span className="text-[10px] text-muted-foreground truncate max-w-[56px]">
           {shortcut.title}
         </span>
       </motion.div>
     </Link>
   );
-}
+});
 
 interface QuickMenuProps {
   className?: string;
@@ -438,14 +438,14 @@ export function QuickMenu({ className }: QuickMenuProps) {
 
       {!isOpen && (
         <div
-          className="flex justify-center pb-1 cursor-pointer"
+          className="flex justify-center items-end pb-2 pt-4 cursor-pointer safe-area-inset-bottom"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
           onClick={() => setIsOpen(true)}
           data-testid="quick-menu-handle-closed"
         >
-          <div className="w-12 h-[3px] bg-muted-foreground/50 rounded-full" />
+          <div className="w-10 h-1 bg-muted-foreground/40 rounded-full" />
         </div>
       )}
 
