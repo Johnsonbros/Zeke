@@ -370,6 +370,11 @@ import {
   getQuickSchedulingSuggestions,
   getPatternInsights,
 } from "./predictiveTaskScheduler";
+import {
+  claimIdempotencyKey,
+  buildIdempotencyKeyFromPayload,
+  getProcessedKeysCount,
+} from "./idempotency";
 
 // Initialize Twilio client for outbound SMS
 function getTwilioClient() {
@@ -6920,6 +6925,67 @@ export async function registerRoutes(
 
   // Note: Voice pipeline is initialized in server/index.ts at startup
   // Use POST /api/voice/start to begin listening
+
+  // ============================================
+  // ZEKE REALTIME CHUNK IDEMPOTENCY LAYER
+  // ============================================
+
+  // POST /api/realtime-chunk - Process incoming realtime chunks with idempotency
+  app.post("/api/realtime-chunk", (req: Request, res: Response) => {
+    try {
+      let idempotencyKey: string | undefined = req.body.idempotency_key;
+
+      // Derive a deterministic key if not provided
+      if (!idempotencyKey) {
+        idempotencyKey = buildIdempotencyKeyFromPayload(req.body);
+      }
+
+      const { isDuplicate } = claimIdempotencyKey({
+        idempotencyKey,
+        userId: req.body.user_id,
+        sessionId: req.body.session_id,
+      });
+
+      if (isDuplicate) {
+        console.log("[IDEMPOTENCY] Duplicate key:", idempotencyKey);
+        return res.status(409).json({
+          ok: false,
+          duplicate: true,
+          idempotency_key: idempotencyKey,
+          message: "This chunk has already been processed.",
+        });
+      }
+
+      // FIRST-TIME PROCESSING: safe place to run side effects
+      console.log("[IDEMPOTENCY] New key:", idempotencyKey);
+      console.log("[CHUNK] Incoming payload:", JSON.stringify(req.body, null, 2));
+
+      // TODO: Hook in the actual ZEKE / agent logic here.
+      // e.g. call tools, update memories, enqueue jobs, etc.
+
+      return res.json({
+        ok: true,
+        duplicate: false,
+        idempotency_key: idempotencyKey,
+        message: "Chunk processed successfully.",
+      });
+    } catch (err: any) {
+      console.error("Error in /api/realtime-chunk:", err);
+      return res.status(500).json({
+        ok: false,
+        error: err?.message ?? "Unknown error",
+      });
+    }
+  });
+
+  // GET /api/realtime-chunk/status - Health check and stats for idempotency layer
+  app.get("/api/realtime-chunk/status", (_req: Request, res: Response) => {
+    res.json({
+      status: "running",
+      message: "ZEKE idempotency layer is running.",
+      processedKeysCount: getProcessedKeysCount(),
+    });
+  });
 
   // ============================================
   // INTEGRATIONS STATUS ENDPOINT
