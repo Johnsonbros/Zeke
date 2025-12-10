@@ -667,5 +667,63 @@ export function registerOmiRoutes(app: Express): void {
     }
   });
 
-  console.log("[Omi] Routes registered: /api/omi/memory-trigger, /api/omi/transcript, /api/omi/query, /api/omi/logs");
+  app.post("/api/omi/day-summary", async (req: Request, res: Response) => {
+    try {
+      const payload = req.body;
+      const now = new Date().toISOString();
+      
+      const log = await createOmiWebhookLog({
+        webhookType: "day_summary",
+        omiMemoryId: payload.id || `day-summary-${Date.now()}`,
+        rawPayload: payload,
+        status: "received",
+        receivedAt: now,
+      });
+
+      console.log(`[Omi] Received day summary: ${payload.summary?.substring(0, 100) || "No summary"}...`);
+
+      if (payload.summary) {
+        const memoryNote = await createMemoryNote({
+          content: `Daily Summary (${new Date().toLocaleDateString()}): ${payload.summary}`,
+          source: "omi",
+          category: "daily_digest",
+          confidence: 0.9,
+          expiresAt: null,
+        });
+
+        await updateOmiWebhookLog(log.id, {
+          status: "processed",
+          processedAt: new Date().toISOString(),
+          createdMemoryNoteIds: [memoryNote.id],
+        });
+
+        res.json({ 
+          success: true, 
+          logId: log.id,
+          memoryNoteId: memoryNote.id,
+          message: "Day summary saved to memory"
+        });
+      } else {
+        await updateOmiWebhookLog(log.id, {
+          status: "skipped",
+          processedAt: new Date().toISOString(),
+          errorMessage: "No summary content in payload",
+        });
+
+        res.json({ 
+          success: true, 
+          logId: log.id,
+          message: "Day summary received but no content to save"
+        });
+      }
+    } catch (error) {
+      console.error("[Omi] Day summary error:", error);
+      res.status(500).json({ 
+        success: false, 
+        error: error instanceof Error ? error.message : "Unknown error" 
+      });
+    }
+  });
+
+  console.log("[Omi] Routes registered: /api/omi/memory-trigger, /api/omi/transcript, /api/omi/query, /api/omi/day-summary, /api/omi/logs");
 }
