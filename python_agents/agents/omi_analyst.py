@@ -23,12 +23,12 @@ import httpx
 from agents import Agent, Runner
 from agents.tool import Tool
 
-OMI_API_BASE_URL = os.environ.get("OMI_API_BASE_URL", "https://api.omi.me/v2")
+OMI_API_BASE_URL = os.environ.get("OMI_API_BASE_URL", "https://api.omi.me/v1/dev")
 
 
 def get_omi_api_key() -> str:
     """Get the Omi API key at runtime to pick up changes after startup."""
-    return os.environ.get("OMI_MCP_API_KEY", "") or os.environ.get("OMI_API_KEY", "")
+    return os.environ.get("OMI_DEV_API_KEY", "") or os.environ.get("OMI_API_KEY", "")
 
 from .base import (
     BaseAgent,
