@@ -79,31 +79,32 @@ function WebhookCard({
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
-            <Webhook className="h-4 w-4 text-primary" />
-            <CardTitle className="text-base">{webhook.name}</CardTitle>
+            <Webhook className="h-4 w-4 text-primary shrink-0" />
+            <CardTitle className="text-sm sm:text-base">{webhook.name}</CardTitle>
           </div>
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="text-xs shrink-0">
             {webhook.method}
           </Badge>
         </div>
-        <CardDescription className="text-sm">
+        <CardDescription className="text-xs sm:text-sm">
           {webhook.description}
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="flex items-center gap-2">
-          <code className="flex-1 text-xs bg-muted p-2 rounded-md overflow-x-auto whitespace-nowrap">
+      <CardContent className="space-y-3">
+        <div className="bg-muted rounded-md p-2 overflow-hidden">
+          <code className="text-[10px] sm:text-xs break-all block leading-relaxed">
             {fullUrl}
           </code>
-          <Button 
-            size="icon" 
-            variant="outline" 
-            onClick={copyToClipboard}
-            data-testid={`button-copy-${webhook.name.toLowerCase().replace(/\s+/g, "-")}`}
-          >
-            <Copy className="h-4 w-4" />
-          </Button>
         </div>
+        <Button 
+          variant="default" 
+          onClick={copyToClipboard}
+          className="w-full"
+          data-testid={`button-copy-${webhook.name.toLowerCase().replace(/\s+/g, "-")}`}
+        >
+          <Copy className="h-4 w-4 mr-2" />
+          Copy URL
+        </Button>
       </CardContent>
     </Card>
   );
@@ -285,48 +286,50 @@ export default function IntegrationsPage() {
               </CardContent>
             </Card>
           ) : statusQuery.data ? (
-            <Tabs defaultValue="services" className="w-full">
-              <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 mb-4">
-                <TabsList className="inline-flex w-auto min-w-full sm:w-full" data-testid="tabs-integrations">
-                  <TabsTrigger value="webhooks" className="flex-1 sm:flex-initial" data-testid="tab-webhooks">
-                    <Webhook className="h-4 w-4 mr-1.5 sm:mr-2" />
-                    <span className="hidden xs:inline">Webhooks</span>
-                    <span className="xs:hidden">Hooks</span>
+            <Tabs defaultValue="webhooks" className="w-full">
+              <div className="mb-4">
+                <TabsList className="w-full grid grid-cols-3" data-testid="tabs-integrations">
+                  <TabsTrigger value="webhooks" className="text-xs sm:text-sm px-2 sm:px-4" data-testid="tab-webhooks">
+                    <Webhook className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                    <span className="hidden sm:inline">Webhooks</span>
+                    <span className="sm:hidden">Hooks</span>
                   </TabsTrigger>
-                  <TabsTrigger value="apikeys" className="flex-1 sm:flex-initial" data-testid="tab-apikeys">
-                    <Key className="h-4 w-4 mr-1.5 sm:mr-2" />
-                    <span className="hidden sm:inline">API Keys</span>
-                    <span className="sm:hidden">Keys</span>
-                    <span className="ml-1">({configuredCount}/{totalKeys})</span>
+                  <TabsTrigger value="apikeys" className="text-xs sm:text-sm px-2 sm:px-4" data-testid="tab-apikeys">
+                    <Key className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                    <span>Keys</span>
+                    <span className="ml-0.5 sm:ml-1 text-[10px] sm:text-xs">({configuredCount}/{totalKeys})</span>
                   </TabsTrigger>
-                  <TabsTrigger value="services" className="flex-1 sm:flex-initial" data-testid="tab-services">
-                    <Link2 className="h-4 w-4 mr-1.5 sm:mr-2" />
-                    <span>Services</span>
-                    <span className="ml-1">({connectedServices}/{totalServices})</span>
+                  <TabsTrigger value="services" className="text-xs sm:text-sm px-2 sm:px-4" data-testid="tab-services">
+                    <Link2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                    <span className="hidden sm:inline">Services</span>
+                    <span className="sm:hidden">Svc</span>
+                    <span className="ml-0.5 sm:ml-1 text-[10px] sm:text-xs">({connectedServices}/{totalServices})</span>
                   </TabsTrigger>
                 </TabsList>
               </div>
 
               <TabsContent value="webhooks" className="space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex flex-col gap-3">
                   <div>
                     <h2 className="text-base sm:text-lg font-medium">Webhook Endpoints</h2>
                     <p className="text-xs sm:text-sm text-muted-foreground">
                       Configure these URLs in your external services
                     </p>
                   </div>
-                  <Button variant="outline" size="sm" onClick={copyAllWebhooks} className="self-start sm:self-auto" data-testid="button-copy-all-webhooks">
+                  <Button variant="outline" size="sm" onClick={copyAllWebhooks} className="w-full sm:w-auto sm:self-start" data-testid="button-copy-all-webhooks">
                     <Copy className="h-4 w-4 mr-2" />
-                    Copy All
+                    Copy All Webhooks
                   </Button>
                 </div>
 
                 <Card className="bg-muted/50">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-2 text-sm">
-                      <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">Current domain:</span>
-                      <code className="bg-background px-2 py-1 rounded text-xs">
+                  <CardContent className="p-3 sm:p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="text-muted-foreground text-xs sm:text-sm">Current domain:</span>
+                      </div>
+                      <code className="bg-background px-2 py-1.5 rounded text-[10px] sm:text-xs break-all block">
                         {statusQuery.data.domain}
                       </code>
                     </div>
