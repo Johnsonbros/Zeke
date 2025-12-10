@@ -109,3 +109,4 @@ expertMode = true
 INTERNAL_BRIDGE_KEY = "zeke-internal-bridge-2025"
 
 [userenv.shared]
+MASTER_ADMIN_PHONE = "6176868763"
