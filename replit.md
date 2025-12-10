@@ -40,6 +40,8 @@ Key technical implementations and features include:
 - **Omi Enhanced Features**: Includes Daily Digest for conversation summaries, Action Item Extraction from transcripts, Meeting Intelligence for multi-speaker conversations, Conversation Search over lifelogs, and Analytics & Pattern Detection.
 - **Knowledge Graph System**: Unified graph database interconnecting all data domains (memories, tasks, calendar, contacts, locations, lifelogs) for multi-hop reasoning, temporal awareness, and anticipatory intelligence, with a dedicated Explorer UI.
 - **Realtime Chunk Idempotency Layer**: In-memory idempotency tracking for incoming realtime chunks via `POST /api/realtime-chunk`. Prevents duplicate processing by tracking idempotency keys (explicit or derived from payload fields). First requests return 200, duplicates return 409.
+- **Mobile Swipe Gestures**: Touch gesture support for sidebar navigation - swipe right from left edge to open sidebar, swipe left anywhere to close when open. Uses custom `useSidebarSwipe` hook.
+- **Quick Menu (Mobile)**: Bottom drawer with customizable shortcuts (4-5 max). Swipe up/down to open/close. Features iPhone-style edit mode with wiggle animation, drag-to-reorder, add/remove shortcuts. Shortcuts persist to localStorage. Long-press on shortcuts or handle to enter edit mode.
 
 ## External Dependencies
 - **OpenAI API**: AI responses, agent logic, and text embeddings.

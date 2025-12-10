@@ -3,9 +3,12 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarTrigger, SidebarInset, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { LocationProvider } from "@/contexts/location-context";
+import { QuickMenu } from "@/components/quick-menu";
+import { useSidebarSwipe } from "@/hooks/use-swipe-gesture";
+import { useIsMobile } from "@/hooks/use-mobile";
 import DashboardPage from "@/pages/dashboard";
 import ChatPage from "@/pages/chat";
 import GroceryPage from "@/pages/grocery";
@@ -51,6 +54,50 @@ function Router() {
   );
 }
 
+function SwipeGestureHandler() {
+  const { openMobile, setOpenMobile } = useSidebar();
+  const isMobile = useIsMobile();
+
+  useSidebarSwipe({
+    onOpen: () => setOpenMobile(true),
+    onClose: () => setOpenMobile(false),
+    isOpen: openMobile,
+    edgeWidth: 25,
+    threshold: 60,
+    enabled: isMobile,
+  });
+
+  return null;
+}
+
+function AppContent() {
+  const isMobile = useIsMobile();
+
+  return (
+    <>
+      <SwipeGestureHandler />
+      <div className="flex h-screen w-full">
+        <AppSidebar />
+        <SidebarInset>
+          <header className="flex h-14 items-center gap-3 border-b px-4 md:hidden safe-area-inset-top">
+            <SidebarTrigger className="h-10 w-10" data-testid="button-sidebar-toggle" />
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+                <span className="text-sm font-bold text-primary-foreground">Z</span>
+              </div>
+              <span className="font-semibold text-base">ZEKE</span>
+            </div>
+          </header>
+          <main className="flex-1 overflow-hidden pb-20 md:pb-0">
+            <Router />
+          </main>
+        </SidebarInset>
+      </div>
+      {isMobile && <QuickMenu />}
+    </>
+  );
+}
+
 function App() {
   useEffect(() => {
     document.documentElement.classList.add("dark");
@@ -66,24 +113,7 @@ function App() {
       <TooltipProvider>
         <LocationProvider>
           <SidebarProvider style={sidebarStyle as React.CSSProperties}>
-            <div className="flex h-screen w-full">
-              <AppSidebar />
-              <SidebarInset>
-                {/* Mobile header with larger touch targets */}
-                <header className="flex h-14 items-center gap-3 border-b px-4 md:hidden safe-area-inset-top">
-                  <SidebarTrigger className="h-10 w-10" data-testid="button-sidebar-toggle" />
-                  <div className="flex items-center gap-2.5">
-                    <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-                      <span className="text-sm font-bold text-primary-foreground">Z</span>
-                    </div>
-                    <span className="font-semibold text-base">ZEKE</span>
-                  </div>
-                </header>
-                <main className="flex-1 overflow-hidden">
-                  <Router />
-                </main>
-              </SidebarInset>
-            </div>
+            <AppContent />
           </SidebarProvider>
           <Toaster />
         </LocationProvider>
