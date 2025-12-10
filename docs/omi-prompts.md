@@ -262,3 +262,45 @@ When `executeActions` is true AND `OMI_COMMANDS_ENABLED=true` is set, Zeke route
 - Ensure memory notes exist in the database
 - Check the query format is correct
 - Review server logs for errors
+
+---
+
+## Direct Omi API Access (Proactive Querying)
+
+In addition to webhooks (push-based), ZEKE can proactively query Omi's cloud API (pull-based). This enables ZEKE to:
+- Search complete Omi conversation history on demand
+- Fetch all stored memories from Omi
+- Retrieve action items/todos from Omi
+- Create memories that sync back to the Omi app
+
+### Setup
+
+1. Get your API key from the [Omi Developer Portal](https://docs.omi.me/developer)
+2. Add the secret `OMI_API_KEY` to your Replit environment
+
+### Available Tools
+
+The Omi Analyst agent has these direct API tools:
+
+| Tool | Description |
+|------|-------------|
+| `get_omi_memories` | Fetch memories from Omi cloud (with pagination, category filters) |
+| `get_omi_conversations` | Get conversation history with optional transcripts |
+| `get_omi_action_items` | Retrieve todos extracted from conversations |
+| `create_omi_memory` | Create a memory that syncs to Omi app |
+
+### Example Usage
+
+When you ask ZEKE something like:
+- "What did I discuss with Mike last month?" - Uses `get_omi_conversations` to search history
+- "Show me my Omi memories about travel" - Uses `get_omi_memories` with category filter
+- "What action items are pending from my Omi recordings?" - Uses `get_omi_action_items`
+- "Remember that I prefer morning meetings" - Uses `create_omi_memory` to sync back to Omi
+
+### Architecture Note
+
+The direct API tools work independently of the webhook integration:
+- **Webhooks** (push): Omi pushes data to ZEKE as conversations happen
+- **Direct API** (pull): ZEKE can query Omi's complete history on demand
+
+Both can be used simultaneously for comprehensive Omi integration.

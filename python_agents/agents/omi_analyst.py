@@ -23,8 +23,12 @@ import httpx
 from agents import Agent, Runner
 from agents.tool import Tool
 
-OMI_API_KEY = os.environ.get("OMI_API_KEY", "")
-OMI_API_BASE_URL = os.environ.get("OMI_API_BASE_URL", "https://api.omi.me/v1/dev")
+OMI_API_BASE_URL = os.environ.get("OMI_API_BASE_URL", "https://api.omi.me/v2")
+
+
+def get_omi_api_key() -> str:
+    """Get the Omi API key at runtime to pick up changes after startup."""
+    return os.environ.get("OMI_API_KEY", "")
 
 from .base import (
     BaseAgent,
@@ -277,7 +281,8 @@ class OmiAnalystAgent(BaseAgent):
     
     async def _handle_get_omi_memories(self, ctx: Any, args: str) -> str:
         """Handler for get_omi_memories tool - fetches memories from Omi Developer API."""
-        if not OMI_API_KEY:
+        api_key = get_omi_api_key()
+        if not api_key:
             return json.dumps({"success": False, "error": "OMI_API_KEY not configured. Set it in environment variables."})
         
         try:
@@ -297,7 +302,7 @@ class OmiAnalystAgent(BaseAgent):
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{OMI_API_BASE_URL}/user/memories",
-                    headers={"Authorization": f"Bearer {OMI_API_KEY}"},
+                    headers={"Authorization": f"Bearer {api_key}"},
                     params=params,
                     timeout=30.0
                 )
@@ -306,14 +311,22 @@ class OmiAnalystAgent(BaseAgent):
                     memories = response.json()
                     return json.dumps({"success": True, "memories": memories, "count": len(memories)})
                 else:
-                    return json.dumps({"success": False, "error": f"Omi API error: {response.status_code}", "details": response.text})
+                    error_msg = f"Omi API error: {response.status_code}"
+                    try:
+                        error_data = response.json()
+                        if "error" in error_data:
+                            error_msg = f"{error_msg} - {error_data.get('error', '')} {error_data.get('message', '')}"
+                    except Exception:
+                        error_msg = f"{error_msg} - {response.text[:200]}"
+                    return json.dumps({"success": False, "error": error_msg})
         except Exception as e:
             logger.error(f"get_omi_memories execution failed: {e}")
             return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
     
     async def _handle_get_omi_conversations(self, ctx: Any, args: str) -> str:
         """Handler for get_omi_conversations tool - fetches conversations from Omi Developer API."""
-        if not OMI_API_KEY:
+        api_key = get_omi_api_key()
+        if not api_key:
             return json.dumps({"success": False, "error": "OMI_API_KEY not configured. Set it in environment variables."})
         
         try:
@@ -339,7 +352,7 @@ class OmiAnalystAgent(BaseAgent):
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{OMI_API_BASE_URL}/user/conversations",
-                    headers={"Authorization": f"Bearer {OMI_API_KEY}"},
+                    headers={"Authorization": f"Bearer {api_key}"},
                     params=params,
                     timeout=30.0
                 )
@@ -348,14 +361,22 @@ class OmiAnalystAgent(BaseAgent):
                     conversations = response.json()
                     return json.dumps({"success": True, "conversations": conversations, "count": len(conversations)})
                 else:
-                    return json.dumps({"success": False, "error": f"Omi API error: {response.status_code}", "details": response.text})
+                    error_msg = f"Omi API error: {response.status_code}"
+                    try:
+                        error_data = response.json()
+                        if "error" in error_data:
+                            error_msg = f"{error_msg} - {error_data.get('error', '')} {error_data.get('message', '')}"
+                    except Exception:
+                        error_msg = f"{error_msg} - {response.text[:200]}"
+                    return json.dumps({"success": False, "error": error_msg})
         except Exception as e:
             logger.error(f"get_omi_conversations execution failed: {e}")
             return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
     
     async def _handle_create_omi_memory(self, ctx: Any, args: str) -> str:
         """Handler for create_omi_memory tool - creates a memory in Omi via Developer API."""
-        if not OMI_API_KEY:
+        api_key = get_omi_api_key()
+        if not api_key:
             return json.dumps({"success": False, "error": "OMI_API_KEY not configured. Set it in environment variables."})
         
         try:
@@ -381,7 +402,7 @@ class OmiAnalystAgent(BaseAgent):
                 response = await client.post(
                     f"{OMI_API_BASE_URL}/user/memories",
                     headers={
-                        "Authorization": f"Bearer {OMI_API_KEY}",
+                        "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json"
                     },
                     json=payload,
@@ -392,14 +413,22 @@ class OmiAnalystAgent(BaseAgent):
                     memory = response.json()
                     return json.dumps({"success": True, "memory": memory})
                 else:
-                    return json.dumps({"success": False, "error": f"Omi API error: {response.status_code}", "details": response.text})
+                    error_msg = f"Omi API error: {response.status_code}"
+                    try:
+                        error_data = response.json()
+                        if "error" in error_data:
+                            error_msg = f"{error_msg} - {error_data.get('error', '')} {error_data.get('message', '')}"
+                    except Exception:
+                        error_msg = f"{error_msg} - {response.text[:200]}"
+                    return json.dumps({"success": False, "error": error_msg})
         except Exception as e:
             logger.error(f"create_omi_memory execution failed: {e}")
             return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
     
     async def _handle_get_omi_action_items(self, ctx: Any, args: str) -> str:
         """Handler for get_omi_action_items tool - fetches action items from Omi Developer API."""
-        if not OMI_API_KEY:
+        api_key = get_omi_api_key()
+        if not api_key:
             return json.dumps({"success": False, "error": "OMI_API_KEY not configured. Set it in environment variables."})
         
         try:
@@ -417,7 +446,7 @@ class OmiAnalystAgent(BaseAgent):
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{OMI_API_BASE_URL}/user/action-items",
-                    headers={"Authorization": f"Bearer {OMI_API_KEY}"},
+                    headers={"Authorization": f"Bearer {api_key}"},
                     params=params,
                     timeout=30.0
                 )
@@ -426,7 +455,14 @@ class OmiAnalystAgent(BaseAgent):
                     action_items = response.json()
                     return json.dumps({"success": True, "action_items": action_items, "count": len(action_items)})
                 else:
-                    return json.dumps({"success": False, "error": f"Omi API error: {response.status_code}", "details": response.text})
+                    error_msg = f"Omi API error: {response.status_code}"
+                    try:
+                        error_data = response.json()
+                        if "error" in error_data:
+                            error_msg = f"{error_msg} - {error_data.get('error', '')} {error_data.get('message', '')}"
+                    except Exception:
+                        error_msg = f"{error_msg} - {response.text[:200]}"
+                    return json.dumps({"success": False, "error": error_msg})
         except Exception as e:
             logger.error(f"get_omi_action_items execution failed: {e}")
             return json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
