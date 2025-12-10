@@ -403,11 +403,16 @@ class BaseAgent(ABC):
         on_token: Callable[[str], None] | None = None
     ) -> str:
         """
-        Run the agent with real-time streaming output via OpenAI Agents SDK.
+        Run the agent with streaming output callback.
         
-        Uses Runner.run_streamed() to stream tokens as they are generated,
-        invoking the on_token callback for each text delta. This enables
-        real-time UX updates while preserving the full agent pipeline.
+        Executes the full _execute() pipeline while storing the on_token callback
+        as an instance variable that subclass implementations can use for streaming.
+        This preserves the complete agent pipeline (tools, context, handoffs) while
+        enabling real-time token streaming for UX purposes.
+        
+        Subclasses that want real-time streaming should check self._stream_callback
+        in their _execute() implementation and use Runner.run_streamed() instead of
+        Runner.run() when the callback is set.
         
         Falls back to non-streamed execution if no callback is provided.
         
@@ -430,37 +435,68 @@ class BaseAgent(ABC):
         trace_logger.log_agent_start(trace_ctx, self.agent_id.value, span_id=span_id)
         
         self.status = AgentStatus.PROCESSING
+        self._stream_callback = on_token
         
         try:
-            accumulated_text = ""
-            stream_result = Runner.run_streamed(self.openai_agent, input_text)
-            
-            async for event in stream_result.stream_events():
-                if event.type == "raw_response_event":
-                    if isinstance(event.data, ResponseTextDeltaEvent):
-                        delta = event.data.delta
-                        if delta:
-                            accumulated_text += delta
-                            on_token(delta)
-            
-            final_output = stream_result.final_output
-            result = final_output if final_output else accumulated_text
+            result = await self._execute(input_text, context)
             
             self.status = AgentStatus.IDLE
             
-            result_preview = result[:100] if len(result) > 100 else result
+            result_str = str(result) if result is not None else ""
+            result_preview = result_str[:100] if len(result_str) > 100 else result_str
             trace_logger.log_agent_complete(
                 trace_ctx, 
                 self.agent_id.value, 
                 result_preview=result_preview,
                 span_id=span_id
             )
-            return result
+            return result_str
         except Exception as e:
             self.status = AgentStatus.ERROR
             logger.error(f"Agent {self.name} streaming error: {e}")
             trace_logger.log_agent_error(trace_ctx, self.agent_id.value, str(e), span_id)
             raise
+        finally:
+            self._stream_callback = None
+    
+    async def _run_agent_streamed(
+        self,
+        agent: Agent,
+        input_text: str,
+    ) -> str:
+        """
+        Helper to run an OpenAI Agent with streaming if callback is set.
+        
+        Uses Runner.run_streamed() when self._stream_callback is set, otherwise
+        uses Runner.run(). Subclasses should use this instead of calling Runner
+        directly when they want to support streaming.
+        
+        Args:
+            agent: The OpenAI Agent to run
+            input_text: The input text for the agent
+            
+        Returns:
+            str: The agent's response
+        """
+        callback = getattr(self, '_stream_callback', None)
+        
+        if callback is None:
+            result = await Runner.run(agent, input_text)
+            return result.final_output if result.final_output else ""
+        
+        accumulated_text = ""
+        stream_result = Runner.run_streamed(agent, input_text)
+        
+        async for event in stream_result.stream_events():
+            if event.type == "raw_response_event":
+                if isinstance(event.data, ResponseTextDeltaEvent):
+                    delta = event.data.delta
+                    if delta:
+                        accumulated_text += delta
+                        callback(delta)
+        
+        final_output = stream_result.final_output
+        return final_output if final_output else accumulated_text
     
     @abstractmethod
     async def _execute(self, input_text: str, context: AgentContext) -> str:

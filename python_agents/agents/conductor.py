@@ -1250,9 +1250,11 @@ Always call the classify_intent tool with your classification.""",
         
         Executes the full orchestration pipeline (classification, context enrichment,
         phased agent execution, handoff tracking, response aggregation, safety validation)
-        while streaming tokens via callback for real-time UX.
+        while supporting real-time token streaming via callback.
         
-        This reuses the existing _execute() logic to ensure parity with non-streamed runs.
+        The on_token callback is stored as self._stream_callback, which specialist
+        agents can use via self._run_agent_streamed() to stream their responses
+        in real-time during their execution.
         
         Args:
             input_text: The user's input message
@@ -1265,13 +1267,7 @@ Always call the classify_intent tool with your classification.""",
         if context is None:
             context = AgentContext(user_message=input_text)
         
-        result = await self._execute(input_text, context)
-        
-        if result and on_token:
-            for char in result:
-                on_token(char)
-        
-        return result
+        return await super().run_streamed(input_text, context, on_token)
     
     def get_handoff_chain(self) -> list[dict[str, Any]]:
         """
