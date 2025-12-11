@@ -46,6 +46,7 @@ Key technical implementations and features include:
 - **Realtime Chunk Idempotency Layer**: In-memory idempotency tracking for incoming realtime chunks via `POST /api/realtime-chunk`. Prevents duplicate processing by tracking idempotency keys (explicit or derived from payload fields). First requests return 200, duplicates return 409.
 - **Mobile Swipe Gestures**: Touch gesture support for sidebar navigation - swipe right from left edge to open sidebar, swipe left anywhere to close when open. Uses custom `useSidebarSwipe` hook.
 - **Quick Menu (Mobile)**: Bottom drawer with customizable shortcuts (4-5 max). Swipe up/down to open/close. Features iPhone-style edit mode with wiggle animation, drag-to-reorder, add/remove shortcuts. Shortcuts persist to localStorage. Long-press on shortcuts or handle to enter edit mode.
+- **Replit Key-Value Store Integration**: Persistent, fast caching layer using Replit's KV Store (@replit/database) that survives restarts. Includes: (1) Typed wrapper with TTL-aware entries and namespacing (`server/kvStore.ts`), (2) Session state persistence for conversations, automations, voice pipeline (`server/kvSessionState.ts`), (3) Preference caching for quick-access learned preferences (`server/kvPreferenceCache.ts`), (4) Rate limiting for SMS, API calls, automations (`server/kvRateLimiter.ts`). Automatic maintenance runs every 5 minutes to clean expired entries.
 
 ## External Dependencies
 - **OpenAI API**: AI responses, agent logic, and text embeddings.
