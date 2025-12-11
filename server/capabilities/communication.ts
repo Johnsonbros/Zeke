@@ -381,12 +381,13 @@ export async function executeCommunicationTool(
       try {
         const existingContact = getContactByPhone(formattedPhone);
         if (existingContact) {
+          const existingName = `${existingContact.firstName} ${existingContact.lastName}`.trim();
           return JSON.stringify({
             success: false,
-            error: `A contact already exists for ${formattedPhone}: ${existingContact.name}. Use update_contact to modify it.`,
+            error: `A contact already exists for ${formattedPhone}: ${existingName}. Use update_contact to modify it.`,
             existing_contact: {
               id: existingContact.id,
-              name: existingContact.name,
+              name: existingName,
               phoneNumber: existingContact.phoneNumber,
               accessLevel: existingContact.accessLevel,
             },
@@ -394,19 +395,20 @@ export async function executeCommunicationTool(
         }
         
         const contact = createContact({
-          name,
+          firstName: name,
           phoneNumber: formattedPhone,
           accessLevel: access_level || "unknown",
           relationship: relationship || "",
           notes: notes || "",
         });
         
+        const contactName = `${contact.firstName} ${contact.lastName}`.trim();
         return JSON.stringify({
           success: true,
           message: `Contact "${name}" created successfully with access level "${contact.accessLevel}".`,
           contact: {
             id: contact.id,
-            name: contact.name,
+            name: contactName,
             phoneNumber: contact.phoneNumber,
             accessLevel: contact.accessLevel,
             relationship: contact.relationship,
@@ -468,7 +470,7 @@ export async function executeCommunicationTool(
         }
         
         const updateData: Record<string, unknown> = {};
-        if (name !== undefined) updateData.name = name;
+        if (name !== undefined) updateData.firstName = name;
         if (access_level !== undefined) updateData.accessLevel = access_level;
         if (relationship !== undefined) updateData.relationship = relationship;
         if (notes !== undefined) updateData.notes = notes;
@@ -486,12 +488,13 @@ export async function executeCommunicationTool(
           });
         }
         
+        const updatedName = `${updated.firstName} ${updated.lastName}`.trim();
         return JSON.stringify({
           success: true,
-          message: `Contact "${updated.name}" updated successfully.`,
+          message: `Contact "${updatedName}" updated successfully.`,
           contact: {
             id: updated.id,
-            name: updated.name,
+            name: updatedName,
             phoneNumber: updated.phoneNumber,
             accessLevel: updated.accessLevel,
             relationship: updated.relationship,
@@ -533,7 +536,7 @@ export async function executeCommunicationTool(
         
         const contactList = contacts.map(c => ({
           id: c.id,
-          name: c.name,
+          name: `${c.firstName} ${c.lastName}`.trim(),
           phoneNumber: c.phoneNumber,
           accessLevel: c.accessLevel,
           relationship: c.relationship,

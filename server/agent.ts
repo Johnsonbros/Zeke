@@ -131,6 +131,7 @@ export interface UserPermissions {
   canAccessTasks: boolean;
   canAccessGrocery: boolean;
   canSetReminders: boolean;
+  canQueryMemory?: boolean;
   contactName?: string;
   source: 'web' | 'sms';
 }

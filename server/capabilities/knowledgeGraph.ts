@@ -177,7 +177,7 @@ export const knowledgeGraphToolPermissions: Record<string, (permissions: ToolPer
   get_knowledge_graph_stats: (p) => p.isAdmin || p.canQueryMemory,
 };
 
-export const knowledgeGraphToolNames = knowledgeGraphToolDefinitions.map(t => t.function.name);
+export const knowledgeGraphToolNames = knowledgeGraphToolDefinitions.map(t => (t as { function: { name: string } }).function.name);
 
 type ToolResult = {
   success: boolean;

@@ -383,7 +383,7 @@ export async function executeListTool(
         if (result.error) {
           return JSON.stringify({ success: false, error: result.error });
         }
-        const list = result.list;
+        const list = result.list!;
         
         const item = createCustomListItem({
           listId: list.id,
@@ -418,7 +418,7 @@ export async function executeListTool(
         if (result.error) {
           return JSON.stringify({ success: false, error: result.error });
         }
-        const list = result.list;
+        const list = result.list!;
         
         const listWithItems = getCustomListWithItems(list.id);
         if (!listWithItems) {
@@ -465,7 +465,7 @@ export async function executeListTool(
         if (result.error) {
           return JSON.stringify({ success: false, error: result.error });
         }
-        const list = result.list;
+        const list = result.list!;
         
         const items = getCustomListItems(list.id);
         const searchLower = item_content.toLowerCase();
@@ -507,7 +507,7 @@ export async function executeListTool(
         if (result.error) {
           return JSON.stringify({ success: false, error: result.error });
         }
-        const list = result.list;
+        const list = result.list!;
         
         const items = getCustomListItems(list.id);
         const searchLower = item_content.toLowerCase();
@@ -543,7 +543,7 @@ export async function executeListTool(
         if (result.error) {
           return JSON.stringify({ success: false, error: result.error });
         }
-        const list = result.list;
+        const list = result.list!;
         
         const count = clearCheckedCustomListItems(list.id);
         console.log(`[LIST] Cleared ${count} checked items from list "${list.name}"`);
@@ -568,7 +568,7 @@ export async function executeListTool(
         if (result.error) {
           return JSON.stringify({ success: false, error: result.error });
         }
-        const list = result.list;
+        const list = result.list!;
         
         const deleted = deleteCustomList(list.id);
         if (deleted) {

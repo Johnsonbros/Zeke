@@ -66,9 +66,9 @@ export default function PredictionsPage() {
     queryKey: ["/api/predictions/stats"],
   });
 
-  const predictions: Prediction[] = predictionsData?.predictions || [];
-  const patterns: Pattern[] = patternsData?.patterns || [];
-  const stats = statsData?.stats;
+  const predictions: Prediction[] = (predictionsData as { predictions?: Prediction[] })?.predictions || [];
+  const patterns: Pattern[] = (patternsData as { patterns?: Pattern[] })?.patterns || [];
+  const stats = (statsData as { stats?: Record<string, unknown> })?.stats;
 
   const activePredictions = predictions.filter((p) => p.status === "pending");
   const executedPredictions = predictions.filter((p) => p.status === "executed");
@@ -156,8 +156,8 @@ export default function PredictionsPage() {
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Accuracy Rate</p>
                   <p className="text-2xl font-bold">
-                    {stats.overall?.accuracy
-                      ? `${Math.round(stats.overall.accuracy * 100)}%`
+                    {(stats as { overall?: { accuracy?: number } } | undefined)?.overall?.accuracy
+                      ? `${Math.round(((stats as { overall?: { accuracy?: number } }).overall?.accuracy || 0) * 100)}%`
                       : "N/A"}
                   </p>
                 </div>

@@ -91,7 +91,7 @@ export async function executeFileTool(
 ): Promise<string | null> {
   switch (toolName) {
     case "read_file": {
-      const { file_path } = args as ReadFileArgs;
+      const { file_path } = args as unknown as ReadFileArgs;
       
       const normalizedPath = path.normalize(file_path).replace(/^(\.\.(\/|\\|$))+/, '');
       const projectRoot = process.cwd();
@@ -126,7 +126,7 @@ export async function executeFileTool(
     }
     
     case "write_file": {
-      const { file_path, content, append } = args as WriteFileArgs;
+      const { file_path, content, append } = args as unknown as WriteFileArgs;
       
       const normalizedPath = path.normalize(file_path).replace(/^(\.\.(\/|\\|$))+/, '');
       const projectRoot = process.cwd();
@@ -172,7 +172,7 @@ export async function executeFileTool(
     }
     
     case "list_files": {
-      const { directory } = args as ListFilesArgs;
+      const { directory } = args as unknown as ListFilesArgs;
       
       const normalizedPath = path.normalize(directory).replace(/^(\.\.(\/|\\|$))+/, '');
       const projectRoot = process.cwd();
