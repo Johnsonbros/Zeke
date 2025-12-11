@@ -17,6 +17,8 @@ import {
   Trash2, 
   Users,
   Phone,
+  PhoneCall,
+  PhoneOutgoing,
   Shield,
   MessageSquare,
   Calendar,
@@ -298,6 +300,29 @@ function ContactDetailPanel({
     },
   });
   
+  const callContactMutation = useMutation({
+    mutationFn: async ({ phoneNumber, message }: { phoneNumber: string; message?: string }) => {
+      return apiRequest("POST", "/api/twilio/call", { phoneNumber, message });
+    },
+    onSuccess: () => {
+      toast({ 
+        title: "Call initiated", 
+        description: `Calling ${getContactDisplayName(contact)}...`
+      });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Call failed", 
+        description: error.message || "Failed to initiate call",
+        variant: "destructive"
+      });
+    },
+  });
+  
+  const handleCallContact = () => {
+    callContactMutation.mutate({ phoneNumber: contact.phoneNumber });
+  };
+  
   const handleSendMessage = () => {
     if (!messageText.trim()) return;
     sendMessageMutation.mutate({ to: contact.phoneNumber, message: messageText.trim() });
@@ -365,6 +390,16 @@ function ContactDetailPanel({
             </>
           ) : (
             <>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8 sm:h-9 sm:w-9 text-green-600 dark:text-green-500" 
+                onClick={handleCallContact}
+                disabled={callContactMutation.isPending}
+                data-testid="button-call-contact"
+              >
+                <PhoneOutgoing className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </Button>
               <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" onClick={() => setIsEditing(true)} data-testid="button-edit-contact">
                 <Pencil className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </Button>

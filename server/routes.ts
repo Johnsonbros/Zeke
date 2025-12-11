@@ -1226,6 +1226,267 @@ export async function registerRoutes(
     }
   });
 
+  // Twilio Voice webhook - handles incoming phone calls
+  app.post("/api/twilio/voice", async (req, res) => {
+    try {
+      console.log("Twilio voice webhook received:", JSON.stringify(req.body));
+      
+      const { From: rawFromNumber, CallSid: callSid } = req.body;
+      // Use normalizePhoneNumber for consistent contact lookup
+      const fromNumber = rawFromNumber ? normalizePhoneNumber(rawFromNumber) : "Unknown";
+      
+      console.log(`Incoming call from ${fromNumber}, CallSid: ${callSid}`);
+      
+      // Check if this is a known contact
+      const contact = getContactByPhone(fromNumber);
+      const contactName = contact?.firstName || 'there';
+      const greeting = contact 
+        ? `Hello ${escapeXml(contactName)}! This is Zeke, your personal AI assistant.`
+        : `Hello! This is Zeke, your personal AI assistant.`;
+      
+      // Build TwiML response - greet caller and gather speech input
+      const baseUrl = process.env.REPLIT_DOMAINS 
+        ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+        : 'https://zekeai.replit.app';
+      
+      const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Matthew">${greeting} How can I help you today?</Say>
+  <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
+  </Gather>
+  <Say voice="Polly.Matthew">I didn't hear anything. Goodbye!</Say>
+</Response>`;
+      
+      res.type('text/xml');
+      res.send(twiml);
+    } catch (error: any) {
+      console.error("Twilio voice webhook error:", error);
+      const errorTwiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Matthew">Sorry, I encountered an error. Please try again later.</Say>
+</Response>`;
+      res.type('text/xml');
+      res.send(errorTwiml);
+    }
+  });
+
+  // Twilio Voice response - processes speech input and generates AI response
+  app.post("/api/twilio/voice-response", async (req, res) => {
+    try {
+      console.log("Twilio voice-response received:", JSON.stringify(req.body));
+      
+      const { SpeechResult: speechText, From: rawFromNumber, CallSid: callSid } = req.body;
+      // Use normalizePhoneNumber for consistent contact/conversation lookup
+      const fromNumber = rawFromNumber ? normalizePhoneNumber(rawFromNumber) : "Unknown";
+      
+      console.log(`Speech from ${fromNumber}: "${speechText}"`);
+      
+      const baseUrl = process.env.REPLIT_DOMAINS 
+        ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+        : 'https://zekeai.replit.app';
+      
+      if (!speechText) {
+        const noInputTwiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Matthew">I didn't catch that. Could you please repeat?</Say>
+  <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
+  </Gather>
+  <Say voice="Polly.Matthew">I still couldn't hear you. Goodbye!</Say>
+</Response>`;
+        res.type('text/xml');
+        return res.send(noInputTwiml);
+      }
+      
+      // Find or create conversation for this phone call (uses normalized phone number)
+      const conversation = findOrCreateSmsConversation(fromNumber);
+      
+      // Store user message
+      createMessage({
+        conversationId: conversation.id,
+        role: "user",
+        content: speechText,
+        source: "voice",
+      });
+      
+      // Generate AI response
+      let aiResponse: string;
+      try {
+        // Check for quick actions first
+        const quickAction = parseQuickAction(speechText);
+        if (quickAction.isQuickAction) {
+          aiResponse = quickAction.response;
+        } else {
+          aiResponse = await chat(conversation.id, speechText, false, fromNumber);
+        }
+      } catch (aiError: any) {
+        console.error("AI response error:", aiError);
+        aiResponse = "Sorry, I had trouble processing that. Could you try again?";
+      }
+      
+      // Store assistant message
+      createMessage({
+        conversationId: conversation.id,
+        role: "assistant",
+        content: aiResponse,
+        source: "voice",
+      });
+      
+      console.log(`AI response for voice: "${aiResponse.substring(0, 100)}..."`);
+      
+      // Build TwiML response with AI response and continue listening
+      const responseTwiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Matthew">${escapeXml(aiResponse)}</Say>
+  <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
+    <Say voice="Polly.Matthew">Is there anything else I can help you with?</Say>
+  </Gather>
+  <Say voice="Polly.Matthew">Thank you for calling. Goodbye!</Say>
+</Response>`;
+      
+      res.type('text/xml');
+      res.send(responseTwiml);
+    } catch (error: any) {
+      console.error("Twilio voice-response error:", error);
+      const errorTwiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Matthew">Sorry, I encountered an error. Please try again later.</Say>
+</Response>`;
+      res.type('text/xml');
+      res.send(errorTwiml);
+    }
+  });
+
+  // Twilio Status callback - receives delivery/call status updates
+  app.post("/api/twilio/status", async (req, res) => {
+    try {
+      console.log("Twilio status callback received:", JSON.stringify(req.body));
+      
+      const { 
+        MessageSid, 
+        CallSid,
+        MessageStatus, 
+        CallStatus,
+        ErrorCode, 
+        ErrorMessage 
+      } = req.body;
+      
+      // Handle SMS status updates
+      if (MessageSid && MessageStatus) {
+        console.log(`SMS ${MessageSid} status: ${MessageStatus}`);
+        updateTwilioMessageStatus(MessageSid, MessageStatus);
+        
+        if (ErrorCode || ErrorMessage) {
+          updateTwilioMessageError(MessageSid, ErrorCode || "UNKNOWN", ErrorMessage || "Unknown error");
+        }
+      }
+      
+      // Handle Call status updates
+      if (CallSid && CallStatus) {
+        console.log(`Call ${CallSid} status: ${CallStatus}`);
+        // Could track call status in database if needed
+      }
+      
+      res.status(200).send("OK");
+    } catch (error: any) {
+      console.error("Twilio status callback error:", error);
+      res.status(200).send("OK"); // Always return 200 to prevent retries
+    }
+  });
+
+  // Initiate outbound voice call
+  app.post("/api/twilio/call", async (req, res) => {
+    try {
+      const { phoneNumber, message } = req.body;
+      
+      if (!phoneNumber) {
+        return res.status(400).json({ message: "Phone number is required" });
+      }
+      
+      const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER;
+      if (!twilioFromNumber) {
+        return res.status(500).json({ message: "Twilio phone number not configured" });
+      }
+      
+      // Use formatPhoneNumber for Twilio API (needs +1 format)
+      const formattedPhone = formatPhoneNumber(phoneNumber);
+      // Use normalizePhoneNumber for contact lookup (consistent with storage)
+      const normalizedPhone = normalizePhoneNumber(phoneNumber);
+      const client = getTwilioClient();
+      
+      const baseUrl = process.env.REPLIT_DOMAINS 
+        ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+        : 'https://zekeai.replit.app';
+      
+      // Determine what to say on the call - escape contact name for URL safety
+      const contact = getContactByPhone(normalizedPhone);
+      const contactName = contact?.firstName || 'there';
+      const greeting = contact 
+        ? `Hello ${contactName}! This is Zeke calling.`
+        : `Hello! This is Zeke calling.`;
+      
+      const spokenMessage = message 
+        ? `${greeting} ${message}` 
+        : `${greeting} How can I help you today?`;
+      
+      // Create TwiML for the outbound call (encodeURIComponent handles special chars)
+      const twimlUrl = `${baseUrl}/api/twilio/outbound-twiml?message=${encodeURIComponent(spokenMessage)}`;
+      
+      const call = await client.calls.create({
+        url: twimlUrl,
+        to: formattedPhone,
+        from: twilioFromNumber,
+        statusCallback: `${baseUrl}/api/twilio/status`,
+        statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+        statusCallbackMethod: 'POST',
+      });
+      
+      console.log(`Outbound call initiated to ${formattedPhone}, CallSid: ${call.sid}`);
+      
+      res.json({ 
+        success: true, 
+        callSid: call.sid,
+        to: formattedPhone,
+        message: "Call initiated successfully"
+      });
+    } catch (error: any) {
+      console.error("Failed to initiate call:", error);
+      res.status(500).json({ 
+        message: "Failed to initiate call", 
+        error: error.message 
+      });
+    }
+  });
+
+  // TwiML endpoint for outbound calls
+  app.get("/api/twilio/outbound-twiml", async (req, res) => {
+    try {
+      const message = req.query.message as string || "Hello! This is Zeke. How can I help you?";
+      
+      const baseUrl = process.env.REPLIT_DOMAINS 
+        ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+        : 'https://zekeai.replit.app';
+      
+      const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Matthew">${escapeXml(message)}</Say>
+  <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
+  </Gather>
+  <Say voice="Polly.Matthew">I didn't hear a response. Goodbye!</Say>
+</Response>`;
+      
+      res.type('text/xml');
+      res.send(twiml);
+    } catch (error: any) {
+      console.error("Outbound TwiML error:", error);
+      const errorTwiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Matthew">Sorry, there was an error. Goodbye.</Say>
+</Response>`;
+      res.type('text/xml');
+      res.send(errorTwiml);
+    }
+  });
+
   // Omi wearable webhook - receives real-time memory updates
   app.post("/api/omi/webhook", async (req, res) => {
     try {
@@ -7279,7 +7540,13 @@ export async function registerRoutes(
           name: "Twilio Status Callback",
           path: "/api/twilio/status",
           method: "POST",
-          description: "Receives SMS delivery status updates from Twilio.",
+          description: "Receives SMS/call delivery status updates from Twilio.",
+        },
+        {
+          name: "Twilio Voice Webhook",
+          path: "/api/twilio/voice",
+          method: "POST",
+          description: "Receives incoming phone calls from Twilio. Set as your Twilio phone number's Voice webhook URL.",
         },
         {
           name: "Overland GPS",
