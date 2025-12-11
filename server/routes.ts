@@ -4842,6 +4842,72 @@ export async function registerRoutes(
     }
   });
 
+  // === Apple Shortcuts Location Webhook ===
+  // POST /api/location/shortcut - Receive location data from Apple Shortcuts
+  // Simple format: { latitude, longitude, accuracy?, altitude?, speed?, heading? }
+  app.post("/api/location/shortcut", (req, res) => {
+    try {
+      // Verify access token (sent in query param or Authorization header)
+      const authHeader = req.headers.authorization;
+      const queryToken = req.query.token as string;
+      const expectedToken = process.env.OVERLAND_ACCESS_TOKEN;
+      
+      if (!expectedToken) {
+        console.error("[Shortcut] OVERLAND_ACCESS_TOKEN not configured");
+        return res.status(500).json({ error: "Server not configured for location tracking" });
+      }
+      
+      const headerToken = authHeader?.replace(/^Bearer\s+/i, "").trim();
+      const providedToken = headerToken || queryToken;
+      
+      if (!providedToken || providedToken !== expectedToken) {
+        console.warn(`[Shortcut] Token mismatch`);
+        return res.status(401).json({ error: "Invalid access token" });
+      }
+      
+      // Parse simple location format from Shortcuts
+      const { latitude, longitude, accuracy, altitude, speed, heading } = req.body;
+      
+      if (latitude === undefined || longitude === undefined) {
+        return res.status(400).json({ error: "Missing required fields: latitude, longitude" });
+      }
+      
+      const lat = parseFloat(latitude);
+      const lon = parseFloat(longitude);
+      
+      if (isNaN(lat) || isNaN(lon)) {
+        return res.status(400).json({ error: "Invalid coordinates: latitude and longitude must be numbers" });
+      }
+      
+      if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        return res.status(400).json({ error: "Invalid coordinates: out of range" });
+      }
+      
+      // Save to location history
+      const savedLocation = createLocationHistory({
+        latitude: String(lat),
+        longitude: String(lon),
+        accuracy: accuracy !== undefined ? String(accuracy) : undefined,
+        altitude: altitude !== undefined ? String(altitude) : undefined,
+        speed: speed !== undefined ? String(speed) : undefined,
+        heading: heading !== undefined ? String(heading) : undefined,
+        source: "shortcut"
+      });
+      
+      console.log(`[Shortcut] GPS data received - Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}, Accuracy: ${accuracy ? accuracy + 'm' : 'N/A'}`);
+      
+      res.json({ 
+        success: true,
+        message: "Location saved",
+        id: savedLocation.id,
+        timestamp: savedLocation.createdAt
+      });
+    } catch (error: any) {
+      console.error("[Shortcut] Webhook error:", error);
+      res.status(500).json({ error: error.message || "Failed to process location data" });
+    }
+  });
+
   // === Lifelog-Location Correlation Routes ===
 
   // GET /api/location/lifelogs - Get recent lifelogs with location data
