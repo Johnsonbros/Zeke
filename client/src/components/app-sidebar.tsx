@@ -46,6 +46,7 @@ import {
   Utensils,
   Mic,
   Network,
+  FileText,
 } from "lucide-react";
 import type { Conversation } from "@shared/schema";
 import { format } from "date-fns";
@@ -73,6 +74,12 @@ const mainNavItems = [
     icon: List,
     href: "/lists",
     description: "Manage custom lists",
+  },
+  {
+    title: "Files",
+    icon: FileText,
+    href: "/files",
+    description: "Documents & notes",
   },
   {
     title: "Meals & Recipes",
