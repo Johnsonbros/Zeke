@@ -135,7 +135,16 @@ import type {
   InsertLearnedPreference,
   UpdateLearnedPreference,
   LearnedPreferenceCategory,
-  FeedbackLearningStats
+  FeedbackLearningStats,
+  Folder,
+  InsertFolder,
+  UpdateFolder,
+  Document,
+  InsertDocument,
+  UpdateDocument,
+  DocumentWithFolder,
+  FolderWithChildren,
+  DocumentType
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -1617,6 +1626,58 @@ db.exec(`
 `);
 
 console.log("Feedback learning loop system tables initialized");
+
+// ============================================
+// DOCUMENTS & FILES SYSTEM
+// ============================================
+
+// Create folders table for organizing documents
+db.exec(`
+  CREATE TABLE IF NOT EXISTS folders (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    parent_id TEXT,
+    icon TEXT,
+    color TEXT,
+    is_expanded INTEGER DEFAULT 1,
+    sort_order INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id);
+  CREATE INDEX IF NOT EXISTS idx_folders_sort ON folders(sort_order);
+`);
+
+// Create documents table for storing files and notes
+db.exec(`
+  CREATE TABLE IF NOT EXISTS documents (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    type TEXT NOT NULL DEFAULT 'note',
+    folder_id TEXT,
+    icon TEXT,
+    color TEXT,
+    tags TEXT,
+    is_pinned INTEGER DEFAULT 0,
+    is_archived INTEGER DEFAULT 0,
+    sort_order INTEGER DEFAULT 0,
+    last_accessed_at TEXT,
+    word_count INTEGER DEFAULT 0,
+    embedding TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE SET NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_documents_folder ON documents(folder_id);
+  CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(type);
+  CREATE INDEX IF NOT EXISTS idx_documents_pinned ON documents(is_pinned);
+  CREATE INDEX IF NOT EXISTS idx_documents_archived ON documents(is_archived);
+  CREATE INDEX IF NOT EXISTS idx_documents_sort ON documents(sort_order);
+  CREATE INDEX IF NOT EXISTS idx_documents_accessed ON documents(last_accessed_at);
+`);
+
+console.log("Documents & files system tables initialized");
 
 // Seed initial family members if table is empty
 try {
@@ -10614,6 +10675,389 @@ export function getFeedbackLearningStats(): FeedbackLearningStats {
       highConfidencePreferences: preferenceStats.high_confidence,
       computedAt: now,
     };
+  });
+}
+
+// ============================================
+// DOCUMENTS & FILES SYSTEM - DATABASE FUNCTIONS
+// ============================================
+
+// Row types for database queries
+interface FolderRow {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  icon: string | null;
+  color: string | null;
+  is_expanded: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface DocumentRow {
+  id: string;
+  title: string;
+  content: string;
+  type: string;
+  folder_id: string | null;
+  icon: string | null;
+  color: string | null;
+  tags: string | null;
+  is_pinned: number;
+  is_archived: number;
+  sort_order: number;
+  last_accessed_at: string | null;
+  word_count: number;
+  embedding: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Map database row to Folder type
+function mapFolder(row: FolderRow): Folder {
+  return {
+    id: row.id,
+    name: row.name,
+    parentId: row.parent_id,
+    icon: row.icon,
+    color: row.color,
+    isExpanded: row.is_expanded === 1,
+    sortOrder: row.sort_order,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// Map database row to Document type
+function mapDocument(row: DocumentRow): Document {
+  return {
+    id: row.id,
+    title: row.title,
+    content: row.content,
+    type: row.type as DocumentType,
+    folderId: row.folder_id,
+    icon: row.icon,
+    color: row.color,
+    tags: row.tags,
+    isPinned: row.is_pinned === 1,
+    isArchived: row.is_archived === 1,
+    sortOrder: row.sort_order,
+    lastAccessedAt: row.last_accessed_at,
+    wordCount: row.word_count,
+    embedding: row.embedding,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// Helper function to calculate word count from content
+export function getDocumentWordCount(content: string): number {
+  if (!content || content.trim() === "") return 0;
+  return content.trim().split(/\s+/).filter(word => word.length > 0).length;
+}
+
+// ============================================
+// FOLDER CRUD FUNCTIONS
+// ============================================
+
+export function createFolder(data: InsertFolder): Folder {
+  return wrapDbOperation("createFolder", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+
+    db.prepare(`
+      INSERT INTO folders (id, name, parent_id, icon, color, is_expanded, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.name,
+      data.parentId || null,
+      data.icon || null,
+      data.color || null,
+      data.isExpanded !== false ? 1 : 0,
+      data.sortOrder || 0,
+      now,
+      now
+    );
+
+    return getFolder(id)!;
+  });
+}
+
+export function getFolder(id: string): Folder | undefined {
+  return wrapDbOperation("getFolder", () => {
+    const row = db.prepare(`SELECT * FROM folders WHERE id = ?`).get(id) as FolderRow | undefined;
+    return row ? mapFolder(row) : undefined;
+  });
+}
+
+export function getAllFolders(): Folder[] {
+  return wrapDbOperation("getAllFolders", () => {
+    const rows = db.prepare(`SELECT * FROM folders ORDER BY sort_order ASC, name ASC`).all() as FolderRow[];
+    return rows.map(mapFolder);
+  });
+}
+
+export function getFoldersByParent(parentId: string | null): Folder[] {
+  return wrapDbOperation("getFoldersByParent", () => {
+    const query = parentId === null
+      ? `SELECT * FROM folders WHERE parent_id IS NULL ORDER BY sort_order ASC, name ASC`
+      : `SELECT * FROM folders WHERE parent_id = ? ORDER BY sort_order ASC, name ASC`;
+    
+    const rows = parentId === null
+      ? db.prepare(query).all() as FolderRow[]
+      : db.prepare(query).all(parentId) as FolderRow[];
+    
+    return rows.map(mapFolder);
+  });
+}
+
+export function updateFolder(id: string, data: UpdateFolder): Folder | undefined {
+  return wrapDbOperation("updateFolder", () => {
+    const now = getCurrentTimestamp();
+    const updates: string[] = ["updated_at = ?"];
+    const values: (string | number | null)[] = [now];
+
+    if (data.name !== undefined) {
+      updates.push("name = ?");
+      values.push(data.name);
+    }
+    if (data.parentId !== undefined) {
+      updates.push("parent_id = ?");
+      values.push(data.parentId);
+    }
+    if (data.icon !== undefined) {
+      updates.push("icon = ?");
+      values.push(data.icon);
+    }
+    if (data.color !== undefined) {
+      updates.push("color = ?");
+      values.push(data.color);
+    }
+    if (data.isExpanded !== undefined) {
+      updates.push("is_expanded = ?");
+      values.push(data.isExpanded ? 1 : 0);
+    }
+    if (data.sortOrder !== undefined) {
+      updates.push("sort_order = ?");
+      values.push(data.sortOrder);
+    }
+
+    values.push(id);
+    db.prepare(`UPDATE folders SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+
+    return getFolder(id);
+  });
+}
+
+export function deleteFolder(id: string): boolean {
+  return wrapDbOperation("deleteFolder", () => {
+    const result = db.prepare(`DELETE FROM folders WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function getFolderTree(): FolderWithChildren[] {
+  return wrapDbOperation("getFolderTree", () => {
+    const allFolders = getAllFolders();
+    const allDocuments = getAllDocuments();
+
+    const folderMap = new Map<string, FolderWithChildren>();
+    
+    for (const folder of allFolders) {
+      folderMap.set(folder.id, {
+        ...folder,
+        children: [],
+        documents: [],
+      });
+    }
+
+    for (const doc of allDocuments) {
+      if (doc.folderId && folderMap.has(doc.folderId)) {
+        folderMap.get(doc.folderId)!.documents.push(doc);
+      }
+    }
+
+    const rootFolders: FolderWithChildren[] = [];
+    for (const folder of folderMap.values()) {
+      if (folder.parentId && folderMap.has(folder.parentId)) {
+        folderMap.get(folder.parentId)!.children.push(folder);
+      } else if (!folder.parentId) {
+        rootFolders.push(folder);
+      }
+    }
+
+    return rootFolders;
+  });
+}
+
+// ============================================
+// DOCUMENT CRUD FUNCTIONS
+// ============================================
+
+export function createDocument(data: InsertDocument): Document {
+  return wrapDbOperation("createDocument", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    const wordCount = getDocumentWordCount(data.content || "");
+
+    db.prepare(`
+      INSERT INTO documents (
+        id, title, content, type, folder_id, icon, color, tags,
+        is_pinned, is_archived, sort_order, last_accessed_at, word_count, embedding,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.title,
+      data.content || "",
+      data.type || "note",
+      data.folderId || null,
+      data.icon || null,
+      data.color || null,
+      data.tags || null,
+      data.isPinned ? 1 : 0,
+      data.isArchived ? 1 : 0,
+      data.sortOrder || 0,
+      data.lastAccessedAt || null,
+      wordCount,
+      data.embedding || null,
+      now,
+      now
+    );
+
+    return getDocument(id)!;
+  });
+}
+
+export function getDocument(id: string): Document | undefined {
+  return wrapDbOperation("getDocument", () => {
+    const row = db.prepare(`SELECT * FROM documents WHERE id = ?`).get(id) as DocumentRow | undefined;
+    if (row) {
+      const now = getCurrentTimestamp();
+      db.prepare(`UPDATE documents SET last_accessed_at = ? WHERE id = ?`).run(now, id);
+      row.last_accessed_at = now;
+    }
+    return row ? mapDocument(row) : undefined;
+  });
+}
+
+export function getAllDocuments(): Document[] {
+  return wrapDbOperation("getAllDocuments", () => {
+    const rows = db.prepare(`
+      SELECT * FROM documents 
+      WHERE is_archived = 0 
+      ORDER BY is_pinned DESC, sort_order ASC, updated_at DESC
+    `).all() as DocumentRow[];
+    return rows.map(mapDocument);
+  });
+}
+
+export function getDocumentsByFolder(folderId: string | null): Document[] {
+  return wrapDbOperation("getDocumentsByFolder", () => {
+    const query = folderId === null
+      ? `SELECT * FROM documents WHERE folder_id IS NULL AND is_archived = 0 ORDER BY is_pinned DESC, sort_order ASC, updated_at DESC`
+      : `SELECT * FROM documents WHERE folder_id = ? AND is_archived = 0 ORDER BY is_pinned DESC, sort_order ASC, updated_at DESC`;
+    
+    const rows = folderId === null
+      ? db.prepare(query).all() as DocumentRow[]
+      : db.prepare(query).all(folderId) as DocumentRow[];
+    
+    return rows.map(mapDocument);
+  });
+}
+
+export function updateDocument(id: string, data: UpdateDocument): Document | undefined {
+  return wrapDbOperation("updateDocument", () => {
+    const now = getCurrentTimestamp();
+    const updates: string[] = ["updated_at = ?"];
+    const values: (string | number | null)[] = [now];
+
+    if (data.title !== undefined) {
+      updates.push("title = ?");
+      values.push(data.title);
+    }
+    if (data.content !== undefined) {
+      updates.push("content = ?");
+      values.push(data.content);
+      updates.push("word_count = ?");
+      values.push(getDocumentWordCount(data.content));
+    }
+    if (data.type !== undefined) {
+      updates.push("type = ?");
+      values.push(data.type);
+    }
+    if (data.folderId !== undefined) {
+      updates.push("folder_id = ?");
+      values.push(data.folderId);
+    }
+    if (data.icon !== undefined) {
+      updates.push("icon = ?");
+      values.push(data.icon);
+    }
+    if (data.color !== undefined) {
+      updates.push("color = ?");
+      values.push(data.color);
+    }
+    if (data.tags !== undefined) {
+      updates.push("tags = ?");
+      values.push(data.tags);
+    }
+    if (data.isPinned !== undefined) {
+      updates.push("is_pinned = ?");
+      values.push(data.isPinned ? 1 : 0);
+    }
+    if (data.isArchived !== undefined) {
+      updates.push("is_archived = ?");
+      values.push(data.isArchived ? 1 : 0);
+    }
+    if (data.sortOrder !== undefined) {
+      updates.push("sort_order = ?");
+      values.push(data.sortOrder);
+    }
+    if (data.wordCount !== undefined) {
+      updates.push("word_count = ?");
+      values.push(data.wordCount);
+    }
+
+    values.push(id);
+    db.prepare(`UPDATE documents SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+
+    return getDocument(id);
+  });
+}
+
+export function deleteDocument(id: string): boolean {
+  return wrapDbOperation("deleteDocument", () => {
+    const result = db.prepare(`DELETE FROM documents WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function getDocumentWithFolder(id: string): DocumentWithFolder | undefined {
+  return wrapDbOperation("getDocumentWithFolder", () => {
+    const document = getDocument(id);
+    if (!document) return undefined;
+
+    const folder = document.folderId ? getFolder(document.folderId) : null;
+    return {
+      ...document,
+      folder: folder || null,
+    };
+  });
+}
+
+export function searchDocuments(query: string): Document[] {
+  return wrapDbOperation("searchDocuments", () => {
+    const searchTerm = `%${query.toLowerCase()}%`;
+    const rows = db.prepare(`
+      SELECT * FROM documents 
+      WHERE is_archived = 0 
+        AND (LOWER(title) LIKE ? OR LOWER(content) LIKE ? OR LOWER(tags) LIKE ?)
+      ORDER BY is_pinned DESC, updated_at DESC
+    `).all(searchTerm, searchTerm, searchTerm) as DocumentRow[];
+    return rows.map(mapDocument);
   });
 }
 

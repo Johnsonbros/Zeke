@@ -1487,7 +1487,7 @@ export const entityTypes = ["person", "task", "memory", "calendar_event", "locat
 export type EntityType = typeof entityTypes[number];
 
 // Domains where entities can be referenced
-export const entityDomains = ["memory", "task", "contact", "calendar", "location", "grocery", "conversation"] as const;
+export const entityDomains = ["memory", "task", "contact", "calendar", "location", "grocery", "conversation", "document"] as const;
 export type EntityDomain = typeof entityDomains[number];
 
 // Relationship types between entities
@@ -2502,4 +2502,105 @@ export interface CorrectionDetection {
   originalValue?: string;
   correctedValue?: string;
   confidence: number;
+}
+
+// ============================================
+// DOCUMENTS & FILES SYSTEM
+// ============================================
+
+// Document types
+export const documentTypes = ["note", "document", "template", "reference"] as const;
+export type DocumentType = typeof documentTypes[number];
+
+// Folders table for organizing documents
+export const folders = sqliteTable("folders", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  parentId: text("parent_id"),
+  icon: text("icon"),
+  color: text("color"),
+  isExpanded: integer("is_expanded", { mode: "boolean" }).default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertFolderSchema = createInsertSchema(folders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateFolderSchema = z.object({
+  name: z.string().min(1).optional(),
+  parentId: z.string().nullable().optional(),
+  icon: z.string().nullable().optional(),
+  color: z.string().nullable().optional(),
+  isExpanded: z.boolean().optional(),
+  sortOrder: z.number().optional(),
+});
+
+export type InsertFolder = z.infer<typeof insertFolderSchema>;
+export type UpdateFolder = z.infer<typeof updateFolderSchema>;
+export type Folder = typeof folders.$inferSelect;
+
+// Documents table for storing files and notes
+export const documents = sqliteTable("documents", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  content: text("content").notNull().default(""),
+  type: text("type", { enum: documentTypes }).notNull().default("note"),
+  folderId: text("folder_id"),
+  icon: text("icon"),
+  color: text("color"),
+  tags: text("tags"),
+  isPinned: integer("is_pinned", { mode: "boolean" }).default(false),
+  isArchived: integer("is_archived", { mode: "boolean" }).default(false),
+  sortOrder: integer("sort_order").default(0),
+  lastAccessedAt: text("last_accessed_at"),
+  wordCount: integer("word_count").default(0),
+  embedding: text("embedding"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertDocumentSchema = createInsertSchema(documents).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateDocumentSchema = z.object({
+  title: z.string().min(1).optional(),
+  content: z.string().optional(),
+  type: z.enum(documentTypes).optional(),
+  folderId: z.string().nullable().optional(),
+  icon: z.string().nullable().optional(),
+  color: z.string().nullable().optional(),
+  tags: z.string().nullable().optional(),
+  isPinned: z.boolean().optional(),
+  isArchived: z.boolean().optional(),
+  sortOrder: z.number().optional(),
+  wordCount: z.number().optional(),
+});
+
+export type InsertDocument = z.infer<typeof insertDocumentSchema>;
+export type UpdateDocument = z.infer<typeof updateDocumentSchema>;
+export type Document = typeof documents.$inferSelect;
+
+// Document with folder info for API responses
+export interface DocumentWithFolder extends Document {
+  folder: Folder | null;
+}
+
+// Folder with children for tree structure
+export interface FolderWithChildren extends Folder {
+  children: FolderWithChildren[];
+  documents: Document[];
+}
+
+// Document entity links for knowledge graph integration
+export interface DocumentWithEntities extends Document {
+  entities: Entity[];
+  references: EntityReference[];
 }
