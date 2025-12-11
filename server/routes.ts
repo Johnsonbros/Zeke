@@ -1376,13 +1376,13 @@ export async function registerRoutes(
       
       if (isElevenLabsConfigured()) {
         try {
-          const audioId = await generateSpeechAudio(aiResponse);
-          const followUpAudioId = await generateSpeechAudio("Is there anything else I can help you with?");
+          // Combine response and follow-up into single audio generation to save time
+          const combinedMessage = `${aiResponse} ... Is there anything else I can help you with?`;
+          const audioId = await generateSpeechAudio(combinedMessage);
           responseTwiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Play>${baseUrl}/api/audio/${audioId}</Play>
   <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
-    <Play>${baseUrl}/api/audio/${followUpAudioId}</Play>
+    <Play>${baseUrl}/api/audio/${audioId}</Play>
   </Gather>
   <Say voice="Polly.Matthew">Thank you for calling. Goodbye!</Say>
 </Response>`;
@@ -1390,9 +1390,8 @@ export async function registerRoutes(
           console.error("ElevenLabs error, falling back to Polly:", elevenLabsError);
           responseTwiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Matthew">${escapeXml(aiResponse)}</Say>
   <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
-    <Say voice="Polly.Matthew">Is there anything else I can help you with?</Say>
+    <Say voice="Polly.Matthew">${escapeXml(aiResponse)} Is there anything else I can help you with?</Say>
   </Gather>
   <Say voice="Polly.Matthew">Thank you for calling. Goodbye!</Say>
 </Response>`;
@@ -1400,9 +1399,8 @@ export async function registerRoutes(
       } else {
         responseTwiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Matthew">${escapeXml(aiResponse)}</Say>
   <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
-    <Say voice="Polly.Matthew">Is there anything else I can help you with?</Say>
+    <Say voice="Polly.Matthew">${escapeXml(aiResponse)} Is there anything else I can help you with?</Say>
   </Gather>
   <Say voice="Polly.Matthew">Thank you for calling. Goodbye!</Say>
 </Response>`;
