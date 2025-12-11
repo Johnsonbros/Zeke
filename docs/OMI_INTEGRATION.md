@@ -387,7 +387,9 @@ Extracted people are automatically linked to the contacts system:
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `OMI_COMMANDS_ENABLED` | No | `false` | Enable wake word command execution from transcripts |
-| `OMI_DEV_API_KEY` | No | - | API key for direct Omi cloud access (pull-based queries). Get from [Omi Developer API](https://docs.omi.me/doc/developer/api) |
+| `OMI_API_KEY` | Recommended | - | API key for direct Omi cloud access (pull-based queries, creating memories). Required for proactive Omi API calls. Get from [Omi Developer API](https://docs.omi.me/doc/developer/api) |
+| `OMI_DEV_API_KEY` | No | - | Alias for `OMI_API_KEY` (legacy, prefer OMI_API_KEY) |
+| `OMI_UID` | No | - | User ID for Omi API calls (auto-discovered from webhooks if not set) |
 
 ### Required Core Dependencies
 
