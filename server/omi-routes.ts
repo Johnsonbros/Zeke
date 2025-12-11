@@ -714,6 +714,46 @@ export function registerOmiRoutes(app: Express): void {
     }
   });
 
+  // Dedicated ZEKE app endpoint for Omi - always executes actions
+  // This is the endpoint to use when creating a ZEKE app in Omi's Apps section
+  app.post("/api/omi/zeke", async (req: Request, res: Response) => {
+    try {
+      console.log("[Omi ZEKE App] Request received:", JSON.stringify(req.body).substring(0, 200));
+      
+      // Omi sends the user's message in the 'text' or 'query' field
+      const userMessage = req.body.text || req.body.query || req.body.message || "";
+      
+      if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "No message provided. Say something to ZEKE!" 
+        });
+      }
+
+      console.log(`[Omi ZEKE App] Processing: "${userMessage}"`);
+      
+      // Always route through the full agent pipeline
+      const result = await routeToAgentPipeline(userMessage, "omi_app");
+      
+      console.log(`[Omi ZEKE App] Response: "${result.response.substring(0, 100)}..."`);
+      
+      // Return in Omi's expected format
+      res.json({
+        success: true,
+        response: result.response,
+        answer: result.response,
+        executedTools: result.executedTools || [],
+        source: "zeke_omi_app",
+      });
+    } catch (error) {
+      console.error("[Omi ZEKE App] Error:", error);
+      res.status(500).json({ 
+        success: false, 
+        error: error instanceof Error ? error.message : "ZEKE encountered an error" 
+      });
+    }
+  });
+
   app.get("/api/omi/logs", async (req: Request, res: Response) => {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
@@ -805,5 +845,5 @@ export function registerOmiRoutes(app: Express): void {
     }
   });
 
-  console.log("[Omi] Routes registered: /api/omi/memory-trigger, /api/omi/transcript, /api/omi/query, /api/omi/day-summary, /api/omi/logs");
+  console.log("[Omi] Routes registered: /api/omi/memory-trigger, /api/omi/transcript, /api/omi/query, /api/omi/zeke, /api/omi/day-summary, /api/omi/logs");
 }
