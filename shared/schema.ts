@@ -2355,3 +2355,151 @@ export interface OmiTranscriptPayload {
     end: number;
   }>;
 }
+
+// ============================================
+// FEEDBACK LEARNING LOOP SYSTEM
+// ============================================
+
+// Action types that can be tracked for feedback learning
+export const feedbackActionTypes = ["task_created", "event_created", "reminder_set", "sms_sent", "memory_saved", "grocery_added", "preference_set"] as const;
+export type FeedbackActionType = typeof feedbackActionTypes[number];
+
+// Outcome types for actions
+export const actionOutcomeTypes = ["completed", "modified", "deleted", "ignored", "confirmed"] as const;
+export type ActionOutcomeType = typeof actionOutcomeTypes[number];
+
+// Action outcomes table - tracks what happens after ZEKE takes actions
+export const actionOutcomes = sqliteTable("action_outcomes", {
+  id: text("id").primaryKey(),
+  actionType: text("action_type", { enum: feedbackActionTypes }).notNull(),
+  actionId: text("action_id").notNull(),
+  conversationId: text("conversation_id"),
+  messageId: text("message_id"),
+  outcomeType: text("outcome_type", { enum: actionOutcomeTypes }),
+  timeToOutcomeMinutes: integer("time_to_outcome_minutes"),
+  wasModifiedQuickly: integer("was_modified_quickly", { mode: "boolean" }).default(false),
+  wasDeletedQuickly: integer("was_deleted_quickly", { mode: "boolean" }).default(false),
+  originalValue: text("original_value"),
+  modifiedValue: text("modified_value"),
+  createdAt: text("created_at").notNull(),
+  outcomeAt: text("outcome_at"),
+});
+
+export const insertActionOutcomeSchema = createInsertSchema(actionOutcomes).omit({
+  id: true,
+  createdAt: true,
+  outcomeAt: true,
+});
+
+export type InsertActionOutcome = z.infer<typeof insertActionOutcomeSchema>;
+export type ActionOutcome = typeof actionOutcomes.$inferSelect;
+
+// Correction event types
+export const correctionTypes = ["explicit", "implicit", "modification", "deletion", "retry"] as const;
+export type CorrectionType = typeof correctionTypes[number];
+
+// Correction events table - captures when user corrects ZEKE
+export const correctionEvents = sqliteTable("correction_events", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id").notNull(),
+  triggerMessageId: text("trigger_message_id"),
+  correctionMessageId: text("correction_message_id"),
+  correctionType: text("correction_type", { enum: correctionTypes }).notNull(),
+  originalIntent: text("original_intent"),
+  originalValue: text("original_value"),
+  correctedValue: text("corrected_value"),
+  correctionPattern: text("correction_pattern"),
+  domain: text("domain"),
+  extractedLesson: text("extracted_lesson"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertCorrectionEventSchema = createInsertSchema(correctionEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCorrectionEvent = z.infer<typeof insertCorrectionEventSchema>;
+export type CorrectionEvent = typeof correctionEvents.$inferSelect;
+
+// Preference categories for learned preferences
+export const learnedPreferenceCategories = [
+  "timing",
+  "communication",
+  "task_defaults",
+  "calendar_defaults",
+  "disambiguation",
+  "formatting",
+  "priority",
+  "workflow"
+] as const;
+export type LearnedPreferenceCategory = typeof learnedPreferenceCategories[number];
+
+// Learned preferences table - stores preferences learned from patterns
+export const learnedPreferences = sqliteTable("learned_preferences", {
+  id: text("id").primaryKey(),
+  category: text("category", { enum: learnedPreferenceCategories }).notNull(),
+  preferenceKey: text("preference_key").notNull(),
+  preferenceValue: text("preference_value").notNull(),
+  description: text("description"),
+  confidenceScore: text("confidence_score").notNull().default("0.5"),
+  evidenceCount: integer("evidence_count").notNull().default(1),
+  lastEvidenceAt: text("last_evidence_at"),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  supersededBy: text("superseded_by"),
+  sourceType: text("source_type", { enum: ["correction", "outcome", "explicit", "pattern"] }).notNull(),
+  sourceIds: text("source_ids"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertLearnedPreferenceSchema = createInsertSchema(learnedPreferences).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateLearnedPreferenceSchema = z.object({
+  preferenceValue: z.string().optional(),
+  description: z.string().optional(),
+  confidenceScore: z.string().optional(),
+  evidenceCount: z.number().optional(),
+  lastEvidenceAt: z.string().optional(),
+  isActive: z.boolean().optional(),
+  supersededBy: z.string().nullable().optional(),
+});
+
+export type InsertLearnedPreference = z.infer<typeof insertLearnedPreferenceSchema>;
+export type UpdateLearnedPreference = z.infer<typeof updateLearnedPreferenceSchema>;
+export type LearnedPreference = typeof learnedPreferences.$inferSelect;
+
+// Learned preference with computed effectiveness
+export interface LearnedPreferenceWithScore extends LearnedPreference {
+  effectiveConfidence: number;
+  reliability: "high" | "medium" | "low";
+  recentlyUsed: boolean;
+}
+
+// Feedback learning statistics
+export interface FeedbackLearningStats {
+  totalActions: number;
+  actionsWithOutcomes: number;
+  quickModificationRate: number;
+  quickDeletionRate: number;
+  totalCorrections: number;
+  correctionsByType: Record<CorrectionType, number>;
+  totalLearnedPreferences: number;
+  activePreferences: number;
+  highConfidencePreferences: number;
+  computedAt: string;
+}
+
+// Correction pattern detection result
+export interface CorrectionDetection {
+  isCorrection: boolean;
+  correctionType: CorrectionType;
+  pattern: string;
+  originalValue?: string;
+  correctedValue?: string;
+  confidence: number;
+}

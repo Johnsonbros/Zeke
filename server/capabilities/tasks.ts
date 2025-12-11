@@ -16,6 +16,7 @@ import {
 import type { Task } from "@shared/schema";
 import { analyzeAndBreakdownTask, calculateSubtaskDueDate } from "./workflows";
 import { onTaskCreated } from "../entityExtractor";
+import { trackAction, recordActionOutcome } from "../feedbackLearning";
 
 export const taskToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
@@ -295,6 +296,12 @@ export async function executeTaskTool(
           console.error("[TaskTool] Entity extraction failed:", err);
         });
 
+        trackAction(
+          "task_created",
+          task.id,
+          JSON.stringify({ title, priority: suggestedPriority, dueDate: due_date, category }),
+        );
+
         let message = `Added task: "${title}"`;
         if (due_date) {
           const dueStr = new Date(due_date).toLocaleDateString("en-US", {
@@ -413,6 +420,13 @@ export async function executeTaskTool(
         });
         
         if (updated) {
+          recordActionOutcome(task.id, "modified", JSON.stringify({
+            title: updated.title,
+            priority: updated.priority,
+            dueDate: updated.dueDate,
+            category: updated.category,
+          }));
+
           return JSON.stringify({
             success: true,
             message: `Updated task: "${updated.title}"`,
@@ -453,6 +467,9 @@ export async function executeTaskTool(
         
         const updated = toggleTaskCompleted(task.id);
         if (updated) {
+          if (updated.completed) {
+            recordActionOutcome(task.id, "completed");
+          }
           return JSON.stringify({
             success: true,
             message: updated.completed 
@@ -493,6 +510,7 @@ export async function executeTaskTool(
         
         const deleted = deleteTask(task.id);
         if (deleted) {
+          recordActionOutcome(task.id, "deleted");
           return JSON.stringify({
             success: true,
             message: `Deleted task: "${task.title}"`,

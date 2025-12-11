@@ -123,7 +123,19 @@ import type {
   OmiWebhookLog,
   InsertOmiWebhookLog,
   OmiWebhookStatus,
-  OmiTriggerType
+  OmiTriggerType,
+  ActionOutcome,
+  InsertActionOutcome,
+  FeedbackActionType,
+  ActionOutcomeType,
+  CorrectionEvent,
+  InsertCorrectionEvent,
+  CorrectionType,
+  LearnedPreference,
+  InsertLearnedPreference,
+  UpdateLearnedPreference,
+  LearnedPreferenceCategory,
+  FeedbackLearningStats
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -1529,6 +1541,82 @@ db.exec(`
 
 console.log("Omi webhook integration table initialized");
 console.log("Omi enhanced features tables initialized");
+
+// ============================================
+// FEEDBACK LEARNING LOOP SYSTEM TABLES
+// ============================================
+
+// Create action_outcomes table for tracking what happens after ZEKE takes actions
+db.exec(`
+  CREATE TABLE IF NOT EXISTS action_outcomes (
+    id TEXT PRIMARY KEY,
+    action_type TEXT NOT NULL,
+    action_id TEXT NOT NULL,
+    conversation_id TEXT,
+    message_id TEXT,
+    outcome_type TEXT,
+    time_to_outcome_minutes INTEGER,
+    was_modified_quickly INTEGER DEFAULT 0,
+    was_deleted_quickly INTEGER DEFAULT 0,
+    original_value TEXT,
+    modified_value TEXT,
+    created_at TEXT NOT NULL,
+    outcome_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_action_outcomes_action_type ON action_outcomes(action_type);
+  CREATE INDEX IF NOT EXISTS idx_action_outcomes_action_id ON action_outcomes(action_id);
+  CREATE INDEX IF NOT EXISTS idx_action_outcomes_outcome_type ON action_outcomes(outcome_type);
+  CREATE INDEX IF NOT EXISTS idx_action_outcomes_created ON action_outcomes(created_at);
+`);
+
+// Create correction_events table for capturing when user corrects ZEKE
+db.exec(`
+  CREATE TABLE IF NOT EXISTS correction_events (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    trigger_message_id TEXT,
+    correction_message_id TEXT,
+    correction_type TEXT NOT NULL,
+    original_intent TEXT,
+    original_value TEXT,
+    corrected_value TEXT,
+    correction_pattern TEXT,
+    domain TEXT,
+    extracted_lesson TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_correction_events_conversation ON correction_events(conversation_id);
+  CREATE INDEX IF NOT EXISTS idx_correction_events_type ON correction_events(correction_type);
+  CREATE INDEX IF NOT EXISTS idx_correction_events_domain ON correction_events(domain);
+  CREATE INDEX IF NOT EXISTS idx_correction_events_created ON correction_events(created_at);
+`);
+
+// Create learned_preferences table for storing preferences learned from patterns
+db.exec(`
+  CREATE TABLE IF NOT EXISTS learned_preferences (
+    id TEXT PRIMARY KEY,
+    category TEXT NOT NULL,
+    preference_key TEXT NOT NULL,
+    preference_value TEXT NOT NULL,
+    description TEXT,
+    confidence_score TEXT NOT NULL DEFAULT '0.5',
+    evidence_count INTEGER NOT NULL DEFAULT 1,
+    last_evidence_at TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    superseded_by TEXT,
+    source_type TEXT NOT NULL,
+    source_ids TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_learned_preferences_category ON learned_preferences(category);
+  CREATE INDEX IF NOT EXISTS idx_learned_preferences_key ON learned_preferences(preference_key);
+  CREATE INDEX IF NOT EXISTS idx_learned_preferences_active ON learned_preferences(is_active);
+  CREATE INDEX IF NOT EXISTS idx_learned_preferences_confidence ON learned_preferences(confidence_score);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_learned_preferences_unique_key ON learned_preferences(category, preference_key) WHERE is_active = 1;
+`);
+
+console.log("Feedback learning loop system tables initialized");
 
 // Seed initial family members if table is empty
 try {
@@ -10040,6 +10128,492 @@ export function updateOmiWebhookLog(id: string, data: Partial<InsertOmiWebhookLo
     db.prepare(`UPDATE omi_webhook_logs SET ${updates.join(", ")} WHERE id = ?`).run(...values);
 
     return getOmiWebhookLog(id);
+  });
+}
+
+// ============================================
+// FEEDBACK LEARNING LOOP OPERATIONS
+// ============================================
+
+interface ActionOutcomeRow {
+  id: string;
+  action_type: string;
+  action_id: string;
+  conversation_id: string | null;
+  message_id: string | null;
+  outcome_type: string | null;
+  time_to_outcome_minutes: number | null;
+  was_modified_quickly: number;
+  was_deleted_quickly: number;
+  original_value: string | null;
+  modified_value: string | null;
+  created_at: string;
+  outcome_at: string | null;
+}
+
+function mapActionOutcome(row: ActionOutcomeRow): ActionOutcome {
+  return {
+    id: row.id,
+    actionType: row.action_type as FeedbackActionType,
+    actionId: row.action_id,
+    conversationId: row.conversation_id,
+    messageId: row.message_id,
+    outcomeType: row.outcome_type as ActionOutcomeType | null,
+    timeToOutcomeMinutes: row.time_to_outcome_minutes,
+    wasModifiedQuickly: row.was_modified_quickly === 1,
+    wasDeletedQuickly: row.was_deleted_quickly === 1,
+    originalValue: row.original_value,
+    modifiedValue: row.modified_value,
+    createdAt: row.created_at,
+    outcomeAt: row.outcome_at,
+  };
+}
+
+export function createActionOutcome(data: InsertActionOutcome): ActionOutcome {
+  return wrapDbOperation("createActionOutcome", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+
+    db.prepare(`
+      INSERT INTO action_outcomes (
+        id, action_type, action_id, conversation_id, message_id,
+        outcome_type, time_to_outcome_minutes, was_modified_quickly, was_deleted_quickly,
+        original_value, modified_value, created_at, outcome_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.actionType,
+      data.actionId,
+      data.conversationId || null,
+      data.messageId || null,
+      data.outcomeType || null,
+      data.timeToOutcomeMinutes || null,
+      data.wasModifiedQuickly ? 1 : 0,
+      data.wasDeletedQuickly ? 1 : 0,
+      data.originalValue || null,
+      data.modifiedValue || null,
+      now,
+      null
+    );
+
+    return getActionOutcome(id)!;
+  });
+}
+
+export function getActionOutcome(id: string): ActionOutcome | undefined {
+  return wrapDbOperation("getActionOutcome", () => {
+    const row = db.prepare(`SELECT * FROM action_outcomes WHERE id = ?`).get(id) as ActionOutcomeRow | undefined;
+    return row ? mapActionOutcome(row) : undefined;
+  });
+}
+
+export function getActionOutcomeByActionId(actionId: string): ActionOutcome | undefined {
+  return wrapDbOperation("getActionOutcomeByActionId", () => {
+    const row = db.prepare(`SELECT * FROM action_outcomes WHERE action_id = ?`).get(actionId) as ActionOutcomeRow | undefined;
+    return row ? mapActionOutcome(row) : undefined;
+  });
+}
+
+export function updateActionOutcome(id: string, outcomeType: ActionOutcomeType, modifiedValue?: string): ActionOutcome | undefined {
+  return wrapDbOperation("updateActionOutcome", () => {
+    const now = getCurrentTimestamp();
+    const existing = getActionOutcome(id);
+    if (!existing) return undefined;
+
+    const createdAt = new Date(existing.createdAt).getTime();
+    const outcomeAt = new Date(now).getTime();
+    const timeToOutcomeMinutes = Math.round((outcomeAt - createdAt) / 60000);
+    const isQuick = timeToOutcomeMinutes <= 5;
+
+    db.prepare(`
+      UPDATE action_outcomes SET
+        outcome_type = ?,
+        time_to_outcome_minutes = ?,
+        was_modified_quickly = ?,
+        was_deleted_quickly = ?,
+        modified_value = ?,
+        outcome_at = ?
+      WHERE id = ?
+    `).run(
+      outcomeType,
+      timeToOutcomeMinutes,
+      outcomeType === "modified" && isQuick ? 1 : 0,
+      outcomeType === "deleted" && isQuick ? 1 : 0,
+      modifiedValue || null,
+      now,
+      id
+    );
+
+    return getActionOutcome(id);
+  });
+}
+
+export function getRecentActionOutcomes(limit: number = 50): ActionOutcome[] {
+  return wrapDbOperation("getRecentActionOutcomes", () => {
+    const rows = db.prepare(`
+      SELECT * FROM action_outcomes ORDER BY created_at DESC LIMIT ?
+    `).all(limit) as ActionOutcomeRow[];
+    return rows.map(mapActionOutcome);
+  });
+}
+
+export function getActionOutcomeStats(): { quickModifications: number; quickDeletions: number; total: number } {
+  return wrapDbOperation("getActionOutcomeStats", () => {
+    const stats = db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN was_modified_quickly = 1 THEN 1 ELSE 0 END) as quick_modifications,
+        SUM(CASE WHEN was_deleted_quickly = 1 THEN 1 ELSE 0 END) as quick_deletions
+      FROM action_outcomes
+    `).get() as { total: number; quick_modifications: number; quick_deletions: number };
+    return {
+      total: stats.total,
+      quickModifications: stats.quick_modifications,
+      quickDeletions: stats.quick_deletions,
+    };
+  });
+}
+
+interface CorrectionEventRow {
+  id: string;
+  conversation_id: string;
+  trigger_message_id: string | null;
+  correction_message_id: string | null;
+  correction_type: string;
+  original_intent: string | null;
+  original_value: string | null;
+  corrected_value: string | null;
+  correction_pattern: string | null;
+  domain: string | null;
+  extracted_lesson: string | null;
+  created_at: string;
+}
+
+function mapCorrectionEvent(row: CorrectionEventRow): CorrectionEvent {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    triggerMessageId: row.trigger_message_id,
+    correctionMessageId: row.correction_message_id,
+    correctionType: row.correction_type as CorrectionType,
+    originalIntent: row.original_intent,
+    originalValue: row.original_value,
+    correctedValue: row.corrected_value,
+    correctionPattern: row.correction_pattern,
+    domain: row.domain,
+    extractedLesson: row.extracted_lesson,
+    createdAt: row.created_at,
+  };
+}
+
+export function createCorrectionEvent(data: InsertCorrectionEvent): CorrectionEvent {
+  return wrapDbOperation("createCorrectionEvent", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+
+    db.prepare(`
+      INSERT INTO correction_events (
+        id, conversation_id, trigger_message_id, correction_message_id,
+        correction_type, original_intent, original_value, corrected_value,
+        correction_pattern, domain, extracted_lesson, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.conversationId,
+      data.triggerMessageId || null,
+      data.correctionMessageId || null,
+      data.correctionType,
+      data.originalIntent || null,
+      data.originalValue || null,
+      data.correctedValue || null,
+      data.correctionPattern || null,
+      data.domain || null,
+      data.extractedLesson || null,
+      now
+    );
+
+    return getCorrectionEvent(id)!;
+  });
+}
+
+export function getCorrectionEvent(id: string): CorrectionEvent | undefined {
+  return wrapDbOperation("getCorrectionEvent", () => {
+    const row = db.prepare(`SELECT * FROM correction_events WHERE id = ?`).get(id) as CorrectionEventRow | undefined;
+    return row ? mapCorrectionEvent(row) : undefined;
+  });
+}
+
+export function getRecentCorrectionEvents(limit: number = 50): CorrectionEvent[] {
+  return wrapDbOperation("getRecentCorrectionEvents", () => {
+    const rows = db.prepare(`
+      SELECT * FROM correction_events ORDER BY created_at DESC LIMIT ?
+    `).all(limit) as CorrectionEventRow[];
+    return rows.map(mapCorrectionEvent);
+  });
+}
+
+export function getCorrectionEventsByDomain(domain: string, limit: number = 20): CorrectionEvent[] {
+  return wrapDbOperation("getCorrectionEventsByDomain", () => {
+    const rows = db.prepare(`
+      SELECT * FROM correction_events WHERE domain = ? ORDER BY created_at DESC LIMIT ?
+    `).all(domain, limit) as CorrectionEventRow[];
+    return rows.map(mapCorrectionEvent);
+  });
+}
+
+interface LearnedPreferenceRow {
+  id: string;
+  category: string;
+  preference_key: string;
+  preference_value: string;
+  description: string | null;
+  confidence_score: string;
+  evidence_count: number;
+  last_evidence_at: string | null;
+  is_active: number;
+  superseded_by: string | null;
+  source_type: string;
+  source_ids: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapLearnedPreference(row: LearnedPreferenceRow): LearnedPreference {
+  return {
+    id: row.id,
+    category: row.category as LearnedPreferenceCategory,
+    preferenceKey: row.preference_key,
+    preferenceValue: row.preference_value,
+    description: row.description,
+    confidenceScore: row.confidence_score,
+    evidenceCount: row.evidence_count,
+    lastEvidenceAt: row.last_evidence_at,
+    isActive: row.is_active === 1,
+    supersededBy: row.superseded_by,
+    sourceType: row.source_type as "correction" | "outcome" | "explicit" | "pattern",
+    sourceIds: row.source_ids,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function createLearnedPreference(data: InsertLearnedPreference): LearnedPreference {
+  return wrapDbOperation("createLearnedPreference", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+
+    db.prepare(`
+      INSERT INTO learned_preferences (
+        id, category, preference_key, preference_value, description,
+        confidence_score, evidence_count, last_evidence_at, is_active,
+        superseded_by, source_type, source_ids, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.category,
+      data.preferenceKey,
+      data.preferenceValue,
+      data.description || null,
+      data.confidenceScore || "0.5",
+      data.evidenceCount || 1,
+      data.lastEvidenceAt || now,
+      data.isActive !== false ? 1 : 0,
+      data.supersededBy || null,
+      data.sourceType,
+      data.sourceIds || null,
+      now,
+      now
+    );
+
+    return getLearnedPreference(id)!;
+  });
+}
+
+export function getLearnedPreference(id: string): LearnedPreference | undefined {
+  return wrapDbOperation("getLearnedPreference", () => {
+    const row = db.prepare(`SELECT * FROM learned_preferences WHERE id = ?`).get(id) as LearnedPreferenceRow | undefined;
+    return row ? mapLearnedPreference(row) : undefined;
+  });
+}
+
+export function getLearnedPreferenceByKey(category: LearnedPreferenceCategory, key: string): LearnedPreference | undefined {
+  return wrapDbOperation("getLearnedPreferenceByKey", () => {
+    const row = db.prepare(`
+      SELECT * FROM learned_preferences 
+      WHERE category = ? AND preference_key = ? AND is_active = 1
+    `).get(category, key) as LearnedPreferenceRow | undefined;
+    return row ? mapLearnedPreference(row) : undefined;
+  });
+}
+
+export function getActiveLearnedPreferences(): LearnedPreference[] {
+  return wrapDbOperation("getActiveLearnedPreferences", () => {
+    const rows = db.prepare(`
+      SELECT * FROM learned_preferences WHERE is_active = 1 ORDER BY confidence_score DESC
+    `).all() as LearnedPreferenceRow[];
+    return rows.map(mapLearnedPreference);
+  });
+}
+
+export function getLearnedPreferencesByCategory(category: LearnedPreferenceCategory): LearnedPreference[] {
+  return wrapDbOperation("getLearnedPreferencesByCategory", () => {
+    const rows = db.prepare(`
+      SELECT * FROM learned_preferences 
+      WHERE category = ? AND is_active = 1 
+      ORDER BY confidence_score DESC
+    `).all(category) as LearnedPreferenceRow[];
+    return rows.map(mapLearnedPreference);
+  });
+}
+
+export function getHighConfidencePreferences(minConfidence: number = 0.7): LearnedPreference[] {
+  return wrapDbOperation("getHighConfidencePreferences", () => {
+    const rows = db.prepare(`
+      SELECT * FROM learned_preferences 
+      WHERE is_active = 1 AND CAST(confidence_score AS REAL) >= ?
+      ORDER BY confidence_score DESC
+    `).all(minConfidence) as LearnedPreferenceRow[];
+    return rows.map(mapLearnedPreference);
+  });
+}
+
+export function updateLearnedPreference(id: string, data: UpdateLearnedPreference): LearnedPreference | undefined {
+  return wrapDbOperation("updateLearnedPreference", () => {
+    const now = getCurrentTimestamp();
+    const updates: string[] = ["updated_at = ?"];
+    const values: (string | number | null)[] = [now];
+
+    if (data.preferenceValue !== undefined) {
+      updates.push("preference_value = ?");
+      values.push(data.preferenceValue);
+    }
+    if (data.description !== undefined) {
+      updates.push("description = ?");
+      values.push(data.description);
+    }
+    if (data.confidenceScore !== undefined) {
+      updates.push("confidence_score = ?");
+      values.push(data.confidenceScore);
+    }
+    if (data.evidenceCount !== undefined) {
+      updates.push("evidence_count = ?");
+      values.push(data.evidenceCount);
+    }
+    if (data.lastEvidenceAt !== undefined) {
+      updates.push("last_evidence_at = ?");
+      values.push(data.lastEvidenceAt);
+    }
+    if (data.isActive !== undefined) {
+      updates.push("is_active = ?");
+      values.push(data.isActive ? 1 : 0);
+    }
+    if (data.supersededBy !== undefined) {
+      updates.push("superseded_by = ?");
+      values.push(data.supersededBy);
+    }
+
+    values.push(id);
+    db.prepare(`UPDATE learned_preferences SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+
+    return getLearnedPreference(id);
+  });
+}
+
+export function reinforceLearnedPreference(id: string, sourceId?: string): LearnedPreference | undefined {
+  return wrapDbOperation("reinforceLearnedPreference", () => {
+    const existing = getLearnedPreference(id);
+    if (!existing) return undefined;
+
+    const now = getCurrentTimestamp();
+    const newEvidenceCount = existing.evidenceCount + 1;
+    const currentConfidence = parseFloat(existing.confidenceScore);
+    const newConfidence = Math.min(0.99, currentConfidence + 0.05);
+    
+    let sourceIds = existing.sourceIds ? JSON.parse(existing.sourceIds) : [];
+    if (sourceId && !sourceIds.includes(sourceId)) {
+      sourceIds.push(sourceId);
+    }
+
+    db.prepare(`
+      UPDATE learned_preferences SET
+        confidence_score = ?,
+        evidence_count = ?,
+        last_evidence_at = ?,
+        source_ids = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).run(
+      newConfidence.toFixed(2),
+      newEvidenceCount,
+      now,
+      JSON.stringify(sourceIds),
+      now,
+      id
+    );
+
+    return getLearnedPreference(id);
+  });
+}
+
+export function supersedPreference(oldId: string, newId: string): void {
+  return wrapDbOperation("supersedPreference", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      UPDATE learned_preferences SET is_active = 0, superseded_by = ?, updated_at = ? WHERE id = ?
+    `).run(newId, now, oldId);
+  });
+}
+
+export function getFeedbackLearningStats(): FeedbackLearningStats {
+  return wrapDbOperation("getFeedbackLearningStats", () => {
+    const now = getCurrentTimestamp();
+
+    const actionStats = db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN outcome_type IS NOT NULL THEN 1 ELSE 0 END) as with_outcomes,
+        SUM(CASE WHEN was_modified_quickly = 1 THEN 1 ELSE 0 END) as quick_modifications,
+        SUM(CASE WHEN was_deleted_quickly = 1 THEN 1 ELSE 0 END) as quick_deletions
+      FROM action_outcomes
+    `).get() as { total: number; with_outcomes: number; quick_modifications: number; quick_deletions: number };
+
+    const correctionStats = db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN correction_type = 'explicit' THEN 1 ELSE 0 END) as explicit,
+        SUM(CASE WHEN correction_type = 'implicit' THEN 1 ELSE 0 END) as implicit,
+        SUM(CASE WHEN correction_type = 'modification' THEN 1 ELSE 0 END) as modification,
+        SUM(CASE WHEN correction_type = 'deletion' THEN 1 ELSE 0 END) as deletion,
+        SUM(CASE WHEN correction_type = 'retry' THEN 1 ELSE 0 END) as retry
+      FROM correction_events
+    `).get() as { total: number; explicit: number; implicit: number; modification: number; deletion: number; retry: number };
+
+    const preferenceStats = db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active,
+        SUM(CASE WHEN is_active = 1 AND CAST(confidence_score AS REAL) >= 0.7 THEN 1 ELSE 0 END) as high_confidence
+      FROM learned_preferences
+    `).get() as { total: number; active: number; high_confidence: number };
+
+    return {
+      totalActions: actionStats.total,
+      actionsWithOutcomes: actionStats.with_outcomes,
+      quickModificationRate: actionStats.total > 0 ? actionStats.quick_modifications / actionStats.total : 0,
+      quickDeletionRate: actionStats.total > 0 ? actionStats.quick_deletions / actionStats.total : 0,
+      totalCorrections: correctionStats.total,
+      correctionsByType: {
+        explicit: correctionStats.explicit,
+        implicit: correctionStats.implicit,
+        modification: correctionStats.modification,
+        deletion: correctionStats.deletion,
+        retry: correctionStats.retry,
+      },
+      totalLearnedPreferences: preferenceStats.total,
+      activePreferences: preferenceStats.active,
+      highConfidencePreferences: preferenceStats.high_confidence,
+      computedAt: now,
+    };
   });
 }
 

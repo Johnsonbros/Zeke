@@ -161,6 +161,23 @@ async def health_check() -> HealthResponse:
     )
 
 
+async def fetch_learned_preferences() -> str:
+    """
+    Fetch learned preferences from the feedback learning system.
+    
+    Returns:
+        str: Formatted preferences prompt or empty string if none available
+    """
+    try:
+        bridge = get_bridge()
+        result = await bridge.call_api("GET", "/api/feedback/preferences/prompt")
+        if result.get("success") and result.get("data", {}).get("hasPreferences"):
+            return result["data"].get("prompt", "")
+    except Exception as e:
+        logger.debug(f"Could not fetch learned preferences: {e}")
+    return ""
+
+
 @app.post("/api/agents/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
     """
@@ -190,11 +207,17 @@ async def chat(request: ChatRequest) -> ChatResponse:
     try:
         logger.info(f"Received chat request: {request.message[:100]}... [trace_id={trace_ctx.trace_id}]")
         
+        learned_preferences = await fetch_learned_preferences()
+        
+        metadata_with_preferences = dict(request.metadata)
+        if learned_preferences:
+            metadata_with_preferences["learned_preferences_prompt"] = learned_preferences
+        
         context = AgentContext(
             user_message=request.message,
             conversation_id=request.conversation_id,
             phone_number=request.phone_number,
-            metadata=request.metadata,
+            metadata=metadata_with_preferences,
             trace_context=trace_ctx,
         )
         

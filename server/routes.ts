@@ -6377,6 +6377,51 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // FEEDBACK LEARNING SYSTEM ROUTES
+  // ============================================
+
+  // GET /api/feedback/stats - Get feedback learning statistics
+  app.get("/api/feedback/stats", async (req, res) => {
+    try {
+      const { getLearningStats } = await import("./feedbackLearning");
+      const stats = getLearningStats();
+      res.json(stats);
+    } catch (error: any) {
+      console.error("Get feedback stats error:", error);
+      res.status(500).json({ error: error.message || "Failed to get feedback statistics" });
+    }
+  });
+
+  // GET /api/feedback/preferences - Get all active learned preferences
+  app.get("/api/feedback/preferences", async (req, res) => {
+    try {
+      const { getPreferencesForContext } = await import("./feedbackLearning");
+      const minConfidence = req.query.minConfidence ? parseFloat(req.query.minConfidence as string) : 0;
+      const category = req.query.category as string | undefined;
+      const categories = category ? [category as any] : undefined;
+      const preferences = getPreferencesForContext(categories, minConfidence);
+      res.json({ preferences, count: preferences.length });
+    } catch (error: any) {
+      console.error("Get learned preferences error:", error);
+      res.status(500).json({ error: error.message || "Failed to get learned preferences" });
+    }
+  });
+
+  // GET /api/feedback/preferences/prompt - Get preferences formatted for AI prompts
+  app.get("/api/feedback/preferences/prompt", async (req, res) => {
+    try {
+      const { formatPreferencesForPrompt } = await import("./feedbackLearning");
+      const category = req.query.category as string | undefined;
+      const categories = category ? [category as any] : undefined;
+      const prompt = formatPreferencesForPrompt(categories);
+      res.json({ prompt, hasPreferences: prompt.length > 0 });
+    } catch (error: any) {
+      console.error("Get preferences prompt error:", error);
+      res.status(500).json({ error: error.message || "Failed to format preferences for prompt" });
+    }
+  });
+
+  // ============================================
   // SMART NOTIFICATION BATCHING ROUTES
   // ============================================
 

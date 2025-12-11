@@ -13,6 +13,7 @@ import {
 } from "../db";
 import { isMasterAdmin } from "@shared/schema";
 import { createReminderSequenceData } from "./workflows";
+import { trackAction, recordActionOutcome } from "../feedbackLearning";
 
 const activeTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
@@ -247,6 +248,13 @@ export async function executeReminderTool(
         completed: false,
       });
       
+      trackAction(
+        "reminder_created",
+        reminder.id,
+        JSON.stringify({ message, scheduledFor: scheduledFor.toISOString(), recipient: recipient_phone }),
+        conversationId,
+      );
+      
       const delay = scheduledFor.getTime() - Date.now();
       if (delay > 0) {
         const timeoutId = setTimeout(() => executeReminder(reminder.id), delay);
@@ -301,6 +309,7 @@ export async function executeReminderTool(
         activeTimeouts.delete(reminder_id);
       }
       dbDeleteReminder(reminder_id);
+      recordActionOutcome(reminder_id, "deleted");
       
       return JSON.stringify({ success: true, message: `Reminder ${reminder_id} cancelled` });
     }

@@ -1040,6 +1040,8 @@ Always call the classify_intent tool with your classification.""",
         self.last_completion_status = CompletionStatus.COMPLETE
         self.last_completion_message = ""
         
+        learned_preferences_prompt = context.metadata.get("learned_preferences_prompt", "")
+        
         intent = await self.classify_intent(input_text, {
             "phone_number": context.phone_number,
             "conversation_history": context.metadata.get("conversation_history"),
@@ -1057,8 +1059,16 @@ Always call the classify_intent tool with your classification.""",
         agents_called: list[AgentId] = []
         expected_agents = [a for a in intent.target_agents if a != AgentId.CONDUCTOR]
         
+        enhanced_input = input_text
+        if learned_preferences_prompt:
+            enhanced_input = f"""## System Context
+{learned_preferences_prompt}
+
+## User Request
+{input_text}"""
+        
         handoff_context = HandoffContext(
-            user_message=input_text,
+            user_message=enhanced_input,
             conversation_id=context.conversation_id or "",
             permissions=context.metadata.get("permissions", {}),
             phone_number=context.phone_number,
@@ -1093,7 +1103,7 @@ Always call the classify_intent tool with your classification.""",
                 context=handoff_context,
                 reason=HandoffReason.CAPABILITY_REQUIRED,
             )
-            response = await self.execute_with_agent(agent_id, input_text, context)
+            response = await self.execute_with_agent(agent_id, enhanced_input, context)
             responses.append(response)
             agents_called.append(agent_id)
             handoff_context.prior_responses.append(response)
@@ -1113,7 +1123,7 @@ Always call the classify_intent tool with your classification.""",
                 )
             
             if len(phase2_agents) == 1:
-                response = await self.execute_with_agent(phase2_agents[0], input_text, context)
+                response = await self.execute_with_agent(phase2_agents[0], enhanced_input, context)
                 responses.append(response)
                 agents_called.append(phase2_agents[0])
                 handoff_context.prior_responses.append(response)
@@ -1125,7 +1135,7 @@ Always call the classify_intent tool with your classification.""",
                 context_copies = [self._clone_context_for_parallel(context) for _ in phase2_agents]
                 
                 parallel_tasks = [
-                    self.execute_with_agent(agent_id, input_text, ctx_copy)
+                    self.execute_with_agent(agent_id, enhanced_input, ctx_copy)
                     for agent_id, ctx_copy in zip(phase2_agents, context_copies)
                 ]
                 parallel_responses = await asyncio.gather(*parallel_tasks, return_exceptions=True)
@@ -1160,7 +1170,7 @@ Always call the classify_intent tool with your classification.""",
                 context=handoff_context,
                 reason=HandoffReason.CAPABILITY_REQUIRED,
             )
-            response = await self.execute_with_agent(agent_id, input_text, context)
+            response = await self.execute_with_agent(agent_id, enhanced_input, context)
             responses.append(response)
             agents_called.append(agent_id)
             handoff_context.prior_responses.append(response)
@@ -1168,7 +1178,7 @@ Always call the classify_intent tool with your classification.""",
         if not responses:
             primary_agent = self.route_to_agent(intent)
             if primary_agent != AgentId.CONDUCTOR:
-                response = await self.execute_with_agent(primary_agent, input_text, context)
+                response = await self.execute_with_agent(primary_agent, enhanced_input, context)
                 responses.append(response)
                 agents_called.append(primary_agent)
             else:

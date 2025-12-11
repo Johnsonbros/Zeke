@@ -9,6 +9,7 @@ import {
   updateCalendarEvent,
   type CalendarEvent,
 } from "../googleCalendar";
+import { trackAction, recordActionOutcome } from "../feedbackLearning";
 
 export const calendarToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
@@ -259,6 +260,12 @@ export async function executeCalendarTool(
           all_day
         );
         
+        trackAction(
+          "event_created",
+          event.id,
+          JSON.stringify({ title, start: event.start, end: event.end, location }),
+        );
+        
         const dateStr = new Date(event.start).toLocaleDateString("en-US", {
           weekday: "short",
           month: "short",
@@ -298,6 +305,7 @@ export async function executeCalendarTool(
       
       try {
         await deleteCalendarEvent(event_id);
+        recordActionOutcome(event_id, "deleted");
         return JSON.stringify({
           success: true,
           message: "Event deleted from calendar",
