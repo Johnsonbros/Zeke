@@ -29,6 +29,7 @@ import {
   createMessage,
 } from "./db";
 import { chat, getAdminPermissions } from "./agent";
+import { processOmiWebhook } from "./voice/omiListener";
 
 const openai = new OpenAI();
 
@@ -596,6 +597,27 @@ export function registerOmiRoutes(app: Express): void {
         receivedAt: now,
         speakerCount: new Set(payload.segments?.map(s => s.speaker) || []).size,
       });
+
+      // Feed each segment to the voice pipeline for wake word detection and command processing
+      for (const segment of payload.segments || []) {
+        try {
+          await processOmiWebhook({
+            event: "transcript_segment",
+            memoryId: payload.session_id,
+            segment: {
+              text: segment.text,
+              speaker: segment.speaker,
+              speakerId: segment.speaker_id,
+              isUser: segment.is_user,
+              start: segment.start,
+              end: segment.end,
+            },
+            timestamp: now,
+          });
+        } catch (err) {
+          console.error("[Omi] Error feeding segment to voice pipeline:", err);
+        }
+      }
 
       res.json({ 
         success: true, 

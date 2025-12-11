@@ -4219,20 +4219,26 @@ export async function registerRoutes(
   // Overland sends GeoJSON format: https://overland.p3k.app/
   app.post("/api/location/overland", (req, res) => {
     try {
-      // Verify access token (sent in Authorization header)
+      // Verify access token (sent in Authorization header or query param)
       const authHeader = req.headers.authorization;
+      const queryToken = req.query.token as string;
       const expectedToken = process.env.OVERLAND_ACCESS_TOKEN;
+      
+      console.log(`[Overland] Received request - Auth header: ${authHeader ? 'present' : 'missing'}, Query token: ${queryToken ? 'present' : 'missing'}, Expected token configured: ${expectedToken ? 'yes' : 'no'}`);
       
       if (!expectedToken) {
         console.error("[Overland] OVERLAND_ACCESS_TOKEN not configured");
         return res.status(500).json({ error: "Server not configured for Overland" });
       }
       
-      // Overland sends token as "Bearer <token>" or just "<token>"
-      const providedToken = authHeader?.replace(/^Bearer\s+/i, "").trim();
+      // Overland can send token as:
+      // 1. Authorization header: "Bearer <token>" or just "<token>"
+      // 2. Query parameter: ?token=<token>
+      const headerToken = authHeader?.replace(/^Bearer\s+/i, "").trim();
+      const providedToken = headerToken || queryToken;
       
       if (!providedToken || providedToken !== expectedToken) {
-        console.warn("[Overland] Invalid or missing access token");
+        console.warn(`[Overland] Token mismatch - Provided: ${providedToken ? providedToken.substring(0, 4) + '...' : 'none'}`);
         return res.status(401).json({ error: "Invalid access token" });
       }
       
