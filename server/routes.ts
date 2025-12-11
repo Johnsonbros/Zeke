@@ -4891,7 +4891,7 @@ export async function registerRoutes(
         altitude: altitude !== undefined ? String(altitude) : undefined,
         speed: speed !== undefined ? String(speed) : undefined,
         heading: heading !== undefined ? String(heading) : undefined,
-        source: "shortcut"
+        source: "manual"
       });
       
       console.log(`[Shortcut] GPS data received - Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}, Accuracy: ${accuracy ? accuracy + 'm' : 'N/A'}`);
@@ -6455,7 +6455,7 @@ export async function registerRoutes(
     try {
       const { domain, itemId } = req.params;
       
-      const validDomains: EntityDomain[] = ["memory", "task", "conversation", "contact", "location", "calendar", "grocery"];
+      const validDomains: EntityDomain[] = ["memory", "task", "conversation", "contact", "location", "calendar", "grocery", "document"];
       if (!validDomains.includes(domain as EntityDomain)) {
         return res.status(400).json({ 
           error: `Invalid domain. Must be one of: ${validDomains.join(", ")}` 
@@ -6481,7 +6481,7 @@ export async function registerRoutes(
     try {
       const { domain, itemId } = req.params;
       
-      const validDomains: EntityDomain[] = ["memory", "task", "conversation", "contact", "location", "calendar", "grocery"];
+      const validDomains: EntityDomain[] = ["memory", "task", "conversation", "contact", "location", "calendar", "grocery", "document"];
       if (!validDomains.includes(domain as EntityDomain)) {
         return res.status(400).json({ 
           error: `Invalid domain. Must be one of: ${validDomains.join(", ")}` 
@@ -6513,7 +6513,8 @@ export async function registerRoutes(
         contact: [],
         location: [],
         calendar: [],
-        grocery: []
+        grocery: [],
+        document: []
       };
       
       const itemEntityMap = new Map<string, { 
