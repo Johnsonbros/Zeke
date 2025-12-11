@@ -382,20 +382,38 @@ Extracted people are automatically linked to the contacts system:
 
 ## Environment Variables
 
+### Omi-Specific Variables
+
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `OMI_COMMANDS_ENABLED` | No | `false` | Enable wake word command execution from transcripts |
-| `OMI_DEV_API_KEY` | No | - | API key for direct Omi cloud access (pull-based queries) |
-| `OPENAI_API_KEY` | Yes | - | Required for AI extraction and agent responses |
-| `TWILIO_ACCOUNT_SID` | No | - | Required if agent sends SMS via tools |
-| `TWILIO_AUTH_TOKEN` | No | - | Required if agent sends SMS via tools |
-| `ELEVENLABS_API_KEY` | No | - | Required for voice synthesis in phone calls |
+| `OMI_DEV_API_KEY` | No | - | API key for direct Omi cloud access (pull-based queries). Get from [Omi Developer API](https://docs.omi.me/doc/developer/api) |
+
+### Required Core Dependencies
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes | Required for AI extraction, agent responses, and embeddings |
+
+### Optional Dependencies (for full agent capabilities)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `TWILIO_ACCOUNT_SID` | No | Required for SMS sending via agent tools |
+| `TWILIO_AUTH_TOKEN` | No | Required for SMS sending via agent tools |
+| `TWILIO_PHONE_NUMBER` | No | Twilio phone number for outbound SMS |
+| `ELEVENLABS_API_KEY` | No | Required for custom voice synthesis (phone calls) |
+| `GOOGLE_CLIENT_ID` | No | For Google Calendar integration |
+| `GOOGLE_CLIENT_SECRET` | No | For Google Calendar integration |
+| `PERPLEXITY_API_KEY` | No | For enhanced web search capabilities |
 
 ---
 
 ## Schema Types Reference
 
-All Omi-related TypeScript types are defined in `shared/schema.ts`. Key interfaces:
+> **Canonical Source**: All Omi-related TypeScript types are defined in `shared/schema.ts` (lines 2260-2360). Always reference this file for the authoritative type definitions.
+
+Key interfaces and their locations in `shared/schema.ts`:
 
 ```typescript
 // Import these types in your code:
