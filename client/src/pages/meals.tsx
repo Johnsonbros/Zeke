@@ -1053,7 +1053,7 @@ export default function MealsPage() {
   });
 
   const { data: recipes = [], isLoading: loadingRecipes } = useQuery<SavedRecipe[]>({
-    queryKey: ["/api/recipes", { query: searchQuery, favoritesOnly }],
+    queryKey: ["/api/recipes"],
   });
 
   const { data: meals = [], isLoading: loadingMeals } = useQuery<MealHistory[]>({

@@ -823,7 +823,7 @@ function LocationTimelineWidget({
   isLoading: boolean;
 }) {
   const { data: timeline } = useQuery<TimelineResponse>({
-    queryKey: ["/api/location/timeline", { days: 1 }],
+    queryKey: ["/api/location/timeline?days=1"],
     refetchInterval: 60000,
   });
 
