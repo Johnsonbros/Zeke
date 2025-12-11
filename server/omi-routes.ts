@@ -714,42 +714,65 @@ export function registerOmiRoutes(app: Express): void {
     }
   });
 
-  // Dedicated ZEKE app endpoint for Omi - always executes actions
-  // This is the endpoint to use when creating a ZEKE app in Omi's Apps section
+  // Omi Chat Tools Manifest - defines ZEKE's capabilities for Omi
+  app.get("/.well-known/omi-tools.json", (_req: Request, res: Response) => {
+    const manifest = {
+      tools: [
+        {
+          name: "ask_zeke",
+          description: "Ask ZEKE anything - your personal AI assistant. ZEKE can check your calendar, manage tasks, add items to grocery lists, set reminders, search the web, send texts, and answer questions about your life. Use this for any personal assistant request.",
+          endpoint: "/api/omi/zeke",
+          method: "POST",
+          parameters: {
+            properties: {
+              message: {
+                type: "string",
+                description: "The question or command to ask ZEKE"
+              }
+            },
+            required: ["message"]
+          },
+          auth_required: false,
+          status_message: "Asking ZEKE..."
+        }
+      ]
+    };
+    res.json(manifest);
+  });
+
+  // Dedicated ZEKE app endpoint for Omi Chat Tools
+  // This is called by Omi when users invoke the ask_zeke tool
   app.post("/api/omi/zeke", async (req: Request, res: Response) => {
     try {
-      console.log("[Omi ZEKE App] Request received:", JSON.stringify(req.body).substring(0, 200));
+      console.log("[Omi ZEKE App] Request received:", JSON.stringify(req.body).substring(0, 300));
       
-      // Omi sends the user's message in the 'text' or 'query' field
-      const userMessage = req.body.text || req.body.query || req.body.message || "";
+      // Omi Chat Tools sends: uid, app_id, tool_name, plus tool-specific parameters
+      const { uid, app_id, tool_name, message, text, query } = req.body;
+      
+      // Accept message from various possible field names
+      const userMessage = message || text || query || "";
       
       if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
-        return res.status(400).json({ 
-          success: false, 
-          error: "No message provided. Say something to ZEKE!" 
+        return res.json({ 
+          error: "No message provided. Tell me what you need help with!" 
         });
       }
 
-      console.log(`[Omi ZEKE App] Processing: "${userMessage}"`);
+      console.log(`[Omi ZEKE App] User ${uid || 'unknown'} asked: "${userMessage}"`);
       
-      // Always route through the full agent pipeline
+      // Route through the full agent pipeline
       const result = await routeToAgentPipeline(userMessage, "omi_app");
       
       console.log(`[Omi ZEKE App] Response: "${result.response.substring(0, 100)}..."`);
       
-      // Return in Omi's expected format
+      // Return in Omi Chat Tools expected format
       res.json({
-        success: true,
-        response: result.response,
-        answer: result.response,
-        executedTools: result.executedTools || [],
-        source: "zeke_omi_app",
+        result: result.response
       });
     } catch (error) {
       console.error("[Omi ZEKE App] Error:", error);
-      res.status(500).json({ 
-        success: false, 
-        error: error instanceof Error ? error.message : "ZEKE encountered an error" 
+      res.json({ 
+        error: error instanceof Error ? error.message : "ZEKE encountered an error. Please try again." 
       });
     }
   });
