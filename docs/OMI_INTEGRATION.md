@@ -591,41 +591,77 @@ CREATE TABLE omi_webhook_logs (
 
 ## Data Persistence
 
+### Extraction-to-Storage Pipeline
+
+When a memory webhook is processed, the following data flow occurs:
+
+```
+Transcript Text
+       │
+       ▼
+extractFromTranscript()  ──▶  ExtractionResult {people, topics, actionItems, insights}
+       │
+       ├──▶ For each person:  linkPersonToContact() ──▶ contacts table + contact_notes table
+       │
+       ├──▶ For each actionItem:  createTask() ──▶ tasks table
+       │
+       ├──▶ For each insight:  createMemoryNote() ──▶ memory_notes table
+       │
+       └──▶ Log update:  updateOmiWebhookLog() ──▶ omi_webhook_logs table
+```
+
 ### Tables Created/Updated by Omi Integration
 
-| Table | Purpose | Created By |
-|-------|---------|------------|
-| `omi_webhook_logs` | Stores all webhook payloads and processing status | Memory/transcript webhooks |
-| `memory_notes` | Long-term memories extracted from conversations | `createMemoryNote()` |
-| `tasks` | Action items extracted from transcripts | `createTask()` |
-| `contacts` | People mentioned in conversations | `createContact()` |
-| `contact_notes` | Observations about contacts | `createContactNote()` |
-| `conversations` | Chat sessions for agent interactions | `routeToAgentPipeline()` |
-| `messages` | Individual messages in conversations | Agent pipeline |
+| Table | Purpose | Created By | Key Columns |
+|-------|---------|------------|-------------|
+| `omi_webhook_logs` | Stores all webhook payloads and processing status | Memory/transcript webhooks | `id`, `trigger_type`, `raw_payload`, `status`, `extracted_*`, `created_*_ids` |
+| `memory_notes` | Long-term memories extracted from conversations | `createMemoryNote()` | `id`, `content`, `source`, `category`, `confidence_score` |
+| `tasks` | Action items extracted from transcripts | `createTask()` | `id`, `title`, `description`, `status`, `priority`, `due_date` |
+| `contacts` | People mentioned in conversations | `createContact()` | `id`, `first_name`, `last_name`, `relationship`, `is_auto_created` |
+| `contact_notes` | Observations about contacts | `createContactNote()` | `id`, `contact_id`, `content`, `note_type`, `created_by` |
+| `conversations` | Chat sessions for agent interactions | `routeToAgentPipeline()` | `id`, `title`, `source`, `created_at` |
+| `messages` | Individual messages in conversations | Agent pipeline | `id`, `conversation_id`, `role`, `content`, `source` |
 
 ### Database Functions (from server/db.ts)
 
 ```typescript
-// Webhook logging
-createOmiWebhookLog(data): Promise<OmiWebhookLog>
-updateOmiWebhookLog(id, updates): Promise<OmiWebhookLog>
-getOmiWebhookLogs(limit): Promise<OmiWebhookLog[]>
-getOmiWebhookLog(id): Promise<OmiWebhookLog | null>
+// Webhook logging - stores raw payloads and tracks processing status
+createOmiWebhookLog(data: InsertOmiWebhookLog): Promise<OmiWebhookLog>
+updateOmiWebhookLog(id: string, updates: Partial<OmiWebhookLog>): Promise<OmiWebhookLog>
+getOmiWebhookLogs(limit: number): Promise<OmiWebhookLog[]>
+getOmiWebhookLog(id: string): Promise<OmiWebhookLog | null>
 
-// Memory persistence
-createMemoryNote(data): Promise<MemoryNote>
+// Memory persistence - stores insights and facts learned from conversations
+createMemoryNote(data: InsertMemoryNote): Promise<MemoryNote>
 getAllMemoryNotes(): Promise<MemoryNote[]>
+// Note: InsertMemoryNote includes: content, source, category, confidence (0-1), expiresAt
 
-// Contact management
-createContact(data): Promise<Contact>
-updateContact(id, data): Promise<Contact>
-searchContacts(query): Contact[]
+// Contact management - tracks people extracted from conversations
+createContact(data: InsertContact): Promise<Contact>
+updateContact(id: string, data: Partial<Contact>): Promise<Contact>
+searchContacts(query: string): Contact[]  // Synchronous fuzzy search
 getAllContacts(): Promise<Contact[]>
-createContactNote(data): Promise<ContactNote>
+createContactNote(data: InsertContactNote): Promise<ContactNote>
+// Note: Auto-created contacts have isAutoCreated=true, phoneNumber="unknown-{timestamp}"
 
-// Task creation
-createTask(data): Promise<Task>
+// Task creation - stores action items from transcripts
+createTask(data: InsertTask): Promise<Task>
+// Note: InsertTask includes: title, description, status, priority, dueDate, category
+
+// Conversation management - for agent pipeline routing
+createConversation(data: InsertConversation): Promise<Conversation>
+createMessage(data: InsertMessage): Promise<Message>
 ```
+
+### Verification: What Gets Created
+
+After processing a memory webhook, verify these artifacts:
+
+1. **omi_webhook_logs**: Check `status="processed"` and `extracted_*` fields populated
+2. **tasks**: New tasks created with `title` from extracted action items
+3. **contacts**: New contacts with `is_auto_created=true` for unknown people
+4. **contact_notes**: Observation notes linked to existing contacts
+5. **memory_notes**: Insights stored with `source="omi"` and appropriate category
 
 ---
 
@@ -814,11 +850,60 @@ curl -s https://zekeai.replit.app/api/omi/logs/LOG_ID_HERE | jq .
 
 After making changes to the Omi integration:
 
-1. **Manifest accessible**: `curl /.well-known/omi-tools.json` returns valid JSON
-2. **Chat tool responds**: POST to `/api/omi/zeke` returns `{ result: "..." }`
-3. **Memory webhook logs**: POST to `/api/omi/memory-trigger` creates log entry
-4. **Extraction works**: Check logs for `extractedPeople`, `extractedTopics`, etc.
-5. **Commands detected**: If `OMI_COMMANDS_ENABLED=true`, verify `detectedCommands` in logs
+1. **Manifest accessible**: `curl /.well-known/omi-tools.json` returns valid JSON with `tools` array
+2. **Chat tool responds**: POST to `/api/omi/zeke` returns `{ result: "..." }` (not error)
+3. **Memory webhook logs**: POST to `/api/omi/memory-trigger` creates log entry visible at `/api/omi/logs`
+4. **Extraction works**: Check log entry for non-empty `extractedPeople`, `extractedTopics`, `extractedActionItems`, `extractedInsights`
+5. **Persistence verified**: After memory webhook, check that:
+   - New tasks exist in `tasks` table (for action items)
+   - New/updated contacts exist in `contacts` table (for extracted people)
+   - New memory notes exist in `memory_notes` table (for insights)
+6. **Commands detected**: If `OMI_COMMANDS_ENABLED=true`, verify `detectedCommands` field in logs is populated
+7. **Command execution**: If command detected, verify `commandResults` shows success and agent response
+
+### End-to-End Test Procedure
+
+```bash
+# Step 1: Send a test memory with extractable data
+LOG_ID=$(curl -s -X POST https://zekeai.replit.app/api/omi/memory-trigger \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "e2e-test-'$(date +%s)'",
+    "memory": {
+      "id": "e2e-mem-'$(date +%s)'",
+      "transcript": "I talked to John Smith about the quarterly review. He mentioned we need to finish the report by next Monday. I should remember that John prefers email communication.",
+      "transcript_segments": [
+        {"text": "I talked to John Smith about the quarterly review.", "speaker": "SPEAKER_00", "speaker_id": 0, "is_user": true, "start": 0, "end": 4}
+      ],
+      "structured": {"title": "Quarterly Review Discussion"}
+    }
+  }' | jq -r '.logId')
+
+echo "Created log: $LOG_ID"
+
+# Step 2: Wait for processing (async)
+sleep 5
+
+# Step 3: Check log status and extractions
+curl -s https://zekeai.replit.app/api/omi/logs/$LOG_ID | jq '{
+  status: .status,
+  extractedPeople: .extractedPeople,
+  extractedActionItems: .extractedActionItems,
+  extractedInsights: .extractedInsights,
+  createdContactIds: .createdContactIds,
+  createdTaskIds: .createdTaskIds,
+  createdMemoryNoteIds: .createdMemoryNoteIds
+}'
+
+# Expected output should show:
+# - status: "processed"
+# - extractedPeople: contains "John Smith"
+# - extractedActionItems: contains "finish the report by next Monday"
+# - extractedInsights: contains "prefers email communication"
+# - createdContactIds: non-empty array (new contact for John)
+# - createdTaskIds: non-empty array (task for report)
+# - createdMemoryNoteIds: non-empty array (memory for preference)
+```
 
 ---
 

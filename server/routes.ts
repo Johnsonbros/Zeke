@@ -2133,7 +2133,7 @@ export async function registerRoutes(
       
       const parsed = insertCustomListItemSchema.safeParse({ ...req.body, listId: id });
       if (!parsed.success) {
-        console.log(`[LIST ACCESS] Invalid item create request for list ${id} - validation failed`);
+        console.log(`[LIST ACCESS] Invalid item create request for list ${id.replace(/[^\w-]/g, '_')} - validation failed`);
         return res.status(400).json({ message: "Invalid request" });
       }
       
