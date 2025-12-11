@@ -93,10 +93,20 @@ export async function generateSpeechAudio(text: string): Promise<string> {
 }
 
 export function getAudioFilePath(audioId: string): string | null {
+  // First check in-memory cache
   const entry = audioCache.get(audioId);
   if (entry && fs.existsSync(entry.filePath)) {
     return entry.filePath;
   }
+  
+  // Fallback: check if file exists on disk (for cross-instance requests)
+  const filePath = path.join(audioDir, `${audioId}.mp3`);
+  if (fs.existsSync(filePath)) {
+    // Re-add to cache for faster future lookups
+    audioCache.set(audioId, { filePath, createdAt: Date.now() });
+    return filePath;
+  }
+  
   return null;
 }
 
