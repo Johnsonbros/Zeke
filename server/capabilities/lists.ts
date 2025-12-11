@@ -271,6 +271,7 @@ const defaultAdminPermissions: ToolPermissions = {
   canAccessTasks: true,
   canAccessGrocery: true,
   canSetReminders: true,
+  canQueryMemory: true,
 };
 
 export async function executeListTool(

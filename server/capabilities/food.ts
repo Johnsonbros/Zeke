@@ -37,7 +37,7 @@ function getOpenAIClient(): OpenAI {
     const OpenAI = require("openai").default;
     openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
-  return openai;
+  return openai as OpenAI;
 }
 
 export const foodToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [

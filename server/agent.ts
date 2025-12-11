@@ -1248,6 +1248,7 @@ export async function chat(
             canAccessTasks: userPermissions.canAccessTasks,
             canAccessGrocery: userPermissions.canAccessGrocery,
             canSetReminders: userPermissions.canSetReminders,
+            canQueryMemory: userPermissions.canQueryMemory ?? true,
           };
           
           let result: string;
