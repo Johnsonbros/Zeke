@@ -1262,9 +1262,8 @@ export async function registerRoutes(
         ? `Hello ${contactName}! This is Zeke, your personal AI assistant. How can I help you today?`
         : `Hello! This is Zeke, your personal AI assistant. How can I help you today?`;
       
-      const baseUrl = process.env.REPLIT_DOMAINS 
-        ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
-        : 'https://zekeai.replit.app';
+      // Always use production URL for Twilio callbacks (dev domains aren't publicly accessible)
+      const baseUrl = 'https://zekeai.replit.app';
       
       let twiml: string;
       
@@ -1322,9 +1321,8 @@ export async function registerRoutes(
       
       console.log(`Speech from ${fromNumber}: "${speechText}"`);
       
-      const baseUrl = process.env.REPLIT_DOMAINS 
-        ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
-        : 'https://zekeai.replit.app';
+      // Always use production URL for Twilio callbacks (dev domains aren't publicly accessible)
+      const baseUrl = 'https://zekeai.replit.app';
       
       if (!speechText) {
         const noInputTwiml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -1480,9 +1478,8 @@ export async function registerRoutes(
       const normalizedPhone = normalizePhoneNumber(phoneNumber);
       const client = getTwilioClient();
       
-      const baseUrl = process.env.REPLIT_DOMAINS 
-        ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
-        : 'https://zekeai.replit.app';
+      // Always use production URL for Twilio callbacks (dev domains aren't publicly accessible)
+      const baseUrl = 'https://zekeai.replit.app';
       
       // Determine what to say on the call - escape contact name for URL safety
       const contact = getContactByPhone(normalizedPhone);
@@ -1529,9 +1526,8 @@ export async function registerRoutes(
     try {
       const message = req.query.message as string || "Hello! This is Zeke. How can I help you?";
       
-      const baseUrl = process.env.REPLIT_DOMAINS 
-        ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
-        : 'https://zekeai.replit.app';
+      // Always use production URL for Twilio callbacks (dev domains aren't publicly accessible)
+      const baseUrl = 'https://zekeai.replit.app';
       
       let twiml: string;
       
