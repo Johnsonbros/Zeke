@@ -10,6 +10,7 @@ import { initializeVoicePipeline, startVoicePipeline, isVoicePipelineAvailable }
 import { initializeOmiDigest } from "./omiDigest";
 import { initializeOmiProcessor } from "./jobs/omiProcessor";
 import { initializePredictionScheduler } from "./predictionScheduler";
+import { startKVMaintenance } from "./kvIndex";
 
 export { log };
 
@@ -103,6 +104,10 @@ app.use((req, res, next) => {
   // Initialize prediction scheduler (pattern discovery, anomaly detection, prediction generation)
   initializePredictionScheduler();
   log("Prediction scheduler initialized", "startup");
+  
+  // Initialize Key-Value Store maintenance (periodic cleanup of expired entries)
+  startKVMaintenance(5 * 60 * 1000); // Run cleanup every 5 minutes
+  log("KV Store maintenance initialized", "startup");
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
