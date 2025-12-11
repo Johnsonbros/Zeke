@@ -4747,8 +4747,6 @@ export async function registerRoutes(
       const queryToken = req.query.token as string;
       const expectedToken = process.env.OVERLAND_ACCESS_TOKEN;
       
-      console.log(`[Overland] Received request - Auth header: ${authHeader ? 'present' : 'missing'}, Query token: ${queryToken ? 'present' : 'missing'}, Expected token configured: ${expectedToken ? 'yes' : 'no'}`);
-      
       if (!expectedToken) {
         console.error("[Overland] OVERLAND_ACCESS_TOKEN not configured");
         return res.status(500).json({ error: "Server not configured for Overland" });
