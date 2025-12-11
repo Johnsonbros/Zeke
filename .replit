@@ -49,6 +49,7 @@ INTERNAL_BRIDGE_KEY = "zeke-internal-bridge-2025"
 
 [userenv.shared]
 MASTER_ADMIN_PHONE = "6176868763"
+ELEVENLABS_VOICE_ID = "7ZxKpU6EbWxrhZgWoRDv"
 
 [[ports]]
 localPort = 5000

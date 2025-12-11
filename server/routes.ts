@@ -349,6 +349,7 @@ import twilio from "twilio";
 import { z } from "zod";
 import { listCalendarEvents, getTodaysEvents, getUpcomingEvents, createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, listCalendars, type CalendarEvent, type CalendarInfo } from "./googleCalendar";
 import { parseQuickAction } from "./quickActions";
+import { generateSpeechAudio, getAudioFilePath, isElevenLabsConfigured } from "./elevenlabs";
 import { analyzeAndBreakdownTask, calculateSubtaskDueDate, suggestRelatedGroceryItems, suggestRelatedGroceryItemsBulk, generateTaskFollowUp, type TaskFollowUpResult } from "./capabilities/workflows";
 import {
   type AppContext,
@@ -1226,36 +1227,76 @@ export async function registerRoutes(
     }
   });
 
+  // Serve ElevenLabs generated audio files
+  app.get("/api/audio/:audioId", async (req, res) => {
+    try {
+      const { audioId } = req.params;
+      const filePath = getAudioFilePath(audioId);
+      
+      if (!filePath) {
+        return res.status(404).send("Audio not found");
+      }
+      
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader("Cache-Control", "no-cache");
+      res.sendFile(filePath);
+    } catch (error: any) {
+      console.error("Audio serving error:", error);
+      res.status(500).send("Error serving audio");
+    }
+  });
+
   // Twilio Voice webhook - handles incoming phone calls
   app.post("/api/twilio/voice", async (req, res) => {
     try {
       console.log("Twilio voice webhook received:", JSON.stringify(req.body));
       
       const { From: rawFromNumber, CallSid: callSid } = req.body;
-      // Use normalizePhoneNumber for consistent contact lookup
       const fromNumber = rawFromNumber ? normalizePhoneNumber(rawFromNumber) : "Unknown";
       
       console.log(`Incoming call from ${fromNumber}, CallSid: ${callSid}`);
       
-      // Check if this is a known contact
       const contact = getContactByPhone(fromNumber);
       const contactName = contact?.firstName || 'there';
       const greeting = contact 
-        ? `Hello ${escapeXml(contactName)}! This is Zeke, your personal AI assistant.`
-        : `Hello! This is Zeke, your personal AI assistant.`;
+        ? `Hello ${contactName}! This is Zeke, your personal AI assistant. How can I help you today?`
+        : `Hello! This is Zeke, your personal AI assistant. How can I help you today?`;
       
-      // Build TwiML response - greet caller and gather speech input
       const baseUrl = process.env.REPLIT_DOMAINS 
         ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
         : 'https://zekeai.replit.app';
       
-      const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+      let twiml: string;
+      
+      if (isElevenLabsConfigured()) {
+        try {
+          const audioId = await generateSpeechAudio(greeting);
+          twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Matthew">${greeting} How can I help you today?</Say>
+  <Play>${baseUrl}/api/audio/${audioId}</Play>
   <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
   </Gather>
   <Say voice="Polly.Matthew">I didn't hear anything. Goodbye!</Say>
 </Response>`;
+        } catch (elevenLabsError) {
+          console.error("ElevenLabs error, falling back to Polly:", elevenLabsError);
+          twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Matthew">${escapeXml(greeting)}</Say>
+  <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
+  </Gather>
+  <Say voice="Polly.Matthew">I didn't hear anything. Goodbye!</Say>
+</Response>`;
+        }
+      } else {
+        twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Matthew">${escapeXml(greeting)}</Say>
+  <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
+  </Gather>
+  <Say voice="Polly.Matthew">I didn't hear anything. Goodbye!</Say>
+</Response>`;
+      }
       
       res.type('text/xml');
       res.send(twiml);
@@ -1333,8 +1374,23 @@ export async function registerRoutes(
       
       console.log(`AI response for voice: "${aiResponse.substring(0, 100)}..."`);
       
-      // Build TwiML response with AI response and continue listening
-      const responseTwiml = `<?xml version="1.0" encoding="UTF-8"?>
+      let responseTwiml: string;
+      
+      if (isElevenLabsConfigured()) {
+        try {
+          const audioId = await generateSpeechAudio(aiResponse);
+          const followUpAudioId = await generateSpeechAudio("Is there anything else I can help you with?");
+          responseTwiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Play>${baseUrl}/api/audio/${audioId}</Play>
+  <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
+    <Play>${baseUrl}/api/audio/${followUpAudioId}</Play>
+  </Gather>
+  <Say voice="Polly.Matthew">Thank you for calling. Goodbye!</Say>
+</Response>`;
+        } catch (elevenLabsError) {
+          console.error("ElevenLabs error, falling back to Polly:", elevenLabsError);
+          responseTwiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Matthew">${escapeXml(aiResponse)}</Say>
   <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
@@ -1342,6 +1398,17 @@ export async function registerRoutes(
   </Gather>
   <Say voice="Polly.Matthew">Thank you for calling. Goodbye!</Say>
 </Response>`;
+        }
+      } else {
+        responseTwiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Matthew">${escapeXml(aiResponse)}</Say>
+  <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
+    <Say voice="Polly.Matthew">Is there anything else I can help you with?</Say>
+  </Gather>
+  <Say voice="Polly.Matthew">Thank you for calling. Goodbye!</Say>
+</Response>`;
+      }
       
       res.type('text/xml');
       res.send(responseTwiml);
@@ -1466,13 +1533,37 @@ export async function registerRoutes(
         ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
         : 'https://zekeai.replit.app';
       
-      const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+      let twiml: string;
+      
+      if (isElevenLabsConfigured()) {
+        try {
+          const audioId = await generateSpeechAudio(message);
+          twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Play>${baseUrl}/api/audio/${audioId}</Play>
+  <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
+  </Gather>
+  <Say voice="Polly.Matthew">I didn't hear a response. Goodbye!</Say>
+</Response>`;
+        } catch (elevenLabsError) {
+          console.error("ElevenLabs error, falling back to Polly:", elevenLabsError);
+          twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Matthew">${escapeXml(message)}</Say>
   <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
   </Gather>
   <Say voice="Polly.Matthew">I didn't hear a response. Goodbye!</Say>
 </Response>`;
+        }
+      } else {
+        twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Matthew">${escapeXml(message)}</Say>
+  <Gather input="speech" action="${baseUrl}/api/twilio/voice-response" method="POST" speechTimeout="auto" language="en-US">
+  </Gather>
+  <Say voice="Polly.Matthew">I didn't hear a response. Goodbye!</Say>
+</Response>`;
+      }
       
       res.type('text/xml');
       res.send(twiml);

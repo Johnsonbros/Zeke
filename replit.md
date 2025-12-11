@@ -50,6 +50,7 @@ Key technical implementations and features include:
 ## External Dependencies
 - **OpenAI API**: AI responses, agent logic, and text embeddings.
 - **Twilio**: SMS messaging and voice calling (inbound/outbound calls with AI-powered conversation).
+- **ElevenLabs**: Custom voice synthesis for phone calls using Flash v2.5 model (ultra-low latency). Falls back to Amazon Polly if unavailable.
 - **better-sqlite3**: Node.js SQLite client.
 - **Perplexity API**: Enhanced AI-powered web search.
 - **Google Calendar API**: Calendar integration.
