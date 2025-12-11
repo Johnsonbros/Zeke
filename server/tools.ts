@@ -18,6 +18,7 @@ import {
   executeFoodTool,
   executeAutomationTool,
   executeKnowledgeGraphTool,
+  executeCodebaseTool,
   communicationToolNames,
   reminderToolNames,
   taskToolNames,
@@ -34,6 +35,7 @@ import {
   automationToolNames,
   weatherToolNames,
   knowledgeGraphToolNames,
+  codebaseToolNames,
   weatherTools,
   getActiveReminders as getActiveRemindersFromModule,
   restorePendingReminders as restorePendingRemindersFromModule,
@@ -140,6 +142,8 @@ export async function executeTool(
   } else if (knowledgeGraphToolNames.includes(toolName)) {
     const kgResult = await executeKnowledgeGraphTool(toolName, args);
     result = JSON.stringify(kgResult);
+  } else if (codebaseToolNames.includes(toolName)) {
+    result = await executeCodebaseTool(toolName, args);
   }
 
   if (result !== null) {

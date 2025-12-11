@@ -123,6 +123,13 @@ export {
   knowledgeGraphToolNames,
 } from "./knowledgeGraph";
 
+export {
+  codebaseToolDefinitions,
+  codebaseToolPermissions,
+  executeCodebaseTool,
+  codebaseToolNames,
+} from "./codebase";
+
 import type OpenAI from "openai";
 import type { ToolPermissions } from "../tools";
 
@@ -143,6 +150,7 @@ import { automationToolDefinitions, automationToolPermissions } from "./automati
 import { weatherTools } from "./weather";
 import { predictionToolDefinitions } from "./predictions";
 import { knowledgeGraphToolDefinitions, knowledgeGraphToolPermissions } from "./knowledgeGraph";
+import { codebaseToolDefinitions, codebaseToolPermissions } from "./codebase";
 
 const weatherToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = weatherTools.map(tool => ({
   type: "function" as const,
@@ -200,6 +208,7 @@ export const allToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   ...weatherToolDefinitions,
   ...predictionToolDefinitionsFormatted,
   ...knowledgeGraphToolDefinitions,
+  ...codebaseToolDefinitions,
 ];
 
 export const allToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
@@ -220,4 +229,5 @@ export const allToolPermissions: Record<string, (permissions: ToolPermissions) =
   ...weatherToolPermissions,
   ...predictionToolPermissions,
   ...knowledgeGraphToolPermissions,
+  ...codebaseToolPermissions,
 };
