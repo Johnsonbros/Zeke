@@ -186,8 +186,24 @@ import {
   getActivePatterns,
   updatePattern,
   deletePattern,
+  createFolder,
+  getFolder,
+  getAllFolders,
+  getFoldersByParent,
+  updateFolder,
+  deleteFolder,
+  getFolderTree,
+  createDocument,
+  getDocument,
+  getAllDocuments,
+  getDocumentsByFolder,
+  updateDocument,
+  deleteDocument,
+  getDocumentWithFolder,
+  searchDocuments,
 } from "./db";
 import type { TwilioMessageSource } from "@shared/schema";
+import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema } from "@shared/schema";
 import { generateContextualQuestion } from "./gettingToKnow";
 import { chat, getPermissionsForPhone, getAdminPermissions } from "./agent";
 import { setSendSmsCallback, restorePendingReminders, executeTool, toolDefinitions, TOOL_PERMISSIONS, type ToolPermissions } from "./tools";
@@ -1902,6 +1918,167 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Clear checked items error:", error);
       res.status(500).json({ message: "Operation failed" });
+    }
+  });
+
+  // === FOLDERS API ROUTES ===
+
+  app.get("/api/folders", async (req, res) => {
+    try {
+      const folders = getAllFolders();
+      res.json(folders);
+    } catch (error: any) {
+      console.error("Get folders error:", error);
+      res.status(500).json({ message: "Failed to get folders" });
+    }
+  });
+
+  app.get("/api/folders/tree", async (req, res) => {
+    try {
+      const tree = getFolderTree();
+      res.json(tree);
+    } catch (error: any) {
+      console.error("Get folder tree error:", error);
+      res.status(500).json({ message: "Failed to get folder tree" });
+    }
+  });
+
+  app.get("/api/folders/:id", async (req, res) => {
+    try {
+      const folder = getFolder(req.params.id);
+      if (!folder) {
+        return res.status(404).json({ message: "Folder not found" });
+      }
+      res.json(folder);
+    } catch (error: any) {
+      console.error("Get folder error:", error);
+      res.status(500).json({ message: "Failed to get folder" });
+    }
+  });
+
+  app.post("/api/folders", async (req, res) => {
+    try {
+      const parsed = insertFolderSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid folder data" });
+      }
+      const folder = createFolder(parsed.data);
+      res.status(201).json(folder);
+    } catch (error: any) {
+      console.error("Create folder error:", error);
+      res.status(500).json({ message: "Failed to create folder" });
+    }
+  });
+
+  app.patch("/api/folders/:id", async (req, res) => {
+    try {
+      const existing = getFolder(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Folder not found" });
+      }
+      const parsed = updateFolderSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid update data" });
+      }
+      const folder = updateFolder(req.params.id, parsed.data);
+      res.json(folder);
+    } catch (error: any) {
+      console.error("Update folder error:", error);
+      res.status(500).json({ message: "Failed to update folder" });
+    }
+  });
+
+  app.delete("/api/folders/:id", async (req, res) => {
+    try {
+      const existing = getFolder(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Folder not found" });
+      }
+      deleteFolder(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete folder error:", error);
+      res.status(500).json({ message: "Failed to delete folder" });
+    }
+  });
+
+  // === DOCUMENTS API ROUTES ===
+
+  app.get("/api/documents", async (req, res) => {
+    try {
+      const { folderId, search } = req.query;
+      if (search && typeof search === "string") {
+        const documents = searchDocuments(search);
+        return res.json(documents);
+      }
+      if (folderId !== undefined) {
+        const documents = getDocumentsByFolder(folderId === "null" ? null : folderId as string);
+        return res.json(documents);
+      }
+      const documents = getAllDocuments();
+      res.json(documents);
+    } catch (error: any) {
+      console.error("Get documents error:", error);
+      res.status(500).json({ message: "Failed to get documents" });
+    }
+  });
+
+  app.get("/api/documents/:id", async (req, res) => {
+    try {
+      const document = getDocumentWithFolder(req.params.id);
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+      res.json(document);
+    } catch (error: any) {
+      console.error("Get document error:", error);
+      res.status(500).json({ message: "Failed to get document" });
+    }
+  });
+
+  app.post("/api/documents", async (req, res) => {
+    try {
+      const parsed = insertDocumentSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid document data" });
+      }
+      const document = createDocument(parsed.data);
+      res.status(201).json(document);
+    } catch (error: any) {
+      console.error("Create document error:", error);
+      res.status(500).json({ message: "Failed to create document" });
+    }
+  });
+
+  app.patch("/api/documents/:id", async (req, res) => {
+    try {
+      const existing = getDocument(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+      const parsed = updateDocumentSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid update data" });
+      }
+      const document = updateDocument(req.params.id, parsed.data);
+      res.json(document);
+    } catch (error: any) {
+      console.error("Update document error:", error);
+      res.status(500).json({ message: "Failed to update document" });
+    }
+  });
+
+  app.delete("/api/documents/:id", async (req, res) => {
+    try {
+      const existing = getDocument(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+      deleteDocument(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete document error:", error);
+      res.status(500).json({ message: "Failed to delete document" });
     }
   });
   

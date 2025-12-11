@@ -11,10 +11,6 @@ deploymentTarget = "autoscale"
 build = ["npm", "run", "build"]
 run = ["npm", "run", "start"]
 
-[[ports]]
-localPort = 5000
-externalPort = 80
-
 [env]
 PORT = "5000"
 
@@ -53,3 +49,7 @@ INTERNAL_BRIDGE_KEY = "zeke-internal-bridge-2025"
 
 [userenv.shared]
 MASTER_ADMIN_PHONE = "6176868763"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
