@@ -384,9 +384,95 @@ Extracted people are automatically linked to the contacts system:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `OMI_COMMANDS_ENABLED` | No | `false` | Enable wake word command execution |
-| `OMI_DEV_API_KEY` | No | - | API key for direct Omi cloud access |
-| `OPENAI_API_KEY` | Yes | - | Required for AI extraction |
+| `OMI_COMMANDS_ENABLED` | No | `false` | Enable wake word command execution from transcripts |
+| `OMI_DEV_API_KEY` | No | - | API key for direct Omi cloud access (pull-based queries) |
+| `OPENAI_API_KEY` | Yes | - | Required for AI extraction and agent responses |
+| `TWILIO_ACCOUNT_SID` | No | - | Required if agent sends SMS via tools |
+| `TWILIO_AUTH_TOKEN` | No | - | Required if agent sends SMS via tools |
+| `ELEVENLABS_API_KEY` | No | - | Required for voice synthesis in phone calls |
+
+---
+
+## Schema Types Reference
+
+All Omi-related TypeScript types are defined in `shared/schema.ts`. Key interfaces:
+
+```typescript
+// Import these types in your code:
+import {
+  OmiMemoryTriggerPayload,
+  OmiTranscriptPayload,
+  OmiQueryRequest,
+  OmiQueryResponse,
+  OmiExtractedPerson,
+  OmiExtractedTopic,
+  OmiExtractedActionItem,
+  OmiExtractedInsight,
+  omiQueryRequestSchema,  // Zod schema for validation
+} from "@shared/schema";
+```
+
+### OmiMemoryTriggerPayload (Full Schema)
+
+```typescript
+interface OmiMemoryTriggerPayload {
+  memory: {
+    id: string;
+    created_at: string;
+    started_at: string;
+    finished_at: string;
+    transcript: string;
+    transcript_segments: Array<{
+      text: string;
+      speaker: string;
+      speaker_id: number;
+      is_user: boolean;
+      start: number;
+      end: number;
+    }>;
+    photos: string[];
+    structured: {
+      title: string;
+      overview: string;
+      emoji: string;
+      category: string;
+      action_items: Array<{
+        description: string;
+        completed: boolean;
+      }>;
+      events: Array<{
+        title: string;
+        description: string;
+        start: string;
+        duration: number;
+        created: boolean;
+      }>;
+    };
+    apps_response: Array<{
+      app_id: string;
+      content: string;
+    }>;
+    discarded: boolean;
+  };
+  session_id?: string;
+}
+```
+
+### OmiTranscriptPayload (Full Schema)
+
+```typescript
+interface OmiTranscriptPayload {
+  session_id: string;
+  segments: Array<{
+    text: string;
+    speaker: string;
+    speaker_id: number;
+    is_user: boolean;
+    start: number;
+    end: number;
+  }>;
+}
+```
 
 ---
 
@@ -485,6 +571,46 @@ CREATE TABLE omi_webhook_logs (
 
 ---
 
+## Data Persistence
+
+### Tables Created/Updated by Omi Integration
+
+| Table | Purpose | Created By |
+|-------|---------|------------|
+| `omi_webhook_logs` | Stores all webhook payloads and processing status | Memory/transcript webhooks |
+| `memory_notes` | Long-term memories extracted from conversations | `createMemoryNote()` |
+| `tasks` | Action items extracted from transcripts | `createTask()` |
+| `contacts` | People mentioned in conversations | `createContact()` |
+| `contact_notes` | Observations about contacts | `createContactNote()` |
+| `conversations` | Chat sessions for agent interactions | `routeToAgentPipeline()` |
+| `messages` | Individual messages in conversations | Agent pipeline |
+
+### Database Functions (from server/db.ts)
+
+```typescript
+// Webhook logging
+createOmiWebhookLog(data): Promise<OmiWebhookLog>
+updateOmiWebhookLog(id, updates): Promise<OmiWebhookLog>
+getOmiWebhookLogs(limit): Promise<OmiWebhookLog[]>
+getOmiWebhookLog(id): Promise<OmiWebhookLog | null>
+
+// Memory persistence
+createMemoryNote(data): Promise<MemoryNote>
+getAllMemoryNotes(): Promise<MemoryNote[]>
+
+// Contact management
+createContact(data): Promise<Contact>
+updateContact(id, data): Promise<Contact>
+searchContacts(query): Contact[]
+getAllContacts(): Promise<Contact[]>
+createContactNote(data): Promise<ContactNote>
+
+// Task creation
+createTask(data): Promise<Task>
+```
+
+---
+
 ## Extension Points
 
 ### Adding New Webhook Handlers
@@ -497,28 +623,41 @@ To add custom processing for Omi data:
 app.post("/api/omi/custom-handler", async (req, res) => {
   const payload = req.body;
   
+  // Log the webhook
+  const log = await createOmiWebhookLog({
+    triggerType: "custom",
+    rawPayload: JSON.stringify(payload),
+    status: "received",
+    receivedAt: new Date().toISOString(),
+  });
+  
   // Your custom processing
   await processCustomData(payload);
   
-  res.json({ success: true });
+  // Update log status
+  await updateOmiWebhookLog(log.id, {
+    status: "processed",
+    processedAt: new Date().toISOString(),
+  });
+  
+  res.json({ success: true, logId: log.id });
 });
 ```
 
 ### Adding New Chat Tools
 
-To expose new capabilities to Omi:
-
-1. Add tool definition to the manifest in `/.well-known/omi-tools.json`:
+To expose new capabilities to Omi, modify the manifest in `server/omi-routes.ts`:
 
 ```typescript
+// Find the /.well-known/omi-tools.json route and add to the tools array:
 {
   name: "new_tool_name",
-  description: "What this tool does",
+  description: "What this tool does - be descriptive for the AI",
   endpoint: "/api/omi/new-tool",
   method: "POST",
   parameters: {
     properties: {
-      param1: { type: "string", description: "..." }
+      param1: { type: "string", description: "Parameter description" }
     },
     required: ["param1"]
   },
@@ -527,19 +666,56 @@ To expose new capabilities to Omi:
 }
 ```
 
-2. Implement the endpoint:
+Then implement the endpoint:
 
 ```typescript
 app.post("/api/omi/new-tool", async (req, res) => {
-  const { param1 } = req.body;
-  const result = await doSomething(param1);
-  res.json({ result });
+  const { uid, app_id, tool_name, param1 } = req.body;
+  
+  try {
+    const result = await doSomething(param1);
+    // Return in Omi Chat Tools format
+    res.json({ result: result });
+  } catch (error) {
+    res.json({ error: error.message });
+  }
 });
 ```
 
-### Custom Extraction
+### Custom Extraction Categories
 
-To modify what ZEKE extracts from conversations, edit the `extractFromTranscript()` function in `server/omi-routes.ts`. The system prompt defines extraction categories.
+To modify what ZEKE extracts from conversations, edit `extractFromTranscript()` in `server/omi-routes.ts`:
+
+```typescript
+// The extraction is controlled by this system prompt (around line 83):
+const systemPrompt = `You are an AI assistant that extracts structured information...
+
+Extract the following from the transcript:
+1. PEOPLE: Names mentioned, how they were discussed, inferred relationships
+2. TOPICS: Key subjects discussed with relevance
+3. ACTION ITEMS: Tasks, commitments, things to do
+4. INSIGHTS: Important facts, decisions, preferences, goals
+// Add your custom extraction category here
+5. CUSTOM_CATEGORY: Your extraction instructions
+`;
+
+// Then update the extractionSchema Zod validator to include your new field
+```
+
+### Adding New Wake Word Commands
+
+To add new command patterns for voice activation, modify `detectCommands()` in `server/omi-routes.ts`:
+
+```typescript
+// Action patterns are defined around line 280:
+const actionPatterns = [
+  /remind me/i,
+  /text\s+\w+/i,
+  /add to grocery/i,
+  // Add your new pattern:
+  /your new pattern/i,
+];
+```
 
 ---
 
@@ -548,35 +724,83 @@ To modify what ZEKE extracts from conversations, edit the `extractFromTranscript
 ### Manual Testing
 
 ```bash
-# Test memory webhook
+# 1. Test manifest endpoint (should return tool definitions)
+curl -s https://zekeai.replit.app/.well-known/omi-tools.json | jq .
+
+# 2. Test ZEKE chat tool (simulates Omi invoking the tool)
+curl -X POST https://zekeai.replit.app/api/omi/zeke \
+  -H "Content-Type: application/json" \
+  -d '{
+    "uid": "test-user",
+    "app_id": "zeke-app",
+    "tool_name": "ask_zeke",
+    "message": "What is the weather today?"
+  }'
+# Expected: { "result": "..." }
+
+# 3. Test memory webhook (simulates Omi sending a completed memory)
 curl -X POST https://zekeai.replit.app/api/omi/memory-trigger \
   -H "Content-Type: application/json" \
   -d '{
     "session_id": "test-123",
     "memory": {
       "id": "mem-456",
-      "transcript": "Hey Zeke, remind me to call Mom tomorrow"
+      "transcript": "I talked to Sarah about the project deadline. She said we need to finish by Friday.",
+      "transcript_segments": [
+        {"text": "I talked to Sarah about the project deadline.", "speaker": "SPEAKER_00", "speaker_id": 0, "is_user": true, "start": 0, "end": 3},
+        {"text": "She said we need to finish by Friday.", "speaker": "SPEAKER_00", "speaker_id": 0, "is_user": true, "start": 3, "end": 6}
+      ],
+      "structured": {
+        "title": "Project Discussion",
+        "overview": "Discussed project timeline with Sarah"
+      }
     }
   }'
+# Expected: { "success": true, "logId": "..." }
 
-# Test ZEKE chat tool
-curl -X POST https://zekeai.replit.app/api/omi/zeke \
+# 4. Test transcript webhook (simulates real-time segments)
+curl -X POST https://zekeai.replit.app/api/omi/transcript \
   -H "Content-Type: application/json" \
   -d '{
-    "uid": "test-user",
-    "message": "What meetings do I have today?"
+    "session_id": "live-session-789",
+    "segments": [
+      {"text": "Hey Zeke, remind me to buy groceries", "speaker": "SPEAKER_00", "speaker_id": 0, "is_user": true, "start": 0, "end": 3}
+    ]
   }'
+# Expected: { "success": true, "logId": "...", "segmentCount": 1 }
 
-# Check manifest
-curl https://zekeai.replit.app/.well-known/omi-tools.json
+# 5. Test query endpoint (read-only mode)
+curl -X POST https://zekeai.replit.app/api/omi/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What do I know about Sarah?", "limit": 5}'
+# Expected: { "answer": "...", "relevantMemories": [...], "relatedPeople": [...] }
+
+# 6. Test query endpoint with action execution
+curl -X POST https://zekeai.replit.app/api/omi/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Add milk to my grocery list", "executeActions": true}'
+# Expected: { "answer": "...", "actionExecuted": true, "executedTools": ["add_grocery_item"] }
 ```
 
 ### Viewing Logs
 
 ```bash
-# Get recent webhook logs
-curl https://zekeai.replit.app/api/omi/logs?limit=10
+# Get recent webhook logs (for debugging)
+curl -s https://zekeai.replit.app/api/omi/logs?limit=10 | jq .
+
+# Get specific log by ID
+curl -s https://zekeai.replit.app/api/omi/logs/LOG_ID_HERE | jq .
 ```
+
+### Validation Checklist
+
+After making changes to the Omi integration:
+
+1. **Manifest accessible**: `curl /.well-known/omi-tools.json` returns valid JSON
+2. **Chat tool responds**: POST to `/api/omi/zeke` returns `{ result: "..." }`
+3. **Memory webhook logs**: POST to `/api/omi/memory-trigger` creates log entry
+4. **Extraction works**: Check logs for `extractedPeople`, `extractedTopics`, etc.
+5. **Commands detected**: If `OMI_COMMANDS_ENABLED=true`, verify `detectedCommands` in logs
 
 ---
 
