@@ -35,7 +35,8 @@ interface Entity {
   createdAt: string;
 }
 
-interface EntityWithConnections extends Entity {
+interface EntityWithConnections {
+  entity: Entity;
   connectionCount: number;
 }
 
