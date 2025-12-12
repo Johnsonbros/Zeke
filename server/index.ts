@@ -39,6 +39,23 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
+// Health and readiness endpoints (no auth, no logging, crash-resistant)
+app.get("/healthz", (_req, res) => {
+  try {
+    res.json({ ok: true, service: process.env.APP_NAME || "zeke" });
+  } catch {
+    res.json({ ok: true, service: "zeke" });
+  }
+});
+
+app.get("/readyz", (_req, res) => {
+  try {
+    res.json({ ready: true });
+  } catch {
+    res.json({ ready: true });
+  }
+});
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
