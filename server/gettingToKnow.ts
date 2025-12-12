@@ -152,7 +152,7 @@ export async function detectMemoryCorrection(
   try {
     const client = getOpenAIClient();
     const response = await client.chat.completions.create({
-      model: "gpt-5.1",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",

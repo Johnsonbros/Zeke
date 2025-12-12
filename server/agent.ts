@@ -929,7 +929,7 @@ async function generateConversationTitle(userMessage: string): Promise<string> {
   try {
     const client = getOpenAIClient();
     const response = await client.chat.completions.create({
-      model: "gpt-5.1",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -959,7 +959,7 @@ async function extractMemory(
   try {
     const client = getOpenAIClient();
     const response = await client.chat.completions.create({
-      model: "gpt-5.1",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -1201,7 +1201,7 @@ export async function chat(
       iterations++;
 
       const response = await client.chat.completions.create({
-        model: "gpt-5.1",
+        model: "gpt-4o",
         messages,
         tools: toolDefinitions,
         tool_choice: "auto",
@@ -1229,7 +1229,7 @@ export async function chat(
           console.log("Response truncated due to length - retrying with more context");
           // Try to get a response without tool calls
           const retryResponse = await client.chat.completions.create({
-            model: "gpt-5.1",
+            model: "gpt-4o",
             messages: [...messages, { role: "assistant", content: null, tool_calls: [] } as any],
             max_completion_tokens: 2048,
           });
