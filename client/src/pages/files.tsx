@@ -64,6 +64,7 @@ import {
   FileType,
   Loader2,
   Home,
+  Menu,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -392,6 +393,7 @@ export default function FilesPage() {
   const [editingFolder, setEditingFolder] = useState<FolderType | null>(null);
   const [deletingFolder, setDeletingFolder] = useState<FolderType | null>(null);
   const [deletingDocument, setDeletingDocument] = useState<Document | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const { data: folderTree, isLoading: foldersLoading } = useQuery<FolderWithChildren[]>({
     queryKey: ["/api/folders/tree"],
@@ -535,12 +537,34 @@ export default function FilesPage() {
   }
 
   return (
-    <div className="h-full flex">
-      <div className="w-64 border-r flex flex-col bg-sidebar">
+    <div className="h-full flex relative">
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+          data-testid="sidebar-overlay"
+        />
+      )}
+      
+      <div className={`
+        fixed inset-y-0 left-0 z-50 w-64 border-r flex flex-col bg-sidebar transform transition-transform duration-200 ease-in-out
+        md:relative md:transform-none md:z-0
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}>
         <div className="p-3 border-b">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-sm">Files</h2>
             <div className="flex items-center gap-1">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-7 w-7 md:hidden" 
+                onClick={() => setIsSidebarOpen(false)}
+                data-testid="button-close-sidebar"
+                aria-label="Close folders sidebar"
+              >
+                <X className="h-4 w-4" />
+              </Button>
               <Dialog open={isNewFolderOpen} onOpenChange={setIsNewFolderOpen}>
                 <DialogTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-7 w-7" data-testid="button-new-folder">
@@ -673,6 +697,7 @@ export default function FilesPage() {
               onClick={() => {
                 setSelectedFolderId(null);
                 setSearchQuery("");
+                setIsSidebarOpen(false);
               }}
               data-testid="folder-root"
             >
@@ -693,6 +718,7 @@ export default function FilesPage() {
                   onSelectFolder={(id) => {
                     setSelectedFolderId(id);
                     setSearchQuery("");
+                    setIsSidebarOpen(false);
                   }}
                   onEditFolder={setEditingFolder}
                   onDeleteFolder={setDeletingFolder}
@@ -703,25 +729,36 @@ export default function FilesPage() {
         </ScrollArea>
       </div>
 
-      <div className="flex-1 flex flex-col">
-        <div className="p-4 border-b">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-semibold">
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="p-3 md:p-4 border-b">
+          <div className="flex items-center gap-2 md:gap-4">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="md:hidden shrink-0"
+              onClick={() => setIsSidebarOpen(true)}
+              data-testid="button-open-sidebar"
+              aria-label="Open folders sidebar"
+              aria-expanded={isSidebarOpen}
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-lg md:text-xl font-semibold truncate">
                 {searchQuery ? `Search: "${searchQuery}"` : selectedFolderId ? folderTree?.find(f => f.id === selectedFolderId)?.name || "Folder" : "All Files"}
               </h1>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs md:text-sm text-muted-foreground">
                 {documents?.length || 0} document{documents?.length !== 1 ? "s" : ""}
               </p>
             </div>
-            <Button onClick={() => setIsNewDocumentOpen(true)} data-testid="button-create-document">
-              <Plus className="h-4 w-4 mr-2" />
-              New Document
+            <Button onClick={() => setIsNewDocumentOpen(true)} data-testid="button-create-document" className="shrink-0">
+              <Plus className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">New Document</span>
             </Button>
           </div>
         </div>
         <ScrollArea className="flex-1">
-          <div className="p-4 space-y-2">
+          <div className="p-3 md:p-4 space-y-2">
             {documentsLoading ? (
               <>
                 <Skeleton className="h-16 w-full" />
