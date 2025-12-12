@@ -16,7 +16,8 @@
     "lint": "npm run lint:bidi",
     "test": "npm run typecheck",
     "db:init": "tsx script/db-init.ts",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "smoke": "tsx script/smoke.ts"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.27.0",
