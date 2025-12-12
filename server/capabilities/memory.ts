@@ -10,7 +10,7 @@ import {
   getMemoryOverview,
   generateDailySummary,
   getOmiSummaryByDate,
-  type OmiMemory,
+  type OmiMemoryData,
 } from "../omi";
 import { createMemoryWithEmbedding } from "../semanticMemory";
 
@@ -246,8 +246,6 @@ export async function executeMemoryTool(
       try {
         const memories = await searchMemories(query, {
           limit: limit ?? 5,
-          date,
-          isStarred: starred_only,
         });
         
         if (memories.length === 0) {
@@ -258,13 +256,12 @@ export async function executeMemoryTool(
           });
         }
         
-        const results = memories.map((mem: OmiMemory) => ({
+        const results = memories.map((mem: OmiMemoryData) => ({
           id: mem.id,
-          title: mem.title,
-          startTime: mem.startTime,
-          endTime: mem.endTime,
-          isStarred: mem.isStarred,
-          excerpt: mem.markdown?.substring(0, 500) || extractConversationContent(mem).substring(0, 500),
+          title: mem.structured?.title || 'Memory',
+          startTime: mem.startedAt,
+          endTime: mem.finishedAt,
+          excerpt: mem.structured?.overview?.substring(0, 500) || extractConversationContent(mem).substring(0, 500),
         }));
         
         return JSON.stringify({
@@ -289,7 +286,7 @@ export async function executeMemoryTool(
       };
       
       try {
-        let memories: OmiMemory[];
+        let memories: OmiMemoryData[];
         
         if (today_only) {
           memories = await getTodaysMemories(limit ?? 10);
@@ -307,13 +304,12 @@ export async function executeMemoryTool(
           });
         }
         
-        const results = memories.map((mem: OmiMemory) => ({
+        const results = memories.map((mem: OmiMemoryData) => ({
           id: mem.id,
-          title: mem.title,
-          startTime: mem.startTime,
-          endTime: mem.endTime,
-          isStarred: mem.isStarred,
-          excerpt: mem.markdown?.substring(0, 300) || extractConversationContent(mem).substring(0, 300),
+          title: mem.structured?.title || 'Memory',
+          startTime: mem.startedAt,
+          endTime: mem.finishedAt,
+          excerpt: mem.structured?.overview?.substring(0, 300) || extractConversationContent(mem).substring(0, 300),
         }));
         
         return JSON.stringify({
@@ -424,7 +420,7 @@ export async function executeMemoryTool(
           cached: result.cached,
           date: summary.date,
           title: summary.summaryTitle,
-          conversationCount: summary.lifelogCount,
+          conversationCount: summary.memoryCount,
           totalDurationMinutes: summary.totalDurationMinutes,
           keyDiscussions,
           actionItems,
@@ -482,7 +478,7 @@ export async function executeMemoryTool(
           exists: true,
           date: summary.date,
           title: summary.summaryTitle,
-          conversationCount: summary.lifelogCount,
+          conversationCount: summary.memoryCount,
           totalDurationMinutes: summary.totalDurationMinutes,
           keyDiscussions,
           actionItems,

@@ -160,6 +160,7 @@ async function fetchFromOmi<T>(endpoint: string, params?: Record<string, string 
 
 /**
  * Get memories from Omi API
+ * Updated to use the correct endpoint: /v1/dev/user/memories
  */
 export async function getMemories(params: GetMemoriesParams = {}): Promise<OmiMemoryData[]> {
   const queryParams: Record<string, string | number | boolean | undefined> = {
@@ -167,8 +168,19 @@ export async function getMemories(params: GetMemoriesParams = {}): Promise<OmiMe
     offset: params.offset ?? 0,
   };
   
-  const response = await fetchFromOmi<OmiMemoriesResponse>("/v1/memories", queryParams);
-  return response.memories || [];
+  // Try the developer endpoint first (v1/dev/user/memories)
+  // Fall back to v1/memories if that fails
+  try {
+    const response = await fetchFromOmi<OmiMemoryData[]>("/v1/dev/user/memories", queryParams);
+    return response || [];
+  } catch (error: any) {
+    // If dev endpoint fails, try legacy endpoint
+    if (error.message?.includes('404')) {
+      const response = await fetchFromOmi<OmiMemoriesResponse>("/v1/memories", queryParams);
+      return response.memories || [];
+    }
+    throw error;
+  }
 }
 
 /**
@@ -176,9 +188,20 @@ export async function getMemories(params: GetMemoriesParams = {}): Promise<OmiMe
  */
 export async function getMemory(id: string): Promise<OmiMemoryData | null> {
   try {
-    const response = await fetchFromOmi<OmiMemoryResponse>(`/v1/memories/${id}`);
-    return response.memory;
-  } catch (error) {
+    // Try dev endpoint first
+    const response = await fetchFromOmi<OmiMemoryData>(`/v1/dev/user/memories/${id}`);
+    return response;
+  } catch (error: any) {
+    // Fall back to legacy endpoint
+    if (error.message?.includes('404')) {
+      try {
+        const response = await fetchFromOmi<OmiMemoryResponse>(`/v1/memories/${id}`);
+        return response.memory;
+      } catch {
+        console.error(`Failed to get memory ${id}:`, error);
+        return null;
+      }
+    }
     console.error(`Failed to get memory ${id}:`, error);
     return null;
   }
