@@ -11,6 +11,7 @@ import { initializeOmiDigest } from "./omiDigest";
 import { initializeOmiProcessor } from "./jobs/omiProcessor";
 import { initializePredictionScheduler } from "./predictionScheduler";
 import { startKVMaintenance } from "./kvIndex";
+import { renderDocs } from "./docs";
 
 export { log };
 
@@ -53,6 +54,17 @@ app.get("/readyz", (_req, res) => {
     res.json({ ready: true });
   } catch {
     res.json({ ready: true });
+  }
+});
+
+// Internal documentation endpoint (no auth required)
+app.get("/docs", (_req, res) => {
+  try {
+    const html = renderDocs();
+    res.setHeader("Content-Type", "text/html");
+    res.send(html);
+  } catch {
+    res.status(500).send("Failed to render documentation");
   }
 });
 
