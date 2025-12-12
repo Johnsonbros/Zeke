@@ -335,7 +335,7 @@ INTENT_PATTERNS: list[PatternRule] = [
         patterns=[
             r"\b(read|open|show\s+me)\s+(the\s+)?file\b",
         ],
-        category=CapabilityCategory.PROFILE,
+        category=CapabilityCategory.DOCUMENTS,
         intent_type=IntentType.READ_FILE,
         confidence=0.85,
     ),
@@ -343,8 +343,89 @@ INTENT_PATTERNS: list[PatternRule] = [
         patterns=[
             r"\b(write|save|create)\s+(a\s+)?file\b",
         ],
-        category=CapabilityCategory.PROFILE,
+        category=CapabilityCategory.DOCUMENTS,
         intent_type=IntentType.WRITE_FILE,
+        confidence=0.85,
+    ),
+    PatternRule(
+        patterns=[
+            r"\b(what('?s|\s+is)|show|list)\s+(in\s+)?(my\s+)?(files?|documents?|notes?|folders?)\b",
+            r"\b(list|show|get)\s+(all\s+)?(my\s+)?(files?|documents?|notes?|folders?)\b",
+            r"\bwhat\s+do\s+i\s+have\s+(saved|stored)\b",
+        ],
+        category=CapabilityCategory.DOCUMENTS,
+        intent_type=IntentType.LIST_DOCUMENTS,
+        confidence=0.9,
+    ),
+    PatternRule(
+        patterns=[
+            r"\b(read|open|show|get|view)\s+(the\s+)?(document|note|file)\b",
+            r"\bwhat('?s|\s+is)\s+in\s+(the\s+)?(document|note|file)\b",
+        ],
+        category=CapabilityCategory.DOCUMENTS,
+        intent_type=IntentType.READ_DOCUMENT,
+        confidence=0.85,
+    ),
+    PatternRule(
+        patterns=[
+            r"\b(create|make|new|start)\s+(a\s+)?(document|note|file)\b",
+            r"\bsave\s+(this|that|the)\s+(as|to)\s+(a\s+)?(document|note|file)\b",
+            r"\bwrite\s+(this|that)\s+down\b",
+            r"\bsave\s+(this|these)\s+(ideas?|thoughts?|notes?|recommendations?)\b",
+        ],
+        category=CapabilityCategory.DOCUMENTS,
+        intent_type=IntentType.CREATE_DOCUMENT,
+        confidence=0.9,
+    ),
+    PatternRule(
+        patterns=[
+            r"\b(update|edit|modify|change|add\s+to)\s+(the\s+)?(document|note|file)\b",
+            r"\bappend\s+to\s+(the\s+)?(document|note|file)\b",
+        ],
+        category=CapabilityCategory.DOCUMENTS,
+        intent_type=IntentType.UPDATE_DOCUMENT,
+        confidence=0.85,
+    ),
+    PatternRule(
+        patterns=[
+            r"\b(delete|remove)\s+(the\s+)?(document|note|file)\b",
+        ],
+        category=CapabilityCategory.DOCUMENTS,
+        intent_type=IntentType.DELETE_DOCUMENT,
+        confidence=0.85,
+    ),
+    PatternRule(
+        patterns=[
+            r"\b(search|find|look\s+for)\s+(in\s+)?(my\s+)?(documents?|notes?|files?)\b",
+            r"\bfind\s+(the|that)\s+(document|note|file)\s+(about|with|containing)\b",
+        ],
+        category=CapabilityCategory.DOCUMENTS,
+        intent_type=IntentType.SEARCH_DOCUMENTS,
+        confidence=0.9,
+    ),
+    PatternRule(
+        patterns=[
+            r"\b(create|make|new)\s+(a\s+)?folder\b",
+        ],
+        category=CapabilityCategory.DOCUMENTS,
+        intent_type=IntentType.CREATE_FOLDER,
+        confidence=0.9,
+    ),
+    PatternRule(
+        patterns=[
+            r"\b(delete|remove)\s+(the\s+)?folder\b",
+        ],
+        category=CapabilityCategory.DOCUMENTS,
+        intent_type=IntentType.DELETE_FOLDER,
+        confidence=0.85,
+    ),
+    PatternRule(
+        patterns=[
+            r"\b(move|relocate|transfer)\s+(the\s+)?(document|note|file)\b",
+            r"\bput\s+(the\s+)?(document|note|file)\s+in(to)?\b",
+        ],
+        category=CapabilityCategory.DOCUMENTS,
+        intent_type=IntentType.MOVE_DOCUMENT,
         confidence=0.85,
     ),
     PatternRule(

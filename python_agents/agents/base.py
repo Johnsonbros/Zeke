@@ -133,6 +133,7 @@ class CapabilityCategory(str, Enum):
     SYSTEM = "system"
     OMI = "omi"
     PREDICTION = "prediction"
+    DOCUMENTS = "documents"
 
 
 class IntentType(str, Enum):
@@ -169,6 +170,15 @@ class IntentType(str, Enum):
     PROFILE_QUERY = "profile_query"
     READ_FILE = "read_file"
     WRITE_FILE = "write_file"
+    LIST_DOCUMENTS = "list_documents"
+    READ_DOCUMENT = "read_document"
+    CREATE_DOCUMENT = "create_document"
+    UPDATE_DOCUMENT = "update_document"
+    DELETE_DOCUMENT = "delete_document"
+    SEARCH_DOCUMENTS = "search_documents"
+    CREATE_FOLDER = "create_folder"
+    DELETE_FOLDER = "delete_folder"
+    MOVE_DOCUMENT = "move_document"
     MORNING_BRIEFING = "morning_briefing"
     STATUS_CHECK = "status_check"
     HELP = "help"

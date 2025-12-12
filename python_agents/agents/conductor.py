@@ -70,8 +70,17 @@ INTENT_TO_CATEGORY: dict[IntentType, CapabilityCategory] = {
     IntentType.CLEAR_LIST: CapabilityCategory.GROCERY,
     IntentType.PREFERENCE_UPDATE: CapabilityCategory.PROFILE,
     IntentType.PROFILE_QUERY: CapabilityCategory.PROFILE,
-    IntentType.READ_FILE: CapabilityCategory.PROFILE,
-    IntentType.WRITE_FILE: CapabilityCategory.PROFILE,
+    IntentType.READ_FILE: CapabilityCategory.DOCUMENTS,
+    IntentType.WRITE_FILE: CapabilityCategory.DOCUMENTS,
+    IntentType.LIST_DOCUMENTS: CapabilityCategory.DOCUMENTS,
+    IntentType.READ_DOCUMENT: CapabilityCategory.DOCUMENTS,
+    IntentType.CREATE_DOCUMENT: CapabilityCategory.DOCUMENTS,
+    IntentType.UPDATE_DOCUMENT: CapabilityCategory.DOCUMENTS,
+    IntentType.DELETE_DOCUMENT: CapabilityCategory.DOCUMENTS,
+    IntentType.SEARCH_DOCUMENTS: CapabilityCategory.DOCUMENTS,
+    IntentType.CREATE_FOLDER: CapabilityCategory.DOCUMENTS,
+    IntentType.DELETE_FOLDER: CapabilityCategory.DOCUMENTS,
+    IntentType.MOVE_DOCUMENT: CapabilityCategory.DOCUMENTS,
     IntentType.MORNING_BRIEFING: CapabilityCategory.SYSTEM,
     IntentType.STATUS_CHECK: CapabilityCategory.SYSTEM,
     IntentType.HELP: CapabilityCategory.SYSTEM,
@@ -94,6 +103,7 @@ CAPABILITY_TO_AGENT: dict[CapabilityCategory, list[AgentId]] = {
     CapabilityCategory.SYSTEM: [AgentId.SAFETY_AUDITOR, AgentId.OPS_PLANNER, AgentId.MEMORY_CURATOR],
     CapabilityCategory.OMI: [AgentId.OMI_ANALYST],
     CapabilityCategory.PREDICTION: [AgentId.FORESIGHT_STRATEGIST],
+    CapabilityCategory.DOCUMENTS: [AgentId.PERSONAL_DATA_STEWARD],
 }
 
 
@@ -246,8 +256,8 @@ INTENT_CLASSIFICATION_SCHEMA = {
     "properties": {
         "category": {
             "type": "string",
-            "enum": ["communication", "scheduling", "task_management", "information", "memory", "omi", "grocery", "profile", "system"],
-            "description": "The high-level intent category. Use 'omi' for lifelog queries about pendant recordings and conversations."
+            "enum": ["communication", "scheduling", "task_management", "information", "memory", "omi", "grocery", "profile", "system", "documents"],
+            "description": "The high-level intent category. Use 'omi' for lifelog queries about pendant recordings and conversations. Use 'documents' for file/folder/note management."
         },
         "intent_type": {
             "type": "string",
@@ -259,6 +269,7 @@ INTENT_CLASSIFICATION_SCHEMA = {
                 "recall_fact", "search_history", "lifelog_query", "save_memory",
                 "add_item", "check_list", "mark_purchased", "remove_item", "clear_list",
                 "preference_update", "profile_query", "read_file", "write_file",
+                "list_documents", "read_document", "create_document", "update_document", "delete_document", "search_documents", "create_folder", "delete_folder", "move_document",
                 "morning_briefing", "status_check", "help", "unknown"
             ],
             "description": "The specific intent type within the category"
@@ -403,7 +414,8 @@ Categories and their intent types:
 - information: search, research, weather, time
 - memory: recall_fact, search_history, lifelog_query, save_memory
 - grocery: add_item, check_list, mark_purchased, remove_item, clear_list
-- profile: preference_update, profile_query, read_file, write_file
+- profile: preference_update, profile_query
+- documents: list_documents, read_document, create_document, update_document, delete_document, search_documents, create_folder, delete_folder, move_document, read_file, write_file
 - system: morning_briefing, status_check, help, unknown
 
 Extract relevant entities from the message.
