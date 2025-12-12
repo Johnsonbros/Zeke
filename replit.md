@@ -28,6 +28,7 @@ Key technical implementations and features include:
 - **Omi Pendant Integration**: Connects to the Omi API for accessing and semantically searching recorded conversations.
 - **Voice Pipeline**: Processes voice input from Omi Pendant lifelogs through the same agent pipeline as SMS/web, with wake word detection.
 - **Omi-GPS Deep Integration**: Correlates lifelog timestamps with GPS location history to enrich memories with location context and detect activity patterns.
+- **Location Intelligence Service**: Enhanced agentic location awareness with Overland GPS integration. Features: calendar-GPS correlation for job site arrival detection, real-time movement classification (driving/walking/stationary), GPS health monitoring with freshness tracking, proactive context injection into AI responses. API endpoint: `GET /api/location/intelligence`. Supports automatic detection when user arrives at calendar appointment locations by matching saved places with event addresses.
 - **Automatic People Tracking System**: Extracts and tracks relationships, updating contacts and linking memories.
 - **Food Preference Intelligence System**: Tracks preferences, restrictions, and recipes, with AI-powered generation and grocery integration.
 - **Smart Notification Batching**: Intelligent SMS notification system that queues, batches, and respects quiet hours, with urgent bypass.

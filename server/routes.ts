@@ -865,6 +865,11 @@ export async function registerRoutes(
     console.log("[LocationCheckIn] Monitor auto-started on server initialization");
   }
 
+  // Start location intelligence health monitoring
+  const { startHealthMonitoring } = await import("./locationIntelligence");
+  startHealthMonitoring(10); // Check every 10 minutes
+  console.log("[LocationIntelligence] Health monitoring initialized");
+
   // Health check endpoint for Python agents bridge
   app.get("/api/health", (_req, res) => {
     res.json({ status: "healthy", service: "zeke-node" });
@@ -5094,6 +5099,56 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Analyze patterns error:", error);
       res.status(500).json({ error: error.message || "Failed to analyze patterns" });
+    }
+  });
+
+  // GET /api/location/intelligence - Get enhanced location intelligence with job site detection
+  app.get("/api/location/intelligence", async (req, res) => {
+    try {
+      const { getLocationContext, getQuickLocationSummary } = await import("./locationIntelligence");
+      const context = await getLocationContext();
+      const summary = await getQuickLocationSummary();
+      
+      res.json({
+        summary,
+        gpsHealth: context.gpsHealthStatus,
+        lastUpdateAge: context.lastUpdateAge,
+        currentActivity: context.currentActivity,
+        currentState: context.currentState ? {
+          latitude: context.currentState.latitude,
+          longitude: context.currentState.longitude,
+          accuracy: context.currentState.accuracy,
+          isMoving: context.currentState.isMoving,
+          movementType: context.currentState.movementType,
+          speed: context.currentState.speed,
+          heading: context.currentState.heading,
+          dataQuality: context.currentState.dataQuality,
+          dataFreshness: context.currentState.dataFreshness,
+          source: context.currentState.source,
+        } : null,
+        nearbyPlaces: context.nearbyPlaces.map(p => ({
+          id: p.place.id,
+          name: p.place.name,
+          category: p.place.category,
+          distanceMeters: p.distanceMeters,
+          isAt: p.isAt,
+        })),
+        nearbyAppointments: context.nearbyAppointments.map(a => ({
+          eventId: a.eventId,
+          eventTitle: a.eventTitle,
+          eventLocation: a.eventLocation,
+          eventStart: a.eventStart.toISOString(),
+          eventEnd: a.eventEnd.toISOString(),
+          distanceMeters: a.distanceMeters === Infinity ? null : a.distanceMeters,
+          isArrived: a.isArrived,
+          arrivalConfidence: a.arrivalConfidence,
+          hasCoordinates: a.estimatedCoordinates !== null,
+        })),
+        contextSummary: context.contextSummary,
+      });
+    } catch (error: any) {
+      console.error("Get location intelligence error:", error);
+      res.status(500).json({ error: error.message || "Failed to get location intelligence" });
     }
   });
 

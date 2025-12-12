@@ -54,6 +54,11 @@ import {
   findBridgingEntities,
   getKnowledgeGraphStats 
 } from "./knowledgeGraph";
+import {
+  getLocationContext,
+  getLocationContextForAI,
+  getCurrentLocationState,
+} from "./locationIntelligence";
 import type { GroceryItem, Task, Contact, MemoryNote, Message, Entity, EntityDomain, LifelogLocation, ActivityType } from "@shared/schema";
 
 /**
@@ -658,6 +663,58 @@ export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): 
     if (starred.length > 0) {
       const starredList = starred.slice(0, 5).map(p => `- ${p.name} (${p.category || "starred"})`).join("\n");
       parts.push(`### ⭐ Favorite Places\n${starredList}`);
+    }
+
+    // Enhanced location intelligence - job site detection and calendar correlation
+    try {
+      const locationCtx = await getLocationContext();
+      
+      // Add movement/transit status
+      if (locationCtx.currentState) {
+        const state = locationCtx.currentState;
+        if (state.isMoving && state.speed !== null && state.speed > 2) {
+          const mph = Math.round(state.speed * 2.237);
+          parts.push(`### 🚗 In Transit\nDriving at ~${mph} mph`);
+        }
+      }
+      
+      // Job site arrival detection
+      const arrivedAppointment = locationCtx.nearbyAppointments.find(a => a.isArrived);
+      if (arrivedAppointment) {
+        const eventTime = arrivedAppointment.eventStart.toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+          timeZone: "America/New_York",
+        });
+        parts.push(`### 🎯 Job Site Arrival\n**At**: ${arrivedAppointment.eventTitle}\n**Location**: ${arrivedAppointment.eventLocation}\n**Scheduled**: ${eventTime}`);
+      }
+      
+      // Upcoming job sites with travel context
+      const upcomingJobs = locationCtx.nearbyAppointments.filter(a => 
+        !a.isArrived && 
+        a.estimatedCoordinates && 
+        a.eventStart.getTime() > Date.now() &&
+        a.eventStart.getTime() < Date.now() + 3 * 60 * 60 * 1000
+      );
+      
+      if (upcomingJobs.length > 0) {
+        const jobsList = upcomingJobs.slice(0, 3).map(job => {
+          const minsUntil = Math.round((job.eventStart.getTime() - Date.now()) / 60000);
+          const distanceKm = (job.distanceMeters / 1000).toFixed(1);
+          return `- ${job.eventTitle} (${distanceKm}km away, starts in ${minsUntil} min)`;
+        }).join("\n");
+        parts.push(`### 📍 Upcoming Job Sites\n${jobsList}`);
+      }
+      
+      // GPS health status
+      if (locationCtx.gpsHealthStatus === "degraded") {
+        parts.push(`*GPS data is ${Math.round(locationCtx.lastUpdateAge / 60)} min old*`);
+      } else if (locationCtx.gpsHealthStatus === "offline") {
+        parts.push(`*GPS tracking appears offline*`);
+      }
+    } catch (locError) {
+      console.error("Error getting location intelligence:", locError);
     }
 
     // Recent location-tagged conversations
