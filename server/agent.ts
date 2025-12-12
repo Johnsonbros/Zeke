@@ -220,7 +220,19 @@ export function getAdminPermissions(): UserPermissions {
   };
 }
 
-// Use gpt-4o as the default model
+// Default model - configurable via OPENAI_MODEL env var
+// Use "gpt-4o" as the stable default, can be updated to newer models like "gpt-4.1" when available
+const DEFAULT_MODEL = "gpt-4o";
+const DEFAULT_MINI_MODEL = "gpt-4o-mini";
+
+export function getOpenAIModel(): string {
+  return process.env.OPENAI_MODEL || DEFAULT_MODEL;
+}
+
+export function getOpenAIMiniModel(): string {
+  return process.env.OPENAI_MINI_MODEL || DEFAULT_MINI_MODEL;
+}
+
 // Lazily initialize OpenAI client to allow app to start without API key
 let openai: OpenAI | null = null;
 
@@ -929,7 +941,7 @@ async function generateConversationTitle(userMessage: string): Promise<string> {
   try {
     const client = getOpenAIClient();
     const response = await client.chat.completions.create({
-      model: "gpt-4o",
+      model: getOpenAIModel(),
       messages: [
         {
           role: "system",
@@ -959,7 +971,7 @@ async function extractMemory(
   try {
     const client = getOpenAIClient();
     const response = await client.chat.completions.create({
-      model: "gpt-4o",
+      model: getOpenAIModel(),
       messages: [
         {
           role: "system",
@@ -1201,7 +1213,7 @@ export async function chat(
       iterations++;
 
       const response = await client.chat.completions.create({
-        model: "gpt-4o",
+        model: getOpenAIModel(),
         messages,
         tools: toolDefinitions,
         tool_choice: "auto",
@@ -1229,7 +1241,7 @@ export async function chat(
           console.log("Response truncated due to length - retrying with more context");
           // Try to get a response without tool calls
           const retryResponse = await client.chat.completions.create({
-            model: "gpt-4o",
+            model: getOpenAIModel(),
             messages: [...messages, { role: "assistant", content: null, tool_calls: [] } as any],
             max_completion_tokens: 2048,
           });

@@ -50,6 +50,8 @@ INTERNAL_BRIDGE_KEY = "zeke-internal-bridge-2025"
 [userenv.shared]
 MASTER_ADMIN_PHONE = "6176868763"
 ELEVENLABS_VOICE_ID = "7ZxKpU6EbWxrhZgWoRDv"
+OPENAI_MODEL = "gpt-4o"
+OPENAI_MINI_MODEL = "gpt-4o-mini"
 
 [[ports]]
 localPort = 5000

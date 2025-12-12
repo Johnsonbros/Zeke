@@ -5,6 +5,7 @@ import {
   getAllMemoryNotes
 } from "./db";
 import OpenAI from "openai";
+import { getOpenAIModel, getOpenAIMiniModel } from "./agent";
 
 let openai: OpenAI | null = null;
 
@@ -47,7 +48,7 @@ export async function generateContextualQuestion(): Promise<string> {
     
     const client = getOpenAIClient();
     const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: getOpenAIMiniModel(),
       messages: [
         {
           role: "system",
@@ -152,7 +153,7 @@ export async function detectMemoryCorrection(
   try {
     const client = getOpenAIClient();
     const response = await client.chat.completions.create({
-      model: "gpt-4o",
+      model: getOpenAIModel(),
       messages: [
         {
           role: "system",
