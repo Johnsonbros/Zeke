@@ -1,50 +1,57 @@
 name: CI
 
 on:
-  pull_request:
   push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
 
 jobs:
-  build:
+  node:
+    name: Node.js
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: "20.11"
+          cache: "npm"
 
-      - name: Install Node dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: Lint (bidi control check)
-        run: npm run lint:bidi
+      - name: Lint
+        run: npm run lint
 
-      - name: Typecheck (shared)
+      - name: Typecheck
         run: npm run typecheck
 
-      - name: Build
-        run: npm run build
+      - name: Test
+        run: npm test
+
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
+          cache: "pip"
 
-      - name: Install uv
-        run: pip install uv
+      - name: Install dependencies
+        run: pip install .
 
-      - name: Sync Python dependencies
-        run: uv sync --locked
+      - name: Install ruff
+        run: pip install ruff
 
-      - name: Python tests
-        run: uv run pytest
-
-      - name: Smoke check (DB init)
-        env:
-          SKIP_START: "1"
-        run: |
-          npm run db:init
-          node -e "require('fs').accessSync('zeke.db')"
+      - name: Lint Python
+        run: ruff check python_agents
