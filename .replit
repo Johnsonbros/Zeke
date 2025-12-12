@@ -9,7 +9,7 @@ packages = ["libxcrypt", "sqlite"]
 [deployment]
 deploymentTarget = "autoscale"
 build = ["npm", "run", "build"]
-run = ["npm", "run", "dev"]
+run = ["npm", "run", "start"]
 
 [env]
 PORT = "5000"
