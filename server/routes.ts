@@ -874,6 +874,48 @@ export async function registerRoutes(
   app.get("/api/health", (_req, res) => {
     res.json({ status: "healthy", service: "zeke-node" });
   });
+
+  // Detailed health check endpoint - verifies all critical services
+  app.get("/api/health/detailed", async (_req, res) => {
+    const checks: Record<string, { status: string; message?: string }> = {};
+    
+    // Check OpenAI API key
+    checks.openai = process.env.OPENAI_API_KEY 
+      ? { status: "ok", message: "API key configured" }
+      : { status: "error", message: "OPENAI_API_KEY not set" };
+    
+    // Check Twilio credentials
+    const twilioConfigured = process.env.TWILIO_ACCOUNT_SID && 
+                             process.env.TWILIO_AUTH_TOKEN && 
+                             process.env.TWILIO_PHONE_NUMBER;
+    checks.twilio = twilioConfigured
+      ? { status: "ok", message: "Credentials configured" }
+      : { status: "error", message: "Missing TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, or TWILIO_PHONE_NUMBER" };
+    
+    // Check master admin phone
+    checks.masterAdmin = process.env.MASTER_ADMIN_PHONE
+      ? { status: "ok", message: `Configured: ${process.env.MASTER_ADMIN_PHONE}` }
+      : { status: "warning", message: "MASTER_ADMIN_PHONE not set" };
+    
+    // Check database by trying a simple query
+    try {
+      const conversations = getAllConversations();
+      checks.database = { status: "ok", message: `${conversations.length} conversations` };
+    } catch (error: any) {
+      checks.database = { status: "error", message: error.message };
+    }
+    
+    // Overall status
+    const hasErrors = Object.values(checks).some(c => c.status === "error");
+    const overallStatus = hasErrors ? "unhealthy" : "healthy";
+    
+    res.json({
+      status: overallStatus,
+      service: "zeke-node",
+      timestamp: new Date().toISOString(),
+      checks
+    });
+  });
   
   // Cache statistics endpoint for monitoring
   app.get("/api/cache/stats", async (_req, res) => {
