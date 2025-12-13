@@ -55,6 +55,8 @@ OPENAI_MINI_MODEL = "gpt-4o-mini"
 APP_NAME = "zeke-family-assistant"
 APP_ENV = "development"
 LOG_LEVEL = "info"
+MORNING_BRIEFING_ENABLED = "true"
+MORNING_BRIEFING_PHONE = "+16176868763"
 
 [[ports]]
 localPort = 5000
