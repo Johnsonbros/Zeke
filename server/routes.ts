@@ -405,6 +405,7 @@ import {
   buildIdempotencyKeyFromPayload,
   getProcessedKeysCount,
 } from "./idempotency";
+import { analyzeMmsImage, type ImageAnalysisResult, type PersonPhotoAnalysisResult } from "./services/fileProcessor";
 
 // Initialize Twilio client for outbound SMS
 function getTwilioClient() {
@@ -1159,17 +1160,36 @@ export async function registerRoutes(
       // Log full request for debugging
       console.log("Twilio webhook received:", JSON.stringify(req.body));
       
-      const { Body: message, From: rawFromNumber, MessageSid: messageSid } = req.body;
+      const { 
+        Body: message, 
+        From: rawFromNumber, 
+        MessageSid: messageSid,
+        NumMedia: numMediaStr,
+      } = req.body;
       
-      if (!message || !rawFromNumber) {
-        console.log("Missing message or phone number in webhook");
+      const numMedia = parseInt(numMediaStr || "0", 10);
+      
+      // Allow messages without text body if they have media (MMS)
+      if ((!message && numMedia === 0) || !rawFromNumber) {
+        console.log("Missing message/media or phone number in webhook");
         return res.status(200).send("OK"); // Return 200 to prevent Twilio retries
       }
       
       // Format phone number consistently
       const fromNumber = formatPhoneNumber(rawFromNumber);
       const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER || "";
-      console.log(`SMS received from ${fromNumber}: ${message}`);
+      console.log(`SMS received from ${fromNumber}: ${message || "(no text)"}, Media: ${numMedia}`);
+      
+      // Extract MMS media URLs if present
+      const mediaUrls: Array<{ url: string; contentType: string }> = [];
+      for (let i = 0; i < numMedia; i++) {
+        const mediaUrl = req.body[`MediaUrl${i}`];
+        const mediaContentType = req.body[`MediaContentType${i}`];
+        if (mediaUrl) {
+          mediaUrls.push({ url: mediaUrl, contentType: mediaContentType || "image/jpeg" });
+          console.log(`[MMS] Media ${i}: ${mediaContentType} - ${mediaUrl}`);
+        }
+      }
       
       // Log inbound message
       logTwilioMessage({
@@ -1177,7 +1197,7 @@ export async function registerRoutes(
         source: "webhook",
         fromNumber: fromNumber,
         toNumber: twilioFromNumber,
-        body: message,
+        body: message || `[MMS: ${numMedia} attachment(s)]`,
         twilioSid: messageSid,
         status: "received",
       });
@@ -1190,17 +1210,85 @@ export async function registerRoutes(
         // Find or create SMS conversation using formatted phone number
         const conversation = findOrCreateSmsConversation(fromNumber);
         
+        // Get sender info for context
+        const contact = getContactByPhone(fromNumber);
+        const senderName = contact ? getContactFullName(contact) : undefined;
+        
+        // Process MMS images if present
+        let imageAnalysisContext = "";
+        let imageAnalysisResults: Array<ImageAnalysisResult & { personAnalysis?: PersonPhotoAnalysisResult }> = [];
+        
+        if (mediaUrls.length > 0) {
+          console.log(`[MMS] Processing ${mediaUrls.length} media attachment(s) from ${fromNumber}`);
+          
+          for (const media of mediaUrls) {
+            if (media.contentType.startsWith("image/")) {
+              try {
+                const analysis = await analyzeMmsImage(media.url, {
+                  senderName,
+                  senderPhone: fromNumber,
+                  messageText: message,
+                });
+                imageAnalysisResults.push(analysis);
+                console.log(`[MMS] Image analyzed: ${analysis.description?.substring(0, 100)}...`);
+              } catch (error: any) {
+                console.error(`[MMS] Failed to analyze image: ${error.message}`);
+                imageAnalysisResults.push({
+                  description: "Image could not be analyzed",
+                  confidence: 0,
+                });
+              }
+            }
+          }
+          
+          // Build context string for AI
+          if (imageAnalysisResults.length > 0) {
+            imageAnalysisContext = "\n\n[IMAGE ANALYSIS]\n";
+            imageAnalysisResults.forEach((result, idx) => {
+              imageAnalysisContext += `Image ${idx + 1}:\n`;
+              imageAnalysisContext += `- Description: ${result.description}\n`;
+              if (result.personAnalysis?.hasPeople) {
+                imageAnalysisContext += `- People: ${result.personAnalysis.peopleCount} person(s) detected\n`;
+                result.personAnalysis.peopleDescriptions.forEach((person, pIdx) => {
+                  imageAnalysisContext += `  Person ${pIdx + 1} (${person.position}): ${person.description}`;
+                  if (person.clothing) imageAnalysisContext += `, wearing ${person.clothing}`;
+                  if (person.distinguishingFeatures) imageAnalysisContext += `, ${person.distinguishingFeatures}`;
+                  imageAnalysisContext += "\n";
+                });
+                if (result.personAnalysis.setting) {
+                  imageAnalysisContext += `- Setting: ${result.personAnalysis.setting}\n`;
+                }
+                if (result.personAnalysis.occasion) {
+                  imageAnalysisContext += `- Occasion: ${result.personAnalysis.occasion}\n`;
+                }
+                if (result.personAnalysis.suggestedMemory) {
+                  imageAnalysisContext += `- Suggested memory: ${result.personAnalysis.suggestedMemory}\n`;
+                }
+              }
+              if (result.objects?.length) {
+                imageAnalysisContext += `- Objects: ${result.objects.join(", ")}\n`;
+              }
+            });
+          }
+        }
+        
+        // Combine message with image context
+        const fullMessage = message 
+          ? (imageAnalysisContext ? `${message}${imageAnalysisContext}` : message)
+          : (imageAnalysisContext ? `[User sent an image]${imageAnalysisContext}` : "[User sent empty message]");
+        
         // Store user message
         createMessage({
           conversationId: conversation.id,
           role: "user",
-          content: message,
+          content: fullMessage,
           source: "sms",
         });
         
         // Check for quick action commands first (GROCERY, REMIND, REMEMBER, LIST)
-        console.log(`[QuickAction] Processing message from ${fromNumber}: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`);
-        const quickAction = parseQuickAction(message);
+        // Skip quick actions if there are images - let AI handle them for memory/contact updates
+        console.log(`[QuickAction] Processing message from ${fromNumber}: "${(message || "").substring(0, 50)}${(message || "").length > 50 ? '...' : ''}"`);
+        const quickAction = mediaUrls.length === 0 ? parseQuickAction(message || "") : { isQuickAction: false, type: null, params: {}, response: "" };
         let aiResponse: string;
         
         if (quickAction.isQuickAction) {
@@ -1208,7 +1296,7 @@ export async function registerRoutes(
           aiResponse = quickAction.response;
         } else {
           console.log(`[QuickAction] No match - forwarding to AI`);
-          aiResponse = await chat(conversation.id, message, false, fromNumber);
+          aiResponse = await chat(conversation.id, fullMessage, false, fromNumber);
         }
         
         // Store assistant message

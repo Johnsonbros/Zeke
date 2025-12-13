@@ -25,6 +25,26 @@ export interface ImageAnalysisResult {
   confidence: number;
 }
 
+export interface PersonPhotoAnalysisResult {
+  hasPeople: boolean;
+  peopleCount: number;
+  peopleDescriptions: Array<{
+    position: string;
+    description: string;
+    estimatedAge?: string;
+    gender?: string;
+    clothing?: string;
+    distinguishingFeatures?: string;
+  }>;
+  setting: string;
+  occasion?: string;
+  suggestedMemory?: string;
+  suggestedContactUpdate?: {
+    personDescription: string;
+    suggestedNotes: string;
+  };
+}
+
 export interface PdfExtractionResult {
   text: string;
   pageCount: number;
@@ -217,5 +237,146 @@ export function getFileAnalysis(fileId: string): ImageAnalysisResult | PdfExtrac
     return JSON.parse(file.analysisResult);
   } catch {
     return null;
+  }
+}
+
+export async function analyzeImageFromUrl(
+  imageUrl: string,
+  context?: { senderName?: string; senderPhone?: string; messageText?: string }
+): Promise<ImageAnalysisResult & { personAnalysis?: PersonPhotoAnalysisResult }> {
+  const client = getOpenAIClient();
+
+  const contextInfo = context 
+    ? `The sender ${context.senderName ? `(${context.senderName})` : ""} sent this image${context.messageText ? ` with the message: "${context.messageText}"` : ""}.`
+    : "";
+
+  const response = await client.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `Analyze this image in detail. ${contextInfo}
+
+Provide comprehensive analysis including:
+1. A detailed description of what you see
+2. Any text visible in the image (OCR)
+3. Key objects or elements identified
+4. If there are people in the image, describe each person in detail:
+   - Their position in the photo (left, right, center, etc.)
+   - Physical description (don't try to identify them unless the sender mentioned names)
+   - Clothing and any distinguishing features
+   - What they appear to be doing
+5. The setting/location and any apparent occasion (holiday, celebration, etc.)
+6. Suggest what memory could be created from this photo
+7. If the sender mentioned who is in the photo, note that for contact updates
+
+Respond in JSON format:
+{
+  "description": "detailed description of the entire image",
+  "extractedText": "any text found in the image or null",
+  "objects": ["list", "of", "key objects"],
+  "tags": ["relevant", "tags"],
+  "colors": ["dominant", "colors"],
+  "confidence": 0.95,
+  "personAnalysis": {
+    "hasPeople": true/false,
+    "peopleCount": number,
+    "peopleDescriptions": [
+      {
+        "position": "left/center/right",
+        "description": "physical description",
+        "estimatedAge": "age range",
+        "gender": "if apparent",
+        "clothing": "what they're wearing",
+        "distinguishingFeatures": "notable features like beard, glasses, etc."
+      }
+    ],
+    "setting": "where the photo was taken",
+    "occasion": "apparent occasion if any (Christmas, birthday, etc.)",
+    "suggestedMemory": "A suggested memory note based on this photo",
+    "suggestedContactUpdate": {
+      "personDescription": "which person in the photo if sender identified them",
+      "suggestedNotes": "notes about appearance/context to add to contact"
+    }
+  }
+}`,
+          },
+          {
+            type: "image_url",
+            image_url: {
+              url: imageUrl,
+              detail: "high",
+            },
+          },
+        ],
+      },
+    ],
+    max_tokens: 2000,
+  });
+
+  const content = response.choices[0]?.message?.content || "";
+
+  try {
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+  } catch (e) {
+    console.error("Failed to parse image analysis JSON:", e);
+  }
+
+  return {
+    description: content,
+    confidence: 0.7,
+  };
+}
+
+export async function downloadMmsImage(
+  mediaUrl: string,
+  twilioAccountSid?: string,
+  twilioAuthToken?: string
+): Promise<{ buffer: Buffer; contentType: string }> {
+  const accountSid = twilioAccountSid || process.env.TWILIO_ACCOUNT_SID;
+  const authToken = twilioAuthToken || process.env.TWILIO_AUTH_TOKEN;
+
+  if (!accountSid || !authToken) {
+    throw new Error("Twilio credentials not configured for MMS download");
+  }
+
+  const authHeader = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+
+  const response = await fetch(mediaUrl, {
+    headers: {
+      Authorization: `Basic ${authHeader}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to download MMS media: ${response.status} ${response.statusText}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  const contentType = response.headers.get("content-type") || "image/jpeg";
+
+  return { buffer, contentType };
+}
+
+export async function analyzeMmsImage(
+  mediaUrl: string,
+  context?: { senderName?: string; senderPhone?: string; messageText?: string }
+): Promise<ImageAnalysisResult & { personAnalysis?: PersonPhotoAnalysisResult }> {
+  try {
+    const { buffer, contentType } = await downloadMmsImage(mediaUrl);
+    const base64Image = buffer.toString("base64");
+    const dataUrl = `data:${contentType};base64,${base64Image}`;
+
+    return await analyzeImageFromUrl(dataUrl, context);
+  } catch (error: any) {
+    console.error("Error analyzing MMS image:", error);
+    throw error;
   }
 }
