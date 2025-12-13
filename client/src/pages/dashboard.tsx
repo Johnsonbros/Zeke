@@ -1638,7 +1638,6 @@ export default function DashboardPage() {
     automations: { total: 0, enabled: 0 },
   };
 
-  const isLoading = tasksLoading || groceryLoading || memoriesLoading || conversationsLoading || calendarLoading;
   const isSmsLoading = smsStatsLoading || smsConversationsLoading;
   const isLocationLoading = placesLoading || locationHistoryLoading;
 
@@ -1657,14 +1656,10 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {isLoading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
-            {[...Array(5)].map((_, i) => (
-              <Skeleton key={i} className="h-[90px] sm:h-[100px]" />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
+          {calendarLoading ? (
+            <Skeleton className="h-[90px] sm:h-[100px]" />
+          ) : (
             <StatCard
               title="Today's Events"
               value={todayEvents?.length || 0}
@@ -1672,6 +1667,10 @@ export default function DashboardPage() {
               icon={Calendar}
               href="/calendar"
             />
+          )}
+          {tasksLoading ? (
+            <Skeleton className="h-[90px] sm:h-[100px]" />
+          ) : (
             <StatCard
               title="Pending Tasks"
               value={stats.tasks.pending}
@@ -1680,6 +1679,10 @@ export default function DashboardPage() {
               href="/tasks"
               variant={stats.tasks.overdue > 0 ? "warning" : "default"}
             />
+          )}
+          {groceryLoading ? (
+            <Skeleton className="h-[90px] sm:h-[100px]" />
+          ) : (
             <StatCard
               title="Grocery Items"
               value={stats.grocery.total - stats.grocery.purchased}
@@ -1687,6 +1690,10 @@ export default function DashboardPage() {
               icon={ShoppingCart}
               href="/grocery"
             />
+          )}
+          {memoriesLoading ? (
+            <Skeleton className="h-[90px] sm:h-[100px]" />
+          ) : (
             <StatCard
               title="Memories"
               value={stats.memories.total}
@@ -1694,6 +1701,10 @@ export default function DashboardPage() {
               icon={Brain}
               href="/memory"
             />
+          )}
+          {conversationsLoading ? (
+            <Skeleton className="h-[90px] sm:h-[100px]" />
+          ) : (
             <StatCard
               title="Conversations"
               value={stats.conversations.total}
@@ -1701,8 +1712,8 @@ export default function DashboardPage() {
               icon={MessageSquare}
               href="/chat"
             />
-          </div>
-        )}
+          )}
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
           <Card>
