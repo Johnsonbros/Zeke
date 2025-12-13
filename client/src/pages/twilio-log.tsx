@@ -33,6 +33,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { format, parseISO } from "date-fns";
 import type { TwilioMessage } from "@shared/schema";
@@ -455,6 +456,7 @@ export default function TwilioLogPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Send SMS</DialogTitle>
+            <DialogDescription>Compose and send a new text message</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>

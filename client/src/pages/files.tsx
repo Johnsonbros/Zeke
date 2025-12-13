@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -574,6 +575,7 @@ export default function FilesPage() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>New Folder</DialogTitle>
+                    <DialogDescription>Create a new folder to organize your documents</DialogDescription>
                   </DialogHeader>
                   <Form {...folderForm}>
                     <form onSubmit={folderForm.handleSubmit((data) => createFolderMutation.mutate(data))} className="space-y-4">
@@ -627,6 +629,7 @@ export default function FilesPage() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>New Document</DialogTitle>
+                    <DialogDescription>Create a new document with a title and type</DialogDescription>
                   </DialogHeader>
                   <Form {...documentForm}>
                     <form onSubmit={documentForm.handleSubmit((data) => createDocumentMutation.mutate(data))} className="space-y-4">
@@ -803,6 +806,7 @@ export default function FilesPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Rename Folder</DialogTitle>
+            <DialogDescription>Enter a new name for this folder</DialogDescription>
           </DialogHeader>
           <form
             onSubmit={(e) => {

@@ -57,6 +57,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -288,6 +289,7 @@ function AddPlaceDialog({
             <MapPin className="h-5 w-5 text-primary" />
             Save Place
           </DialogTitle>
+          <DialogDescription>Save a location to your places list</DialogDescription>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -694,6 +696,7 @@ function CreateListDialog({
             <List className="h-5 w-5 text-primary" />
             Create Place List
           </DialogTitle>
+          <DialogDescription>Create a new list to organize your saved places</DialogDescription>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4">

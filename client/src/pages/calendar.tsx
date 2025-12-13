@@ -13,6 +13,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -233,6 +234,9 @@ function EventEditDialog({ event, open, onOpenChange }: EventEditDialogProps) {
                 {isEditing ? "Edit Event" : event.summary}
               </DialogTitle>
             </div>
+            <DialogDescription className="sr-only">
+              {isEditing ? "Edit event details" : "View event details"}
+            </DialogDescription>
             {!isEditing && (
               <div className="flex flex-wrap gap-1.5 sm:gap-2">
                 {event.allDay ? (

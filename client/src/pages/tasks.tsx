@@ -40,6 +40,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -313,6 +314,9 @@ function TaskEditDialog({
             <Pencil className="h-5 w-5" />
             Edit Task
           </DialogTitle>
+          <DialogDescription>
+            Update task details, priority, and due date
+          </DialogDescription>
         </DialogHeader>
         
         <Form {...editForm}>

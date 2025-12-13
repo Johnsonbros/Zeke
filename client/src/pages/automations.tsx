@@ -488,6 +488,9 @@ function ReminderEditDialog({
             <Bell className="h-5 w-5" />
             Edit Reminder
           </DialogTitle>
+          <DialogDescription>
+            Update reminder message, time, and recipient
+          </DialogDescription>
         </DialogHeader>
         
         <Form {...form}>
