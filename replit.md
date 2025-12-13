@@ -1,7 +1,7 @@
 # Project: ZEKE – Nate's Personal AI Assistant
 
 ## Overview
-ZEKE is a single-user personal AI assistant for Nate Johnson, designed for high-quality, long-term memory and accessible interaction via SMS and a simple web UI. It focuses on providing action-oriented, proactive, and personalized assistance through respectful, precise communication. Key capabilities include comprehensive personal context management, intelligent communication, task/calendar integration, location awareness, and sophisticated food preference tracking. The project aims to provide a highly personalized, efficient, and intelligent assistant experience.
+ZEKE is a single-user personal AI assistant designed for Nate Johnson, focusing on high-quality, long-term memory and accessible interaction via SMS and a simple web UI. Its core purpose is to provide action-oriented, proactive, and personalized assistance through respectful and precise communication. Key capabilities include comprehensive personal context management, intelligent communication, task/calendar integration, location awareness, and sophisticated food preference tracking, aiming for a highly personalized, efficient, and intelligent assistant experience.
 
 ## User Preferences
 - Respectful, precise, non-fluffy communication.
@@ -16,84 +16,43 @@ ZEKE is a single-user personal AI assistant for Nate Johnson, designed for high-
 ## System Architecture
 ZEKE employs a multi-agent architecture with a Node.js + TypeScript (Express) backend, a Python FastAPI microservice for agent orchestration, and a React frontend with Tailwind CSS and shadcn/ui components. SQLite serves as the persistent data store.
 
-The core is a multi-agent system in Python, with specialized agents like Conductor, Memory Curator, Comms Pilot, Ops Planner, Research Scout, and Safety Auditor. A TypeScript Context Router system provides domain-specific context bundles to Python agents, supporting a dual-context strategy for efficiency. The UI features a dark theme with a coral red accent and Poppins font, designed as a dashboard-first interface with global sidebar navigation.
+The core is a multi-agent system in Python, featuring specialized agents like Conductor, Memory Curator, Comms Pilot, Ops Planner, Research Scout, and Safety Auditor. A TypeScript Context Router system provides domain-specific context bundles to Python agents, supporting a dual-context strategy for efficiency. The UI features a dark theme with a coral red accent and Poppins font, designed as a dashboard-first interface with global sidebar navigation.
 
 Key technical implementations and features include:
-- **Context Router System**: An intelligent, multi-layered context assembly system using token-budgeted bundles with parallel bundle assembly for independent context types.
-- **Context Bundle Caching**: High-performance in-memory LRU cache with priority-based eviction, model-aware TTL configurations, predictive prefetching, and domain-specific invalidation. Supports cache warming for common routes and access pattern tracking.
+- **Context Router System**: Multi-layered context assembly system with token-budgeted bundles, parallel assembly, and caching with priority-based eviction and predictive prefetching.
 - **Conversation Summarization System**: Automatically compresses older conversation history into bullet summaries using GPT-4o-mini.
-- **Memory Model**: Optimized for a single user, storing long-term memory with semantic search and confidence scoring.
-- **Reminders & Automations**: Scheduled jobs for recurring tasks, AI Task Breakdown, Smart Grocery Suggestions, and Proactive Task Follow-up.
-- **Tooling**: Integrates various AI tools for communication (SMS), task management, calendar, weather, web search, file operations, and Omi pendant lifelogs.
-- **Omi Pendant Integration**: Connects to the Omi API for accessing and semantically searching recorded conversations.
-- **Voice Pipeline**: Processes voice input from Omi Pendant lifelogs through the same agent pipeline as SMS/web, with wake word detection.
-- **Omi-GPS Deep Integration**: Correlates lifelog timestamps with GPS location history to enrich memories with location context and detect activity patterns.
-- **Location Intelligence Service**: Enhanced agentic location awareness with Overland GPS integration. Features: calendar-GPS correlation for job site arrival detection, real-time movement classification (driving/walking/stationary), GPS health monitoring with freshness tracking, proactive context injection into AI responses. API endpoint: `GET /api/location/intelligence`. Supports automatic detection when user arrives at calendar appointment locations by matching saved places with event addresses.
-- **Automatic People Tracking System**: Extracts and tracks relationships, updating contacts and linking memories.
+- **Memory Model**: Optimized for single-user long-term memory with semantic search.
+- **Reminders & Automations**: Scheduled tasks, AI Task Breakdown, Smart Grocery Suggestions, Proactive Task Follow-up, and Natural Language Automation Builder.
+- **Tooling**: Integrates various AI tools for communication, task/calendar management, weather, web search, file operations, and Omi pendant lifelogs.
+- **Omi Pendant Integration**: Connects to the Omi API for accessing and semantically searching recorded conversations, including GPS correlation for location context and webhook integration for real-time processing and command detection.
+- **Voice Pipeline**: Processes voice input from Omi Pendant lifelogs through the main agent pipeline.
+- **Location Intelligence Service**: Enhanced agentic location awareness, including calendar-GPS correlation, real-time movement classification, and proactive context injection.
+- **Automatic People Tracking System**: Extracts, tracks, and links relationships within memories.
 - **Food Preference Intelligence System**: Tracks preferences, restrictions, and recipes, with AI-powered generation and grocery integration.
-- **Smart Notification Batching**: Intelligent SMS notification system that queues, batches, and respects quiet hours, with urgent bypass.
-- **Natural Language Automation Builder**: Converts natural language phrases into structured automations with intelligent parsing, supporting various trigger and action types.
-- **Enhanced NLP Parser**: Multi-stage pipeline with intent classification, entity extraction, temporal resolution, and context disambiguation via knowledge graph integration. Features parallel processing for independent stages and automatic fallback to basic parser.
-- **Autonomous Automation Creation**: ZEKE can autonomously create scheduled automations like weather reports via natural language.
-- **AI-Powered Weather Briefings**: Personalized, narrative-style weather reports generated using GPT-4o-mini, including actionable advice.
-- **Severe Weather Monitoring & Family Alerts**: Automatic background monitoring for dangerous conditions and SMS alerts to family members with safety recommendations.
-- **Predictive Task Scheduling**: Analyzes task completion patterns to generate AI-powered scheduling suggestions.
-- **Omi Enhanced Features**: Includes Daily Digest for conversation summaries, Action Item Extraction from transcripts, Meeting Intelligence for multi-speaker conversations, Conversation Search over lifelogs, and Analytics & Pattern Detection.
-- **Omi Webhook Integration**: Direct webhook endpoints (`/api/omi/memory-trigger`, `/api/omi/transcript`, `/api/omi/query`, `/api/omi/zeke`, `/api/omi/day-summary`) for Omi iOS app integration. Features AI-powered extraction pipeline that processes conversation transcripts to extract people, topics, action items, and insights. Automatically links extracted people to existing contacts or creates new contacts. Includes query endpoint for Omi Chat Tools with optional `executeActions` parameter for full agent pipeline routing. **Command Detection**: When `OMI_COMMANDS_ENABLED=true`, detects wake words ("Hey Zeke", "Zeke,") combined with action patterns to trigger tool execution. Commands are filtered to speaker 0 (device owner) when segment data is available. **Direct Omi API Access**: When `OMI_API_KEY` is configured, ZEKE can proactively query Omi's cloud for memories, conversations, and action items, plus create memories that sync back to Omi. **Omi Chat Tools App**: Manifest served at `/.well-known/omi-tools.json` enables ZEKE as a Chat Tool in the Omi app - users can explicitly invoke ZEKE commands without wake words. Full technical documentation at `docs/OMI_INTEGRATION.md`, user setup at `docs/omi-prompts.md`.
-- **Knowledge Graph System**: Unified graph database interconnecting all data domains (memories, tasks, calendar, contacts, locations, lifelogs, documents) for multi-hop reasoning, temporal awareness, and anticipatory intelligence, with a dedicated Explorer UI.
-- **Files & Documents System**: Comprehensive file/document management with hierarchical folder structure, document types (note, document, template, reference), full-text search, pinning, archiving, and a rich text editor. Documents integrate with the knowledge graph as a first-class data domain. UI features mobile-first responsive design with collapsible sidebar (hamburger menu on mobile, always visible on desktop), folder tree navigation with color-coded folders, document list with metadata, and inline document editing. ZEKE has **10 document tools** (list_all_folders, list_documents, read_document, create_document, update_document, delete_document, create_folder, delete_folder, move_document, search_documents) and is configured for **proactive document saving** - automatically saving valuable ideas, research, recommendations, and lists without being explicitly asked. Smart deletion rules: asks before deleting folders with 3+ documents. Full intent classification support in Python multi-agent system via DOCUMENTS capability category and pattern-based fast routing.
-- **Feedback Learning Loop System**: Enables ZEKE to learn from action outcomes, user corrections, and implicit feedback. Tracks what happens after actions (completion, modification, deletion), captures explicit user corrections ("Actually...", "No, I meant..."), and builds preference weights with confidence scores (0-1 scale). Learned preferences are automatically injected into AI agent prompts to influence future decisions. API endpoints: `GET /api/feedback/stats`, `GET /api/feedback/preferences`. Database tables: `action_outcomes`, `learned_preferences`, `correction_events`.
-- **AGENTS.md Support**: Dual implementation - (1) Root-level AGENTS.md file provides standardized instructions for external coding agents (Cursor, Copilot, Codex, etc.) working on ZEKE's codebase, and (2) `read_agents_md` tool allows ZEKE to fetch and parse AGENTS.md files from GitHub repos or URLs when helping with external codebases.
-- **Realtime Chunk Idempotency Layer**: In-memory idempotency tracking for incoming realtime chunks via `POST /api/realtime-chunk`. Prevents duplicate processing by tracking idempotency keys (explicit or derived from payload fields). First requests return 200, duplicates return 409.
-- **Mobile Swipe Gestures**: Touch gesture support for sidebar navigation - swipe right from left edge to open sidebar, swipe left anywhere to close when open. Uses custom `useSidebarSwipe` hook.
-- **Quick Menu (Mobile)**: Bottom drawer with customizable shortcuts (4-5 max). Swipe up/down to open/close. Features iPhone-style edit mode with wiggle animation, drag-to-reorder, add/remove shortcuts. Shortcuts persist to localStorage. Long-press on shortcuts or handle to enter edit mode.
-- **Replit Key-Value Store Integration**: Persistent, fast caching layer using Replit's KV Store (@replit/database) that survives restarts. Includes: (1) Typed wrapper with TTL-aware entries and namespacing (`server/kvStore.ts`), (2) Session state persistence for conversations, automations, voice pipeline (`server/kvSessionState.ts`), (3) Preference caching for quick-access learned preferences (`server/kvPreferenceCache.ts`), (4) Rate limiting for SMS, API calls, automations (`server/kvRateLimiter.ts`). Automatic maintenance runs every 5 minutes to clean expired entries.
-- **Async Memory Processing Queue**: Robust job queue system (`server/jobs/asyncQueue.ts`) for processing Omi memories with configurable worker pool (default 3 workers), priority-based scheduling (urgent/high/normal/low), automatic retry with exponential backoff, and dead letter queue for failed jobs.
-- **Specialized Intelligence Workers**: Background workers (`server/jobs/specializedWorkers.ts`) for deep memory analysis: TaskExtractor (GPT-powered task identification), CommitmentTracker (promise/agreement tracking with pending/fulfilled/missed status), RelationshipAnalyzer (relationship dynamics and sentiment analysis). Workers process memories automatically via the async queue.
-- **Anticipation Engine & Morning Briefings**: Intelligent briefing system (`server/jobs/anticipationEngine.ts`) that generates personalized morning briefings by analyzing pending tasks, overdue items, meetings, and commitments. Uses GPT to synthesize natural, actionable summaries. API endpoints: `GET /api/briefing`, `POST /api/briefing/generate`, `GET /api/briefing/sms`, `GET /api/briefing/status`.
-- **Pattern Detection System**: Behavioral pattern analysis (`server/jobs/patternDetection.ts`) that identifies recurring topics, missed commitment patterns, and relationship frequencies from conversation history. Generates actionable insights. API endpoint: `GET /api/patterns?hours=168`.
-- **Morning Briefing Scheduler**: Automated 6 AM briefing delivery (`server/jobs/morningBriefingScheduler.ts`) via Twilio SMS. Configurable schedule and recipient. Enable with environment variables: `MORNING_BRIEFING_ENABLED=true`, `MORNING_BRIEFING_PHONE=+1234567890`. API endpoints: `GET /api/scheduler/status`, `PATCH /api/scheduler/config`, `POST /api/scheduler/start`, `POST /api/scheduler/stop`, `POST /api/scheduler/trigger`.
+- **Smart Notification Batching**: Intelligent SMS notification system with queueing, batching, and quiet hours.
+- **Enhanced NLP Parser**: Multi-stage pipeline with intent classification, entity extraction, and context disambiguation via knowledge graph integration.
+- **AI-Powered Weather Briefings**: Personalized, narrative weather reports with actionable advice and severe weather monitoring.
+- **Predictive Task Scheduling**: Analyzes task completion patterns for AI-powered scheduling suggestions.
+- **Knowledge Graph System**: Unified graph database connecting all data domains for multi-hop reasoning and anticipatory intelligence.
+- **Files & Documents System**: Comprehensive file/document management with hierarchical folders, full-text search, rich text editor, and proactive document saving by ZEKE.
+- **Feedback Learning Loop System**: Enables ZEKE to learn from action outcomes, user corrections, and implicit feedback to influence future decisions.
+- **AGENTS.md Support**: Provides standardized instructions for external coding agents and allows ZEKE to parse AGENTS.md from external repositories.
+- **Realtime Chunk Idempotency Layer**: Prevents duplicate processing of incoming data chunks.
+- **Mobile UI Enhancements**: Includes swipe gestures for sidebar navigation and a customizable Quick Menu bottom drawer.
+- **Replit Key-Value Store Integration**: Persistent caching layer for session state, preferences, and rate limiting.
+- **Async Memory Processing Queue**: Robust job queue system for processing Omi memories with priority-based scheduling and retry mechanisms.
+- **Specialized Intelligence Workers**: Background workers for deep memory analysis (TaskExtractor, CommitmentTracker, RelationshipAnalyzer).
+- **Anticipation Engine & Morning Briefings**: Generates personalized morning briefings summarizing pending tasks, meetings, and commitments.
+- **Pattern Detection System**: Identifies behavioral patterns from conversation history.
+- **Morning Briefing Scheduler**: Automated delivery of morning briefings via SMS.
 
 ## External Dependencies
 - **OpenAI API**: AI responses, agent logic, and text embeddings.
-- **Twilio**: SMS messaging and voice calling (inbound/outbound calls with AI-powered conversation).
-- **ElevenLabs**: Custom voice synthesis for phone calls using Flash v2.5 model (ultra-low latency). Falls back to Amazon Polly if unavailable.
+- **Twilio**: SMS messaging and voice calling.
+- **ElevenLabs**: Custom voice synthesis (Flash v2.5 model), with fallback to Amazon Polly.
 - **better-sqlite3**: Node.js SQLite client.
 - **Perplexity API**: Enhanced AI-powered web search.
 - **Google Calendar API**: Calendar integration.
 - **OpenWeatherMap API**: Weather data.
 - **DuckDuckGo API**: Fallback web search.
 - **Omi API**: Accessing lifelogs from the Omi pendant.
-
-## Development Commands
-```bash
-npm install          # Install dependencies
-npm run dev          # Start development server (port 5000)
-npm run build        # Build for production
-npm run start        # Start production server
-npm run typecheck    # TypeScript type checking
-npm run lint         # Run linters (including bidi check)
-npm run smoke        # Run smoke tests
-npm run db:push      # Push database migrations
-npm run db:seed      # Seed database with initial data
-```
-
-## Required Environment Variables
-These variables must be set for the application to start:
-
-| Variable | Description |
-|----------|-------------|
-| `OPENAI_API_KEY` | OpenAI API key for AI features |
-| `DATABASE_URL` | Database connection string (SQLite path for local) |
-| `JWT_SECRET` | Secret key for JWT token signing |
-
-Optional variables are documented in `.env.example`.
-
-## Health Endpoints
-- `GET /healthz` - Liveness probe (always returns 200)
-- `GET /readyz` - Readiness probe (checks database connectivity)
-
-## Documentation
-See `docs/` directory for detailed documentation:
-- `docs/OMI_INTEGRATION.md` - Omi pendant integration guide
-- `docs/omi-prompts.md` - Omi Chat Tools setup
