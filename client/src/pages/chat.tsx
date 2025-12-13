@@ -24,14 +24,20 @@ import {
   ArrowRight,
   ListTodo,
   History,
-  ChevronDown
+  ChevronDown,
+  Paperclip,
+  X,
+  FileText,
+  Image,
+  Loader2
 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import type { Conversation, Message, ChatResponse, Reminder, Task } from "@shared/schema";
+import type { Conversation, Message, ChatResponse, Reminder, Task, UploadedFile } from "@shared/schema";
 import { format, isToday, isTomorrow, isPast, parseISO } from "date-fns";
 
 function TypingIndicator() {
@@ -380,12 +386,22 @@ function ChatSkeleton() {
   );
 }
 
+interface AttachedFile {
+  id: string;
+  file: UploadedFile;
+  previewUrl?: string;
+}
+
 export default function ChatPage() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   const [historyOpen, setHistoryOpen] = useState(true);
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const { data: conversations, isLoading: conversationsLoading } = useQuery<Conversation[]>({
@@ -398,11 +414,12 @@ export default function ChatPage() {
   });
 
   const sendMessageMutation = useMutation({
-    mutationFn: async (data: { message: string; conversationId?: string }) => {
+    mutationFn: async (data: { message: string; conversationId?: string; fileIds?: string[] }) => {
       const response = await apiRequest("POST", "/api/chat", {
         message: data.message,
         conversationId: data.conversationId,
         source: "web",
+        fileIds: data.fileIds,
       });
       const result: ChatResponse = await response.json();
       if (!result?.conversation?.id || !result?.message?.id) {
@@ -467,6 +484,96 @@ export default function ChatPage() {
     },
   });
 
+  const uploadFileMutation = useMutation({
+    mutationFn: async (file: File): Promise<UploadedFile> => {
+      setUploadProgress(0);
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      const response = await fetch("/api/files", {
+        method: "POST",
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Upload failed");
+      }
+      
+      setUploadProgress(100);
+      return response.json();
+    },
+    onSuccess: (uploadedFile) => {
+      const previewUrl = uploadedFile.mimeType.startsWith("image/") 
+        ? `/api/files/${uploadedFile.id}/content`
+        : undefined;
+      
+      setAttachedFiles(prev => [...prev, {
+        id: uploadedFile.id,
+        file: uploadedFile,
+        previewUrl,
+      }]);
+      setUploadProgress(null);
+    },
+    onError: (error: Error) => {
+      setUploadProgress(null);
+      toast({
+        title: "Failed to upload file",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleFileSelect = (files: FileList | null) => {
+    if (!files) return;
+    
+    const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"];
+    const maxSize = 20 * 1024 * 1024;
+    
+    Array.from(files).forEach(file => {
+      if (!allowedTypes.includes(file.type)) {
+        toast({
+          title: "Invalid file type",
+          description: "Only images (JPG, PNG, GIF, WebP) and PDFs are allowed",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      if (file.size > maxSize) {
+        toast({
+          title: "File too large",
+          description: "Maximum file size is 20MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      uploadFileMutation.mutate(file);
+    });
+  };
+
+  const handleRemoveFile = (fileId: string) => {
+    setAttachedFiles(prev => prev.filter(f => f.id !== fileId));
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    handleFileSelect(e.dataTransfer.files);
+  };
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messagesData?.messages, sendMessageMutation.isPending]);
@@ -479,12 +586,21 @@ export default function ChatPage() {
   }, [inputValue]);
 
   const handleSend = () => {
-    if (!inputValue.trim() || sendMessageMutation.isPending) return;
+    const hasContent = inputValue.trim() || attachedFiles.length > 0;
+    if (!hasContent || sendMessageMutation.isPending || uploadFileMutation.isPending) return;
+    
+    const fileIds = attachedFiles.map(f => f.id);
+    const messageText = attachedFiles.length > 0 && !inputValue.trim()
+      ? `I've attached ${attachedFiles.length} file${attachedFiles.length > 1 ? 's' : ''} for you to analyze.`
+      : inputValue.trim();
+    
     sendMessageMutation.mutate({
-      message: inputValue.trim(),
+      message: messageText,
       conversationId: activeConversationId || undefined,
+      fileIds: fileIds.length > 0 ? fileIds : undefined,
     });
     setInputValue("");
+    setAttachedFiles([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -500,6 +616,7 @@ export default function ChatPage() {
   const handleNewChat = () => {
     setActiveConversationId(null);
     setInputValue("");
+    setAttachedFiles([]);
   };
 
   const messages = messagesData?.messages || [];
@@ -612,30 +729,105 @@ export default function ChatPage() {
           )}
         </div>
 
-        <div className="p-3 sm:p-4 md:p-4 border-t bg-background/95 backdrop-blur-sm shrink-0 safe-area-inset-bottom">
-          <div className="flex items-end gap-3 max-w-4xl mx-auto">
-            <div className="flex-1 relative">
-              <Textarea
-                ref={textareaRef}
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Message ZEKE..."
-                className="min-h-[48px] max-h-[140px] sm:max-h-[160px] resize-none text-base py-3 px-4 rounded-xl border-2 focus:border-primary transition-colors"
-                rows={1}
-                disabled={sendMessageMutation.isPending}
-                data-testid="input-message"
-              />
+        <div 
+          className={`p-3 sm:p-4 md:p-4 border-t bg-background/95 backdrop-blur-sm shrink-0 safe-area-inset-bottom transition-colors ${isDragging ? "bg-primary/5 border-primary" : ""}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+            multiple
+            className="hidden"
+            onChange={(e) => handleFileSelect(e.target.files)}
+            data-testid="input-file"
+          />
+          
+          <div className="max-w-4xl mx-auto space-y-2">
+            {attachedFiles.length > 0 && (
+              <div className="flex flex-wrap gap-2" data-testid="attached-files">
+                {attachedFiles.map((attached) => (
+                  <div 
+                    key={attached.id}
+                    className="relative group flex items-center gap-2 bg-accent rounded-lg p-2 pr-8"
+                    data-testid={`attached-file-${attached.id}`}
+                  >
+                    {attached.previewUrl ? (
+                      <img 
+                        src={attached.previewUrl} 
+                        alt={attached.file.originalName}
+                        className="h-10 w-10 object-cover rounded"
+                      />
+                    ) : (
+                      <div className="h-10 w-10 bg-muted rounded flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div className="min-w-0 max-w-[120px]">
+                      <p className="text-xs font-medium truncate">{attached.file.originalName}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {(attached.file.size / 1024).toFixed(0)} KB
+                      </p>
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => handleRemoveFile(attached.id)}
+                      data-testid={`remove-file-${attached.id}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {uploadProgress !== null && (
+              <div className="flex items-center gap-2" data-testid="upload-progress">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <Progress value={uploadProgress} className="flex-1 h-2" />
+                <span className="text-xs text-muted-foreground">Uploading...</span>
+              </div>
+            )}
+            
+            <div className="flex items-end gap-2">
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sendMessageMutation.isPending || uploadFileMutation.isPending}
+                className="h-12 w-12 rounded-full shrink-0"
+                data-testid="button-attach"
+              >
+                <Paperclip className="h-5 w-5" />
+              </Button>
+              
+              <div className="flex-1 relative">
+                <Textarea
+                  ref={textareaRef}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={isDragging ? "Drop files here..." : "Message ZEKE..."}
+                  className="min-h-[48px] max-h-[140px] sm:max-h-[160px] resize-none text-base py-3 px-4 rounded-xl border-2 focus:border-primary transition-colors"
+                  rows={1}
+                  disabled={sendMessageMutation.isPending}
+                  data-testid="input-message"
+                />
+              </div>
+              <Button
+                size="icon"
+                onClick={handleSend}
+                disabled={(!inputValue.trim() && attachedFiles.length === 0) || sendMessageMutation.isPending || uploadFileMutation.isPending}
+                className="h-12 w-12 rounded-full shrink-0 shadow-lg hover:shadow-xl transition-shadow"
+                data-testid="button-send"
+              >
+                <Send className="h-5 w-5" />
+              </Button>
             </div>
-            <Button
-              size="icon"
-              onClick={handleSend}
-              disabled={!inputValue.trim() || sendMessageMutation.isPending}
-              className="h-12 w-12 rounded-full shrink-0 shadow-lg hover:shadow-xl transition-shadow"
-              data-testid="button-send"
-            >
-              <Send className="h-5 w-5" />
-            </Button>
           </div>
           <p className="text-xs text-muted-foreground text-center mt-2 hidden sm:block">
             ZEKE can make mistakes. Consider checking important info.

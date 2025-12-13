@@ -207,6 +207,7 @@ import {
   getUploadedFilesByConversation,
   updateUploadedFile,
   deleteUploadedFile,
+  linkFileToMessage,
 } from "./db";
 import type { TwilioMessageSource, UploadedFileType } from "@shared/schema";
 import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema } from "@shared/schema";
@@ -955,7 +956,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid request body" });
       }
       
-      const { message, conversationId, source } = parsed.data;
+      const { message, conversationId, source, fileIds } = parsed.data;
       let conversation;
       let isNewConversation = false;
       
@@ -970,12 +971,19 @@ export async function registerRoutes(
       }
       
       // Store user message
-      createMessage({
+      const userMessage = createMessage({
         conversationId: conversation.id,
         role: "user",
         content: message,
         source,
       });
+      
+      // Link attached files to the user message
+      if (fileIds && fileIds.length > 0) {
+        for (const fileId of fileIds) {
+          linkFileToMessage(fileId, userMessage.id);
+        }
+      }
       
       // Get user permissions for the Python agent
       let userPermissions;
@@ -1004,6 +1012,7 @@ export async function registerRoutes(
               permissions: userPermissions,
               is_admin: isWebAdmin || userPermissions.isAdmin,
               trusted_single_user_deployment: true,
+              file_ids: fileIds || [],
             }
           }),
           signal: AbortSignal.timeout(30000), // 30 second timeout

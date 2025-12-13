@@ -11481,6 +11481,14 @@ export function updateUploadedFile(id: string, data: UpdateUploadedFile): Upload
       updates.push("page_count = ?");
       values.push(data.pageCount);
     }
+    if (data.messageId !== undefined) {
+      updates.push("message_id = ?");
+      values.push(data.messageId);
+    }
+    if (data.conversationId !== undefined) {
+      updates.push("conversation_id = ?");
+      values.push(data.conversationId);
+    }
 
     values.push(id);
     db.prepare(`UPDATE uploaded_files SET ${updates.join(", ")} WHERE id = ?`).run(...values);

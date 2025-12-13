@@ -161,6 +161,7 @@ export const chatRequestSchema = z.object({
   message: z.string().min(1),
   conversationId: z.string().optional(),
   source: z.enum(["web", "sms", "voice"]).default("web"),
+  fileIds: z.array(z.string()).optional(),
 });
 
 export type ChatRequest = z.infer<typeof chatRequestSchema>;
@@ -2705,6 +2706,8 @@ export const updateUploadedFileSchema = z.object({
   width: z.number().nullable().optional(),
   height: z.number().nullable().optional(),
   pageCount: z.number().nullable().optional(),
+  messageId: z.string().nullable().optional(),
+  conversationId: z.string().nullable().optional(),
 });
 
 export type InsertUploadedFile = z.infer<typeof insertUploadedFileSchema>;
