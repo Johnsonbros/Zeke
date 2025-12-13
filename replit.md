@@ -38,6 +38,7 @@ Key technical implementations and features include:
 - **Feedback Learning Loop System**: Enables ZEKE to learn from action outcomes, user corrections, and implicit feedback to influence future decisions.
 - **AGENTS.md Support**: Provides standardized instructions for external coding agents and allows ZEKE to parse AGENTS.md from external repositories.
 - **Realtime Chunk Idempotency Layer**: Prevents duplicate processing of incoming data chunks.
+- **MMS Image Processing**: Receives, downloads, and analyzes images sent via SMS/MMS using GPT-4o Vision, enabling ZEKE to understand photos of people, places, and occasions for memory creation and contact updates.
 - **Mobile UI Enhancements**: Includes swipe gestures for sidebar navigation and a customizable Quick Menu bottom drawer.
 - **Replit Key-Value Store Integration**: Persistent caching layer for session state, preferences, and rate limiting.
 - **Async Memory Processing Queue**: Robust job queue system for processing Omi memories with priority-based scheduling and retry mechanisms.
