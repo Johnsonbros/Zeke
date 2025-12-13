@@ -144,7 +144,12 @@ import type {
   UpdateDocument,
   DocumentWithFolder,
   FolderWithChildren,
-  DocumentType
+  DocumentType,
+  UploadedFile,
+  InsertUploadedFile,
+  UpdateUploadedFile,
+  UploadedFileType,
+  FileProcessingStatus
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -11292,6 +11297,225 @@ export function searchDocuments(query: string): Document[] {
       ORDER BY is_pinned DESC, updated_at DESC
     `).all(searchTerm, searchTerm, searchTerm) as DocumentRow[];
     return rows.map(mapDocument);
+  });
+}
+
+// ============================================
+// UPLOADED FILES SYSTEM
+// ============================================
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS uploaded_files (
+    id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL,
+    original_name TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    file_type TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    conversation_id TEXT,
+    message_id TEXT,
+    extracted_text TEXT,
+    analysis_result TEXT,
+    processing_status TEXT NOT NULL DEFAULT 'pending',
+    processing_error TEXT,
+    width INTEGER,
+    height INTEGER,
+    page_count INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_uploaded_files_conversation ON uploaded_files(conversation_id);
+  CREATE INDEX IF NOT EXISTS idx_uploaded_files_status ON uploaded_files(processing_status);
+  CREATE INDEX IF NOT EXISTS idx_uploaded_files_type ON uploaded_files(file_type);
+`);
+
+interface UploadedFileRow {
+  id: string;
+  filename: string;
+  original_name: string;
+  mime_type: string;
+  file_type: string;
+  size: number;
+  path: string;
+  conversation_id: string | null;
+  message_id: string | null;
+  extracted_text: string | null;
+  analysis_result: string | null;
+  processing_status: string;
+  processing_error: string | null;
+  width: number | null;
+  height: number | null;
+  page_count: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapUploadedFile(row: UploadedFileRow): UploadedFile {
+  return {
+    id: row.id,
+    filename: row.filename,
+    originalName: row.original_name,
+    mimeType: row.mime_type,
+    fileType: row.file_type as UploadedFileType,
+    size: row.size,
+    path: row.path,
+    conversationId: row.conversation_id,
+    messageId: row.message_id,
+    extractedText: row.extracted_text,
+    analysisResult: row.analysis_result,
+    processingStatus: row.processing_status as FileProcessingStatus,
+    processingError: row.processing_error,
+    width: row.width,
+    height: row.height,
+    pageCount: row.page_count,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function createUploadedFile(data: InsertUploadedFile): UploadedFile {
+  return wrapDbOperation("createUploadedFile", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO uploaded_files (
+        id, filename, original_name, mime_type, file_type, size, path,
+        conversation_id, message_id, extracted_text, analysis_result,
+        processing_status, processing_error, width, height, page_count,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.filename,
+      data.originalName,
+      data.mimeType,
+      data.fileType,
+      data.size,
+      data.path,
+      data.conversationId || null,
+      data.messageId || null,
+      data.extractedText || null,
+      data.analysisResult || null,
+      data.processingStatus || "pending",
+      data.processingError || null,
+      data.width || null,
+      data.height || null,
+      data.pageCount || null,
+      now,
+      now
+    );
+    
+    return getUploadedFile(id)!;
+  });
+}
+
+export function getUploadedFile(id: string): UploadedFile | undefined {
+  return wrapDbOperation("getUploadedFile", () => {
+    const row = db.prepare(`SELECT * FROM uploaded_files WHERE id = ?`).get(id) as UploadedFileRow | undefined;
+    return row ? mapUploadedFile(row) : undefined;
+  });
+}
+
+export function getAllUploadedFiles(): UploadedFile[] {
+  return wrapDbOperation("getAllUploadedFiles", () => {
+    const rows = db.prepare(`SELECT * FROM uploaded_files ORDER BY created_at DESC`).all() as UploadedFileRow[];
+    return rows.map(mapUploadedFile);
+  });
+}
+
+export function getUploadedFilesByConversation(conversationId: string): UploadedFile[] {
+  return wrapDbOperation("getUploadedFilesByConversation", () => {
+    const rows = db.prepare(`
+      SELECT * FROM uploaded_files 
+      WHERE conversation_id = ? 
+      ORDER BY created_at DESC
+    `).all(conversationId) as UploadedFileRow[];
+    return rows.map(mapUploadedFile);
+  });
+}
+
+export function getUploadedFilesByStatus(status: FileProcessingStatus): UploadedFile[] {
+  return wrapDbOperation("getUploadedFilesByStatus", () => {
+    const rows = db.prepare(`
+      SELECT * FROM uploaded_files 
+      WHERE processing_status = ? 
+      ORDER BY created_at ASC
+    `).all(status) as UploadedFileRow[];
+    return rows.map(mapUploadedFile);
+  });
+}
+
+export function updateUploadedFile(id: string, data: UpdateUploadedFile): UploadedFile | undefined {
+  return wrapDbOperation("updateUploadedFile", () => {
+    const now = getCurrentTimestamp();
+    const updates: string[] = ["updated_at = ?"];
+    const values: (string | number | null)[] = [now];
+
+    if (data.extractedText !== undefined) {
+      updates.push("extracted_text = ?");
+      values.push(data.extractedText);
+    }
+    if (data.analysisResult !== undefined) {
+      updates.push("analysis_result = ?");
+      values.push(data.analysisResult);
+    }
+    if (data.processingStatus !== undefined) {
+      updates.push("processing_status = ?");
+      values.push(data.processingStatus);
+    }
+    if (data.processingError !== undefined) {
+      updates.push("processing_error = ?");
+      values.push(data.processingError);
+    }
+    if (data.width !== undefined) {
+      updates.push("width = ?");
+      values.push(data.width);
+    }
+    if (data.height !== undefined) {
+      updates.push("height = ?");
+      values.push(data.height);
+    }
+    if (data.pageCount !== undefined) {
+      updates.push("page_count = ?");
+      values.push(data.pageCount);
+    }
+
+    values.push(id);
+    db.prepare(`UPDATE uploaded_files SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+
+    return getUploadedFile(id);
+  });
+}
+
+export function deleteUploadedFile(id: string): boolean {
+  return wrapDbOperation("deleteUploadedFile", () => {
+    const result = db.prepare(`DELETE FROM uploaded_files WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function getUploadedFilesByMessage(messageId: string): UploadedFile[] {
+  return wrapDbOperation("getUploadedFilesByMessage", () => {
+    const rows = db.prepare(`
+      SELECT * FROM uploaded_files 
+      WHERE message_id = ? 
+      ORDER BY created_at ASC
+    `).all(messageId) as UploadedFileRow[];
+    return rows.map(mapUploadedFile);
+  });
+}
+
+export function linkFileToMessage(fileId: string, messageId: string): boolean {
+  return wrapDbOperation("linkFileToMessage", () => {
+    const now = getCurrentTimestamp();
+    const result = db.prepare(`
+      UPDATE uploaded_files 
+      SET message_id = ?, updated_at = ? 
+      WHERE id = ?
+    `).run(messageId, now, fileId);
+    return result.changes > 0;
   });
 }
 

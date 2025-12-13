@@ -2644,3 +2644,79 @@ export interface DocumentWithEntities extends Document {
   entities: Entity[];
   references: EntityReference[];
 }
+
+// ============================================
+// UPLOADED FILES SYSTEM
+// ============================================
+
+// Supported file types for upload
+export const uploadedFileTypes = [
+  "image",    // jpg, png, gif, webp
+  "pdf",      // PDF documents
+  "document", // Word docs, text files
+  "other"     // Other supported files
+] as const;
+export type UploadedFileType = typeof uploadedFileTypes[number];
+
+// Processing status for uploaded files
+export const fileProcessingStatuses = [
+  "pending",     // Just uploaded, not yet processed
+  "processing",  // Currently being analyzed
+  "completed",   // Successfully processed
+  "failed"       // Processing failed
+] as const;
+export type FileProcessingStatus = typeof fileProcessingStatuses[number];
+
+// Uploaded files table
+export const uploadedFiles = sqliteTable("uploaded_files", {
+  id: text("id").primaryKey(),
+  filename: text("filename").notNull(),
+  originalName: text("original_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  fileType: text("file_type", { enum: uploadedFileTypes }).notNull(),
+  size: integer("size").notNull(),
+  path: text("path").notNull(),
+  conversationId: text("conversation_id"),
+  messageId: text("message_id"),
+  // Extracted content
+  extractedText: text("extracted_text"),
+  analysisResult: text("analysis_result"), // JSON string with structured analysis
+  processingStatus: text("processing_status", { enum: fileProcessingStatuses }).notNull().default("pending"),
+  processingError: text("processing_error"),
+  // Metadata
+  width: integer("width"),  // For images
+  height: integer("height"), // For images
+  pageCount: integer("page_count"), // For PDFs
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertUploadedFileSchema = createInsertSchema(uploadedFiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateUploadedFileSchema = z.object({
+  extractedText: z.string().nullable().optional(),
+  analysisResult: z.string().nullable().optional(),
+  processingStatus: z.enum(fileProcessingStatuses).optional(),
+  processingError: z.string().nullable().optional(),
+  width: z.number().nullable().optional(),
+  height: z.number().nullable().optional(),
+  pageCount: z.number().nullable().optional(),
+});
+
+export type InsertUploadedFile = z.infer<typeof insertUploadedFileSchema>;
+export type UpdateUploadedFile = z.infer<typeof updateUploadedFileSchema>;
+export type UploadedFile = typeof uploadedFiles.$inferSelect;
+
+// File with analysis result parsed
+export interface UploadedFileWithAnalysis extends UploadedFile {
+  analysis: {
+    description?: string;
+    extractedData?: Record<string, unknown>;
+    tags?: string[];
+    confidence?: number;
+  } | null;
+}
