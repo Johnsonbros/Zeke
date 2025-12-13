@@ -201,9 +201,18 @@ import {
   deleteDocument,
   getDocumentWithFolder,
   searchDocuments,
+  createUploadedFile,
+  getUploadedFile,
+  getAllUploadedFiles,
+  getUploadedFilesByConversation,
+  updateUploadedFile,
+  deleteUploadedFile,
 } from "./db";
-import type { TwilioMessageSource } from "@shared/schema";
+import type { TwilioMessageSource, UploadedFileType } from "@shared/schema";
 import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema } from "@shared/schema";
+import multer from "multer";
+import path from "path";
+import fsNode from "fs";
 import { generateContextualQuestion } from "./gettingToKnow";
 import { chat, getPermissionsForPhone, getAdminPermissions } from "./agent";
 import { setSendSmsCallback, restorePendingReminders, executeTool, toolDefinitions, TOOL_PERMISSIONS, type ToolPermissions } from "./tools";
@@ -8081,6 +8090,158 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Get integrations status error:", error);
       res.status(500).json({ error: error.message || "Failed to get integrations status" });
+    }
+  });
+  
+  // ============================================
+  // FILE UPLOAD ROUTES
+  // ============================================
+  
+  // Configure multer for file uploads
+  const uploadDir = path.join(process.cwd(), "uploads");
+  if (!fsNode.existsSync(uploadDir)) {
+    fsNode.mkdirSync(uploadDir, { recursive: true });
+  }
+  
+  const fileStorage = multer.diskStorage({
+    destination: uploadDir,
+    filename: (req, file, cb) => {
+      const uniqueName = `${Date.now()}-${require("uuid").v4()}${path.extname(file.originalname)}`;
+      cb(null, uniqueName);
+    }
+  });
+  
+  const fileUpload = multer({
+    storage: fileStorage,
+    limits: { fileSize: 20 * 1024 * 1024 }, // 20MB max
+    fileFilter: (req, file, cb) => {
+      const allowedTypes = [
+        "image/jpeg", "image/png", "image/gif", "image/webp",
+        "application/pdf"
+      ];
+      if (allowedTypes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error(`Invalid file type: ${file.mimetype}. Allowed: jpg, png, gif, webp, pdf`));
+      }
+    }
+  });
+  
+  // Helper to determine file type from mimetype
+  function getFileType(mimetype: string): UploadedFileType {
+    if (mimetype.startsWith("image/")) return "image";
+    if (mimetype === "application/pdf") return "pdf";
+    return "other";
+  }
+  
+  // POST /api/files - Upload a file
+  app.post("/api/files", fileUpload.single("file"), async (req: Request, res: Response) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+      
+      const { conversationId } = req.body;
+      
+      const uploadedFile = createUploadedFile({
+        originalName: req.file.originalname,
+        storedName: req.file.filename,
+        mimeType: req.file.mimetype,
+        fileSize: req.file.size,
+        filePath: req.file.path,
+        fileType: getFileType(req.file.mimetype),
+        conversationId: conversationId || null,
+        processingStatus: "pending",
+      });
+      
+      console.log(`[FILE UPLOAD] Created file ${uploadedFile.id}: ${req.file.originalname}`);
+      res.status(201).json(uploadedFile);
+    } catch (error: any) {
+      console.error("[FILE UPLOAD] Error:", error);
+      if (error.message?.includes("Invalid file type")) {
+        return res.status(400).json({ error: error.message });
+      }
+      res.status(500).json({ error: error.message || "Failed to upload file" });
+    }
+  });
+  
+  // GET /api/files - List all files
+  app.get("/api/files", async (req: Request, res: Response) => {
+    try {
+      const { conversationId } = req.query;
+      
+      let files;
+      if (conversationId && typeof conversationId === "string") {
+        files = getUploadedFilesByConversation(conversationId);
+      } else {
+        files = getAllUploadedFiles();
+      }
+      
+      res.json(files);
+    } catch (error: any) {
+      console.error("[FILE LIST] Error:", error);
+      res.status(500).json({ error: error.message || "Failed to list files" });
+    }
+  });
+  
+  // GET /api/files/:id - Get file metadata
+  app.get("/api/files/:id", async (req: Request, res: Response) => {
+    try {
+      const file = getUploadedFile(req.params.id);
+      if (!file) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      res.json(file);
+    } catch (error: any) {
+      console.error("[FILE GET] Error:", error);
+      res.status(500).json({ error: error.message || "Failed to get file" });
+    }
+  });
+  
+  // GET /api/files/:id/content - Stream file binary
+  app.get("/api/files/:id/content", async (req: Request, res: Response) => {
+    try {
+      const file = getUploadedFile(req.params.id);
+      if (!file) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      
+      if (!fsNode.existsSync(file.filePath)) {
+        return res.status(404).json({ error: "File content not found on disk" });
+      }
+      
+      res.setHeader("Content-Type", file.mimeType);
+      res.setHeader("Content-Disposition", `inline; filename="${file.originalName}"`);
+      
+      const fileStream = fsNode.createReadStream(file.filePath);
+      fileStream.pipe(res);
+    } catch (error: any) {
+      console.error("[FILE CONTENT] Error:", error);
+      res.status(500).json({ error: error.message || "Failed to stream file" });
+    }
+  });
+  
+  // DELETE /api/files/:id - Delete a file
+  app.delete("/api/files/:id", async (req: Request, res: Response) => {
+    try {
+      const file = getUploadedFile(req.params.id);
+      if (!file) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      
+      // Delete from disk
+      if (fsNode.existsSync(file.filePath)) {
+        fsNode.unlinkSync(file.filePath);
+      }
+      
+      // Delete from database
+      deleteUploadedFile(req.params.id);
+      
+      console.log(`[FILE DELETE] Deleted file ${req.params.id}: ${file.originalName}`);
+      res.json({ success: true, message: "File deleted" });
+    } catch (error: any) {
+      console.error("[FILE DELETE] Error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete file" });
     }
   });
   
