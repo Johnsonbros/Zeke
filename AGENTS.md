@@ -112,6 +112,86 @@ const { data, isLoading } = useQuery({ queryKey: ['/api/resource'] });
 - OpenWeatherMap API
 - Omi API for lifelogs
 
+## Python Agent API Contracts
+
+The Python multi-agent system runs as a FastAPI microservice on port 5001 (internal) and communicates with the Node.js backend.
+
+### Endpoints
+
+#### `GET /health`
+Health check endpoint.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "service": "zeke-python-agents",
+  "version": "1.0.0",
+  "node_bridge_status": "connected" | "degraded" | "disconnected"
+}
+```
+
+#### `POST /api/agents/chat`
+Routes messages through the Conductor agent to appropriate specialists.
+
+**Request:**
+```json
+{
+  "message": "string (required)",
+  "conversation_id": "string | null",
+  "phone_number": "string | null",
+  "metadata": { "source": "sms" | "web" | "api", ... }
+}
+```
+
+**Response:**
+```json
+{
+  "response": "string",
+  "agent_id": "conductor",
+  "conversation_id": "string | null",
+  "trace_id": "string | null",
+  "metadata": {
+    "processed_by": "python_agents",
+    "completion_status": "complete" | "partial" | "error",
+    "handoff_chain": ["conductor", "memory_curator", ...],
+    "trace_summary": { ... }
+  }
+}
+```
+
+#### `GET /api/agents/status`
+Returns status of all registered agents.
+
+**Response:**
+```json
+{
+  "agents": {
+    "conductor": { "status": "ready", "name": "...", "tool_count": N, "capabilities": [...] },
+    "memory_curator": { ... },
+    "comms_pilot": { ... },
+    "ops_planner": { ... },
+    "research_scout": { ... },
+    "safety_auditor": { ... },
+    "omi_analyst": { ... },
+    "foresight_strategist": { ... }
+  },
+  "total_agents": 8,
+  "service_status": "running",
+  "tracing_enabled": true
+}
+```
+
+### Specialist Agents (8 total)
+- **Conductor**: Routes messages to appropriate specialists
+- **Memory Curator**: Manages long-term memory storage/retrieval
+- **Comms Pilot**: Handles SMS/communication tasks
+- **Ops Planner**: Task and calendar management
+- **Research Scout**: Web search and research
+- **Safety Auditor**: Security and safety checks
+- **Omi Analyst**: Omi pendant lifelog analysis
+- **Foresight Strategist**: Predictive planning and anticipation
+
 ## Security Considerations
 - Never expose API keys in frontend code
 - Use environment variables for all secrets

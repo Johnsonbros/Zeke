@@ -64,3 +64,36 @@ Key technical implementations and features include:
 - **OpenWeatherMap API**: Weather data.
 - **DuckDuckGo API**: Fallback web search.
 - **Omi API**: Accessing lifelogs from the Omi pendant.
+
+## Development Commands
+```bash
+npm install          # Install dependencies
+npm run dev          # Start development server (port 5000)
+npm run build        # Build for production
+npm run start        # Start production server
+npm run typecheck    # TypeScript type checking
+npm run lint         # Run linters (including bidi check)
+npm run smoke        # Run smoke tests
+npm run db:push      # Push database migrations
+npm run db:seed      # Seed database with initial data
+```
+
+## Required Environment Variables
+These variables must be set for the application to start:
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | OpenAI API key for AI features |
+| `DATABASE_URL` | Database connection string (SQLite path for local) |
+| `JWT_SECRET` | Secret key for JWT token signing |
+
+Optional variables are documented in `.env.example`.
+
+## Health Endpoints
+- `GET /healthz` - Liveness probe (always returns 200)
+- `GET /readyz` - Readiness probe (checks database connectivity)
+
+## Documentation
+See `docs/` directory for detailed documentation:
+- `docs/OMI_INTEGRATION.md` - Omi pendant integration guide
+- `docs/omi-prompts.md` - Omi Chat Tools setup

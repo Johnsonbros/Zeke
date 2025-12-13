@@ -11,3 +11,14 @@ vite.config.ts.*
 data/*.db
 .env
 .env.local
+
+# Temporary audio files (purged on start)
+temp_audio/*
+!temp_audio/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+*.egg-info/

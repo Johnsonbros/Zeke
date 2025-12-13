@@ -50,11 +50,17 @@ app.get("/healthz", (_req, res) => {
   }
 });
 
-app.get("/readyz", (_req, res) => {
+app.get("/readyz", async (_req, res) => {
   try {
-    res.json({ ready: true });
-  } catch {
-    res.json({ ready: true });
+    const { dbReady } = await import("./src/db/health");
+    const dbOk = dbReady();
+    if (dbOk) {
+      res.json({ ready: true, db: "ok" });
+    } else {
+      res.status(503).json({ ready: false, db: "unavailable" });
+    }
+  } catch (error) {
+    res.status(503).json({ ready: false, error: "health check failed" });
   }
 });
 

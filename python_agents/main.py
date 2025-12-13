@@ -17,6 +17,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from .env import ensure_env
+ensure_env()
+
 from .config import get_settings
 from .bridge import get_bridge
 from .tracing import create_trace_context, get_tracing_logger
