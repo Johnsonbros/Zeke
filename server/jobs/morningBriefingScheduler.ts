@@ -8,6 +8,7 @@
 import * as cron from "node-cron";
 import { generateMorningBriefing, formatBriefingForSMS } from "./anticipationEngine";
 import { detectPatterns, getPatternSummary } from "./patternDetection";
+import { getTwilioClient, getTwilioFromPhoneNumber, isTwilioConfigured } from "../twilioClient";
 
 let scheduledTask: cron.ScheduledTask | null = null;
 let lastDeliveryTime: Date | null = null;
@@ -31,18 +32,15 @@ let config: SchedulerConfig = {
 };
 
 async function sendSmsViaTwilio(to: string, message: string): Promise<boolean> {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const fromNumber = process.env.TWILIO_PHONE_NUMBER;
-
-  if (!accountSid || !authToken || !fromNumber) {
-    console.error("[MorningBriefingScheduler] Twilio credentials not configured");
+  const configured = await isTwilioConfigured();
+  if (!configured) {
+    console.error("[MorningBriefingScheduler] Twilio not configured via Replit connector");
     return false;
   }
 
   try {
-    const { Twilio } = await import("twilio");
-    const client = new Twilio(accountSid, authToken);
+    const client = await getTwilioClient();
+    const fromNumber = await getTwilioFromPhoneNumber();
 
     await client.messages.create({
       body: message,

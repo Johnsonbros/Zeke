@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { getUploadedFile, updateUploadedFile } from "../db";
 import type { UploadedFile, UpdateUploadedFile } from "@shared/schema";
+import { getTwilioApiCredentials } from "../twilioClient";
 
 let openai: OpenAI | null = null;
 
@@ -339,14 +340,25 @@ export async function downloadMmsImage(
   twilioAccountSid?: string,
   twilioAuthToken?: string
 ): Promise<{ buffer: Buffer; contentType: string }> {
-  const accountSid = twilioAccountSid || process.env.TWILIO_ACCOUNT_SID;
-  const authToken = twilioAuthToken || process.env.TWILIO_AUTH_TOKEN;
+  let username: string;
+  let password: string;
 
-  if (!accountSid || !authToken) {
-    throw new Error("Twilio credentials not configured for MMS download");
+  if (twilioAccountSid && twilioAuthToken) {
+    // Use provided credentials (e.g., from webhook context)
+    username = twilioAccountSid;
+    password = twilioAuthToken;
+  } else {
+    // Use Replit connector credentials
+    try {
+      const creds = await getTwilioApiCredentials();
+      username = creds.apiKey;
+      password = creds.apiKeySecret;
+    } catch (error) {
+      throw new Error("Twilio credentials not configured for MMS download");
+    }
   }
 
-  const authHeader = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+  const authHeader = Buffer.from(`${username}:${password}`).toString("base64");
 
   const response = await fetch(mediaUrl, {
     headers: {
