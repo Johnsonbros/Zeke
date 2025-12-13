@@ -406,6 +406,7 @@ import {
   getProcessedKeysCount,
 } from "./idempotency";
 import { analyzeMmsImage, type ImageAnalysisResult, type PersonPhotoAnalysisResult } from "./services/fileProcessor";
+import { setPendingPlaceSave, hasPendingPlaceSave, completePendingPlaceSave, cleanupExpiredPendingPlaces } from "./pendingPlaceSave";
 
 // Format phone number for Twilio - handles various input formats
 function formatPhoneNumber(phone: string): string {
@@ -1288,7 +1289,71 @@ export async function registerRoutes(
           ? (imageAnalysisContext ? `${message}${imageAnalysisContext}` : message)
           : (imageAnalysisContext ? `[User sent an image]${imageAnalysisContext}` : "[User sent empty message]");
         
-        // Store user message
+        // Check if user is responding to a pending place save request BEFORE storing message
+        if (hasPendingPlaceSave(fromNumber) && message && message.trim().length > 0 && message.trim().length < 100) {
+          const placeName = message.trim();
+          const savedPlace = completePendingPlaceSave(fromNumber, placeName);
+          
+          if (savedPlace) {
+            const confirmationMsg = `Saved "${savedPlace.name}" at this location! I'll remember this place for you.`;
+            
+            // Log inbound message for auditing
+            logTwilioMessage({
+              direction: "inbound",
+              source: "webhook",
+              fromNumber: fromNumber,
+              toNumber: twilioFromNumber,
+              body: `[Place name reply] ${placeName}`,
+              twilioSid: messageSid,
+              status: "received",
+            });
+            
+            // Log both the place name reply and confirmation in conversation
+            createMessage({
+              conversationId: conversation.id,
+              role: "user",
+              content: `[Place name reply] ${placeName}`,
+              source: "sms",
+            });
+            
+            createMessage({
+              conversationId: conversation.id,
+              role: "assistant",
+              content: confirmationMsg,
+              source: "sms",
+            });
+            
+            try {
+              const replyFromNumber = await getTwilioFromPhoneNumber();
+              if (replyFromNumber) {
+                const client = await getTwilioClient();
+                await client.messages.create({
+                  body: confirmationMsg,
+                  from: replyFromNumber,
+                  to: fromNumber,
+                });
+                
+                logTwilioMessage({
+                  direction: "outbound",
+                  source: "reply",
+                  fromNumber: replyFromNumber,
+                  toNumber: fromNumber,
+                  body: confirmationMsg,
+                  status: "sent",
+                  conversationId: conversation.id,
+                });
+                
+                console.log(`[SavePlace] Confirmed place save to ${fromNumber}: "${savedPlace.name}"`);
+              }
+            } catch (sendErr: any) {
+              console.error(`[SavePlace] Failed to send confirmation SMS:`, sendErr);
+            }
+            
+            return; // Exit early, don't process as regular message
+          }
+        }
+        
+        // Store user message (only if not a pending place reply)
         createMessage({
           conversationId: conversation.id,
           role: "user",
@@ -5071,6 +5136,101 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("[Shortcut] Webhook error:", error);
       res.status(500).json({ error: error.message || "Failed to process location data" });
+    }
+  });
+
+  // === Apple Shortcuts Save Place via SMS ===
+  // POST /api/location/shortcut/save-place - Trigger SMS conversation to save current location as a place
+  app.post("/api/location/shortcut/save-place", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      const queryToken = req.query.token as string;
+      const expectedToken = process.env.OVERLAND_ACCESS_TOKEN;
+      
+      if (!expectedToken) {
+        console.error("[SavePlace] OVERLAND_ACCESS_TOKEN not configured");
+        return res.status(500).json({ error: "Server not configured for location tracking" });
+      }
+      
+      const headerToken = authHeader?.replace(/^Bearer\s+/i, "").trim();
+      const providedToken = headerToken || queryToken;
+      
+      if (!providedToken || providedToken !== expectedToken) {
+        console.warn(`[SavePlace] Token mismatch`);
+        return res.status(401).json({ error: "Invalid access token" });
+      }
+      
+      const { latitude, longitude, accuracy, phone } = req.body;
+      
+      if (latitude === undefined || longitude === undefined) {
+        return res.status(400).json({ error: "Missing required fields: latitude, longitude" });
+      }
+      
+      if (!phone) {
+        return res.status(400).json({ error: "Missing required field: phone (your phone number to receive SMS)" });
+      }
+      
+      const lat = parseFloat(latitude);
+      const lon = parseFloat(longitude);
+      
+      if (isNaN(lat) || isNaN(lon)) {
+        return res.status(400).json({ error: "Invalid coordinates" });
+      }
+      
+      if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        return res.status(400).json({ error: "Invalid coordinates: out of range" });
+      }
+      
+      const formattedPhone = formatPhoneNumber(phone);
+      
+      // Security: Verify phone is master admin or known contact
+      const isAdmin = isMasterAdmin(formattedPhone);
+      const contact = getContactByPhone(formattedPhone);
+      
+      if (!isAdmin && !contact) {
+        console.warn(`[SavePlace] Rejected - phone ${formattedPhone} is not admin or known contact`);
+        return res.status(403).json({ error: "Phone number not authorized. Must be admin or known contact." });
+      }
+      
+      setPendingPlaceSave(formattedPhone, String(lat), String(lon), accuracy ? String(accuracy) : undefined);
+      
+      try {
+        const twilioFromNumber = await getTwilioFromPhoneNumber();
+        if (twilioFromNumber) {
+          const client = await getTwilioClient();
+          await client.messages.create({
+            body: "Got your location! What would you like to name this place? (Reply with just the name)",
+            from: twilioFromNumber,
+            to: formattedPhone,
+          });
+          
+          logTwilioMessage({
+            direction: "outbound",
+            source: "api",
+            fromNumber: twilioFromNumber,
+            toNumber: formattedPhone,
+            body: "Got your location! What would you like to name this place? (Reply with just the name)",
+            status: "sent",
+          });
+          
+          console.log(`[SavePlace] SMS sent to ${formattedPhone} asking for place name`);
+          
+          res.json({
+            success: true,
+            message: "Location received. SMS sent asking for place name.",
+            coordinates: { latitude: lat, longitude: lon }
+          });
+        } else {
+          console.error("[SavePlace] Twilio not configured");
+          res.status(500).json({ error: "SMS service not configured" });
+        }
+      } catch (smsError: any) {
+        console.error("[SavePlace] Failed to send SMS:", smsError);
+        res.status(500).json({ error: "Failed to send SMS: " + smsError.message });
+      }
+    } catch (error: any) {
+      console.error("[SavePlace] Webhook error:", error);
+      res.status(500).json({ error: error.message || "Failed to process save place request" });
     }
   });
 
