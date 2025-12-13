@@ -6,6 +6,11 @@
  * - Meeting detection
  * - Action item extraction
  * 
+ * Uses async processing queue with worker pool for:
+ * - Concurrent processing of memories
+ * - Automatic retry with exponential backoff
+ * - Priority-based job scheduling
+ * 
  * Also runs scheduled analytics aggregation.
  */
 
@@ -17,6 +22,8 @@ import { scheduleAnalyticsAggregation, runDailyAnalyticsAggregation } from "./om
 import { getRecentMemories, type OmiMemoryData } from "../omi";
 import { classifyContextCategory } from "../entityExtractor";
 import { updateOmiMemoryContext } from "../db";
+import { memoryProcessingQueue, type Job, type JobPriority } from "./asyncQueue";
+import { registerSpecializedWorkers, enqueueSpecializedProcessing } from "./specializedWorkers";
 
 let isProcessorRunning = false;
 let memoryHandler: MemoryHandler | null = null;
@@ -44,7 +51,12 @@ let stats = {
   actionItemsExtracted: 0,
   tasksCreated: 0,
   lastProcessedTime: new Date(),
+  jobsEnqueued: 0,
+  jobsCompleted: 0,
+  jobsFailed: 0,
 };
+
+const JOB_TYPE_MEMORY = "memory_processing";
 
 /**
  * Get the current processor configuration
@@ -62,9 +74,19 @@ export function updateProcessorConfig(updates: Partial<ProcessorConfig>): Proces
 }
 
 /**
- * Handle a single memory in real-time as it comes from webhooks
+ * Process a single memory - the actual work done by queue workers
  */
-async function handleMemory(memory: OmiMemoryData): Promise<void> {
+async function processMemoryJob(memory: OmiMemoryData): Promise<{
+  meetingCreated: boolean;
+  actionItemsExtracted: number;
+  tasksCreated: number;
+}> {
+  const result = {
+    meetingCreated: false,
+    actionItemsExtracted: 0,
+    tasksCreated: 0,
+  };
+
   stats.memoriesProcessed++;
   stats.lastProcessedTime = new Date();
   
@@ -88,6 +110,7 @@ async function handleMemory(memory: OmiMemoryData): Promise<void> {
       const meetingResult = await processMemoryForMeeting(memory);
       if (meetingResult.created) {
         stats.meetingsCreated++;
+        result.meetingCreated = true;
         console.log(`[OmiProcessor] Detected meeting from memory ${memory.id}`);
       }
     } catch (error) {
@@ -103,12 +126,63 @@ async function handleMemory(memory: OmiMemoryData): Promise<void> {
       );
       stats.actionItemsExtracted += actionResult.extracted;
       stats.tasksCreated += actionResult.tasksCreated;
+      result.actionItemsExtracted = actionResult.extracted;
+      result.tasksCreated = actionResult.tasksCreated;
       if (actionResult.extracted > 0) {
         console.log(`[OmiProcessor] Extracted ${actionResult.extracted} action items from memory ${memory.id}`);
       }
     } catch (error) {
       console.error("[OmiProcessor] Action item extraction error:", error);
     }
+  }
+
+  stats.jobsCompleted++;
+  
+  // Trigger specialized processing for the memory
+  enqueueSpecializedProcessing(memory, { priority: "normal" });
+  
+  return result;
+}
+
+/**
+ * Determine job priority based on memory content
+ */
+function determineMemoryPriority(memory: OmiMemoryData): JobPriority {
+  const text = (memory.transcript || memory.structured?.overview || "").toLowerCase();
+  
+  // Urgent: mentions of "urgent", "asap", "emergency"
+  if (/\b(urgent|asap|emergency|critical|immediately)\b/.test(text)) {
+    return "urgent";
+  }
+  
+  // High: mentions of deadlines, meetings, important
+  if (/\b(deadline|meeting|important|priority|today|tomorrow)\b/.test(text)) {
+    return "high";
+  }
+  
+  // Low: casual conversations, entertainment
+  if (/\b(movie|game|lunch|dinner|coffee|weekend|vacation)\b/.test(text)) {
+    return "low";
+  }
+  
+  return "normal";
+}
+
+/**
+ * Handle a single memory in real-time - enqueues for async processing
+ */
+async function handleMemory(memory: OmiMemoryData): Promise<void> {
+  const priority = determineMemoryPriority(memory);
+  
+  try {
+    memoryProcessingQueue.enqueue(JOB_TYPE_MEMORY, memory, { priority });
+    stats.jobsEnqueued++;
+    console.log(`[OmiProcessor] Enqueued memory ${memory.id} for processing (priority: ${priority})`);
+  } catch (error) {
+    console.error("[OmiProcessor] Failed to enqueue memory:", error);
+    stats.jobsFailed++;
+    // Fallback to direct processing if queue fails
+    await processMemoryJob(memory);
   }
 }
 
@@ -121,11 +195,25 @@ export function startOmiProcessor(): void {
     return;
   }
   
+  // Register the memory processing worker with the queue
+  memoryProcessingQueue.registerProcessor(JOB_TYPE_MEMORY, async (payload: unknown) => {
+    const memory = payload as OmiMemoryData;
+    return await processMemoryJob(memory);
+  });
+  
+  // Register specialized workers (TaskExtractor, CommitmentTracker, RelationshipAnalyzer)
+  registerSpecializedWorkers();
+  
+  // Start the queue worker pool
+  memoryProcessingQueue.start();
+  console.log("[OmiProcessor] Started async processing queue with specialized workers");
+  
+  // Register webhook handler that enqueues memories
   memoryHandler = handleMemory;
   registerMemoryHandler(memoryHandler);
   
   isProcessorRunning = true;
-  console.log("[OmiProcessor] Started real-time processing (webhook-based)");
+  console.log("[OmiProcessor] Started real-time processing (webhook-based with async queue)");
   
   if (currentConfig.enableAnalytics) {
     scheduleAnalyticsAggregation(async () => {
@@ -139,7 +227,7 @@ export function startOmiProcessor(): void {
 /**
  * Stop the Omi processor
  */
-export function stopOmiProcessor(): void {
+export async function stopOmiProcessor(): Promise<void> {
   if (!isProcessorRunning) {
     return;
   }
@@ -148,6 +236,9 @@ export function stopOmiProcessor(): void {
     unregisterMemoryHandler(memoryHandler);
     memoryHandler = null;
   }
+  
+  // Stop the async queue gracefully
+  await memoryProcessingQueue.stop();
   
   if (analyticsTask) {
     analyticsTask.stop();
@@ -222,20 +313,58 @@ export async function processRecentMemories(): Promise<{
 }
 
 /**
- * Get the processor status
+ * Get the processor status including queue stats
  */
 export function getProcessorStatus(): {
   running: boolean;
   lastProcessedTime: string;
   stats: typeof stats;
   config: ProcessorConfig;
+  queueStats: {
+    totalEnqueued: number;
+    totalCompleted: number;
+    totalFailed: number;
+    totalRetried: number;
+    pending: number;
+    processing: number;
+    activeWorkers: number;
+    queueSize: number;
+  };
 } {
   return {
     running: isProcessorRunning,
     lastProcessedTime: stats.lastProcessedTime.toISOString(),
     stats: { ...stats },
     config: currentConfig,
+    queueStats: memoryProcessingQueue.getStats(),
   };
+}
+
+/**
+ * Get queue status for monitoring
+ */
+export function getQueueStatus() {
+  return {
+    isActive: memoryProcessingQueue.isActive(),
+    stats: memoryProcessingQueue.getStats(),
+    pendingJobs: memoryProcessingQueue.getJobsByStatus("pending").length,
+    processingJobs: memoryProcessingQueue.getJobsByStatus("processing").length,
+    deadJobs: memoryProcessingQueue.getJobsByStatus("dead").length,
+  };
+}
+
+/**
+ * Retry all dead jobs in the queue
+ */
+export function retryDeadJobs(): number {
+  return memoryProcessingQueue.retryDeadJobs();
+}
+
+/**
+ * Clear completed jobs from queue to free memory
+ */
+export function clearCompletedJobs(): number {
+  return memoryProcessingQueue.clearCompleted();
 }
 
 /**

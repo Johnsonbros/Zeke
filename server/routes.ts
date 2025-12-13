@@ -6210,6 +6210,160 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // ANTICIPATION ENGINE / MORNING BRIEFING API
+  // ============================================
+
+  const {
+    getTodaysBriefing,
+    generateMorningBriefing,
+    formatBriefingForSMS,
+    formatBriefingForDisplay,
+    getAnticipationEngineStatus,
+  } = await import("./jobs/anticipationEngine");
+
+  // GET /api/briefing - Get today's morning briefing
+  app.get("/api/briefing", async (req, res) => {
+    try {
+      const forceRefresh = req.query.refresh === "true";
+      console.log(`[AUDIT] [${new Date().toISOString()}] Getting morning briefing (refresh: ${forceRefresh})`);
+      const briefing = await getTodaysBriefing(forceRefresh);
+      res.json(briefing);
+    } catch (error: any) {
+      console.error("Get briefing error:", error);
+      res.status(500).json({ error: error.message || "Failed to get briefing" });
+    }
+  });
+
+  // POST /api/briefing/generate - Force generate a new briefing
+  app.post("/api/briefing/generate", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Generating new morning briefing`);
+      const briefing = await generateMorningBriefing();
+      res.json({ success: true, briefing });
+    } catch (error: any) {
+      console.error("Generate briefing error:", error);
+      res.status(500).json({ error: error.message || "Failed to generate briefing" });
+    }
+  });
+
+  // GET /api/briefing/sms - Get briefing formatted for SMS
+  app.get("/api/briefing/sms", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Getting SMS-formatted briefing`);
+      const briefing = await getTodaysBriefing();
+      const smsText = formatBriefingForSMS(briefing);
+      res.json({ text: smsText, characterCount: smsText.length });
+    } catch (error: any) {
+      console.error("Get SMS briefing error:", error);
+      res.status(500).json({ error: error.message || "Failed to get SMS briefing" });
+    }
+  });
+
+  // GET /api/briefing/status - Get anticipation engine status
+  app.get("/api/briefing/status", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Getting anticipation engine status`);
+      const status = getAnticipationEngineStatus();
+      res.json(status);
+    } catch (error: any) {
+      console.error("Get briefing status error:", error);
+      res.status(500).json({ error: error.message || "Failed to get briefing status" });
+    }
+  });
+
+  // ============================================
+  // PATTERN DETECTION API
+  // ============================================
+
+  const { detectPatterns, getPatternSummary } = await import("./jobs/patternDetection");
+
+  // GET /api/patterns - Detect and return patterns
+  app.get("/api/patterns", async (req, res) => {
+    try {
+      const hours = parseInt(req.query.hours as string) || 168;
+      console.log(`[AUDIT] [${new Date().toISOString()}] Detecting patterns (hours: ${hours})`);
+      const patterns = await detectPatterns(hours);
+      res.json(patterns);
+    } catch (error: any) {
+      console.error("Detect patterns error:", error);
+      res.status(500).json({ error: error.message || "Failed to detect patterns" });
+    }
+  });
+
+  // ============================================
+  // MORNING BRIEFING SCHEDULER API
+  // ============================================
+
+  const {
+    getSchedulerStatus,
+    updateSchedulerConfig,
+    triggerManualDelivery,
+    startMorningBriefingScheduler,
+    stopMorningBriefingScheduler,
+  } = await import("./jobs/morningBriefingScheduler");
+
+  // GET /api/scheduler/status - Get scheduler status
+  app.get("/api/scheduler/status", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Getting scheduler status`);
+      const status = getSchedulerStatus();
+      res.json(status);
+    } catch (error: any) {
+      console.error("Get scheduler status error:", error);
+      res.status(500).json({ error: error.message || "Failed to get scheduler status" });
+    }
+  });
+
+  // PATCH /api/scheduler/config - Update scheduler config
+  app.patch("/api/scheduler/config", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Updating scheduler config`);
+      const config = updateSchedulerConfig(req.body);
+      res.json({ success: true, config });
+    } catch (error: any) {
+      console.error("Update scheduler config error:", error);
+      res.status(500).json({ error: error.message || "Failed to update scheduler config" });
+    }
+  });
+
+  // POST /api/scheduler/start - Start the scheduler
+  app.post("/api/scheduler/start", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Starting scheduler`);
+      startMorningBriefingScheduler(req.body);
+      const status = getSchedulerStatus();
+      res.json({ success: true, status });
+    } catch (error: any) {
+      console.error("Start scheduler error:", error);
+      res.status(500).json({ error: error.message || "Failed to start scheduler" });
+    }
+  });
+
+  // POST /api/scheduler/stop - Stop the scheduler
+  app.post("/api/scheduler/stop", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Stopping scheduler`);
+      stopMorningBriefingScheduler();
+      res.json({ success: true, message: "Scheduler stopped" });
+    } catch (error: any) {
+      console.error("Stop scheduler error:", error);
+      res.status(500).json({ error: error.message || "Failed to stop scheduler" });
+    }
+  });
+
+  // POST /api/scheduler/trigger - Manually trigger a briefing delivery
+  app.post("/api/scheduler/trigger", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Manually triggering briefing delivery`);
+      const result = await triggerManualDelivery();
+      res.json(result);
+    } catch (error: any) {
+      console.error("Trigger delivery error:", error);
+      res.status(500).json({ error: error.message || "Failed to trigger delivery" });
+    }
+  });
+
+  // ============================================
   // CONVERSATION QUALITY METRICS API
   // ============================================
 

@@ -9,6 +9,7 @@ import { initializeConversationSummarizer } from "./jobs/conversationSummarizer"
 import { initializeVoicePipeline, startVoicePipeline, isVoicePipelineAvailable } from "./voice";
 import { initializeOmiDigest } from "./omiDigest";
 import { initializeOmiProcessor } from "./jobs/omiProcessor";
+import { initializeMorningBriefingScheduler } from "./jobs/morningBriefingScheduler";
 import { initializePredictionScheduler } from "./predictionScheduler";
 import { startKVMaintenance } from "./kvIndex";
 import { renderDocs } from "./docs";
@@ -128,6 +129,7 @@ app.use((req, res, next) => {
   // Initialize Omi enhanced features (daily digest + processor)
   initializeOmiDigest();
   initializeOmiProcessor();
+  initializeMorningBriefingScheduler();
   log("Omi enhanced features initialized", "startup");
 
   // Initialize prediction scheduler (pattern discovery, anomaly detection, prediction generation)
