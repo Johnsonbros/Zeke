@@ -198,7 +198,8 @@ const predictionToolPermissions: Record<string, (permissions: ToolPermissions) =
   discover_new_patterns: (p) => p.isAdmin,
 };
 
-// Note: predictionToolDefinitionsFormatted (9 tools) removed to stay under OpenAI's 128 tool limit
+// Note: predictionToolDefinitionsFormatted (9 tools) and knowledgeGraphToolDefinitions (9 tools) 
+// removed to stay under OpenAI's 128 tool limit (currently at 133, need to be <= 128)
 export const allToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   ...reminderToolDefinitions,
   ...searchToolDefinitions,
@@ -216,7 +217,7 @@ export const allToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   ...automationToolDefinitions,
   ...weatherToolDefinitions,
   // predictionToolDefinitionsFormatted excluded - 128 tool limit
-  ...knowledgeGraphToolDefinitions,
+  // knowledgeGraphToolDefinitions excluded - 128 tool limit (9 tools)
   ...codebaseToolDefinitions,
   ...documentToolDefinitions,
 ];
@@ -238,7 +239,7 @@ export const allToolPermissions: Record<string, (permissions: ToolPermissions) =
   ...automationToolPermissions,
   ...weatherToolPermissions,
   // predictionToolPermissions excluded - tools removed for 128 limit
-  ...knowledgeGraphToolPermissions,
+  // knowledgeGraphToolPermissions excluded - tools removed for 128 limit
   ...codebaseToolPermissions,
   ...documentToolPermissions,
 };
