@@ -15,6 +15,8 @@ import { processMemoryForMeeting } from "./omiMeetings";
 import { processMemoryForActionItems } from "./omiActionItems";
 import { scheduleAnalyticsAggregation, runDailyAnalyticsAggregation } from "./omiAnalytics";
 import { getRecentMemories, type OmiMemoryData } from "../omi";
+import { classifyContextCategory } from "../entityExtractor";
+import { updateOmiMemoryContext } from "../db";
 
 let isProcessorRunning = false;
 let memoryHandler: MemoryHandler | null = null;
@@ -65,6 +67,21 @@ export function updateProcessorConfig(updates: Partial<ProcessorConfig>): Proces
 async function handleMemory(memory: OmiMemoryData): Promise<void> {
   stats.memoriesProcessed++;
   stats.lastProcessedTime = new Date();
+  
+  // Context classification - auto-tag the memory category
+  try {
+    const textToClassify = memory.transcript || memory.structured?.overview || "";
+    if (textToClassify.length > 20) {
+      const classification = await classifyContextCategory(
+        textToClassify,
+        memory.structured?.title
+      );
+      updateOmiMemoryContext(memory.id, classification.category, String(classification.confidence));
+      console.log(`[OmiProcessor] Classified memory ${memory.id} as ${classification.category} (${classification.confidence.toFixed(2)})`);
+    }
+  } catch (error) {
+    console.error("[OmiProcessor] Context classification error:", error);
+  }
   
   if (currentConfig.enableMeetingDetection) {
     try {

@@ -1385,6 +1385,23 @@ export const insertOmiSummarySchema = createInsertSchema(omiSummaries).omit({
 export type InsertOmiSummary = z.infer<typeof insertOmiSummarySchema>;
 export type OmiSummary = typeof omiSummaries.$inferSelect;
 
+// Context categories for auto-tagging conversations/lifelogs
+export const contextCategories = [
+  "business_call",
+  "customer_issue", 
+  "family_planning",
+  "personal_idea",
+  "work_meeting",
+  "social_conversation",
+  "health_related",
+  "financial_discussion",
+  "planning_logistics",
+  "learning_education",
+  "casual_chat",
+  "unknown"
+] as const;
+export type ContextCategory = typeof contextCategories[number];
+
 // Omi memories cache - stores processed memories for local data fusion
 export const omiMemories = sqliteTable("omi_memories", {
   id: text("id").primaryKey(),
@@ -1396,6 +1413,9 @@ export const omiMemories = sqliteTable("omi_memories", {
   isStarred: integer("is_starred", { mode: "boolean" }).notNull().default(false),
   processedSuccessfully: integer("processed_successfully", { mode: "boolean" }).notNull().default(false),
   summaryId: text("summary_id"),
+  // Context classification for intelligent retrieval
+  contextCategory: text("context_category", { enum: contextCategories }).default("unknown"),
+  contextConfidence: text("context_confidence").default("0.5"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -1487,7 +1507,7 @@ export const entityTypes = ["person", "task", "memory", "calendar_event", "locat
 export type EntityType = typeof entityTypes[number];
 
 // Domains where entities can be referenced
-export const entityDomains = ["memory", "task", "contact", "calendar", "location", "grocery", "conversation", "document"] as const;
+export const entityDomains = ["memory", "task", "contact", "calendar", "location", "grocery", "conversation", "document", "lifelog", "sms"] as const;
 export type EntityDomain = typeof entityDomains[number];
 
 // Relationship types between entities
@@ -1548,6 +1568,26 @@ export const insertEntityLinkSchema = createInsertSchema(entityLinks).omit({
 
 export type InsertEntityLink = z.infer<typeof insertEntityLinkSchema>;
 export type EntityLink = typeof entityLinks.$inferSelect;
+
+// Memory relationships table - tracks co-occurrence strength between entities
+export const memoryRelationships = sqliteTable("memory_relationships", {
+  id: text("id").primaryKey(),
+  sourceEntityId: text("source_entity_id").notNull(),
+  targetEntityId: text("target_entity_id").notNull(),
+  coOccurrenceCount: integer("co_occurrence_count").notNull().default(1),
+  relationshipStrength: text("relationship_strength").notNull().default("0.1"), // 0-1 scale
+  firstSeenAt: text("first_seen_at").notNull(),
+  lastSeenAt: text("last_seen_at").notNull(),
+  contextCategories: text("context_categories"), // JSON array of categories where co-occurrence happened
+  metadata: text("metadata"), // Additional context about the relationship
+});
+
+export const insertMemoryRelationshipSchema = createInsertSchema(memoryRelationships).omit({
+  id: true,
+});
+
+export type InsertMemoryRelationship = z.infer<typeof insertMemoryRelationshipSchema>;
+export type MemoryRelationship = typeof memoryRelationships.$inferSelect;
 
 // Helper interface for entity with its references
 export interface EntityWithReferences extends Entity {

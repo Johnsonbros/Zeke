@@ -7208,6 +7208,240 @@ export function getOmiSummariesInRange(startDate: string, endDate: string): OmiS
 }
 
 // ============================================
+// OMI MEMORY CONTEXT CLASSIFICATION
+// ============================================
+
+import type { OmiMemory, ContextCategory } from "@shared/schema";
+
+interface OmiMemoryRow {
+  id: string;
+  title: string;
+  markdown: string | null;
+  summary: string | null;
+  start_timestamp: string;
+  end_timestamp: string;
+  is_starred: number;
+  processed_successfully: number;
+  summary_id: string | null;
+  context_category: string | null;
+  context_confidence: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapOmiMemory(row: OmiMemoryRow): OmiMemory {
+  return {
+    id: row.id,
+    title: row.title,
+    markdown: row.markdown,
+    summary: row.summary,
+    startTimestamp: row.start_timestamp,
+    endTimestamp: row.end_timestamp,
+    isStarred: !!row.is_starred,
+    processedSuccessfully: !!row.processed_successfully,
+    summaryId: row.summary_id,
+    contextCategory: (row.context_category || "unknown") as ContextCategory,
+    contextConfidence: row.context_confidence || "0.5",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function getOmiMemoryById(id: string): OmiMemory | undefined {
+  return wrapDbOperation("getOmiMemoryById", () => {
+    const row = db.prepare(`SELECT * FROM omi_memories WHERE id = ?`).get(id) as OmiMemoryRow | undefined;
+    return row ? mapOmiMemory(row) : undefined;
+  });
+}
+
+export function updateOmiMemoryContext(
+  id: string, 
+  contextCategory: ContextCategory, 
+  contextConfidence: string
+): OmiMemory | undefined {
+  return wrapDbOperation("updateOmiMemoryContext", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      UPDATE omi_memories 
+      SET context_category = ?, context_confidence = ?, updated_at = ?
+      WHERE id = ?
+    `).run(contextCategory, contextConfidence, now, id);
+    return getOmiMemoryById(id);
+  });
+}
+
+export function getOmiMemoriesByContextCategory(category: ContextCategory, limit: number = 20): OmiMemory[] {
+  return wrapDbOperation("getOmiMemoriesByContextCategory", () => {
+    const rows = db.prepare(`
+      SELECT * FROM omi_memories 
+      WHERE context_category = ?
+      ORDER BY start_timestamp DESC
+      LIMIT ?
+    `).all(category, limit) as OmiMemoryRow[];
+    return rows.map(mapOmiMemory);
+  });
+}
+
+// ============================================
+// MEMORY RELATIONSHIPS (Entity Co-occurrence)
+// ============================================
+
+import type { MemoryRelationship, InsertMemoryRelationship } from "@shared/schema";
+
+interface MemoryRelationshipRow {
+  id: string;
+  source_entity_id: string;
+  target_entity_id: string;
+  co_occurrence_count: number;
+  relationship_strength: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  context_categories: string | null;
+  metadata: string | null;
+}
+
+function mapMemoryRelationship(row: MemoryRelationshipRow): MemoryRelationship {
+  return {
+    id: row.id,
+    sourceEntityId: row.source_entity_id,
+    targetEntityId: row.target_entity_id,
+    coOccurrenceCount: row.co_occurrence_count,
+    relationshipStrength: row.relationship_strength,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at,
+    contextCategories: row.context_categories,
+    metadata: row.metadata,
+  };
+}
+
+export function createMemoryRelationship(data: InsertMemoryRelationship): MemoryRelationship {
+  return wrapDbOperation("createMemoryRelationship", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO memory_relationships (
+        id, source_entity_id, target_entity_id, co_occurrence_count,
+        relationship_strength, first_seen_at, last_seen_at, context_categories, metadata
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.sourceEntityId,
+      data.targetEntityId,
+      data.coOccurrenceCount || 1,
+      data.relationshipStrength || "0.1",
+      data.firstSeenAt || now,
+      data.lastSeenAt || now,
+      data.contextCategories || null,
+      data.metadata || null
+    );
+    
+    return getMemoryRelationshipById(id)!;
+  });
+}
+
+export function getMemoryRelationshipById(id: string): MemoryRelationship | undefined {
+  return wrapDbOperation("getMemoryRelationshipById", () => {
+    const row = db.prepare(`SELECT * FROM memory_relationships WHERE id = ?`).get(id) as MemoryRelationshipRow | undefined;
+    return row ? mapMemoryRelationship(row) : undefined;
+  });
+}
+
+export function findMemoryRelationship(sourceEntityId: string, targetEntityId: string): MemoryRelationship | undefined {
+  return wrapDbOperation("findMemoryRelationship", () => {
+    const row = db.prepare(`
+      SELECT * FROM memory_relationships 
+      WHERE (source_entity_id = ? AND target_entity_id = ?)
+         OR (source_entity_id = ? AND target_entity_id = ?)
+    `).get(sourceEntityId, targetEntityId, targetEntityId, sourceEntityId) as MemoryRelationshipRow | undefined;
+    return row ? mapMemoryRelationship(row) : undefined;
+  });
+}
+
+export function findOrCreateMemoryRelationship(
+  sourceEntityId: string, 
+  targetEntityId: string,
+  contextCategory?: ContextCategory
+): MemoryRelationship {
+  return wrapDbOperation("findOrCreateMemoryRelationship", () => {
+    const existing = findMemoryRelationship(sourceEntityId, targetEntityId);
+    
+    if (existing) {
+      return incrementMemoryRelationshipStrength(existing.id, contextCategory);
+    }
+    
+    const contextCategories = contextCategory ? JSON.stringify([contextCategory]) : null;
+    return createMemoryRelationship({
+      sourceEntityId,
+      targetEntityId,
+      coOccurrenceCount: 1,
+      relationshipStrength: "0.1",
+      firstSeenAt: getCurrentTimestamp(),
+      lastSeenAt: getCurrentTimestamp(),
+      contextCategories,
+      metadata: null
+    });
+  });
+}
+
+export function incrementMemoryRelationshipStrength(
+  id: string, 
+  contextCategory?: ContextCategory
+): MemoryRelationship {
+  return wrapDbOperation("incrementMemoryRelationshipStrength", () => {
+    const existing = getMemoryRelationshipById(id);
+    if (!existing) throw new Error(`Memory relationship ${id} not found`);
+    
+    const now = getCurrentTimestamp();
+    const newCount = existing.coOccurrenceCount + 1;
+    const newStrength = Math.min(1, 0.1 + (newCount * 0.05)).toFixed(2);
+    
+    let contextCategories = existing.contextCategories;
+    if (contextCategory) {
+      try {
+        const categories = contextCategories ? JSON.parse(contextCategories) as string[] : [];
+        if (!categories.includes(contextCategory)) {
+          categories.push(contextCategory);
+          contextCategories = JSON.stringify(categories);
+        }
+      } catch {
+        contextCategories = JSON.stringify([contextCategory]);
+      }
+    }
+    
+    db.prepare(`
+      UPDATE memory_relationships 
+      SET co_occurrence_count = ?, relationship_strength = ?, last_seen_at = ?, context_categories = ?
+      WHERE id = ?
+    `).run(newCount, newStrength, now, contextCategories, id);
+    
+    return getMemoryRelationshipById(id)!;
+  });
+}
+
+export function getStrongestRelationships(limit: number = 20): MemoryRelationship[] {
+  return wrapDbOperation("getStrongestRelationships", () => {
+    const rows = db.prepare(`
+      SELECT * FROM memory_relationships 
+      ORDER BY CAST(relationship_strength AS REAL) DESC, co_occurrence_count DESC
+      LIMIT ?
+    `).all(limit) as MemoryRelationshipRow[];
+    return rows.map(mapMemoryRelationship);
+  });
+}
+
+export function getRelationshipsForEntity(entityId: string): MemoryRelationship[] {
+  return wrapDbOperation("getRelationshipsForEntity", () => {
+    const rows = db.prepare(`
+      SELECT * FROM memory_relationships 
+      WHERE source_entity_id = ? OR target_entity_id = ?
+      ORDER BY CAST(relationship_strength AS REAL) DESC
+    `).all(entityId, entityId) as MemoryRelationshipRow[];
+    return rows.map(mapMemoryRelationship);
+  });
+}
+
+// ============================================
 // OMI MEETING & ACTION ITEM ALIAS FUNCTIONS
 // ============================================
 

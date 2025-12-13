@@ -7,8 +7,10 @@
  * - Locations (from saved places)
  * - Dates/times (regex patterns)
  * - Topics (keyword matching)
+ * - Context categories (via GPT-4 classification)
  */
 
+import OpenAI from "openai";
 import type { 
   Contact, 
   SavedPlace, 
@@ -19,8 +21,10 @@ import type {
   EntityReference,
   EntityDomain,
   EntityType,
-  EntityRelationshipType
+  EntityRelationshipType,
+  ContextCategory
 } from "@shared/schema";
+import { contextCategories } from "@shared/schema";
 
 import {
   getAllContacts,
@@ -31,7 +35,8 @@ import {
   findEntitiesByLabel,
   getMessagesByConversation,
   findOrCreateEntityLink,
-  getEntitiesForItem
+  getEntitiesForItem,
+  findOrCreateMemoryRelationship
 } from "./db";
 import { getContactFullName } from "@shared/schema";
 
@@ -489,11 +494,13 @@ export async function processMemoryForEntities(
     references.push(ref);
   }
   
-  // Create links between co-occurring entities
+  // Create links between co-occurring entities and track relationship strength
   if (entities.length > 1) {
     for (let i = 0; i < entities.length; i++) {
       for (let j = i + 1; j < entities.length; j++) {
         findOrCreateEntityLink(entities[i].id, entities[j].id, "same_subject");
+        // Also track in memory relationships table for strength over time
+        findOrCreateMemoryRelationship(entities[i].id, entities[j].id);
       }
     }
   }
@@ -1073,4 +1080,143 @@ export function getExtractionSummary(result: ExtractionResult): string {
   }
   
   return parts.length > 0 ? parts.join("; ") : "No entities extracted";
+}
+
+// ============================================
+// CONTEXT CLASSIFICATION (GPT-4)
+// ============================================
+
+export interface ContextClassification {
+  category: ContextCategory;
+  confidence: number;
+  reasoning: string;
+}
+
+let openaiClient: OpenAI | null = null;
+
+function getOpenAI(): OpenAI | null {
+  if (!openaiClient) {
+    if (!process.env.OPENAI_API_KEY) {
+      return null;
+    }
+    openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return openaiClient;
+}
+
+/**
+ * Classify the context category of a text using GPT-4
+ * Falls back to rule-based classification if OpenAI is unavailable
+ * Used for auto-tagging lifelogs/conversations for intelligent retrieval
+ */
+export async function classifyContextCategory(
+  text: string,
+  title?: string
+): Promise<ContextClassification> {
+  const client = getOpenAI();
+  
+  if (!client) {
+    console.log("[EntityExtractor] OpenAI unavailable, using fast rule-based classifier");
+    return classifyContextFast(text);
+  }
+  
+  try {
+    
+    const categoriesDescription = contextCategories.map(c => {
+      const descriptions: Record<string, string> = {
+        business_call: "Professional phone calls, business meetings, client discussions",
+        customer_issue: "Customer complaints, support issues, service problems",
+        family_planning: "Family events, scheduling with family members, household planning",
+        personal_idea: "Creative thoughts, personal projects, brainstorming",
+        work_meeting: "Internal work meetings, team discussions, project planning",
+        social_conversation: "Casual chats with friends, social events, gatherings",
+        health_related: "Medical appointments, health discussions, fitness",
+        financial_discussion: "Money matters, budgets, investments, bills",
+        planning_logistics: "Travel planning, event logistics, coordination",
+        learning_education: "Learning new skills, courses, educational content",
+        casual_chat: "General small talk, everyday conversations",
+        unknown: "Cannot be clearly categorized"
+      };
+      return `- ${c}: ${descriptions[c] || c}`;
+    }).join("\n");
+
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a context classifier for a personal AI assistant's lifelog system.
+Classify the given conversation/memory into ONE of these categories:
+
+${categoriesDescription}
+
+Return JSON: { "category": "<category>", "confidence": <0-1>, "reasoning": "<brief explanation>" }`
+        },
+        {
+          role: "user",
+          content: title ? `Title: ${title}\n\nContent:\n${text.slice(0, 2000)}` : text.slice(0, 2000)
+        }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.2,
+      max_tokens: 150
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      return { category: "unknown", confidence: 0.5, reasoning: "No response from classifier" };
+    }
+
+    const result = JSON.parse(content);
+    const category = contextCategories.includes(result.category) ? result.category : "unknown";
+    
+    return {
+      category: category as ContextCategory,
+      confidence: Math.min(1, Math.max(0, result.confidence || 0.5)),
+      reasoning: result.reasoning || ""
+    };
+  } catch (error) {
+    console.error("[EntityExtractor] Context classification error, falling back to rule-based:", error);
+    return classifyContextFast(text);
+  }
+}
+
+/**
+ * Fast rule-based context classification (no API call)
+ * Use as fallback or for quick pre-screening
+ */
+export function classifyContextFast(text: string): ContextClassification {
+  const lowerText = text.toLowerCase();
+  
+  const patterns: Array<{ category: ContextCategory; keywords: string[]; weight: number }> = [
+    { category: "business_call", keywords: ["client", "proposal", "contract", "invoice", "meeting with", "call with"], weight: 0.8 },
+    { category: "customer_issue", keywords: ["complaint", "refund", "frustrated", "issue with", "problem with", "not working"], weight: 0.75 },
+    { category: "family_planning", keywords: ["kids", "wife", "husband", "mom", "dad", "family dinner", "birthday party"], weight: 0.7 },
+    { category: "personal_idea", keywords: ["i think", "idea for", "what if", "maybe i should", "brainstorm"], weight: 0.6 },
+    { category: "work_meeting", keywords: ["standup", "sprint", "project update", "team meeting", "roadmap"], weight: 0.75 },
+    { category: "health_related", keywords: ["doctor", "appointment", "medicine", "symptoms", "checkup", "therapy"], weight: 0.8 },
+    { category: "financial_discussion", keywords: ["budget", "savings", "investment", "payment", "bill", "tax"], weight: 0.7 },
+    { category: "planning_logistics", keywords: ["schedule", "booking", "reservation", "flight", "hotel", "pick up"], weight: 0.65 },
+    { category: "learning_education", keywords: ["course", "tutorial", "learning", "study", "class", "lesson"], weight: 0.7 },
+  ];
+
+  let bestMatch: ContextClassification = { category: "casual_chat", confidence: 0.4, reasoning: "Default category" };
+  let maxScore = 0;
+
+  for (const { category, keywords, weight } of patterns) {
+    const matchCount = keywords.filter(k => lowerText.includes(k)).length;
+    if (matchCount > 0) {
+      const score = (matchCount / keywords.length) * weight;
+      if (score > maxScore) {
+        maxScore = score;
+        bestMatch = {
+          category,
+          confidence: Math.min(0.85, score + 0.3),
+          reasoning: `Matched ${matchCount} keywords`
+        };
+      }
+    }
+  }
+
+  return bestMatch;
 }
