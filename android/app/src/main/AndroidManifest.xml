@@ -22,6 +22,24 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+
         </activity>
 
         <provider
@@ -36,6 +54,15 @@
     </application>
 
     <!-- Permissions -->
-
     <uses-permission android:name="android.permission.INTERNET" />
+    
+    <!-- Location permissions -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    
+    <!-- Push notification permissions -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- Vibration for haptic feedback -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 </manifest>
