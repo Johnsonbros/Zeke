@@ -136,7 +136,7 @@ export async function aggregateAnalyticsForDate(
   memories: OmiMemoryData[]
 ): Promise<InsertOmiAnalyticsDaily> {
   const dateMemories = memories.filter(m => 
-    m.startedAt.startsWith(date)
+    m.startedAt?.startsWith(date)
   );
   
   let totalDurationMinutes = 0;

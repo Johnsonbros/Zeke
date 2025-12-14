@@ -239,7 +239,7 @@ export async function getTodaysMemories(limit = 10): Promise<OmiMemoryData[]> {
   const today = new Date().toISOString().split("T")[0];
   
   return memories
-    .filter(m => m.startedAt.startsWith(today))
+    .filter(m => m.startedAt?.startsWith(today))
     .slice(0, limit);
 }
 
@@ -251,7 +251,7 @@ export async function getRecentMemories(hours = 24, limit = 20): Promise<OmiMemo
   const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000);
   
   return memories
-    .filter(m => new Date(m.startedAt) >= cutoffTime)
+    .filter(m => m.startedAt && new Date(m.startedAt) >= cutoffTime)
     .slice(0, limit);
 }
 
@@ -438,10 +438,10 @@ export async function getMemoryOverview(): Promise<MemoryOverview> {
   try {
     const memories = await getMemories({ limit: 100 });
     
-    const todayMems = memories.filter(m => m.startedAt.startsWith(today));
-    const yesterdayMems = memories.filter(m => m.startedAt.startsWith(yesterday));
+    const todayMems = memories.filter(m => m.startedAt?.startsWith(today));
+    const yesterdayMems = memories.filter(m => m.startedAt?.startsWith(yesterday));
     
-    const uniqueDates = Array.from(new Set(memories.map((m) => m.startedAt.split("T")[0])));
+    const uniqueDates = Array.from(new Set(memories.filter(m => m.startedAt).map((m) => m.startedAt.split("T")[0])));
     const mostRecent = memories.length > 0 ? memories[0] : null;
 
     const formatConversation = (memory: OmiMemoryData) => ({
@@ -669,7 +669,7 @@ export async function generateDailySummary(
 
   try {
     const memories = await getMemories({ limit: 100 });
-    const dayMemories = memories.filter(m => m.startedAt.startsWith(date));
+    const dayMemories = memories.filter(m => m.startedAt?.startsWith(date));
     
     if (dayMemories.length === 0) {
       console.log(`No memories found for ${date}`);

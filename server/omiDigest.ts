@@ -222,9 +222,11 @@ export async function sendDailyDigest(): Promise<{
     const contact = getContactByPhone(prefs.phoneNumber);
     if (contact && contact.accessLevel === "admin") {
       isAuthorized = true;
-      authInfo = `admin contact: ${contact.name}`;
+      const contactName = `${contact.firstName} ${contact.lastName}`.trim();
+      authInfo = `admin contact: ${contactName}`;
     } else {
-      authInfo = contact ? `${contact.name} (${contact.accessLevel})` : prefs.phoneNumber;
+      const contactName = contact ? `${contact.firstName} ${contact.lastName}`.trim() : prefs.phoneNumber;
+      authInfo = contact ? `${contactName} (${contact.accessLevel})` : prefs.phoneNumber;
     }
   }
   

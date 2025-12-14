@@ -296,7 +296,7 @@ interface ZekeCommandDetection {
 
 async function detectZekeCommand(
   transcript: string,
-  segments?: Array<{ speaker: number; text: string }>
+  segments?: Array<{ speaker: number | string; text: string }>
 ): Promise<ZekeCommandDetection> {
   const wakeWords = ["hey zeke", "zeke,", "hey z,", "okay zeke", "ok zeke"];
   const actionPatterns = [
@@ -315,7 +315,7 @@ async function detectZekeCommand(
   
   if (segments && segments.length > 0) {
     for (const segment of segments) {
-      if (segment.speaker !== 0) continue;
+      if (segment.speaker !== 0 && segment.speaker !== "0") continue;
       
       const lowerText = segment.text.toLowerCase();
       const hasWakeWord = wakeWords.some(wake => lowerText.includes(wake));
@@ -356,7 +356,7 @@ async function detectZekeCommand(
 
 async function routeToAgentPipeline(
   message: string,
-  source: "omi_query" | "omi_command"
+  source: "omi_query" | "omi_command" | "omi_app"
 ): Promise<{ response: string; conversationId: string; executedTools?: string[] }> {
   const conversation = createConversation({ source: "omi" as any });
   
@@ -816,9 +816,9 @@ export function registerOmiRoutes(app: Express): void {
       const now = new Date().toISOString();
       
       const log = await createOmiWebhookLog({
-        webhookType: "day_summary",
+        triggerType: "memory_created",
         omiMemoryId: payload.id || `day-summary-${Date.now()}`,
-        rawPayload: payload,
+        rawPayload: JSON.stringify(payload),
         status: "received",
         receivedAt: now,
       });
@@ -828,16 +828,16 @@ export function registerOmiRoutes(app: Express): void {
       if (payload.summary) {
         const memoryNote = await createMemoryNote({
           content: `Daily Summary (${new Date().toLocaleDateString()}): ${payload.summary}`,
-          source: "omi",
-          category: "daily_digest",
-          confidence: 0.9,
-          expiresAt: null,
+          type: "note",
+          context: "omi daily digest",
+          sourceType: "lifelog",
+          sourceId: payload.id || `day-summary-${Date.now()}`,
         });
 
         await updateOmiWebhookLog(log.id, {
           status: "processed",
           processedAt: new Date().toISOString(),
-          createdMemoryNoteIds: [memoryNote.id],
+          createdMemoryNoteIds: safeJsonStringify([memoryNote.id]),
         });
 
         res.json({ 
