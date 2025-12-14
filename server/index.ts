@@ -6,6 +6,7 @@ import { startPythonAgents, waitForPythonAgents } from "./python-agents";
 import { log } from "./logger";
 import { initializeGroceryAutoClear } from "./jobs/groceryAutoClear";
 import { initializeConversationSummarizer } from "./jobs/conversationSummarizer";
+import { startDailySummaryScheduler } from "./jobs/dailySummaryAgent";
 import { initializeVoicePipeline, startVoicePipeline, isVoicePipelineAvailable } from "./voice";
 import { initializeOmiDigest } from "./omiDigest";
 import { initializeOmiProcessor, startOmiProcessor } from "./jobs/omiProcessor";
@@ -123,6 +124,10 @@ app.use((req, res, next) => {
   
   initializeGroceryAutoClear();
   initializeConversationSummarizer();
+  
+  // Initialize daily journal summary scheduler (runs at 11 PM)
+  startDailySummaryScheduler({ enabled: true });
+  log("Daily journal summary scheduler initialized", "startup");
   
   // Initialize and auto-start voice pipeline if API keys are configured
   if (isVoicePipelineAvailable()) {

@@ -47,6 +47,7 @@ import {
   Mic,
   Network,
   FileText,
+  BookOpen,
 } from "lucide-react";
 import type { Conversation } from "@shared/schema";
 import { format } from "date-fns";
@@ -140,6 +141,12 @@ const mainNavItems = [
     icon: Mic,
     href: "/omi",
     description: "AI conversation insights",
+  },
+  {
+    title: "Journal",
+    icon: BookOpen,
+    href: "/journal",
+    description: "Daily summaries & insights",
   },
   {
     title: "Knowledge Graph",

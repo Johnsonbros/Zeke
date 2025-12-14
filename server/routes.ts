@@ -208,6 +208,9 @@ import {
   updateUploadedFile,
   deleteUploadedFile,
   linkFileToMessage,
+  getJournalEntries,
+  getJournalEntryById,
+  getJournalEntryByDate,
 } from "./db";
 import type { TwilioMessageSource, UploadedFileType } from "@shared/schema";
 import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema } from "@shared/schema";
@@ -266,13 +269,17 @@ import {
   runAutomationNow 
 } from "./automations";
 import {
-  generateDailySummary,
+  generateDailySummary as generateOmiDailySummary,
   getConversationAnalytics,
   getMorningBriefingEnhancement,
   getOmiSummaries,
   getRecentLifelogs,
   getRecentMemories,
 } from "./omi";
+import {
+  generateDailySummary as generateJournalEntry,
+  getDailySummaryStatus as getJournalSchedulerStatus,
+} from "./jobs/dailySummaryAgent";
 import {
   recordConversationSignal,
   recordMemoryUsage,
@@ -6093,7 +6100,7 @@ export async function registerRoutes(
       
       console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Getting Omi summary for ${date} (regenerate: ${forceRegenerate})`);
       
-      const result = await generateDailySummary(date, forceRegenerate);
+      const result = await generateOmiDailySummary(date, forceRegenerate);
       
       if (!result) {
         return res.status(404).json({ error: "No conversations found for this date" });
@@ -6192,7 +6199,7 @@ export async function registerRoutes(
       
       console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Generating Omi summary for ${date} (force: ${forceRegenerate})`);
       
-      const result = await generateDailySummary(date, forceRegenerate);
+      const result = await generateOmiDailySummary(date, forceRegenerate);
       
       if (!result) {
         return res.status(404).json({ error: "No conversations found for this date" });
@@ -8515,6 +8522,85 @@ export async function registerRoutes(
     }
   });
   
+  // ============================================
+  // JOURNAL ROUTES
+  // ============================================
+
+  // GET /api/journal - Get all journal entries
+  app.get("/api/journal", async (req: Request, res: Response) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 30;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const entries = getJournalEntries(limit, offset);
+      res.json(entries);
+    } catch (error: any) {
+      console.error("[JOURNAL] Error getting entries:", error);
+      res.status(500).json({ error: error.message || "Failed to get journal entries" });
+    }
+  });
+
+  // GET /api/journal/status - Get scheduler status
+  app.get("/api/journal/status", async (_req: Request, res: Response) => {
+    try {
+      const status = getJournalSchedulerStatus();
+      res.json(status);
+    } catch (error: any) {
+      console.error("[JOURNAL] Error getting status:", error);
+      res.status(500).json({ error: error.message || "Failed to get journal status" });
+    }
+  });
+
+  // GET /api/journal/date/:date - Get entry by date
+  app.get("/api/journal/date/:date", async (req: Request, res: Response) => {
+    try {
+      const { date } = req.params;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
+      }
+      const entry = getJournalEntryByDate(date);
+      if (!entry) {
+        return res.status(404).json({ error: "No journal entry for this date" });
+      }
+      res.json(entry);
+    } catch (error: any) {
+      console.error("[JOURNAL] Error getting entry by date:", error);
+      res.status(500).json({ error: error.message || "Failed to get journal entry" });
+    }
+  });
+
+  // GET /api/journal/:id - Get entry by ID
+  app.get("/api/journal/:id", async (req: Request, res: Response) => {
+    try {
+      const entry = getJournalEntryById(req.params.id);
+      if (!entry) {
+        return res.status(404).json({ error: "Journal entry not found" });
+      }
+      res.json(entry);
+    } catch (error: any) {
+      console.error("[JOURNAL] Error getting entry by ID:", error);
+      res.status(500).json({ error: error.message || "Failed to get journal entry" });
+    }
+  });
+
+  // POST /api/journal/generate - Manually trigger summary generation
+  app.post("/api/journal/generate", async (req: Request, res: Response) => {
+    try {
+      const date = req.body.date || new Date().toISOString().split("T")[0];
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
+      }
+      console.log(`[JOURNAL] Generating entry for ${date}`);
+      const entry = await generateJournalEntry(date);
+      if (!entry) {
+        return res.status(500).json({ error: "Failed to generate journal entry" });
+      }
+      res.json(entry);
+    } catch (error: any) {
+      console.error("[JOURNAL] Error generating entry:", error);
+      res.status(500).json({ error: error.message || "Failed to generate journal entry" });
+    }
+  });
+
   // Register Omi integration routes
   registerOmiRoutes(app);
   
