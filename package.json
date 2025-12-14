@@ -22,6 +22,9 @@
     "smoke": "tsx script/smoke.ts"
   },
   "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^7.4.4",
+    "@capacitor/core": "^8.0.0",
     "@elevenlabs/elevenlabs-js": "^2.27.0",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
