@@ -78,6 +78,19 @@ npx cap open android       # Open in Android Studio
 
 **Android Project Location:** `android/`
 
+**Native Capabilities:**
+- **Geolocation**: Direct GPS location from phone (enhances Location Intelligence)
+- **Push Notifications**: Instant alerts for reminders, tasks, briefings (requires Firebase setup)
+- **Local Notifications**: Offline reminders without server
+- **Share Target**: Receive shared content from other apps directly to ZEKE
+- **Haptic Feedback**: Vibration for confirmations and alerts
+
+**Push Notifications Setup (Firebase):**
+1. Create a Firebase project at https://console.firebase.google.com
+2. Add an Android app with package name `com.thejohnsonbros.zeke`
+3. Download `google-services.json` and place in `android/app/`
+4. Push notifications will work after building with this file
+
 **Notes:**
 - Always run `npm run build` before `npx cap sync android` to ensure latest web assets are packaged
 - The app requires internet connectivity to communicate with the ZEKE backend
