@@ -2723,3 +2723,55 @@ export interface UploadedFileWithAnalysis extends UploadedFile {
     confidence?: number;
   } | null;
 }
+
+// ============================================
+// JOURNAL / DAILY SUMMARY SYSTEM
+// ============================================
+
+// Journal entries table for storing nightly summaries
+export const journalEntries = sqliteTable("journal_entries", {
+  id: text("id").primaryKey(),
+  date: text("date").notNull().unique(), // YYYY-MM-DD format, one entry per day
+  title: text("title").notNull(),
+  summary: text("summary").notNull(), // Main narrative summary
+  insights: text("insights"), // JSON array of key insights/learnings
+  metrics: text("metrics"), // JSON object with day metrics (messages, tasks, etc.)
+  mood: text("mood"), // Overall detected mood for the day
+  keyEvents: text("key_events"), // JSON array of key events
+  highlights: text("highlights"), // JSON array of notable moments
+  conversationCount: integer("conversation_count").default(0),
+  taskCompletedCount: integer("task_completed_count").default(0),
+  taskCreatedCount: integer("task_created_count").default(0),
+  memoryCreatedCount: integer("memory_created_count").default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertJournalEntry = z.infer<typeof insertJournalEntrySchema>;
+export type JournalEntry = typeof journalEntries.$inferSelect;
+
+// Parsed journal entry with JSON fields expanded
+export interface JournalEntryWithDetails extends JournalEntry {
+  parsedInsights: string[];
+  parsedMetrics: {
+    conversationCount?: number;
+    messageCount?: number;
+    taskCompletedCount?: number;
+    taskCreatedCount?: number;
+    memoryCreatedCount?: number;
+    calendarEventCount?: number;
+    [key: string]: unknown;
+  };
+  parsedKeyEvents: Array<{
+    time?: string;
+    event: string;
+    category?: string;
+  }>;
+  parsedHighlights: string[];
+}

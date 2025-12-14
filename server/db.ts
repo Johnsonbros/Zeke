@@ -149,7 +149,9 @@ import type {
   InsertUploadedFile,
   UpdateUploadedFile,
   UploadedFileType,
-  FileProcessingStatus
+  FileProcessingStatus,
+  JournalEntry,
+  InsertJournalEntry
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -11330,6 +11332,28 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_uploaded_files_type ON uploaded_files(file_type);
 `);
 
+// Create journal_entries table for daily summaries
+db.exec(`
+  CREATE TABLE IF NOT EXISTS journal_entries (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    insights TEXT,
+    metrics TEXT,
+    mood TEXT,
+    key_events TEXT,
+    highlights TEXT,
+    conversation_count INTEGER DEFAULT 0,
+    task_completed_count INTEGER DEFAULT 0,
+    task_created_count INTEGER DEFAULT 0,
+    memory_created_count INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_journal_entries_date ON journal_entries(date);
+`);
+
 interface UploadedFileRow {
   id: string;
   filename: string;
@@ -11524,6 +11548,189 @@ export function linkFileToMessage(fileId: string, messageId: string): boolean {
       WHERE id = ?
     `).run(messageId, now, fileId);
     return result.changes > 0;
+  });
+}
+
+// ============================================
+// JOURNAL ENTRIES FUNCTIONS
+// ============================================
+
+interface JournalEntryRow {
+  id: string;
+  date: string;
+  title: string;
+  summary: string;
+  insights: string | null;
+  metrics: string | null;
+  mood: string | null;
+  key_events: string | null;
+  highlights: string | null;
+  conversation_count: number | null;
+  task_completed_count: number | null;
+  task_created_count: number | null;
+  memory_created_count: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapJournalEntry(row: JournalEntryRow): JournalEntry {
+  return {
+    id: row.id,
+    date: row.date,
+    title: row.title,
+    summary: row.summary,
+    insights: row.insights,
+    metrics: row.metrics,
+    mood: row.mood,
+    keyEvents: row.key_events,
+    highlights: row.highlights,
+    conversationCount: row.conversation_count,
+    taskCompletedCount: row.task_completed_count,
+    taskCreatedCount: row.task_created_count,
+    memoryCreatedCount: row.memory_created_count,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function createJournalEntry(data: InsertJournalEntry): JournalEntry {
+  return wrapDbOperation("createJournalEntry", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO journal_entries (
+        id, date, title, summary, insights, metrics, mood, key_events, highlights,
+        conversation_count, task_completed_count, task_created_count, memory_created_count,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.date,
+      data.title,
+      data.summary,
+      data.insights || null,
+      data.metrics || null,
+      data.mood || null,
+      data.keyEvents || null,
+      data.highlights || null,
+      data.conversationCount ?? 0,
+      data.taskCompletedCount ?? 0,
+      data.taskCreatedCount ?? 0,
+      data.memoryCreatedCount ?? 0,
+      now,
+      now
+    );
+    
+    return getJournalEntryById(id)!;
+  });
+}
+
+export function getJournalEntryById(id: string): JournalEntry | undefined {
+  return wrapDbOperation("getJournalEntryById", () => {
+    const row = db.prepare(`SELECT * FROM journal_entries WHERE id = ?`).get(id) as JournalEntryRow | undefined;
+    return row ? mapJournalEntry(row) : undefined;
+  });
+}
+
+export function getJournalEntryByDate(date: string): JournalEntry | undefined {
+  return wrapDbOperation("getJournalEntryByDate", () => {
+    const row = db.prepare(`SELECT * FROM journal_entries WHERE date = ?`).get(date) as JournalEntryRow | undefined;
+    return row ? mapJournalEntry(row) : undefined;
+  });
+}
+
+export function getJournalEntries(limit: number = 30, offset: number = 0): JournalEntry[] {
+  return wrapDbOperation("getJournalEntries", () => {
+    const rows = db.prepare(`
+      SELECT * FROM journal_entries 
+      ORDER BY date DESC 
+      LIMIT ? OFFSET ?
+    `).all(limit, offset) as JournalEntryRow[];
+    return rows.map(mapJournalEntry);
+  });
+}
+
+export function getJournalEntriesInRange(startDate: string, endDate: string): JournalEntry[] {
+  return wrapDbOperation("getJournalEntriesInRange", () => {
+    const rows = db.prepare(`
+      SELECT * FROM journal_entries 
+      WHERE date >= ? AND date <= ?
+      ORDER BY date DESC
+    `).all(startDate, endDate) as JournalEntryRow[];
+    return rows.map(mapJournalEntry);
+  });
+}
+
+export function updateJournalEntry(id: string, data: Partial<InsertJournalEntry>): JournalEntry | undefined {
+  return wrapDbOperation("updateJournalEntry", () => {
+    const now = getCurrentTimestamp();
+    const updates: string[] = ["updated_at = ?"];
+    const values: (string | number | null)[] = [now];
+
+    if (data.title !== undefined) {
+      updates.push("title = ?");
+      values.push(data.title);
+    }
+    if (data.summary !== undefined) {
+      updates.push("summary = ?");
+      values.push(data.summary);
+    }
+    if (data.insights !== undefined) {
+      updates.push("insights = ?");
+      values.push(data.insights);
+    }
+    if (data.metrics !== undefined) {
+      updates.push("metrics = ?");
+      values.push(data.metrics);
+    }
+    if (data.mood !== undefined) {
+      updates.push("mood = ?");
+      values.push(data.mood);
+    }
+    if (data.keyEvents !== undefined) {
+      updates.push("key_events = ?");
+      values.push(data.keyEvents);
+    }
+    if (data.highlights !== undefined) {
+      updates.push("highlights = ?");
+      values.push(data.highlights);
+    }
+    if (data.conversationCount !== undefined) {
+      updates.push("conversation_count = ?");
+      values.push(data.conversationCount);
+    }
+    if (data.taskCompletedCount !== undefined) {
+      updates.push("task_completed_count = ?");
+      values.push(data.taskCompletedCount);
+    }
+    if (data.taskCreatedCount !== undefined) {
+      updates.push("task_created_count = ?");
+      values.push(data.taskCreatedCount);
+    }
+    if (data.memoryCreatedCount !== undefined) {
+      updates.push("memory_created_count = ?");
+      values.push(data.memoryCreatedCount);
+    }
+
+    values.push(id);
+    db.prepare(`UPDATE journal_entries SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+
+    return getJournalEntryById(id);
+  });
+}
+
+export function deleteJournalEntry(id: string): boolean {
+  return wrapDbOperation("deleteJournalEntry", () => {
+    const result = db.prepare(`DELETE FROM journal_entries WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function getJournalEntryCount(): number {
+  return wrapDbOperation("getJournalEntryCount", () => {
+    const result = db.prepare(`SELECT COUNT(*) as count FROM journal_entries`).get() as { count: number };
+    return result.count;
   });
 }
 
