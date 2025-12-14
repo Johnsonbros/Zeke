@@ -59,3 +59,26 @@ Key technical implementations and features include:
 - **OpenWeatherMap API**: Weather data.
 - **DuckDuckGo API**: Fallback web search.
 - **Omi API**: Accessing lifelogs from the Omi pendant.
+
+## Android App (Capacitor)
+ZEKE can be built as a native Android app using Capacitor. The Android project wraps the React web UI.
+
+**Build Commands:**
+```bash
+npm run build              # Build web assets
+npx cap sync android       # Sync web assets to Android project
+npx cap open android       # Open in Android Studio
+```
+
+**Configuration:**
+- App ID: `com.thejohnsonbros.zeke`
+- App Name: `ZEKE`
+- Web Dir: `dist/public`
+- Config file: `capacitor.config.ts`
+
+**Android Project Location:** `android/`
+
+**Notes:**
+- Always run `npm run build` before `npx cap sync android` to ensure latest web assets are packaged
+- The app requires internet connectivity to communicate with the ZEKE backend
+- For production builds, configure signing in `android/app/build.gradle`
