@@ -47,6 +47,7 @@ Key technical implementations and features include:
 - **Anticipation Engine & Morning Briefings**: Generates personalized morning briefings summarizing pending tasks, meetings, and commitments.
 - **Pattern Detection System**: Identifies behavioral patterns from conversation history.
 - **Morning Briefing Scheduler**: Automated delivery of morning briefings via SMS.
+- **Journal / Daily Summary System**: Nightly automated journal entries (11 PM) that analyze conversations, tasks, memories, and activities to generate comprehensive daily summaries with insights, key events, and highlights. Accessible via /journal page with list/detail views.
 
 ## External Dependencies
 - **OpenAI API**: AI responses, agent logic, and text embeddings.
