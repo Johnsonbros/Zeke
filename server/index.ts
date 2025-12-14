@@ -8,12 +8,19 @@ import { initializeGroceryAutoClear } from "./jobs/groceryAutoClear";
 import { initializeConversationSummarizer } from "./jobs/conversationSummarizer";
 import { initializeVoicePipeline, startVoicePipeline, isVoicePipelineAvailable } from "./voice";
 import { initializeOmiDigest } from "./omiDigest";
-import { initializeOmiProcessor } from "./jobs/omiProcessor";
+import { initializeOmiProcessor, startOmiProcessor } from "./jobs/omiProcessor";
 import { initializeMorningBriefingScheduler } from "./jobs/morningBriefingScheduler";
 import { initializePredictionScheduler } from "./predictionScheduler";
 import { startKVMaintenance } from "./kvIndex";
 import { startKnowledgeGraphBackfillScheduler } from "./jobs/knowledgeGraphBackfill";
 import { renderDocs } from "./docs";
+import { initializeLocationCheckIn, startLocationCheckInMonitor } from "./locationCheckInMonitor";
+import { initializeDailyCheckIn } from "./dailyCheckIn";
+import { initializeBatchScheduler } from "./notificationBatcher";
+import { initializeAutomations } from "./automations";
+import { initializeNLAutomations } from "./nlAutomationExecutor";
+import { startContextAgent } from "./zekeContextAgent";
+import { startPeopleProcessor } from "./peopleProcessor";
 
 export { log };
 
@@ -150,6 +157,52 @@ app.use((req, res, next) => {
   // Initialize Key-Value Store maintenance (periodic cleanup of expired entries)
   startKVMaintenance(5 * 60 * 1000); // Run cleanup every 5 minutes
   log("KV Store maintenance initialized", "startup");
+  
+  // Initialize notification batcher (callbacks are set in routes.ts)
+  initializeBatchScheduler();
+  log("Notification batcher initialized", "startup");
+  
+  // Initialize automations system
+  initializeAutomations();
+  initializeNLAutomations();
+  log("Automations system initialized", "startup");
+  
+  // Initialize location check-in monitor (requires OPENAI_API_KEY and Twilio)
+  if (process.env.OPENAI_API_KEY && process.env.TWILIO_ACCOUNT_SID) {
+    initializeLocationCheckIn();
+    startLocationCheckInMonitor();
+    log("Location check-in monitor initialized and started", "startup");
+  } else {
+    log("Location check-in monitor skipped - missing OPENAI_API_KEY or TWILIO config", "startup");
+  }
+  
+  // Initialize daily check-in (requires OPENAI_API_KEY and Twilio)
+  if (process.env.OPENAI_API_KEY && process.env.TWILIO_ACCOUNT_SID) {
+    initializeDailyCheckIn();
+    log("Daily check-in initialized", "startup");
+  } else {
+    log("Daily check-in skipped - missing OPENAI_API_KEY or TWILIO config", "startup");
+  }
+  
+  // Start ZEKE context agent (scans lifelogs for wake word commands)
+  if (isVoicePipelineAvailable()) {
+    startContextAgent();
+    log("ZEKE context agent started", "startup");
+  }
+  
+  // Start people processor (extracts contact info from Omi memories)
+  if (isVoicePipelineAvailable()) {
+    startPeopleProcessor();
+    log("People processor started", "startup");
+  }
+  
+  // Start Omi processor (processes memories for meetings/action items)
+  if (isVoicePipelineAvailable()) {
+    startOmiProcessor();
+    log("Omi processor started", "startup");
+  }
+  
+  log("=== ZEKE cold start complete - all services operational ===", "startup");
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

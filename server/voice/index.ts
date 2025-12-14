@@ -14,7 +14,8 @@ import {
   OmiListener, 
   getOmiListener, 
   isVoicePipelineAvailable,
-  type TranscriptChunk 
+  type TranscriptChunk,
+  type OmiListenerStatus
 } from "./omiListener";
 import { 
   isTranscriptionAvailable,
@@ -36,12 +37,7 @@ export interface VoicePipelineStatus {
   running: boolean;
   omiConfigured: boolean;
   transcriptionConfigured: boolean;
-  listenerStatus?: {
-    running: boolean;
-    lastPollTime: string;
-    processedCount: number;
-    consecutiveErrors: number;
-  };
+  listenerStatus?: OmiListenerStatus;
   streamStatus?: {
     running: boolean;
     pendingText: string;
