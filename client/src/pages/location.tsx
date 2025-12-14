@@ -922,6 +922,7 @@ export default function LocationPage() {
   const [searchedAddress, setSearchedAddress] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [showPanel, setShowPanel] = useState(true);
 
   const searchString = useSearch();
 
@@ -1249,6 +1250,14 @@ export default function LocationPage() {
               <Navigation className="h-4 w-4" />
             )}
           </Button>
+          <Button
+            size="icon"
+            variant={showPanel ? "default" : "outline"}
+            onClick={() => setShowPanel(!showPanel)}
+            data-testid="button-toggle-panel"
+          >
+            {showPanel ? <ChevronRight className="h-4 w-4" /> : <List className="h-4 w-4" />}
+          </Button>
           <SettingsSheet 
             settings={settings || null} 
             onUpdate={(data) => updateSettingsMutation.mutate(data)}
@@ -1386,6 +1395,32 @@ export default function LocationPage() {
             ))}
           </MapContainer>
 
+          {currentLocation && (
+            <div className="absolute top-4 left-4 z-[1000] bg-background/95 backdrop-blur border border-border rounded-lg p-3 shadow-lg" data-testid="current-location-card">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow-sm" />
+                <span className="text-sm font-medium">Your Location</span>
+              </div>
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                <div>Lat: {currentLocation.lat.toFixed(6)}</div>
+                <div>Lng: {currentLocation.lng.toFixed(6)}</div>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="w-full mt-2 text-xs"
+                onClick={() => {
+                  setMapCenter([currentLocation.lat, currentLocation.lng]);
+                  setMapZoom(16);
+                }}
+                data-testid="button-center-on-me"
+              >
+                <Navigation className="h-3 w-3 mr-1" />
+                Center on me
+              </Button>
+            </div>
+          )}
+
           <div className="absolute bottom-4 left-4 z-[1000] flex flex-col gap-2">
             <Button
               onClick={() => {
@@ -1440,7 +1475,35 @@ export default function LocationPage() {
           </div>
         </div>
 
-        <div className="w-80 lg:w-96 border-l border-border bg-background hidden md:flex flex-col">
+        <div className={`w-80 lg:w-96 border-l border-border bg-background flex-col ${showPanel ? 'flex' : 'hidden'}`}>
+          {starredPlaces.length > 0 && (
+            <div className="px-4 py-3 border-b border-border bg-accent/30">
+              <h3 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+                <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" />
+                Quick Access
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {starredPlaces.slice(0, 4).map((place) => (
+                  <Button
+                    key={place.id}
+                    size="sm"
+                    variant="secondary"
+                    className="gap-1.5 text-xs"
+                    onClick={() => viewPlace(place)}
+                    data-testid={`quick-place-${place.id}`}
+                  >
+                    {getCategoryIcon(place.category)}
+                    <span className="truncate max-w-[80px]">{place.name}</span>
+                  </Button>
+                ))}
+                {starredPlaces.length > 4 && (
+                  <Badge variant="outline" className="text-[10px]">
+                    +{starredPlaces.length - 4} more
+                  </Badge>
+                )}
+              </div>
+            </div>
+          )}
           <Tabs value={selectedTab} onValueChange={setSelectedTab} className="flex-1 flex flex-col">
             <TabsList className="w-full justify-start rounded-none border-b bg-transparent px-4 h-11">
               <TabsTrigger value="places" className="gap-1.5" data-testid="tab-places">
