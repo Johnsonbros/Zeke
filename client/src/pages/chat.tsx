@@ -29,8 +29,11 @@ import {
   X,
   FileText,
   Image,
-  Loader2
+  Loader2,
+  Mic,
+  Square
 } from "lucide-react";
+import { useVoiceRecorder } from "@/hooks/use-voice-recorder";
 import { Progress } from "@/components/ui/progress";
 import {
   Collapsible,
@@ -403,6 +406,9 @@ export default function ChatPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  
+  // Voice recording
+  const voiceRecorder = useVoiceRecorder();
 
   const { data: conversations, isLoading: conversationsLoading } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations"],
@@ -524,6 +530,52 @@ export default function ChatPage() {
       });
     },
   });
+
+  const transcribeMutation = useMutation({
+    mutationFn: async (data: { audio: string; mimeType: string }): Promise<{ text: string }> => {
+      const response = await apiRequest("POST", "/api/transcribe", data);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      if (data.text) {
+        setInputValue(prev => prev ? `${prev} ${data.text}` : data.text);
+        textareaRef.current?.focus();
+      } else {
+        toast({
+          title: "No speech detected",
+          description: "Try speaking more clearly or for longer",
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Transcription failed",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleVoiceButtonClick = async () => {
+    if (voiceRecorder.isRecording) {
+      const recordingData = await voiceRecorder.stopRecording();
+      if (recordingData?.recordDataBase64) {
+        transcribeMutation.mutate({
+          audio: recordingData.recordDataBase64,
+          mimeType: recordingData.mimeType || "audio/webm",
+        });
+      }
+    } else {
+      const started = await voiceRecorder.startRecording();
+      if (!started && voiceRecorder.error) {
+        toast({
+          title: "Microphone access denied",
+          description: voiceRecorder.error,
+          variant: "destructive",
+        });
+      }
+    }
+  };
 
   const handleFileSelect = (files: FileList | null) => {
     if (!files) return;
@@ -798,11 +850,28 @@ export default function ChatPage() {
                 size="icon"
                 variant="ghost"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={sendMessageMutation.isPending || uploadFileMutation.isPending}
+                disabled={sendMessageMutation.isPending || uploadFileMutation.isPending || voiceRecorder.isRecording}
                 className="h-12 w-12 rounded-full shrink-0"
                 data-testid="button-attach"
               >
                 <Paperclip className="h-5 w-5" />
+              </Button>
+              
+              <Button
+                size="icon"
+                variant={voiceRecorder.isRecording ? "destructive" : "ghost"}
+                onClick={handleVoiceButtonClick}
+                disabled={sendMessageMutation.isPending || transcribeMutation.isPending || voiceRecorder.recordingState === "processing" || voiceRecorder.recordingState === "requesting_permission"}
+                className={`h-12 w-12 rounded-full shrink-0 transition-all ${voiceRecorder.isRecording ? "animate-pulse" : ""}`}
+                data-testid="button-voice"
+              >
+                {voiceRecorder.recordingState === "processing" || transcribeMutation.isPending ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : voiceRecorder.isRecording ? (
+                  <Square className="h-5 w-5" />
+                ) : (
+                  <Mic className="h-5 w-5" />
+                )}
               </Button>
               
               <div className="flex-1 relative">
@@ -811,17 +880,17 @@ export default function ChatPage() {
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder={isDragging ? "Drop files here..." : "Message ZEKE..."}
+                  placeholder={voiceRecorder.isRecording ? `Recording... ${voiceRecorder.duration}s` : isDragging ? "Drop files here..." : "Message ZEKE..."}
                   className="min-h-[48px] max-h-[140px] sm:max-h-[160px] resize-none text-base py-3 px-4 rounded-xl border-2 focus:border-primary transition-colors"
                   rows={1}
-                  disabled={sendMessageMutation.isPending}
+                  disabled={sendMessageMutation.isPending || voiceRecorder.isRecording}
                   data-testid="input-message"
                 />
               </div>
               <Button
                 size="icon"
                 onClick={handleSend}
-                disabled={(!inputValue.trim() && attachedFiles.length === 0) || sendMessageMutation.isPending || uploadFileMutation.isPending}
+                disabled={(!inputValue.trim() && attachedFiles.length === 0) || sendMessageMutation.isPending || uploadFileMutation.isPending || voiceRecorder.isRecording}
                 className="h-12 w-12 rounded-full shrink-0 shadow-lg hover:shadow-xl transition-shadow"
                 data-testid="button-send"
               >

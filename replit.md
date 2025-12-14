@@ -84,6 +84,7 @@ npx cap open android       # Open in Android Studio
 - **Local Notifications**: Offline reminders without server
 - **Share Target**: Receive shared content from other apps directly to ZEKE
 - **Haptic Feedback**: Vibration for confirmations and alerts
+- **Voice Input**: Record voice messages and transcribe to text using OpenAI Whisper
 
 **Push Notifications Setup (Firebase):**
 1. Create a Firebase project at https://console.firebase.google.com

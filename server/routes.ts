@@ -963,6 +963,68 @@ export async function registerRoutes(
     }
   });
   
+  // Voice transcription endpoint - converts audio to text using OpenAI Whisper
+  app.post("/api/transcribe", async (req, res) => {
+    try {
+      const { audio, mimeType } = req.body;
+      
+      if (!audio || typeof audio !== "string") {
+        return res.status(400).json({ error: "Audio data is required (base64 encoded)" });
+      }
+      
+      // Size validation - max 10MB of base64 (about 7.5MB of audio)
+      const MAX_BASE64_SIZE = 10 * 1024 * 1024;
+      if (audio.length > MAX_BASE64_SIZE) {
+        return res.status(413).json({ error: "Audio file too large (max 10MB)" });
+      }
+      
+      // Validate mimeType - allow common audio types or empty (auto-detect)
+      const allowedMimeTypes = ["audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/wav", "audio/aac", "audio/x-m4a", "audio/mp3"];
+      if (mimeType && !allowedMimeTypes.includes(mimeType)) {
+        return res.status(400).json({ error: `Unsupported audio format: ${mimeType}. Allowed formats: ${allowedMimeTypes.join(", ")}` });
+      }
+      
+      const { isTranscriptionAvailable, getTranscriber } = await import("./voice/transcriber");
+      
+      if (!isTranscriptionAvailable()) {
+        return res.status(503).json({ error: "Transcription service not available (OpenAI API key not configured)" });
+      }
+      
+      // Decode base64 audio
+      const audioBuffer = Buffer.from(audio, "base64");
+      
+      if (audioBuffer.length === 0) {
+        return res.status(400).json({ error: "Audio data is empty" });
+      }
+      
+      // Create audio chunk for transcription
+      const audioChunk = {
+        startMs: 0,
+        endMs: 0,
+        data: audioBuffer,
+      };
+      
+      const transcriber = getTranscriber();
+      const result = await transcriber.transcribeChunk(audioChunk);
+      
+      if (!result || !result.text) {
+        return res.status(200).json({ text: "", message: "No speech detected" });
+      }
+      
+      console.log(`[Transcribe] Successfully transcribed ${audioBuffer.length} bytes: "${result.text.substring(0, 50)}..."`);
+      
+      res.json({ text: result.text });
+    } catch (error: any) {
+      console.error("[Transcribe] Error:", error);
+      
+      if (error.message?.includes("audio file is too short")) {
+        return res.status(200).json({ text: "", message: "Recording too short" });
+      }
+      
+      res.status(500).json({ error: error.message || "Failed to transcribe audio" });
+    }
+  });
+  
   // Chat endpoint - sends message and gets AI response
   app.post("/api/chat", async (req, res) => {
     try {
