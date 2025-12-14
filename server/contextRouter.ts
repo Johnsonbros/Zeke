@@ -48,6 +48,7 @@ import { getRecentMemories, getMemoryOverview } from "./omi";
 import { getUpcomingEvents } from "./googleCalendar";
 import { getConversationContext } from "./conversationSummarizer";
 import { contextCache, CACHE_TTL, createCacheKey } from "./contextCache";
+import { unifiedContextCache, UnifiedBundleName, TokenBudgetTier } from "./unifiedContextCache";
 import { 
   queryKnowledgeGraph, 
   buildGraphContextBundle,
@@ -1270,6 +1271,63 @@ const BUNDLE_BUILDERS: Record<string, (ctx: AppContext, maxTokens: number) => Pr
 };
 
 /**
+ * Unified cache-enabled bundles (excludes query-dependent bundles like memory, conversation)
+ */
+const UNIFIED_CACHE_ENABLED: Set<string> = new Set([
+  "tasks", "calendar", "grocery", "contacts", "locations", "omi", "profile", "knowledgegraph"
+]);
+
+/**
+ * Build a bundle with unified cache support
+ * For cache-enabled bundles: check unified cache first, compute on miss
+ * For query-dependent bundles: always compute fresh
+ */
+async function buildBundleWithUnifiedCache(
+  bundleName: string,
+  ctx: AppContext,
+  maxTokens: number,
+  priority: "primary" | "secondary" | "tertiary"
+): Promise<ContextBundle | null> {
+  const builder = BUNDLE_BUILDERS[bundleName];
+  if (!builder) return null;
+
+  const startTime = Date.now();
+  const budgetTier = priority as TokenBudgetTier;
+  
+  try {
+    if (UNIFIED_CACHE_ENABLED.has(bundleName)) {
+      const unifiedName = bundleName as UnifiedBundleName;
+      
+      const cached = await unifiedContextCache.getBundle(unifiedName, ctx.userId, budgetTier);
+      if (cached) {
+        console.log(`[ContextRouter] Unified cache HIT for ${bundleName}:${budgetTier} (${Date.now() - startTime}ms)`);
+        return {
+          name: bundleName,
+          priority,
+          content: cached.content,
+          tokenEstimate: cached.tokenEstimate,
+        };
+      }
+      
+      const bundle = await builder(ctx, maxTokens);
+      bundle.priority = priority;
+      
+      await unifiedContextCache.setBundle(unifiedName, bundle.content, bundle.tokenEstimate, ctx.userId, budgetTier);
+      console.log(`[ContextRouter] Unified cache MISS for ${bundleName}:${budgetTier}, cached (${Date.now() - startTime}ms)`);
+      
+      return bundle;
+    }
+    
+    const bundle = await builder(ctx, maxTokens);
+    bundle.priority = priority;
+    return bundle;
+  } catch (error) {
+    console.error(`Error building ${bundleName} bundle:`, error);
+    return null;
+  }
+}
+
+/**
  * Detect if user is currently at a significant place
  * Returns the place info if they are, null otherwise
  */
@@ -1365,33 +1423,15 @@ export async function assembleContext(
     };
   }
   
-  // PARALLEL CONTEXT BUNDLE ASSEMBLY
-  // Build primary and secondary bundles in parallel for better performance
-  const primaryPromises = routeConfig.primary.map(async (bundleName) => {
-    const builder = BUNDLE_BUILDERS[bundleName];
-    if (!builder) return null;
-    try {
-      const bundle = await builder(ctx, budget.primary);
-      bundle.priority = "primary";
-      return bundle;
-    } catch (error) {
-      console.error(`Error building ${bundleName} bundle:`, error);
-      return null;
-    }
-  });
+  // PARALLEL CONTEXT BUNDLE ASSEMBLY WITH UNIFIED CACHE
+  // Build primary and secondary bundles in parallel, using unified cache for eligible bundles
+  const primaryPromises = routeConfig.primary.map(bundleName => 
+    buildBundleWithUnifiedCache(bundleName, ctx, budget.primary, "primary")
+  );
 
-  const secondaryPromises = routeConfig.secondary.map(async (bundleName) => {
-    const builder = BUNDLE_BUILDERS[bundleName];
-    if (!builder) return null;
-    try {
-      const bundle = await builder(ctx, budget.secondary);
-      bundle.priority = "secondary";
-      return bundle;
-    } catch (error) {
-      console.error(`Error building ${bundleName} bundle:`, error);
-      return null;
-    }
-  });
+  const secondaryPromises = routeConfig.secondary.map(bundleName => 
+    buildBundleWithUnifiedCache(bundleName, ctx, budget.secondary, "secondary")
+  );
 
   // Execute all primary and secondary bundle builds in parallel
   const [primaryResults, secondaryResults] = await Promise.all([
@@ -1407,21 +1447,12 @@ export async function assembleContext(
     if (bundle) bundles.push(bundle);
   }
   
-  // Build tertiary bundles if we have token budget (also in parallel)
+  // Build tertiary bundles if we have token budget (also in parallel with unified cache)
   const usedTokens = bundles.reduce((sum, b) => sum + b.tokenEstimate, 0);
   if (usedTokens < budget.total - budget.tertiary && routeConfig.tertiary) {
-    const tertiaryPromises = routeConfig.tertiary.map(async (bundleName) => {
-      const builder = BUNDLE_BUILDERS[bundleName];
-      if (!builder) return null;
-      try {
-        const bundle = await builder(ctx, budget.tertiary);
-        bundle.priority = "tertiary";
-        return bundle;
-      } catch (error) {
-        console.error(`Error building ${bundleName} bundle:`, error);
-        return null;
-      }
-    });
+    const tertiaryPromises = routeConfig.tertiary.map(bundleName => 
+      buildBundleWithUnifiedCache(bundleName, ctx, budget.tertiary, "tertiary")
+    );
     
     const tertiaryResults = await Promise.all(tertiaryPromises);
     for (const bundle of tertiaryResults) {
