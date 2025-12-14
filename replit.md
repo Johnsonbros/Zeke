@@ -91,6 +91,14 @@ npx cap open android       # Open in Android Studio
 3. Download `google-services.json` and place in `android/app/`
 4. Push notifications will work after building with this file
 
+**Updating the Android App:**
+When you make changes to ZEKE (new features, bug fixes, UI updates), the Android app will get those updates automatically since it wraps the web UI. To update:
+```bash
+npm run build              # Rebuild web assets with your changes
+npx cap sync android       # Sync updated assets to Android project
+```
+Then rebuild in Android Studio to create a new APK with the latest changes.
+
 **Notes:**
 - Always run `npm run build` before `npx cap sync android` to ensure latest web assets are packaged
 - The app requires internet connectivity to communicate with the ZEKE backend
