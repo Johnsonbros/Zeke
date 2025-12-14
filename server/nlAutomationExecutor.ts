@@ -35,6 +35,7 @@ export function setNLAutomationSmsCallback(
   callback: (phone: string, message: string) => Promise<void>
 ): void {
   sendSmsCallback = callback;
+  console.log("[NLAutomationExecutor] SMS callback configured");
 }
 
 export function setNLAutomationReminderCallback(
