@@ -12,6 +12,7 @@ import { initializeOmiProcessor } from "./jobs/omiProcessor";
 import { initializeMorningBriefingScheduler } from "./jobs/morningBriefingScheduler";
 import { initializePredictionScheduler } from "./predictionScheduler";
 import { startKVMaintenance } from "./kvIndex";
+import { startKnowledgeGraphBackfillScheduler } from "./jobs/knowledgeGraphBackfill";
 import { renderDocs } from "./docs";
 
 export { log };
@@ -141,6 +142,10 @@ app.use((req, res, next) => {
   // Initialize prediction scheduler (pattern discovery, anomaly detection, prediction generation)
   initializePredictionScheduler();
   log("Prediction scheduler initialized", "startup");
+  
+  // Initialize Knowledge Graph Backfill scheduler (runs nightly at 2 AM)
+  startKnowledgeGraphBackfillScheduler();
+  log("Knowledge Graph backfill scheduler initialized", "startup");
   
   // Initialize Key-Value Store maintenance (periodic cleanup of expired entries)
   startKVMaintenance(5 * 60 * 1000); // Run cleanup every 5 minutes

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -22,9 +22,14 @@ import {
   Calendar,
   MessageSquare,
   ListTodo,
-  Mic
+  Mic,
+  RefreshCw,
+  CheckCircle2,
+  AlertCircle
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface Entity {
   id: string;
@@ -83,6 +88,29 @@ interface EntityNeighborhood {
     maxDepth: number;
     typeDistribution: Record<string, number>;
   };
+}
+
+interface BackfillProgress {
+  domain: string;
+  total: number;
+  processed: number;
+  entitiesCreated: number;
+  referencesCreated: number;
+  errors: number;
+}
+
+interface BackfillResult {
+  success: boolean;
+  progress: BackfillProgress[];
+  totalEntitiesCreated: number;
+  totalReferencesCreated: number;
+  totalErrors: number;
+  durationMs: number;
+}
+
+interface BackfillStatus {
+  isRunning: boolean;
+  result: BackfillResult | null;
 }
 
 function getEntityIcon(type: string) {
@@ -336,8 +364,9 @@ export default function KnowledgeGraphPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("all");
+  const { toast } = useToast();
 
-  const { data: stats, isLoading: statsLoading } = useQuery<GraphStats>({
+  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQuery<GraphStats>({
     queryKey: ["/api/graph/stats"],
   });
 
@@ -345,6 +374,50 @@ export default function KnowledgeGraphPage() {
     queryKey: ["/api/graph/query", searchQuery],
     enabled: searchQuery.length >= 2,
   });
+
+  const { data: backfillStatus, refetch: refetchBackfillStatus } = useQuery<BackfillStatus>({
+    queryKey: ["/api/graph/backfill/status"],
+    refetchInterval: (query) => {
+      const data = query.state.data as BackfillStatus | undefined;
+      return data?.isRunning ? 2000 : false;
+    },
+  });
+
+  const backfillMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/graph/backfill");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Backfill Complete",
+        description: `Created ${data.totalEntitiesCreated} entities and ${data.totalReferencesCreated} references`,
+      });
+      refetchStats();
+      refetchBackfillStatus();
+      queryClient.invalidateQueries({ queryKey: ["/api/graph"] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Backfill Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+      refetchBackfillStatus();
+    },
+  });
+
+  useEffect(() => {
+    if (backfillStatus?.isRunning) {
+      const interval = setInterval(() => {
+        refetchBackfillStatus();
+      }, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [backfillStatus?.isRunning, refetchBackfillStatus]);
+
+  const isBackfillRunning = backfillStatus?.isRunning || backfillMutation.isPending;
+  const isEmpty = !stats || stats.totalEntities === 0;
 
   const filteredEntities = stats?.mostConnectedEntities?.filter(e => 
     activeTab === "all" || e.entity.type === activeTab
@@ -366,17 +439,57 @@ export default function KnowledgeGraphPage() {
   return (
     <div className="h-full flex flex-col">
       <div className="border-b px-4 py-3 sm:px-6 sm:py-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Network className="h-5 w-5 text-primary" />
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Network className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-lg sm:text-xl font-semibold">Knowledge Graph</h1>
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                Explore connections across your data
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-lg sm:text-xl font-semibold">Knowledge Graph</h1>
-            <p className="text-xs sm:text-sm text-muted-foreground">
-              Explore connections across your data
-            </p>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => backfillMutation.mutate()}
+            disabled={isBackfillRunning}
+            data-testid="button-refresh-graph"
+          >
+            {isBackfillRunning ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <span className="hidden sm:inline">Processing...</span>
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Refresh Graph</span>
+              </>
+            )}
+          </Button>
         </div>
+        {isBackfillRunning && (
+          <div className="mt-3 p-3 bg-muted/50 rounded-lg">
+            <div className="flex items-center gap-2 text-sm">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <span>Extracting entities from your data...</span>
+            </div>
+          </div>
+        )}
+        {backfillStatus?.result && !isBackfillRunning && backfillStatus.result.success && (
+          <div className="mt-3 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>
+                Last backfill: {backfillStatus.result.totalEntitiesCreated} entities, {backfillStatus.result.totalReferencesCreated} references 
+                ({Math.round(backfillStatus.result.durationMs / 1000)}s)
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       <ScrollArea className="flex-1">
@@ -495,9 +608,29 @@ export default function KnowledgeGraphPage() {
                           />
                         ))
                       ) : (
-                        <p className="text-sm text-muted-foreground text-center py-8">
-                          No entities found. Run a backfill to populate the graph.
-                        </p>
+                        <div className="flex flex-col items-center justify-center py-8 gap-4">
+                          <Network className="h-12 w-12 text-muted-foreground/30" />
+                          <p className="text-sm text-muted-foreground text-center">
+                            No entities found. Run a backfill to populate the graph.
+                          </p>
+                          <Button
+                            onClick={() => backfillMutation.mutate()}
+                            disabled={isBackfillRunning}
+                            data-testid="button-run-backfill"
+                          >
+                            {isBackfillRunning ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Processing...
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                                Run Backfill
+                              </>
+                            )}
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </ScrollArea>
