@@ -42,7 +42,9 @@ import {
   Check,
   Search,
   Loader2,
-  CalendarDays
+  CalendarDays,
+  Crosshair,
+  Move
 } from "lucide-react";
 import {
   Sheet,
@@ -190,9 +192,13 @@ const createCustomIcon = (category: string, isStarred: boolean = false) => {
 
 const currentLocationIcon = L.divIcon({
   className: 'current-location-marker',
-  html: `<div style="background:#3b82f6;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 0 0 2px #3b82f6,0 2px 8px rgba(0,0,0,0.3);"></div>`,
-  iconSize: [16, 16],
-  iconAnchor: [8, 8]
+  html: `<div style="position:relative;width:32px;height:32px;">
+    <div style="position:absolute;inset:0;border-radius:50%;border:2px solid rgba(59, 130, 246, 0.3);"></div>
+    <div style="position:absolute;inset:6px;border-radius:50%;border:2px solid rgba(59, 130, 246, 0.5);"></div>
+    <div style="position:absolute;inset:12px;border-radius:50%;background:#3b82f6;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>
+  </div>`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 16]
 });
 
 function MapController({ center, zoom }: { center: [number, number]; zoom: number }) {
@@ -434,17 +440,239 @@ function AddPlaceDialog({
   );
 }
 
+function EditPlaceDialog({
+  open,
+  onOpenChange,
+  place,
+  onSave,
+  isPending
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  place: SavedPlace | null;
+  onSave: (id: string, data: any) => void;
+  isPending: boolean;
+}) {
+  const [name, setName] = useState("");
+  const [label, setLabel] = useState("");
+  const [address, setAddress] = useState("");
+  const [category, setCategory] = useState("other");
+  const [notes, setNotes] = useState("");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
+  const [proximityAlertEnabled, setProximityAlertEnabled] = useState(false);
+  const [proximityRadius, setProximityRadius] = useState("200");
+
+  useEffect(() => {
+    if (open && place) {
+      setName(place.name);
+      setLabel(place.label || "");
+      setAddress(place.address || "");
+      setCategory(place.category);
+      setNotes(place.notes || "");
+      setLatitude(place.latitude);
+      setLongitude(place.longitude);
+      setProximityAlertEnabled(place.proximityAlertEnabled);
+      setProximityRadius(String(place.proximityRadiusMeters));
+    }
+  }, [open, place]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !place) return;
+    
+    onSave(place.id, {
+      name: name.trim(),
+      latitude,
+      longitude,
+      label: label.trim() || null,
+      address: address.trim() || null,
+      category,
+      notes: notes.trim() || null,
+      proximityAlertEnabled,
+      proximityRadiusMeters: parseInt(proximityRadius)
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" data-testid="dialog-edit-place">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Pencil className="h-5 w-5 text-primary" />
+            Edit Place
+          </DialogTitle>
+          <DialogDescription>Update location details and coordinates</DialogDescription>
+        </DialogHeader>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="edit-name">Name *</Label>
+            <Input
+              id="edit-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={isPending}
+              data-testid="input-edit-name"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="edit-category">Category</Label>
+              <Select value={category} onValueChange={setCategory} disabled={isPending}>
+                <SelectTrigger data-testid="select-edit-category">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PLACE_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      <div className="flex items-center gap-2">
+                        <cat.icon className="h-4 w-4" />
+                        {cat.label}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-label">Label</Label>
+              <Input
+                id="edit-label"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                disabled={isPending}
+                data-testid="input-edit-label"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Crosshair className="h-4 w-4 text-muted-foreground" />
+              GPS Coordinates
+            </Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="edit-lat" className="text-xs text-muted-foreground">Latitude</Label>
+                <Input
+                  id="edit-lat"
+                  value={latitude}
+                  onChange={(e) => setLatitude(e.target.value)}
+                  placeholder="42.123456"
+                  disabled={isPending}
+                  data-testid="input-edit-latitude"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="edit-lng" className="text-xs text-muted-foreground">Longitude</Label>
+                <Input
+                  id="edit-lng"
+                  value={longitude}
+                  onChange={(e) => setLongitude(e.target.value)}
+                  placeholder="-71.123456"
+                  disabled={isPending}
+                  data-testid="input-edit-longitude"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="edit-address">Address</Label>
+            <Input
+              id="edit-address"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              disabled={isPending}
+              data-testid="input-edit-address"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="edit-notes">Notes</Label>
+            <Textarea
+              id="edit-notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="resize-none"
+              rows={2}
+              disabled={isPending}
+              data-testid="input-edit-notes"
+            />
+          </div>
+
+          <div className="space-y-3 border-t pt-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Bell className="h-4 w-4 text-muted-foreground" />
+                <Label htmlFor="edit-proximity" className="text-sm cursor-pointer">Proximity alerts</Label>
+              </div>
+              <Switch
+                id="edit-proximity"
+                checked={proximityAlertEnabled}
+                onCheckedChange={setProximityAlertEnabled}
+                disabled={isPending}
+                data-testid="switch-edit-proximity"
+              />
+            </div>
+            
+            {proximityAlertEnabled && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-radius" className="text-sm text-muted-foreground">Alert radius (meters)</Label>
+                <Input
+                  id="edit-radius"
+                  type="number"
+                  value={proximityRadius}
+                  onChange={(e) => setProximityRadius(e.target.value)}
+                  min="50"
+                  max="5000"
+                  disabled={isPending}
+                  data-testid="input-edit-radius"
+                />
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isPending}
+              data-testid="button-cancel-edit"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isPending || !name.trim()}
+              data-testid="button-save-edit"
+            >
+              {isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function PlaceCard({ 
   place, 
   onDelete, 
   onToggleStar, 
   onView,
+  onEdit,
   isDeleting 
 }: { 
   place: SavedPlace; 
   onDelete: () => void;
   onToggleStar: () => void;
   onView: () => void;
+  onEdit: () => void;
   isDeleting: boolean;
 }) {
   return (
@@ -484,6 +712,15 @@ function PlaceCard({
       </div>
 
       <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={onEdit}
+          className="opacity-0 group-hover:opacity-100 transition-opacity"
+          data-testid={`button-edit-place-${place.id}`}
+        >
+          <Pencil className="h-4 w-4 text-muted-foreground" />
+        </Button>
         <Button
           size="icon"
           variant="ghost"
@@ -1277,6 +1514,10 @@ export default function LocationPage() {
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              maxZoom={19}
+              keepBuffer={4}
+              updateWhenZooming={false}
+              updateWhenIdle={true}
             />
             <MapController center={mapCenter} zoom={mapZoom} />
             <MapClickHandler onMapClick={handleMapClick} />
@@ -1398,7 +1639,11 @@ export default function LocationPage() {
           {currentLocation && (
             <div className="absolute top-4 left-4 z-[1000] bg-background/95 backdrop-blur border border-border rounded-lg p-3 shadow-lg" data-testid="current-location-card">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow-sm" />
+                <div className="relative w-5 h-5">
+                  <div className="absolute inset-0 rounded-full border border-blue-400/40"></div>
+                  <div className="absolute inset-1 rounded-full border border-blue-400/60"></div>
+                  <div className="absolute inset-[6px] rounded-full bg-blue-500 border border-white"></div>
+                </div>
                 <span className="text-sm font-medium">Your Location</span>
               </div>
               <div className="text-xs text-muted-foreground space-y-0.5">
