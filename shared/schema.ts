@@ -808,6 +808,12 @@ export const placeCategories = [
 export type PlaceCategory = typeof placeCategories[number];
 
 // Saved places table for starred/favorite locations
+export const verificationStatuses = ["pending", "verified", "mismatch"] as const;
+export type VerificationStatus = typeof verificationStatuses[number];
+
+export const verifiedByOptions = ["ai", "manual"] as const;
+export type VerifiedBy = typeof verifiedByOptions[number];
+
 export const savedPlaces = sqliteTable("saved_places", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -820,6 +826,10 @@ export const savedPlaces = sqliteTable("saved_places", {
   isStarred: integer("is_starred", { mode: "boolean" }).notNull().default(false),
   proximityAlertEnabled: integer("proximity_alert_enabled", { mode: "boolean" }).notNull().default(false),
   proximityRadiusMeters: integer("proximity_radius_meters").notNull().default(200),
+  verificationStatus: text("verification_status", { enum: verificationStatuses }).default("pending"),
+  verificationConfidence: text("verification_confidence"),
+  lastVerifiedAt: text("last_verified_at"),
+  verifiedBy: text("verified_by", { enum: verifiedByOptions }),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -841,6 +851,10 @@ export const updateSavedPlaceSchema = z.object({
   isStarred: z.boolean().optional(),
   proximityAlertEnabled: z.boolean().optional(),
   proximityRadiusMeters: z.number().optional(),
+  verificationStatus: z.enum(verificationStatuses).optional(),
+  verificationConfidence: z.string().nullable().optional(),
+  lastVerifiedAt: z.string().nullable().optional(),
+  verifiedBy: z.enum(verifiedByOptions).nullable().optional(),
 });
 
 export type InsertSavedPlace = z.infer<typeof insertSavedPlaceSchema>;

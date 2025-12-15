@@ -151,7 +151,9 @@ import type {
   UploadedFileType,
   FileProcessingStatus,
   JournalEntry,
-  InsertJournalEntry
+  InsertJournalEntry,
+  VerificationStatus,
+  VerifiedBy
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -698,6 +700,10 @@ db.exec(`
     is_starred INTEGER NOT NULL DEFAULT 0,
     proximity_alert_enabled INTEGER NOT NULL DEFAULT 0,
     proximity_radius_meters INTEGER NOT NULL DEFAULT 200,
+    verification_status TEXT DEFAULT 'pending',
+    verification_confidence TEXT,
+    last_verified_at TEXT,
+    verified_by TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -705,6 +711,20 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_saved_places_starred ON saved_places(is_starred);
   CREATE INDEX IF NOT EXISTS idx_saved_places_proximity ON saved_places(proximity_alert_enabled);
 `);
+
+// Add verification columns to saved_places if they don't exist (migration for existing databases)
+try {
+  db.exec(`ALTER TABLE saved_places ADD COLUMN verification_status TEXT DEFAULT 'pending'`);
+} catch (e) { /* Column already exists */ }
+try {
+  db.exec(`ALTER TABLE saved_places ADD COLUMN verification_confidence TEXT`);
+} catch (e) { /* Column already exists */ }
+try {
+  db.exec(`ALTER TABLE saved_places ADD COLUMN last_verified_at TEXT`);
+} catch (e) { /* Column already exists */ }
+try {
+  db.exec(`ALTER TABLE saved_places ADD COLUMN verified_by TEXT`);
+} catch (e) { /* Column already exists */ }
 
 // Create place_lists table for grouping locations
 db.exec(`
@@ -1934,6 +1954,10 @@ interface SavedPlaceRow {
   is_starred: number;
   proximity_alert_enabled: number;
   proximity_radius_meters: number;
+  verification_status: string | null;
+  verification_confidence: string | null;
+  last_verified_at: string | null;
+  verified_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -2299,6 +2323,10 @@ function mapSavedPlace(row: SavedPlaceRow): SavedPlace {
     isStarred: Boolean(row.is_starred),
     proximityAlertEnabled: Boolean(row.proximity_alert_enabled),
     proximityRadiusMeters: row.proximity_radius_meters,
+    verificationStatus: (row.verification_status as VerificationStatus) || "pending",
+    verificationConfidence: row.verification_confidence,
+    lastVerifiedAt: row.last_verified_at,
+    verifiedBy: row.verified_by as VerifiedBy | null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -4567,6 +4595,10 @@ export function createSavedPlace(data: InsertSavedPlace): SavedPlace {
       isStarred: data.isStarred || false,
       proximityAlertEnabled: data.proximityAlertEnabled || false,
       proximityRadiusMeters: data.proximityRadiusMeters || 200,
+      verificationStatus: "pending" as VerificationStatus,
+      verificationConfidence: null,
+      lastVerifiedAt: null,
+      verifiedBy: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -4634,6 +4666,10 @@ export function updateSavedPlace(id: string, data: UpdateSavedPlace): SavedPlace
     if (data.isStarred !== undefined) { updates.push("is_starred = ?"); values.push(data.isStarred ? 1 : 0); }
     if (data.proximityAlertEnabled !== undefined) { updates.push("proximity_alert_enabled = ?"); values.push(data.proximityAlertEnabled ? 1 : 0); }
     if (data.proximityRadiusMeters !== undefined) { updates.push("proximity_radius_meters = ?"); values.push(data.proximityRadiusMeters); }
+    if (data.verificationStatus !== undefined) { updates.push("verification_status = ?"); values.push(data.verificationStatus); }
+    if (data.verificationConfidence !== undefined) { updates.push("verification_confidence = ?"); values.push(data.verificationConfidence); }
+    if (data.lastVerifiedAt !== undefined) { updates.push("last_verified_at = ?"); values.push(data.lastVerifiedAt); }
+    if (data.verifiedBy !== undefined) { updates.push("verified_by = ?"); values.push(data.verifiedBy); }
     
     values.push(id);
     db.prepare(`UPDATE saved_places SET ${updates.join(", ")} WHERE id = ?`).run(...values);

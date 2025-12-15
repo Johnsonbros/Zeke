@@ -1160,6 +1160,7 @@ export default function LocationPage() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [showPanel, setShowPanel] = useState(true);
+  const [editingPlace, setEditingPlace] = useState<SavedPlace | null>(null);
 
   const searchString = useSearch();
 
@@ -1256,6 +1257,21 @@ export default function LocationPage() {
     onSuccess: (data: SavedPlace) => {
       queryClient.invalidateQueries({ queryKey: ["/api/location/places"] });
       toast({ title: data.isStarred ? "Place starred" : "Star removed" });
+    },
+  });
+
+  const updatePlaceMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const response = await apiRequest("PATCH", `/api/location/places/${id}`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/location/places"] });
+      setEditingPlace(null);
+      toast({ title: "Place updated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update place", description: error.message, variant: "destructive" });
     },
   });
 
@@ -1803,6 +1819,7 @@ export default function LocationPage() {
                                 onDelete={() => deletePlaceMutation.mutate(place.id)}
                                 onToggleStar={() => toggleStarMutation.mutate(place.id)}
                                 onView={() => viewPlace(place)}
+                                onEdit={() => setEditingPlace(place)}
                                 isDeleting={deletePlaceMutation.isPending}
                               />
                             ))}
@@ -1823,6 +1840,7 @@ export default function LocationPage() {
                                 onDelete={() => deletePlaceMutation.mutate(place.id)}
                                 onToggleStar={() => toggleStarMutation.mutate(place.id)}
                                 onView={() => viewPlace(place)}
+                                onEdit={() => setEditingPlace(place)}
                                 isDeleting={deletePlaceMutation.isPending}
                               />
                             ))}
@@ -2074,6 +2092,14 @@ export default function LocationPage() {
         onOpenChange={setIsCreatingList}
         onSave={(data) => createListMutation.mutate(data)}
         isPending={createListMutation.isPending}
+      />
+
+      <EditPlaceDialog
+        open={editingPlace !== null}
+        onOpenChange={(open) => { if (!open) setEditingPlace(null); }}
+        place={editingPlace}
+        onSave={(id, data) => updatePlaceMutation.mutate({ id, data })}
+        isPending={updatePlaceMutation.isPending}
       />
     </div>
   );

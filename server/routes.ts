@@ -414,6 +414,7 @@ import {
 } from "./idempotency";
 import { analyzeMmsImage, type ImageAnalysisResult, type PersonPhotoAnalysisResult } from "./services/fileProcessor";
 import { setPendingPlaceSave, hasPendingPlaceSave, completePendingPlaceSave, cleanupExpiredPendingPlaces } from "./pendingPlaceSave";
+import { verifyPlace, manuallyVerifyPlace } from "./locationVerifier";
 
 // Format phone number for Twilio - handles various input formats
 function formatPhoneNumber(phone: string): string {
@@ -4591,6 +4592,33 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Star toggle error:", error);
       res.status(500).json({ error: error.message || "Failed to toggle star" });
+    }
+  });
+
+  // POST /api/location/places/:id/verify - Verify a place using AI geocoding
+  app.post("/api/location/places/:id/verify", async (req, res) => {
+    try {
+      const { recipientPhone } = req.body;
+      const result = await verifyPlace(req.params.id, recipientPhone);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Place verification error:", error);
+      res.status(500).json({ error: error.message || "Failed to verify place" });
+    }
+  });
+
+  // POST /api/location/places/:id/verify-manual - Manually mark a place as verified
+  app.post("/api/location/places/:id/verify-manual", (req, res) => {
+    try {
+      const success = manuallyVerifyPlace(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Place not found" });
+      }
+      const place = getSavedPlace(req.params.id);
+      res.json({ success: true, place });
+    } catch (error: any) {
+      console.error("Manual verification error:", error);
+      res.status(500).json({ error: error.message || "Failed to manually verify place" });
     }
   });
 
