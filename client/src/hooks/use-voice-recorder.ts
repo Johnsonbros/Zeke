@@ -1,35 +1,9 @@
 import { useState, useCallback, useRef } from "react";
 
-// Type definitions for capacitor-voice-recorder
 interface RecordingData {
   recordDataBase64: string;
   mimeType: string;
   msDuration?: number;
-}
-
-interface VoiceRecorderResult {
-  value: RecordingData;
-}
-
-interface VoiceRecorderPermissionResult {
-  value: boolean;
-}
-
-// We'll dynamically import VoiceRecorder to handle cases where it's not available (web without Capacitor)
-let VoiceRecorder: any = null;
-
-// Try to import the VoiceRecorder plugin
-async function getVoiceRecorder() {
-  if (VoiceRecorder) return VoiceRecorder;
-  
-  try {
-    const module = await import("capacitor-voice-recorder");
-    VoiceRecorder = module.VoiceRecorder;
-    return VoiceRecorder;
-  } catch (error) {
-    console.log("VoiceRecorder plugin not available (web mode without Capacitor)");
-    return null;
-  }
 }
 
 export type RecordingState = "idle" | "requesting_permission" | "recording" | "processing";
@@ -50,8 +24,10 @@ export function useVoiceRecorder(): VoiceRecorderHook {
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
-  const [isAvailable, setIsAvailable] = useState(true);
+  const [isAvailable, setIsAvailable] = useState(false);
   
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const durationIntervalRef = useRef<number | null>(null);
   const startTimeRef = useRef<number | null>(null);
 
@@ -74,44 +50,16 @@ export function useVoiceRecorder(): VoiceRecorderHook {
 
   const checkPermission = useCallback(async (): Promise<boolean> => {
     try {
-      const recorder = await getVoiceRecorder();
-      if (!recorder) {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setIsAvailable(false);
         return false;
       }
-
-      const result: VoiceRecorderPermissionResult = await recorder.hasAudioRecordingPermission();
-      return result.value;
+      const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+      setIsAvailable(true);
+      return result.state === 'granted';
     } catch (err) {
-      console.error("Error checking audio permission:", err);
-      setIsAvailable(false);
-      return false;
-    }
-  }, []);
-
-  const requestPermission = useCallback(async (): Promise<boolean> => {
-    try {
-      const recorder = await getVoiceRecorder();
-      if (!recorder) {
-        setIsAvailable(false);
-        setError("Voice recording is not available on this device");
-        return false;
-      }
-
-      setRecordingState("requesting_permission");
-      const result: VoiceRecorderPermissionResult = await recorder.requestAudioRecordingPermission();
-      
-      if (!result.value) {
-        setError("Microphone permission denied");
-        setRecordingState("idle");
-        return false;
-      }
-
-      return true;
-    } catch (err: any) {
-      console.error("Error requesting audio permission:", err);
-      setError(err.message || "Failed to request microphone permission");
-      setRecordingState("idle");
+      console.log("Permission check not supported, will request on use");
+      setIsAvailable(!!navigator.mediaDevices?.getUserMedia);
       return false;
     }
   }, []);
@@ -120,22 +68,27 @@ export function useVoiceRecorder(): VoiceRecorderHook {
     setError(null);
     
     try {
-      const recorder = await getVoiceRecorder();
-      if (!recorder) {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setIsAvailable(false);
-        setError("Voice recording is not available on this device");
+        setError("Voice recording is not available in this browser");
         return false;
       }
 
-      // Check and request permission if needed
-      const hasPermission = await checkPermission();
-      if (!hasPermission) {
-        const granted = await requestPermission();
-        if (!granted) return false;
-      }
+      setRecordingState("requesting_permission");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setIsAvailable(true);
 
-      // Start recording
-      await recorder.startRecording();
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.start();
       setRecordingState("recording");
       setDuration(0);
       startDurationTimer();
@@ -144,48 +97,73 @@ export function useVoiceRecorder(): VoiceRecorderHook {
     } catch (err: any) {
       stopDurationTimer();
       console.error("Error starting recording:", err);
-      setError(err.message || "Failed to start recording");
+      if (err.name === 'NotAllowedError') {
+        setError("Microphone permission denied");
+      } else {
+        setError(err.message || "Failed to start recording");
+      }
       setRecordingState("idle");
       return false;
     }
-  }, [checkPermission, requestPermission, startDurationTimer, stopDurationTimer]);
+  }, [startDurationTimer, stopDurationTimer]);
 
   const stopRecording = useCallback(async (): Promise<RecordingData | null> => {
     stopDurationTimer();
     
     try {
-      const recorder = await getVoiceRecorder();
-      if (!recorder) {
+      const mediaRecorder = mediaRecorderRef.current;
+      if (!mediaRecorder) {
         setRecordingState("idle");
         return null;
       }
 
       setRecordingState("processing");
-      const result: VoiceRecorderResult = await recorder.stopRecording();
-      setRecordingState("idle");
-      
-      return result.value;
+
+      return new Promise((resolve) => {
+        mediaRecorder.onstop = async () => {
+          const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+          const arrayBuffer = await blob.arrayBuffer();
+          const base64 = btoa(
+            new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+          );
+
+          mediaRecorder.stream.getTracks().forEach(track => track.stop());
+          mediaRecorderRef.current = null;
+          chunksRef.current = [];
+          setRecordingState("idle");
+
+          resolve({
+            recordDataBase64: base64,
+            mimeType: blob.type,
+            msDuration: duration * 1000,
+          });
+        };
+
+        mediaRecorder.stop();
+      });
     } catch (err: any) {
       console.error("Error stopping recording:", err);
       setError(err.message || "Failed to stop recording");
       setRecordingState("idle");
       return null;
     }
-  }, [stopDurationTimer]);
+  }, [stopDurationTimer, duration]);
 
   const cancelRecording = useCallback(async (): Promise<void> => {
     stopDurationTimer();
     
     try {
-      const recorder = await getVoiceRecorder();
-      if (recorder && recordingState === "recording") {
-        await recorder.stopRecording();
+      const mediaRecorder = mediaRecorderRef.current;
+      if (mediaRecorder && recordingState === "recording") {
+        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        mediaRecorder.stop();
       }
     } catch (err) {
-      // Ignore errors when canceling
       console.log("Recording canceled");
     }
     
+    mediaRecorderRef.current = null;
+    chunksRef.current = [];
     setRecordingState("idle");
     setDuration(0);
     setError(null);

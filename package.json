@@ -22,14 +22,6 @@
     "smoke": "tsx script/smoke.ts"
   },
   "dependencies": {
-    "@capacitor/android": "^8.0.0",
-    "@capacitor/cli": "^7.4.4",
-    "@capacitor/core": "^8.0.0",
-    "@capacitor/geolocation": "^8.0.0",
-    "@capacitor/haptics": "^8.0.0",
-    "@capacitor/local-notifications": "^8.0.0",
-    "@capacitor/push-notifications": "^8.0.0",
-    "@capacitor/share": "^8.0.0",
     "@elevenlabs/elevenlabs-js": "^2.27.0",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
@@ -74,7 +66,6 @@
     "@types/pdf-parse": "^1.1.5",
     "@types/uuid": "^10.0.0",
     "better-sqlite3": "^12.4.6",
-    "capacitor-voice-recorder": "^7.0.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

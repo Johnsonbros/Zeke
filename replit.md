@@ -60,50 +60,30 @@ Key technical implementations and features include:
 - **DuckDuckGo API**: Fallback web search.
 - **Omi API**: Accessing lifelogs from the Omi pendant.
 
-## Android App (Capacitor)
-ZEKE can be built as a native Android app using Capacitor. The Android project wraps the React web UI.
+## Mobile App (Expo/React Native)
+ZEKE has a companion mobile app built with Expo/React Native, maintained in a separate GitHub repository and synced automatically.
+
+**Repository:** `Johnsonbros/ZEKEapp`
+**Local Path:** `android/` (synced via GitHub webhook)
 
 **Build Commands:**
 ```bash
-npm run build              # Build web assets
-npx cap sync android       # Sync web assets to Android project
-npx cap open android       # Open in Android Studio
+cd android
+npm install                # Install dependencies
+npx expo start             # Start Expo dev server
+npx eas build              # Build for production
 ```
-
-**Configuration:**
-- App ID: `com.thejohnsonbros.zeke`
-- App Name: `ZEKE`
-- Web Dir: `dist/public`
-- Config file: `capacitor.config.ts`
-
-**Android Project Location:** `android/`
 
 **Native Capabilities:**
 - **Geolocation**: Direct GPS location from phone (enhances Location Intelligence)
-- **Push Notifications**: Instant alerts for reminders, tasks, briefings (requires Firebase setup)
-- **Local Notifications**: Offline reminders without server
-- **Share Target**: Receive shared content from other apps directly to ZEKE
-- **Haptic Feedback**: Vibration for confirmations and alerts
-- **Voice Input**: Record voice messages and transcribe to text using OpenAI Whisper
-
-**Push Notifications Setup (Firebase):**
-1. Create a Firebase project at https://console.firebase.google.com
-2. Add an Android app with package name `com.thejohnsonbros.zeke`
-3. Download `google-services.json` and place in `android/app/`
-4. Push notifications will work after building with this file
-
-**Updating the Android App:**
-When you make changes to ZEKE (new features, bug fixes, UI updates), the Android app will get those updates automatically since it wraps the web UI. To update:
-```bash
-npm run build              # Rebuild web assets with your changes
-npx cap sync android       # Sync updated assets to Android project
-```
-Then rebuild in Android Studio to create a new APK with the latest changes.
+- **Push Notifications**: Instant alerts for reminders, tasks, briefings
+- **Background Location**: Continuous location tracking for visit detection
+- **Voice Input**: Record and transcribe voice messages
 
 **Notes:**
-- Always run `npm run build` before `npx cap sync android` to ensure latest web assets are packaged
-- The app requires internet connectivity to communicate with the ZEKE backend
-- For production builds, configure signing in `android/app/build.gradle`
+- The mobile app connects to the ZEKE backend API
+- Changes to ZEKEapp repo auto-sync here via webhook
+- Changes made locally can be pushed back via `/api/github/push`
 
 ## GitHub Repository Sync
 
