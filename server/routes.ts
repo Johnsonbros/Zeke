@@ -104,6 +104,10 @@ import {
   findNearbyPlaces,
   checkGroceryProximity,
   calculateDistance,
+  createLocationSamples,
+  getLocationSamples,
+  getLocationVisits,
+  findNearbyStarredPlaces,
   linkTaskToPlace,
   linkReminderToPlace,
   linkMemoryToPlace,
@@ -213,7 +217,7 @@ import {
   getJournalEntryByDate,
 } from "./db";
 import type { TwilioMessageSource, UploadedFileType } from "@shared/schema";
-import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema } from "@shared/schema";
+import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema, locationSampleBatchSchema, insertSavedPlaceSchema } from "@shared/schema";
 import multer from "multer";
 import path from "path";
 import fsNode from "fs";
@@ -4619,6 +4623,175 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Manual verification error:", error);
       res.status(500).json({ error: error.message || "Failed to manually verify place" });
+    }
+  });
+
+  // === Companion App Location Endpoints ===
+
+  // POST /api/location/samples - Batch upload GPS points from companion app
+  app.post("/api/location/samples", (req, res) => {
+    try {
+      // Validate request body with zod schema
+      const parseResult = locationSampleBatchSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid request body", 
+          details: parseResult.error.flatten() 
+        });
+      }
+      
+      const { samples } = parseResult.data;
+      
+      if (samples.length === 0) {
+        return res.status(400).json({ error: "samples array cannot be empty" });
+      }
+      
+      // Normalize samples for database
+      const normalizedSamples = samples.map((s) => ({
+        latitude: String(s.latitude),
+        longitude: String(s.longitude),
+        accuracy: s.accuracy ? String(s.accuracy) : undefined,
+        altitude: s.altitude ? String(s.altitude) : undefined,
+        speed: s.speed ? String(s.speed) : undefined,
+        heading: s.heading ? String(s.heading) : undefined,
+        batteryLevel: s.batteryLevel ? String(s.batteryLevel) : undefined,
+        source: s.source || "gps",
+        timestamp: s.timestamp,
+      }));
+      
+      const created = createLocationSamples(normalizedSamples);
+      
+      res.status(201).json({
+        success: true,
+        count: created.length,
+        samples: created
+      });
+    } catch (error: any) {
+      console.error("Location samples upload error:", error);
+      res.status(500).json({ error: error.message || "Failed to upload location samples" });
+    }
+  });
+
+  // GET /api/location/samples - Fetch GPS sample history
+  app.get("/api/location/samples", (req, res) => {
+    try {
+      const since = req.query.since as string | undefined;
+      const limit = parseInt(req.query.limit as string) || 100;
+      
+      const samples = getLocationSamples({ since, limit });
+      
+      res.json({
+        count: samples.length,
+        samples
+      });
+    } catch (error: any) {
+      console.error("Location samples fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch location samples" });
+    }
+  });
+
+  // GET /api/location/visits - Get aggregated visit records
+  app.get("/api/location/visits", (req, res) => {
+    try {
+      const since = req.query.since as string | undefined;
+      const limit = parseInt(req.query.limit as string) || 50;
+      
+      const visits = getLocationVisits({ since, limit });
+      
+      res.json({
+        count: visits.length,
+        visits
+      });
+    } catch (error: any) {
+      console.error("Location visits fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch location visits" });
+    }
+  });
+
+  // Companion app starred place schema - derived from insertSavedPlaceSchema
+  // Allows flexible input (numbers for lat/lon) while maintaining schema consistency
+  const companionStarredPlaceSchema = insertSavedPlaceSchema.extend({
+    // Allow numbers for lat/lon (companion app convenience), will be converted to strings
+    latitude: z.union([z.string(), z.number()]).transform(v => String(v)),
+    longitude: z.union([z.string(), z.number()]).transform(v => String(v)),
+  }).partial().extend({
+    // Make required fields explicit
+    name: z.string().min(1, "name is required"),
+    latitude: z.union([z.string(), z.number()]).transform(v => String(v)),
+    longitude: z.union([z.string(), z.number()]).transform(v => String(v)),
+  });
+
+  // POST /api/location/starred - Save a starred place (simplified for companion app)
+  app.post("/api/location/starred", (req, res) => {
+    try {
+      // Validate request body with schema derived from insertSavedPlaceSchema
+      const parseResult = companionStarredPlaceSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid request body", 
+          details: parseResult.error.flatten() 
+        });
+      }
+      
+      const validatedData = parseResult.data;
+      
+      // Create place with validated data and starred defaults
+      const place = createSavedPlace({
+        name: validatedData.name,
+        latitude: validatedData.latitude,
+        longitude: validatedData.longitude,
+        label: validatedData.label ?? undefined,
+        address: validatedData.address ?? undefined,
+        category: validatedData.category ?? "other",
+        notes: validatedData.notes ?? undefined,
+        isStarred: true, // Always starred for this endpoint
+        proximityAlertEnabled: validatedData.proximityAlertEnabled ?? false,
+        proximityRadiusMeters: validatedData.proximityRadiusMeters ?? 200,
+        verificationStatus: validatedData.verificationStatus ?? "pending",
+        verificationConfidence: validatedData.verificationConfidence ?? undefined,
+        lastVerifiedAt: validatedData.lastVerifiedAt ?? undefined,
+        verifiedBy: validatedData.verifiedBy ?? undefined,
+      });
+      
+      res.status(201).json({
+        success: true,
+        place
+      });
+    } catch (error: any) {
+      console.error("Starred place creation error:", error);
+      res.status(500).json({ error: error.message || "Failed to save starred place" });
+    }
+  });
+
+  // GET /api/location/nearby - Find nearby starred places
+  app.get("/api/location/nearby", (req, res) => {
+    try {
+      const lat = parseFloat(req.query.lat as string);
+      const lon = parseFloat(req.query.lon as string);
+      const radius = parseInt(req.query.radius as string) || 1000;
+      
+      if (isNaN(lat) || isNaN(lon)) {
+        return res.status(400).json({ error: "lat and lon query parameters are required" });
+      }
+      
+      const nearby = findNearbyStarredPlaces(lat, lon, radius);
+      
+      res.json({
+        count: nearby.length,
+        places: nearby.map(p => ({
+          id: p.id,
+          name: p.name,
+          latitude: p.latitude,
+          longitude: p.longitude,
+          address: p.address,
+          category: p.category,
+          distance: Math.round(p.distance),
+          isStarred: p.isStarred,
+        }))
+      });
+    } catch (error: any) {
+      console.error("Nearby places fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch nearby places" });
     }
   });
 

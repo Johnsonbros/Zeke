@@ -947,6 +947,76 @@ export type InsertProximityAlert = z.infer<typeof insertProximityAlertSchema>;
 export type ProximityAlert = typeof proximityAlerts.$inferSelect;
 
 // ============================================
+// COMPANION APP LOCATION DATA
+// ============================================
+
+// GPS samples from companion app (raw location data)
+export const locationSamples = sqliteTable("location_samples", {
+  id: text("id").primaryKey(),
+  latitude: text("latitude").notNull(),
+  longitude: text("longitude").notNull(),
+  accuracy: text("accuracy"), // meters
+  altitude: text("altitude"), // meters
+  speed: text("speed"), // m/s
+  heading: text("heading"), // degrees
+  batteryLevel: text("battery_level"), // 0-100
+  source: text("source", { enum: ["gps", "network", "fused", "manual"] }).default("gps"),
+  timestamp: text("timestamp").notNull(), // ISO timestamp from device
+  createdAt: text("created_at").notNull(), // server receive time
+});
+
+export const insertLocationSampleSchema = createInsertSchema(locationSamples).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertLocationSample = z.infer<typeof insertLocationSampleSchema>;
+export type LocationSample = typeof locationSamples.$inferSelect;
+
+// Batch upload schema for companion app
+export const locationSampleBatchSchema = z.object({
+  samples: z.array(z.object({
+    latitude: z.union([z.string(), z.number()]),
+    longitude: z.union([z.string(), z.number()]),
+    accuracy: z.union([z.string(), z.number()]).optional(),
+    altitude: z.union([z.string(), z.number()]).optional(),
+    speed: z.union([z.string(), z.number()]).optional(),
+    heading: z.union([z.string(), z.number()]).optional(),
+    batteryLevel: z.union([z.string(), z.number()]).optional(),
+    source: z.enum(["gps", "network", "fused", "manual"]).optional(),
+    timestamp: z.string(),
+  })),
+});
+
+export type LocationSampleBatch = z.infer<typeof locationSampleBatchSchema>;
+
+// Aggregated visit records (detected stays at locations)
+export const locationVisits = sqliteTable("location_visits", {
+  id: text("id").primaryKey(),
+  latitude: text("latitude").notNull(), // center point
+  longitude: text("longitude").notNull(),
+  radiusMeters: text("radius_meters"), // visit area radius
+  arrivalTime: text("arrival_time").notNull(),
+  departureTime: text("departure_time"), // null if still there
+  durationMinutes: integer("duration_minutes"),
+  sampleCount: integer("sample_count").notNull().default(1),
+  savedPlaceId: text("saved_place_id"), // linked to starred place if matched
+  savedPlaceName: text("saved_place_name"),
+  confidence: text("confidence", { enum: ["low", "medium", "high"] }).default("medium"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertLocationVisitSchema = createInsertSchema(locationVisits).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertLocationVisit = z.infer<typeof insertLocationVisitSchema>;
+export type LocationVisit = typeof locationVisits.$inferSelect;
+
+// ============================================
 // LIFELOG-LOCATION CORRELATION SYSTEM
 // ============================================
 

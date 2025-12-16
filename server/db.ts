@@ -852,6 +852,46 @@ db.exec(`
 
 console.log("Lifelog-location correlation table initialized");
 
+// Create location_samples table for companion app GPS data
+db.exec(`
+  CREATE TABLE IF NOT EXISTS location_samples (
+    id TEXT PRIMARY KEY,
+    latitude TEXT NOT NULL,
+    longitude TEXT NOT NULL,
+    accuracy TEXT,
+    altitude TEXT,
+    speed TEXT,
+    heading TEXT,
+    battery_level TEXT,
+    source TEXT DEFAULT 'gps',
+    timestamp TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_location_samples_timestamp ON location_samples(timestamp);
+`);
+
+// Create location_visits table for aggregated stays
+db.exec(`
+  CREATE TABLE IF NOT EXISTS location_visits (
+    id TEXT PRIMARY KEY,
+    latitude TEXT NOT NULL,
+    longitude TEXT NOT NULL,
+    radius_meters TEXT,
+    arrival_time TEXT NOT NULL,
+    departure_time TEXT,
+    duration_minutes INTEGER,
+    sample_count INTEGER NOT NULL DEFAULT 1,
+    saved_place_id TEXT,
+    saved_place_name TEXT,
+    confidence TEXT DEFAULT 'medium',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_location_visits_arrival ON location_visits(arrival_time);
+`);
+
+console.log("Companion app location tables initialized");
+
 // Create wake_word_commands table for ZEKE context agent
 db.exec(`
   CREATE TABLE IF NOT EXISTS wake_word_commands (
@@ -5270,6 +5310,374 @@ export function checkGroceryProximity(lat: number, lon: number): Array<{ place: 
     }
     
     return nearbyGroceryPlaces.sort((a, b) => a.distance - b.distance);
+  });
+}
+
+// ============================================
+// COMPANION APP LOCATION SAMPLES & VISITS
+// ============================================
+
+import type {
+  LocationSample,
+  InsertLocationSample,
+  LocationVisit,
+  InsertLocationVisit,
+} from "@shared/schema";
+
+interface LocationSampleRow {
+  id: string;
+  latitude: string;
+  longitude: string;
+  accuracy: string | null;
+  altitude: string | null;
+  speed: string | null;
+  heading: string | null;
+  battery_level: string | null;
+  source: string | null;
+  timestamp: string;
+  created_at: string;
+}
+
+interface LocationVisitRow {
+  id: string;
+  latitude: string;
+  longitude: string;
+  radius_meters: string | null;
+  arrival_time: string;
+  departure_time: string | null;
+  duration_minutes: number | null;
+  sample_count: number;
+  saved_place_id: string | null;
+  saved_place_name: string | null;
+  confidence: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapLocationSample(row: LocationSampleRow): LocationSample {
+  return {
+    id: row.id,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    accuracy: row.accuracy,
+    altitude: row.altitude,
+    speed: row.speed,
+    heading: row.heading,
+    batteryLevel: row.battery_level,
+    source: row.source as "gps" | "network" | "fused" | "manual" | null,
+    timestamp: row.timestamp,
+    createdAt: row.created_at,
+  };
+}
+
+function mapLocationVisit(row: LocationVisitRow): LocationVisit {
+  return {
+    id: row.id,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    radiusMeters: row.radius_meters,
+    arrivalTime: row.arrival_time,
+    departureTime: row.departure_time,
+    durationMinutes: row.duration_minutes,
+    sampleCount: row.sample_count,
+    savedPlaceId: row.saved_place_id,
+    savedPlaceName: row.saved_place_name,
+    confidence: row.confidence as "low" | "medium" | "high" | null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// Initialize location samples table
+export function initLocationSamplesTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS location_samples (
+      id TEXT PRIMARY KEY,
+      latitude TEXT NOT NULL,
+      longitude TEXT NOT NULL,
+      accuracy TEXT,
+      altitude TEXT,
+      speed TEXT,
+      heading TEXT,
+      battery_level TEXT,
+      source TEXT DEFAULT 'gps',
+      timestamp TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_location_samples_timestamp ON location_samples(timestamp)`);
+}
+
+// Initialize location visits table
+export function initLocationVisitsTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS location_visits (
+      id TEXT PRIMARY KEY,
+      latitude TEXT NOT NULL,
+      longitude TEXT NOT NULL,
+      radius_meters TEXT,
+      arrival_time TEXT NOT NULL,
+      departure_time TEXT,
+      duration_minutes INTEGER,
+      sample_count INTEGER NOT NULL DEFAULT 1,
+      saved_place_id TEXT,
+      saved_place_name TEXT,
+      confidence TEXT DEFAULT 'medium',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_location_visits_arrival ON location_visits(arrival_time)`);
+}
+
+// Create a batch of location samples
+export function createLocationSamples(samples: Array<Omit<InsertLocationSample, "id">>): LocationSample[] {
+  return wrapDbOperation("createLocationSamples", () => {
+    const created: LocationSample[] = [];
+    const now = new Date().toISOString();
+    
+    const stmt = db.prepare(`
+      INSERT INTO location_samples (id, latitude, longitude, accuracy, altitude, speed, heading, battery_level, source, timestamp, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    for (const sample of samples) {
+      const id = `sample_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      stmt.run(
+        id,
+        String(sample.latitude),
+        String(sample.longitude),
+        sample.accuracy ? String(sample.accuracy) : null,
+        sample.altitude ? String(sample.altitude) : null,
+        sample.speed ? String(sample.speed) : null,
+        sample.heading ? String(sample.heading) : null,
+        sample.batteryLevel ? String(sample.batteryLevel) : null,
+        sample.source || "gps",
+        sample.timestamp,
+        now
+      );
+      
+      created.push({
+        id,
+        latitude: String(sample.latitude),
+        longitude: String(sample.longitude),
+        accuracy: sample.accuracy ? String(sample.accuracy) : null,
+        altitude: sample.altitude ? String(sample.altitude) : null,
+        speed: sample.speed ? String(sample.speed) : null,
+        heading: sample.heading ? String(sample.heading) : null,
+        batteryLevel: sample.batteryLevel ? String(sample.batteryLevel) : null,
+        source: sample.source || "gps",
+        timestamp: sample.timestamp,
+        createdAt: now,
+      });
+    }
+    
+    return created;
+  });
+}
+
+// Get location samples with optional filters
+export function getLocationSamples(options: { since?: string; limit?: number } = {}): LocationSample[] {
+  return wrapDbOperation("getLocationSamples", () => {
+    const { since, limit = 100 } = options;
+    
+    let query = `SELECT * FROM location_samples`;
+    const params: (string | number)[] = [];
+    
+    if (since) {
+      query += ` WHERE timestamp >= ?`;
+      params.push(since);
+    }
+    
+    query += ` ORDER BY timestamp DESC LIMIT ?`;
+    params.push(limit);
+    
+    const rows = db.prepare(query).all(...params) as LocationSampleRow[];
+    return rows.map(mapLocationSample);
+  });
+}
+
+// Create a location visit
+export function createLocationVisit(data: InsertLocationVisit): LocationVisit {
+  return wrapDbOperation("createLocationVisit", () => {
+    const id = `visit_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const now = new Date().toISOString();
+    
+    db.prepare(`
+      INSERT INTO location_visits (id, latitude, longitude, radius_meters, arrival_time, departure_time, duration_minutes, sample_count, saved_place_id, saved_place_name, confidence, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      String(data.latitude),
+      String(data.longitude),
+      data.radiusMeters ? String(data.radiusMeters) : null,
+      data.arrivalTime,
+      data.departureTime || null,
+      data.durationMinutes || null,
+      data.sampleCount || 1,
+      data.savedPlaceId || null,
+      data.savedPlaceName || null,
+      data.confidence || "medium",
+      now,
+      now
+    );
+    
+    return {
+      id,
+      latitude: String(data.latitude),
+      longitude: String(data.longitude),
+      radiusMeters: data.radiusMeters ? String(data.radiusMeters) : null,
+      arrivalTime: data.arrivalTime,
+      departureTime: data.departureTime || null,
+      durationMinutes: data.durationMinutes || null,
+      sampleCount: data.sampleCount || 1,
+      savedPlaceId: data.savedPlaceId || null,
+      savedPlaceName: data.savedPlaceName || null,
+      confidence: data.confidence || "medium",
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+}
+
+// Get location visits with optional filters
+export function getLocationVisits(options: { since?: string; limit?: number } = {}): LocationVisit[] {
+  return wrapDbOperation("getLocationVisits", () => {
+    const { since, limit = 50 } = options;
+    
+    let query = `SELECT * FROM location_visits`;
+    const params: (string | number)[] = [];
+    
+    if (since) {
+      query += ` WHERE arrival_time >= ?`;
+      params.push(since);
+    }
+    
+    query += ` ORDER BY arrival_time DESC LIMIT ?`;
+    params.push(limit);
+    
+    const rows = db.prepare(query).all(...params) as LocationVisitRow[];
+    return rows.map(mapLocationVisit);
+  });
+}
+
+// Update an ongoing visit (add departure time, duration)
+export function updateLocationVisit(id: string, data: Partial<InsertLocationVisit>): LocationVisit | undefined {
+  return wrapDbOperation("updateLocationVisit", () => {
+    const existing = db.prepare(`SELECT * FROM location_visits WHERE id = ?`).get(id) as LocationVisitRow | undefined;
+    if (!existing) return undefined;
+    
+    const now = new Date().toISOString();
+    
+    db.prepare(`
+      UPDATE location_visits SET
+        departure_time = COALESCE(?, departure_time),
+        duration_minutes = COALESCE(?, duration_minutes),
+        sample_count = COALESCE(?, sample_count),
+        saved_place_id = COALESCE(?, saved_place_id),
+        saved_place_name = COALESCE(?, saved_place_name),
+        confidence = COALESCE(?, confidence),
+        updated_at = ?
+      WHERE id = ?
+    `).run(
+      data.departureTime || null,
+      data.durationMinutes || null,
+      data.sampleCount || null,
+      data.savedPlaceId || null,
+      data.savedPlaceName || null,
+      data.confidence || null,
+      now,
+      id
+    );
+    
+    const updated = db.prepare(`SELECT * FROM location_visits WHERE id = ?`).get(id) as LocationVisitRow;
+    return mapLocationVisit(updated);
+  });
+}
+
+// Get the most recent open visit (no departure time)
+export function getCurrentVisit(): LocationVisit | undefined {
+  return wrapDbOperation("getCurrentVisit", () => {
+    const row = db.prepare(`
+      SELECT * FROM location_visits 
+      WHERE departure_time IS NULL 
+      ORDER BY arrival_time DESC 
+      LIMIT 1
+    `).get() as LocationVisitRow | undefined;
+    
+    return row ? mapLocationVisit(row) : undefined;
+  });
+}
+
+// Find nearby starred places with distance
+export function findNearbyStarredPlaces(lat: number, lon: number, radiusMeters: number = 1000): Array<SavedPlace & { distance: number }> {
+  return wrapDbOperation("findNearbyStarredPlaces", () => {
+    const allStarred = getStarredPlaces();
+    const nearby: Array<SavedPlace & { distance: number }> = [];
+    
+    for (const place of allStarred) {
+      const distance = calculateDistance(lat, lon, parseFloat(place.latitude), parseFloat(place.longitude));
+      if (distance <= radiusMeters) {
+        nearby.push({ ...place, distance });
+      }
+    }
+    
+    return nearby.sort((a, b) => a.distance - b.distance);
+  });
+}
+
+// Aggregate samples into visit (detect stays)
+export function aggregateSamplesToVisit(samples: LocationSample[], dwellThresholdMinutes: number = 5): LocationVisit | null {
+  return wrapDbOperation("aggregateSamplesToVisit", () => {
+    if (samples.length < 2) return null;
+    
+    // Sort by timestamp
+    const sorted = [...samples].sort((a, b) => 
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+    
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    
+    // Calculate center point (average)
+    let sumLat = 0, sumLon = 0;
+    for (const s of sorted) {
+      sumLat += parseFloat(s.latitude);
+      sumLon += parseFloat(s.longitude);
+    }
+    const centerLat = sumLat / sorted.length;
+    const centerLon = sumLon / sorted.length;
+    
+    // Calculate radius (max distance from center)
+    let maxRadius = 0;
+    for (const s of sorted) {
+      const dist = calculateDistance(centerLat, centerLon, parseFloat(s.latitude), parseFloat(s.longitude));
+      if (dist > maxRadius) maxRadius = dist;
+    }
+    
+    // Calculate duration
+    const durationMs = new Date(last.timestamp).getTime() - new Date(first.timestamp).getTime();
+    const durationMinutes = Math.round(durationMs / 60000);
+    
+    // Only create visit if dwelling long enough
+    if (durationMinutes < dwellThresholdMinutes) return null;
+    
+    // Check if near a starred place
+    const nearbyPlaces = findNearbyStarredPlaces(centerLat, centerLon, 100);
+    const matchedPlace = nearbyPlaces.length > 0 ? nearbyPlaces[0] : null;
+    
+    return createLocationVisit({
+      latitude: centerLat.toString(),
+      longitude: centerLon.toString(),
+      radiusMeters: Math.round(maxRadius).toString(),
+      arrivalTime: first.timestamp,
+      departureTime: last.timestamp,
+      durationMinutes,
+      sampleCount: sorted.length,
+      savedPlaceId: matchedPlace?.id || null,
+      savedPlaceName: matchedPlace?.name || null,
+      confidence: maxRadius < 30 ? "high" : maxRadius < 100 ? "medium" : "low",
+    });
   });
 }
 
