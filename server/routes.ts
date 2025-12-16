@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { registerOmiRoutes } from "./omi-routes";
+import { syncGitHubRepo } from "./github";
 import { 
   createConversation, 
   getConversation, 
@@ -8866,6 +8867,113 @@ export async function registerRoutes(
 
   // Register Omi integration routes
   registerOmiRoutes(app);
+
+  // === GitHub Webhook for ZEKEapp Sync ===
+  
+  // Configuration for GitHub repo sync
+  const GITHUB_SYNC_CONFIG = {
+    repos: [
+      { owner: 'Johnsonbros', repo: 'ZEKEapp', targetPath: './android' }
+    ]
+  };
+
+  // POST /api/github/webhook - Handle GitHub push events
+  app.post("/api/github/webhook", async (req: Request, res: Response) => {
+    try {
+      const event = req.headers['x-github-event'] as string;
+      const payload = req.body;
+
+      console.log(`[GitHub Webhook] Received event: ${event}`);
+
+      // Only handle push events
+      if (event !== 'push') {
+        return res.json({ status: 'ignored', reason: `Event type '${event}' not handled` });
+      }
+
+      const repoFullName = payload.repository?.full_name;
+      const branch = payload.ref?.replace('refs/heads/', '');
+      
+      console.log(`[GitHub Webhook] Push to ${repoFullName} on branch ${branch}`);
+
+      // Find matching repo config
+      const repoConfig = GITHUB_SYNC_CONFIG.repos.find(
+        r => `${r.owner}/${r.repo}`.toLowerCase() === repoFullName?.toLowerCase()
+      );
+
+      if (!repoConfig) {
+        console.log(`[GitHub Webhook] No sync configured for ${repoFullName}`);
+        return res.json({ status: 'ignored', reason: `Repository ${repoFullName} not configured for sync` });
+      }
+
+      // Only sync main/master branch
+      if (branch !== 'main' && branch !== 'master') {
+        return res.json({ status: 'ignored', reason: `Branch ${branch} not synced (only main/master)` });
+      }
+
+      // Perform sync
+      console.log(`[GitHub Webhook] Syncing ${repoFullName} to ${repoConfig.targetPath}...`);
+      const result = await syncGitHubRepo(repoConfig.owner, repoConfig.repo, repoConfig.targetPath);
+
+      if (result.success) {
+        console.log(`[GitHub Webhook] Sync successful: ${result.message}`);
+        res.json({ status: 'success', message: result.message });
+      } else {
+        console.error(`[GitHub Webhook] Sync failed: ${result.message}`);
+        res.status(500).json({ status: 'error', message: result.message });
+      }
+    } catch (error: any) {
+      console.error("[GitHub Webhook] Error:", error);
+      res.status(500).json({ status: 'error', message: error.message || 'Unknown error' });
+    }
+  });
+
+  // GET /api/github/sync-status - Check sync status and trigger manual sync
+  app.get("/api/github/sync-status", async (req: Request, res: Response) => {
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      
+      const statuses = GITHUB_SYNC_CONFIG.repos.map(config => {
+        const targetPath = path.resolve(config.targetPath);
+        const gitPath = path.join(targetPath, '.git');
+        const exists = fs.existsSync(targetPath);
+        const isGitRepo = fs.existsSync(gitPath);
+        
+        return {
+          repo: `${config.owner}/${config.repo}`,
+          targetPath: config.targetPath,
+          cloned: exists && isGitRepo,
+          exists
+        };
+      });
+
+      res.json({
+        webhookUrl: `${process.env.REPLIT_DEV_DOMAIN || 'your-replit-url'}/api/github/webhook`,
+        repos: statuses
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get sync status' });
+    }
+  });
+
+  // POST /api/github/sync - Manually trigger sync for all configured repos
+  app.post("/api/github/sync", async (req: Request, res: Response) => {
+    try {
+      const results = [];
+      
+      for (const config of GITHUB_SYNC_CONFIG.repos) {
+        const result = await syncGitHubRepo(config.owner, config.repo, config.targetPath);
+        results.push({
+          repo: `${config.owner}/${config.repo}`,
+          ...result
+        });
+      }
+
+      res.json({ results });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to sync repos' });
+    }
+  });
   
   return httpServer;
 }
