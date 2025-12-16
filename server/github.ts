@@ -129,3 +129,83 @@ export async function syncGitHubRepo(owner: string, repo: string, targetPath: st
     return { success: false, message: error.message || 'Unknown error' };
   }
 }
+
+/**
+ * Push local changes to a GitHub repository
+ */
+export async function pushToGitHub(owner: string, repo: string, targetPath: string, commitMessage: string): Promise<{ success: boolean; message: string }> {
+  const { exec } = await import('child_process');
+  const { promisify } = await import('util');
+  const execAsync = promisify(exec);
+  const fs = await import('fs');
+  const path = await import('path');
+  
+  const fullPath = path.resolve(targetPath);
+  
+  try {
+    // Check if it's a git repo
+    if (!fs.existsSync(path.join(fullPath, '.git'))) {
+      return { success: false, message: 'Not a git repository' };
+    }
+    
+    // Get access token
+    const accessToken = await getAccessToken();
+    if (!accessToken) {
+      return { success: false, message: 'GitHub not connected' };
+    }
+    
+    const gitEnv = {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: '0',
+    };
+    
+    // Update remote URL with token
+    const remoteUrl = `https://x-access-token:${accessToken}@github.com/${owner}/${repo}.git`;
+    await execAsync(`cd ${fullPath} && git remote set-url origin "${remoteUrl}"`, {
+      timeout: 10000,
+      env: gitEnv
+    });
+    
+    // Configure git user for commits
+    await execAsync(`cd ${fullPath} && git config user.email "zeke@replit.app" && git config user.name "ZEKE"`, {
+      timeout: 10000,
+      env: gitEnv
+    });
+    
+    // Stage all changes
+    await execAsync(`cd ${fullPath} && git add -A`, {
+      timeout: 30000,
+      env: gitEnv
+    });
+    
+    // Check if there are changes to commit
+    const { stdout: statusOutput } = await execAsync(`cd ${fullPath} && git status --porcelain`, {
+      timeout: 10000,
+      env: gitEnv
+    });
+    
+    if (!statusOutput.trim()) {
+      return { success: true, message: 'No changes to push' };
+    }
+    
+    // Commit changes
+    await execAsync(`cd ${fullPath} && git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, {
+      timeout: 30000,
+      env: gitEnv
+    });
+    
+    // Push to GitHub
+    const { stdout, stderr } = await execAsync(`cd ${fullPath} && git push origin main 2>&1 || git push origin master 2>&1`, {
+      timeout: 60000,
+      env: gitEnv
+    });
+    
+    console.log(`[GitHub Push] Output: ${stdout}`);
+    if (stderr) console.log(`[GitHub Push] Stderr: ${stderr}`);
+    
+    return { success: true, message: `Pushed changes: ${commitMessage}` };
+  } catch (error: any) {
+    console.error(`[GitHub Push] Error:`, error);
+    return { success: false, message: error.message || 'Unknown error' };
+  }
+}

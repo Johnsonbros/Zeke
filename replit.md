@@ -118,7 +118,8 @@ The Android app code is synced with the `Johnsonbros/ZEKEapp` GitHub repository.
 **API Endpoints:**
 - `POST /api/github/webhook` - Receives GitHub push events (configured in GitHub webhook settings)
 - `GET /api/github/sync-status` - Check sync status for all configured repos
-- `POST /api/github/sync` - Manually trigger sync for all configured repos
+- `POST /api/github/sync` - Manually trigger sync (pull from GitHub)
+- `POST /api/github/push` - Push local changes to GitHub (body: `{ "message": "commit message" }`)
 
 **Configuration:**
 Repo sync configuration is in `server/routes.ts` under `GITHUB_SYNC_CONFIG`:

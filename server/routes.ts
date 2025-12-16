@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { registerOmiRoutes } from "./omi-routes";
-import { syncGitHubRepo } from "./github";
+import { syncGitHubRepo, pushToGitHub } from "./github";
 import { 
   createConversation, 
   getConversation, 
@@ -8972,6 +8972,27 @@ export async function registerRoutes(
       res.json({ results });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Failed to sync repos' });
+    }
+  });
+
+  // POST /api/github/push - Push local changes to GitHub
+  app.post("/api/github/push", async (req: Request, res: Response) => {
+    try {
+      const { message } = req.body;
+      const commitMessage = message || `Update from ZEKE - ${new Date().toISOString()}`;
+      const results = [];
+      
+      for (const config of GITHUB_SYNC_CONFIG.repos) {
+        const result = await pushToGitHub(config.owner, config.repo, config.targetPath, commitMessage);
+        results.push({
+          repo: `${config.owner}/${config.repo}`,
+          ...result
+        });
+      }
+
+      res.json({ results });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to push to GitHub' });
     }
   });
   
