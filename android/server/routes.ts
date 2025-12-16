@@ -5,6 +5,7 @@ import { insertDeviceSchema, insertMemorySchema, insertChatSessionSchema, insert
 import OpenAI from "openai";
 import multer from "multer";
 import { registerLocationRoutes } from "./location";
+import { registerGitHubRoutes } from "./github";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -1290,6 +1291,7 @@ Return at most ${Math.min(limit, 10)} results. Only include memories with releva
   }
 
   registerLocationRoutes(app);
+  registerGitHubRoutes(app);
 
   return httpServer;
 }

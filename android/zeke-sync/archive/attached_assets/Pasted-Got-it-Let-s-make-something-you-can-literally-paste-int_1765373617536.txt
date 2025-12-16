@@ -1,0 +1,219 @@
+Got it. Let’s make something you can literally paste into Replit Agent v3 as the “task prompt” so it builds the idempotency layer for you.
+
+Below is a ready-to-use instruction block. The idea:
+	•	It tells the agent what the concept is (idempotency keys for inbound chunks).
+	•	It tells it exactly what files to create and what code to put in them.
+	•	No Housecall anything, just a clean HTTP entrypoint you can plug ZEKE into later.
+
+⸻
+
+Prompt for Replit Agent v3
+
+Paste everything inside this block into your Replit Agent v3 task:
+
+You are working in a Node + TypeScript project on Replit.
+
+## GOAL
+
+Implement a minimal HTTP server that supports **idempotent processing of incoming realtime chunks** using an `idempotency_key`.
+
+The behavior:
+
+- Client sends POST requests to `/realtime-chunk` with JSON body.
+- Body **may** contain `idempotency_key`. If it doesn’t, we derive one deterministically from other fields.
+- The server keeps track of which idempotency keys have been seen **during this process lifetime** and:
+  - Processes a key the first time it sees it.
+  - Returns a "duplicate" response for any subsequent request with the same key, without re-running side effects.
+
+This is an in-memory implementation to demonstrate the concept; no database yet.
+
+---
+
+## REQUIREMENTS
+
+1. Use **Express** for the HTTP server.
+2. Use **TypeScript** (file named `server.ts`).
+3. Add a simple in-memory idempotency store using a `Set<string>`.
+4. Implement a helper function `claimIdempotencyKey` that:
+   - Takes `{ idempotencyKey: string; userId?: string; sessionId?: string }`.
+   - Throws if `idempotencyKey` is missing.
+   - Returns `{ isDuplicate: boolean }`.
+5. Implement a helper `buildIdempotencyKeyFromPayload(body: any): string` that:
+   - Reads: `user_id`, `device_id`, `session_id`, `sequence`, `chunk_started_at` from the request body (with sensible defaults).
+   - Returns a string like:
+     - `${userId}:${deviceId}:${sessionId}:${sequence}:${chunkStartedAt}`
+6. Implement a POST route at `/realtime-chunk` that:
+   - Accepts JSON.
+   - Reads `idempotency_key` from `req.body` if present.
+   - If missing, calls `buildIdempotencyKeyFromPayload(req.body)` to derive one.
+   - Calls `claimIdempotencyKey(...)`.
+   - If `isDuplicate === true`, respond with HTTP 409 and a JSON body:
+     ```json
+     {
+       "ok": false,
+       "duplicate": true,
+       "idempotency_key": "<the key>",
+       "message": "This chunk has already been processed."
+     }
+     ```
+   - If `isDuplicate === false`, log that it’s new and simulate "processing" the chunk (for now just `console.log` the body), then respond with:
+     ```json
+     {
+       "ok": true,
+       "duplicate": false,
+       "idempotency_key": "<the key>",
+       "message": "Chunk processed successfully."
+     }
+     ```
+7. Add a simple GET `/` route that returns a small text response like `"ZEKE idempotency demo is running."`.
+8. Ensure the server listens on `process.env.PORT || 3000`.
+9. Update `package.json` so that:
+   - TypeScript is usable.
+   - There is a `"dev"` or `"start"` script that will run the server on Replit (you can use ts-node or compile then run — choose a simple, working setup).
+
+---
+
+## IMPLEMENTATION DETAILS
+
+Create or overwrite a file called `server.ts` with exactly this content (adjust imports / minor types if needed so it compiles cleanly):
+
+```ts
+import express, { Request, Response } from "express";
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Enable JSON body parsing
+app.use(express.json());
+
+// --- SIMPLE IN-MEMORY IDEMPOTENCY STORE ---
+// NOTE: This is process-local and will reset on restart.
+const processedKeys = new Set<string>();
+
+type IdempotencyOptions = {
+  idempotencyKey: string;
+  userId?: string;
+  sessionId?: string;
+};
+
+function claimIdempotencyKey(options: IdempotencyOptions): { isDuplicate: boolean } {
+  const { idempotencyKey } = options;
+
+  if (!idempotencyKey) {
+    throw new Error("Missing idempotency_key");
+  }
+
+  if (processedKeys.has(idempotencyKey)) {
+    // We've already seen this key → duplicate
+    return { isDuplicate: true };
+  }
+
+  // First time seeing this key → mark as used
+  processedKeys.add(idempotencyKey);
+  return { isDuplicate: false };
+}
+
+// Build a deterministic idempotency key if client didn't send one.
+// In a real system, the client SHOULD send a key and reuse it on retries.
+function buildIdempotencyKeyFromPayload(body: any): string {
+  const userId = body.user_id ?? "unknown-user";
+  const deviceId = body.device_id ?? "unknown-device";
+  const sessionId = body.session_id ?? "unknown-session";
+  const sequence = body.sequence ?? 0;
+  const chunkStartedAt = body.chunk_started_at ?? "unknown-time";
+
+  return `${userId}:${deviceId}:${sessionId}:${sequence}:${chunkStartedAt}`;
+}
+
+// Example route: this is where realtime transcript chunks / events would land.
+app.post("/realtime-chunk", (req: Request, res: Response) => {
+  try {
+    let idempotencyKey: string | undefined = req.body.idempotency_key;
+
+    // Derive a deterministic key if not provided
+    if (!idempotencyKey) {
+      idempotencyKey = buildIdempotencyKeyFromPayload(req.body);
+    }
+
+    const { isDuplicate } = claimIdempotencyKey({
+      idempotencyKey,
+      userId: req.body.user_id,
+      sessionId: req.body.session_id,
+    });
+
+    if (isDuplicate) {
+      console.log("[IDEMPOTENCY] Duplicate key:", idempotencyKey);
+      return res.status(409).json({
+        ok: false,
+        duplicate: true,
+        idempotency_key: idempotencyKey,
+        message: "This chunk has already been processed.",
+      });
+    }
+
+    // FIRST-TIME PROCESSING: safe place to run side effects
+    console.log("[IDEMPOTENCY] New key:", idempotencyKey);
+    console.log("[CHUNK] Incoming payload:", JSON.stringify(req.body, null, 2));
+
+    // TODO: hook in the actual ZEKE / agent logic here.
+    // e.g. call tools, update memories, enqueue jobs, etc.
+
+    return res.json({
+      ok: true,
+      duplicate: false,
+      idempotency_key: idempotencyKey,
+      message: "Chunk processed successfully.",
+    });
+  } catch (err: any) {
+    console.error("Error in /realtime-chunk:", err);
+    return res.status(500).json({
+      ok: false,
+      error: err?.message ?? "Unknown error",
+    });
+  }
+});
+
+// Basic health-check route
+app.get("/", (_req: Request, res: Response) => {
+  res.send("ZEKE idempotency demo is running.");
+});
+
+app.listen(PORT, () => {
+  console.log(`Server listening on http://localhost:${PORT}`);
+});
+
+
+⸻
+
+PACKAGE.JSON UPDATES
+
+If there is no package.json, create one. If it exists, modify it.
+	•	Ensure these dependencies (or equivalent) are installed:
+	•	express
+	•	typescript
+	•	ts-node (or ts-node-dev)
+
+Example scripts section (you can adapt to what already exists):
+
+{
+  "scripts": {
+    "dev": "ts-node server.ts"
+  }
+}
+
+Make sure the project can be started on Replit by running npm run dev.
+
+⸻
+
+FINAL CHECKS
+	1.	The project compiles without TypeScript errors.
+	2.	POST /realtime-chunk with the SAME idempotency_key twice:
+	•	First request → 200 with "duplicate": false.
+	•	Second request → 409 with "duplicate": true.
+	3.	If idempotency_key is omitted, the server generates one via buildIdempotencyKeyFromPayload and still enforces idempotency for repeated identical payloads (same derived key).
+
+Do all of the above and then stop.
+
+---
+
+Once the agent builds that, you’ll have a clean, testable idempotency “front door” that we can later wire into ZEKE’s deeper logic, databases, and all the fun AGI-ish behaviors.

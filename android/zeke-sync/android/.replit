@@ -1,0 +1,57 @@
+entrypoint = "README.md"
+modules = ["nodejs-22", "postgresql-16"]
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+deploymentTarget = "cloudrun"
+build = ["sh", "-c", "npm run expo:static:build && npm run server:build"]
+run = ["npm", "run", "server:prod"]
+
+[[ports]]
+localPort = 5000
+externalPort = 5000
+
+[[ports]]
+localPort = 8081
+externalPort = 80
+
+[[ports]]
+localPort = 8082
+externalPort = 3002
+
+[env]
+PORT = "5000"
+
+[agent]
+stack = "EXPO"
+integrations = ["javascript_database:1.0.0", "javascript_openai:1.0.0", "twilio:1.0.0", "google-calendar:1.0.0"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start dev servers"
+
+[[workflows.workflow]]
+name = "Start dev servers"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run all:dev"
+waitForPort = 8081
+ensurePreviewReachable = "/status"
+
+[userenv]
+
+[userenv.shared]
+EXPO_PUBLIC_ZEKE_BACKEND_URL = "https://zekeai.replit.app"
+

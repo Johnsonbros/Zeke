@@ -1,0 +1,92 @@
+Yep — I can show you how it works in a concrete, “this is what you click / run / ship” way.
+
+Quick heads-up: I can’t open/search your GitHub repo from here yet because GitHub access isn’t enabled in this chat session. To let me inspect Johnsonbros/Zeke, you’ll need to connect it once: tap @github (or the GitHub icon) and select the Zeke repo.
+While you do that, here’s the exact demo flow I’d run with you so you can see the pipeline end-to-end.
+
+⸻
+
+Demo: Turn ZEKE into an Android app (the fast, sane way)
+
+This is Path 1: Web app → Android wrapper using Capacitor.
+
+1) What you need in your repo
+
+You need some web UI to show inside the Android app. That can be:
+	•	a Next.js site
+	•	a React/Vite frontend
+	•	or even a basic HTML dashboard
+
+If you don’t have a UI yet, no problem — we can wrap a simple ZEKE “Control Panel” page first.
+
+2) You build the web UI
+
+From the repo root (or your web/ folder):
+
+npm install
+npm run build
+
+That creates a “static build output” (for example dist/ or out/ depending on framework).
+
+3) Add Capacitor to the project
+
+npm install @capacitor/core @capacitor/cli
+npx cap init zeke.app com.thejohnsonbros.zeke
+
+Then tell Capacitor where your built web files live:
+
+Example capacitor.config.ts:
+
+import { CapacitorConfig } from '@capacitor/cli';
+
+const config: CapacitorConfig = {
+  appId: 'com.thejohnsonbros.zeke',
+  appName: 'ZEKE',
+  webDir: 'dist', // or "out" or "build"
+  bundledWebRuntime: false
+};
+
+export default config;
+
+4) Add Android + generate the project
+
+npm install @capacitor/android
+npx cap add android
+npx cap sync android
+
+Now you have a real Android project at:
+android/
+
+5) Run it on a phone or emulator
+
+If you’re using Android Studio:
+
+npx cap open android
+
+Then click Run in Android Studio.
+
+That’s it: your ZEKE web UI is now an Android app shell.
+
+6) Make it talk to your ZEKE backend
+
+Your Android app (the web UI inside it) calls your ZEKE server endpoints like:
+	•	https://api.thejohnsonbros.com/zeke/...
+or
+	•	your Replit / VPS URL
+
+So the “app” stays lightweight and ZEKE stays powerful.
+
+⸻
+
+What I’ll do once you connect the repo
+
+Once you enable GitHub access, I’ll inspect your repo and tell you exactly:
+	•	where your frontend lives (or if it doesn’t exist yet)
+	•	what your build output folder is (dist vs out vs build)
+	•	the cleanest place to add Capacitor (root vs /apps/web)
+	•	the quickest “ZEKE Control Panel” UI to add if needed
+
+⸻
+
+One question (so I demonstrate the right version)
+
+Do you already have a web UI inside the ZEKE repo, or is ZEKE currently backend-only?

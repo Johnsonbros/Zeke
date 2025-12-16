@@ -73,6 +73,20 @@ Client-side data is persisted using AsyncStorage with namespaced keys, storing d
   - `DELETE /api/calendar/events/:id` - Delete calendar event
 - Client uses `getLocalApiUrl()` from `client/lib/query-client.ts` to ensure calendar API calls always route to the local backend where the Google Calendar connector is configured.
 
+### GitHub Sync Integration
+- **GitHub**: Bidirectional sync with Johnsonbros/ZEKE repository via Replit GitHub connector. Server-side service layer in `server/github.ts` manages authentication using Replit's secure connector API with Octokit. Features include:
+  - Automatic webhook for push events
+  - Manual pull/sync capability
+  - Push local changes back to GitHub
+  - Security-hardened with input validation and safe command execution
+- API endpoints:
+  - `POST /api/github/webhook` - Receives push events from GitHub, auto-syncs on push to main branch
+  - `POST /api/github/sync` - Manual pull from GitHub (clones to ./zeke-sync/)
+  - `POST /api/github/push` - Commits and pushes local changes (accepts `{"message": "commit message"}`)
+  - `POST /api/github/create-webhook` - Programmatically creates webhook on the repo
+  - `GET /api/github/status` - Check connection status and configuration
+- Query parameters for customization: `owner`, `repo`, `branch`, `targetDir` (defaults to Johnsonbros/ZEKE main branch → ./zeke-sync/)
+
 ### Third-Party Services
 - **Expo Services**: Utilized for splash screen, haptics, image handling, web browser, blur effects, and audio recording.
 - **React Navigation**: Core library for app navigation.

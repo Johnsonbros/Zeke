@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "description": "ZEKE evaluation tasks",
+  "tasks": [
+    {
+      "id": "health-endpoint",
+      "name": "Health Endpoint Check",
+      "description": "Verify the /healthz endpoint returns 200 with expected response",
+      "type": "http",
+      "config": {
+        "method": "GET",
+        "path": "/healthz",
+        "expectedStatus": 200,
+        "expectedBody": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "readiness-endpoint",
+      "name": "Readiness Endpoint Check",
+      "description": "Verify the /readyz endpoint returns 200 with expected response",
+      "type": "http",
+      "config": {
+        "method": "GET",
+        "path": "/readyz",
+        "expectedStatus": 200,
+        "expectedBody": {
+          "ready": true
+        }
+      }
+    }
+  ]
+}
