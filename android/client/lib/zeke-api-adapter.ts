@@ -1,4 +1,33 @@
 import { getApiUrl, getLocalApiUrl, isZekeSyncMode, apiRequest } from "./query-client";
+import type {
+  Task,
+  GroceryItem,
+  CustomList,
+  CustomListItem,
+  CustomListWithItems,
+  Contact,
+  CalendarEvent,
+  Message,
+  Conversation,
+  MemoryNote,
+  AccessLevel,
+} from "./zeke-types";
+
+export type {
+  Task,
+  GroceryItem,
+  CustomList,
+  CustomListItem,
+  CustomListWithItems,
+  Contact,
+  CalendarEvent,
+  Message,
+  Conversation,
+  MemoryNote,
+  AccessLevel,
+} from "./zeke-types";
+
+export { accessLevels, customListTypes, customListItemPriorities } from "./zeke-types";
 
 function createTimeoutSignal(ms: number): AbortSignal {
   const controller = new AbortController();
@@ -66,23 +95,14 @@ export interface ZekeCalendar {
   primary: boolean;
 }
 
-export interface ZekeTask {
-  id: string;
-  title: string;
-  status: 'pending' | 'completed' | 'cancelled';
-  priority?: 'low' | 'medium' | 'high';
-  dueDate?: string;
-  createdAt: string;
-}
+export type ZekeTask = Task & {
+  status?: 'pending' | 'completed' | 'cancelled';
+};
 
-export interface ZekeGroceryItem {
-  id: string;
-  name: string;
-  quantity?: number;
+export type ZekeGroceryItem = GroceryItem & {
+  isPurchased?: boolean;
   unit?: string;
-  category?: string;
-  isPurchased: boolean;
-}
+};
 
 export interface ZekeContactConversation {
   id: string;
@@ -95,33 +115,10 @@ export interface ZekeContactConversation {
   updatedAt: string;
 }
 
-export interface ZekeContact {
-  id: string;
-  firstName: string;
-  lastName: string;
-  middleName?: string;
-  phoneNumber?: string;
-  email?: string;
-  aiAssistantPhone?: string;
-  imageUrl?: string;
-  accessLevel: 'unknown' | 'acquaintance' | 'friend' | 'close_friend' | 'family';
-  relationship?: string;
-  notes?: string;
-  canAccessPersonalInfo: boolean;
-  canAccessCalendar: boolean;
-  canAccessTasks: boolean;
-  canAccessGrocery: boolean;
-  canSetReminders: boolean;
-  birthday?: string;
-  occupation?: string;
-  organization?: string;
-  lastInteractionAt?: string;
-  interactionCount: number;
+export type ZekeContact = Contact & {
   messageCount?: number;
-  createdAt: string;
-  updatedAt: string;
   conversations?: ZekeContactConversation[];
-}
+};
 
 export interface DashboardSummary {
   eventsCount: number;
@@ -219,15 +216,23 @@ export async function searchMemories(query: string): Promise<ZekeMemory[]> {
   }
 }
 
-export async function getTasks(): Promise<any[]> {
+export async function getTasks(): Promise<ZekeTask[]> {
   const baseUrl = getApiUrl();
   const url = new URL('/api/tasks', baseUrl);
   
-  const res = await fetch(url, { credentials: 'include' });
-  if (!res.ok) {
+  try {
+    const res = await fetch(url, { 
+      credentials: 'include',
+      signal: createTimeoutSignal(5000)
+    });
+    if (!res.ok) {
+      return [];
+    }
+    const data = await res.json();
+    return data.tasks || data || [];
+  } catch {
     return [];
   }
-  return res.json();
 }
 
 export async function getGroceryItems(): Promise<ZekeGroceryItem[]> {
@@ -249,15 +254,32 @@ export async function getGroceryItems(): Promise<ZekeGroceryItem[]> {
   }
 }
 
-export async function getReminders(): Promise<any[]> {
+export interface ZekeReminder {
+  id: string;
+  title: string;
+  dueAt: string;
+  completed: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function getReminders(): Promise<ZekeReminder[]> {
   const baseUrl = getApiUrl();
   const url = new URL('/api/reminders', baseUrl);
   
-  const res = await fetch(url, { credentials: 'include' });
-  if (!res.ok) {
+  try {
+    const res = await fetch(url, { 
+      credentials: 'include',
+      signal: createTimeoutSignal(5000)
+    });
+    if (!res.ok) {
+      return [];
+    }
+    const data = await res.json();
+    return data.reminders || data || [];
+  } catch {
     return [];
   }
-  return res.json();
 }
 
 export async function getContacts(): Promise<ZekeContact[]> {
@@ -580,7 +602,6 @@ export async function getEventsForDateRange(startDate: Date, endDate: Date): Pro
 }
 
 export async function getTodayEvents(): Promise<ZekeEvent[]> {
-  // Always use local backend for Google Calendar integration
   const baseUrl = getLocalApiUrl();
   const url = new URL('/api/calendar/today', baseUrl);
   
@@ -753,7 +774,7 @@ export async function updateCalendarEvent(
 }
 
 export async function getUpcomingEvents(limit: number = 10): Promise<ZekeEvent[]> {
-  const baseUrl = getApiUrl();
+  const baseUrl = getLocalApiUrl();
   const url = new URL('/api/calendar/upcoming', baseUrl);
   url.searchParams.set('limit', limit.toString());
   
@@ -1346,4 +1367,84 @@ export async function clearGeofenceTriggerEvents(): Promise<void> {
   } catch (error) {
     console.error('Error clearing geofence events:', error);
   }
+}
+
+export type ZekeList = CustomList & {
+  description?: string;
+  itemCount?: number;
+};
+
+export type ZekeListItem = CustomListItem & {
+  text?: string;
+  order?: number;
+};
+
+export type ZekeListWithItems = CustomListWithItems & {
+  description?: string;
+  itemCount?: number;
+};
+
+// Lists API functions
+export async function getLists(): Promise<ZekeList[]> {
+  const baseUrl = getApiUrl();
+  const url = new URL('/api/lists', baseUrl);
+  
+  try {
+    const res = await fetch(url, { 
+      credentials: 'include',
+      signal: createTimeoutSignal(5000)
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function getListWithItems(id: string): Promise<ZekeListWithItems | null> {
+  const baseUrl = getApiUrl();
+  const url = new URL(`/api/lists/${id}`, baseUrl);
+  
+  try {
+    const res = await fetch(url, { 
+      credentials: 'include',
+      signal: createTimeoutSignal(5000)
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function createList(name: string, description?: string, color?: string): Promise<ZekeList> {
+  const res = await apiRequest('POST', '/api/lists', { name, description, color });
+  return res.json();
+}
+
+export async function updateList(id: string, updates: Partial<ZekeList>): Promise<ZekeList> {
+  const res = await apiRequest('PATCH', `/api/lists/${id}`, updates);
+  return res.json();
+}
+
+export async function deleteList(id: string): Promise<void> {
+  await apiRequest('DELETE', `/api/lists/${id}`);
+}
+
+export async function addListItem(listId: string, text: string): Promise<ZekeListItem> {
+  const res = await apiRequest('POST', `/api/lists/${listId}/items`, { text });
+  return res.json();
+}
+
+export async function toggleListItem(listId: string, itemId: string): Promise<ZekeListItem> {
+  const res = await apiRequest('POST', `/api/lists/${listId}/items/${itemId}/toggle`, {});
+  return res.json();
+}
+
+export async function deleteListItem(listId: string, itemId: string): Promise<void> {
+  await apiRequest('DELETE', `/api/lists/${listId}/items/${itemId}`);
+}
+
+export async function clearCheckedItems(listId: string): Promise<void> {
+  await apiRequest('POST', `/api/lists/${listId}/clear-checked`, {});
 }

@@ -288,13 +288,13 @@ export function registerLocationRoutes(app: Express): void {
         return res.status(404).json({ error: "Starred place not found" });
       }
 
-      const updates: Partial<{ name: string; icon: string | null }> = {};
+      const allowedFields = ["name", "icon"];
+      const updates: Record<string, string> = {};
 
-      if (req.body.name !== undefined) {
-        updates.name = req.body.name;
-      }
-      if (req.body.icon !== undefined) {
-        updates.icon = req.body.icon;
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) {
+          updates[field] = req.body[field];
+        }
       }
 
       if (Object.keys(updates).length === 0) {

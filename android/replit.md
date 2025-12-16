@@ -1,7 +1,22 @@
 # ZEKE AI Companion Dashboard
 
 ## Overview
-ZEKE AI is a mobile companion app (Expo/React Native) designed as an extension of the main ZEKE web application, running on a dedicated mobile device. It provides quick access to daily essentials (calendar, tasks, contacts), captures conversation memory from AI wearables, facilitates communication via SMS/Voice (Twilio), and includes an AI chat assistant. The app features a dark-themed design with gradient accents and supports iOS, Android, and web platforms. Its core purpose is to leverage native mobile features (voice input, location, notifications) for communication and real-time data capture, while the ZEKE web server handles data persistence, AI processing, and complex integrations. Communication priority is App Chat, then SMS, then Voice calls.
+ZEKE AI is a mobile companion app (Expo/React Native) designed as a **full extension** of the main ZEKE web application (https://zekeai.replit.app), running on a dedicated mobile device. It provides quick access to daily essentials (calendar, tasks, grocery lists, custom lists, contacts), captures conversation memory from AI wearables, facilitates communication via SMS/Voice (Twilio), and includes an AI chat assistant. The app features a dark-themed design with gradient accents and supports iOS, Android, and web platforms. Its core purpose is to leverage native mobile features (voice input, location, notifications) for communication and real-time data capture, while the ZEKE web server handles data persistence, AI processing, and complex integrations. Communication priority is App Chat, then SMS, then Voice calls.
+
+## ZEKE Backend Integration Status
+The mobile app is configured to route all API calls to the deployed ZEKE backend (`EXPO_PUBLIC_ZEKE_BACKEND_URL`):
+- **Tasks**: Full CRUD via `/api/tasks` endpoints
+- **Grocery**: Full CRUD via `/api/grocery` endpoints  
+- **Lists**: Full CRUD via `/api/lists` endpoints (custom lists with items)
+- **Calendar**: CRUD via `/api/calendar` endpoints (Google Calendar sync)
+- **Chat**: AI conversations via `/api/chat` endpoints
+
+**CORS Configuration Required**: The ZEKE backend at `https://zekeai.replit.app` must allow CORS requests from:
+- This Replit development domain
+- Any production domains where the mobile app is deployed
+- Expo Go app domains
+
+To configure CORS on ZEKE server, add these origins to the allowed CORS list in the Express configuration.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -36,12 +51,14 @@ Client-side data is persisted using AsyncStorage with namespaced keys, storing d
 - **Communications Hub (Comms):** Unified communications interface with four tabs (SMS, Voice, Chat, Contacts). SMS tab shows conversations with navigation to detail screens, Voice tab shows call history with details, Chat tab links to ZEKE AI chat, and Contacts tab provides searchable contact list with quick call/message actions. Contacts are color-coded by access level (Family, Close Friend, Friend, Acquaintance), with detail views accessible from the Comms stack.
 - **SMS Screens:** Chat-style conversation view with bubbles and date separators, and a modal for composing new SMS messages with character count.
 - **Calendar:** Full CRUD operations across all Google Calendars with dedicated ZEKE calendar support. Timeline view showing daily events color-coded by calendar source, calendar filter chips, all-day events section, add/edit/delete event modals with calendar selection, current time indicator, and voice input for adding events.
-- **Tasks:** Filterable task lists (All, Pending, Completed) grouped by urgency, with priority indicators, completion toggles, and voice input for adding tasks.
+- **Tasks:** Filterable task lists (All, Pending, Completed) grouped by urgency, with priority indicators, completion toggles, and voice input for adding tasks. Accessible from Tasks tab with header button to navigate to Grocery and Lists screens.
+- **Grocery:** Filterable grocery lists (All, Unpurchased) grouped by category (Produce, Dairy, Meat, etc.), with quantity/unit fields, category badges, and voice input. Accessible from Tasks stack navigator.
+- **Lists:** Custom lists feature for any type of list (packing, shopping, checklists, etc.). Full CRUD for lists and items with color coding, swipe-to-delete items, toggle checked status, and clear checked items. Accessible from Tasks screen header.
 - **Memories:** Filterable (All, Starred), date-grouped memory cards with star toggles and swipe actions.
 - **Settings:** Device configuration, preference toggles, and app information.
 - **Chat Screen:** Full-screen ZEKE AI chat with message history and keyboard-aware text input.
 - **Real-Time Transcription:** Integrates Deepgram via a secure WebSocket proxy for real-time transcription from BLE audio devices (Omi, Limitless), with a dedicated `LiveCaptureScreen` for display and saving to ZEKE.
-- **Real-Time WebSocket Sync:** Uses `/ws/zeke` endpoint for real-time updates between app and ZEKE backend. Client hook (`useZekeSync`) with auto-reconnect and React Query cache invalidation. `SyncStatus` component shows connection status with colored indicators. Messages validated with Zod schema.
+- **Real-Time WebSocket Sync:** Uses `/ws/zeke` endpoint for real-time updates between app and ZEKE backend. Client hook (`useZekeSync`) with auto-reconnect and React Query cache invalidation. `SyncStatus` component shows connection status with colored indicators. Supports message types: `sms`, `voice`, `activity`, `device_status`, `notification`, `task`, `grocery`, `list`, `calendar`, `contact`. When messages arrive, corresponding React Query caches are automatically invalidated for real-time data freshness.
 
 ## External Dependencies
 

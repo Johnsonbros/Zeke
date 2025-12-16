@@ -34,6 +34,54 @@ declare module "http" {
   }
 }
 
+// CORS middleware for mobile app and other clients
+app.use((req, res, next) => {
+  const allowedOrigins = new Set<string>();
+  
+  // Add Replit development domain
+  if (process.env.REPLIT_DEV_DOMAIN) {
+    allowedOrigins.add(`https://${process.env.REPLIT_DEV_DOMAIN}`);
+  }
+  
+  // Add Replit production domains
+  if (process.env.REPLIT_DOMAINS) {
+    process.env.REPLIT_DOMAINS.split(",").forEach((d) => {
+      allowedOrigins.add(`https://${d.trim()}`);
+    });
+  }
+  
+  // Add mobile app domains (ZEKEapp companion)
+  const mobileAppDomains = [
+    "https://zekeapp.replit.app",
+    "https://zeke-companion.replit.app",
+  ];
+  mobileAppDomains.forEach((d) => allowedOrigins.add(d));
+  
+  // Add any custom allowed origins from environment
+  if (process.env.CORS_ALLOWED_ORIGINS) {
+    process.env.CORS_ALLOWED_ORIGINS.split(",").forEach((d) => {
+      allowedOrigins.add(d.trim());
+    });
+  }
+  
+  const origin = req.header("origin");
+  
+  // Allow requests from allowed origins or if no origin (same-origin/server requests)
+  if (origin && allowedOrigins.has(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+    res.header("Access-Control-Allow-Credentials", "true");
+  }
+  
+  // Handle preflight requests
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  
+  next();
+});
+
 // Raw body parser for audio streaming endpoints (must be before JSON parser)
 app.use('/api/omi/audio-bytes', express.raw({ 
   type: 'application/octet-stream',

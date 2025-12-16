@@ -2,7 +2,17 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { getApiUrl } from '@/lib/query-client';
 
-export type ZekeSyncMessageType = 'sms' | 'voice' | 'activity' | 'device_status' | 'notification';
+export type ZekeSyncMessageType = 
+  | 'sms' 
+  | 'voice' 
+  | 'activity' 
+  | 'device_status' 
+  | 'notification'
+  | 'task'
+  | 'grocery'
+  | 'list'
+  | 'calendar'
+  | 'contact';
 
 export interface ZekeSyncMessage {
   type: ZekeSyncMessageType;
@@ -51,6 +61,21 @@ export function useZekeSync(options: UseZekeSyncOptions = {}) {
         break;
       case 'notification':
         queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+        break;
+      case 'task':
+        queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
+        break;
+      case 'grocery':
+        queryClient.invalidateQueries({ queryKey: ['/api/grocery'] });
+        break;
+      case 'list':
+        queryClient.invalidateQueries({ queryKey: ['/api/lists'] });
+        break;
+      case 'calendar':
+        queryClient.invalidateQueries({ queryKey: ['/api/calendar'] });
+        break;
+      case 'contact':
+        queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
         break;
     }
   }, [queryClient]);

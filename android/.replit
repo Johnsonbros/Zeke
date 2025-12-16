@@ -6,8 +6,8 @@ channel = "stable-24_05"
 
 [deployment]
 deploymentTarget = "cloudrun"
-build = ["sh", "-c", "npm run expo:static:build && npm run server:build"]
-run = ["npm", "run", "server:prod"]
+build = ["sh", "-c", "npm run expo:static:build && node scripts/server-build.js"]
+run = ["sh", "-c", "NODE_ENV=production node dist/server.cjs"]
 
 [[ports]]
 localPort = 5000
