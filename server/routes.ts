@@ -3785,13 +3785,21 @@ export async function registerRoutes(
       // Helper to convert snake_case to camelCase
       const toCamelCase = (str: string) => str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
       
+      // Keys that should never be set on objects to prevent prototype pollution
+      const dangerousKeys = new Set(['__proto__', 'constructor', 'prototype']);
+      
       for (const section of sections) {
+        // Convert section key from snake_case (basic_info) to camelCase (basicInfo)
+        const camelKey = toCamelCase(section.section);
+        
+        // Skip dangerous keys to prevent prototype pollution
+        if (dangerousKeys.has(camelKey)) {
+          continue;
+        }
+        
         try {
-          // Convert section key from snake_case (basic_info) to camelCase (basicInfo)
-          const camelKey = toCamelCase(section.section);
           profile[camelKey] = JSON.parse(section.data);
         } catch {
-          const camelKey = toCamelCase(section.section);
           profile[camelKey] = section.data;
         }
       }
