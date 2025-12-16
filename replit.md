@@ -104,3 +104,34 @@ Then rebuild in Android Studio to create a new APK with the latest changes.
 - Always run `npm run build` before `npx cap sync android` to ensure latest web assets are packaged
 - The app requires internet connectivity to communicate with the ZEKE backend
 - For production builds, configure signing in `android/app/build.gradle`
+
+## GitHub Repository Sync
+
+The Android app code is synced with the `Johnsonbros/ZEKEapp` GitHub repository. This allows you to develop the Android-specific code separately and have it automatically sync to Replit.
+
+**Webhook Endpoint:** `/api/github/webhook`
+
+**How it works:**
+1. When you push to the `main` or `master` branch of ZEKEapp, GitHub calls the webhook
+2. ZEKE automatically pulls the latest code into the `android/` folder
+
+**API Endpoints:**
+- `POST /api/github/webhook` - Receives GitHub push events (configured in GitHub webhook settings)
+- `GET /api/github/sync-status` - Check sync status for all configured repos
+- `POST /api/github/sync` - Manually trigger sync for all configured repos
+
+**Configuration:**
+Repo sync configuration is in `server/routes.ts` under `GITHUB_SYNC_CONFIG`:
+```typescript
+const GITHUB_SYNC_CONFIG = {
+  repos: [
+    { owner: 'Johnsonbros', repo: 'ZEKEapp', targetPath: './android' }
+  ]
+};
+```
+
+**Setting up GitHub Webhook:**
+1. Go to your repo → Settings → Webhooks → Add webhook
+2. Payload URL: `https://your-replit-domain/api/github/webhook`
+3. Content type: `application/json`
+4. Events: Select "Just the push event"
