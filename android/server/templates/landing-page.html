@@ -1,0 +1,213 @@
+<!doctype html>
+<html>
+  <head>
+    <title>APP_NAME_PLACEHOLDER</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        max-width: 500px;
+        margin: 50px auto;
+        padding: 20px;
+        text-align: center;
+      }
+      .loading {
+        display: none;
+        font-size: 18px;
+        color: #666;
+        margin: 60px 0;
+      }
+      .spinner {
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #333;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 20px auto;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+      .content {
+        display: block;
+      }
+      .qr-code {
+        width: 250px;
+        height: 250px;
+        margin: 30px auto;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 15px;
+
+        canvas {
+          width: 100%;
+          height: 100%;
+        }
+      }
+      .platform-links {
+        margin: 30px 0;
+      }
+      .platform-link {
+        display: block;
+        padding: 14px 24px;
+        margin: 12px auto;
+        max-width: 300px;
+        font-size: 16px;
+        border: 1px solid #000;
+        border-radius: 8px;
+        text-decoration: none;
+        color: #000;
+        background: white;
+        min-height: 40px;
+        box-sizing: border-box;
+      }
+      .platform-link:hover {
+        background: #f5f5f5;
+      }
+      .download-links {
+        margin-top: 40px;
+        padding-top: 30px;
+        border-top: 1px solid #ddd;
+      }
+      .install-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 12px 16px;
+        margin: 0 6px;
+        font-size: 14px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        text-decoration: none;
+        color: #333;
+        background: white;
+        min-height: 40px;
+        box-sizing: border-box;
+      }
+      .install-button:hover {
+        background: #f5f5f5;
+      }
+      .store-icon {
+        width: 16px;
+        height: 16px;
+        margin-right: 6px;
+        border-radius: 0px;
+      }
+      .app-store-icon {
+        border-radius: 4px;
+      }
+      .install-text {
+        color: #999;
+        font-size: 14px;
+        margin-bottom: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <div>Opening in Expo Go...</div>
+    </div>
+
+    <div class="content" id="content">
+      <div class="qr-code" id="qr-code"></div>
+
+      <div class="platform-links">
+        <a href="exps://EXPS_URL_PLACEHOLDER" class="platform-link">Open APP_NAME_PLACEHOLDER in Expo Go</a>
+      </div>
+
+      <div class="download-links">
+        <div class="install-text">Install Expo Go to Run</div>
+        <div>
+          <a
+            href="https://apps.apple.com/app/id982107779"
+            class="install-button"
+            target="_blank"
+            ><img
+              src="https://apps.apple.com/assets/images/favicon/favicon-apps-48-fad34e0d87e86dcf72ded1faff4ba9d0.png"
+              class="app-store-icon store-icon"
+              alt=""
+            />App Store</a
+          >
+          <a
+            href="https://play.google.com/store/apps/details?id=host.exp.exponent"
+            class="install-button"
+            target="_blank"
+            ><img
+              src="https://www.gstatic.com/android/market_images/web/favicon_v3.ico"
+              class="store-icon"
+              alt=""
+            />Google Play</a
+          >
+        </div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/qr-code-styling@1.6.0/lib/qr-code-styling.js"></script>
+    <script>
+      (function () {
+        const ua = navigator.userAgent;
+        const loadingEl = document.getElementById("loading");
+        const contentEl = document.getElementById("content");
+
+        const isAndroid = /Android/i.test(ua);
+
+        const isIOS =
+          /iPhone|iPad|iPod/i.test(ua) ||
+          (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+        const deepLink = "exps://EXPS_URL_PLACEHOLDER";
+
+        const qrCode = new QRCodeStyling({
+          width: 500,
+          height: 500,
+          data: deepLink,
+          image: "assets/images/icon.png",
+          dotsOptions: {
+            color: "#000000",
+            type: "rounded",
+          },
+          backgroundOptions: {
+            color: "#ffffff",
+          },
+          imageOptions: {
+            crossOrigin: "anonymous",
+            margin: 8,
+            imageSize: 0.4,
+            borderRadius: 8,
+          },
+          cornersSquareOptions: {
+            type: "extra-rounded",
+          },
+          cornersDotOptions: {
+            type: "dot",
+          },
+          qrOptions: {
+            errorCorrectionLevel: "H",
+          },
+        });
+
+        qrCode.append(document.getElementById("qr-code"));
+
+        if (isAndroid || isIOS) {
+          loadingEl.style.display = "block";
+          contentEl.style.display = "none";
+
+          window.location.href = deepLink;
+
+          setTimeout(function () {
+            loadingEl.style.display = "none";
+            contentEl.style.display = "block";
+          }, 500);
+        }
+      })();
+    </script>
+  </body>
+</html>

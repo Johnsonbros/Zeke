@@ -50,6 +50,7 @@ export async function getUncachableGitHubClient() {
 
 /**
  * Sync a GitHub repository to a local folder
+ * Uses the Replit GitHub connector for authentication
  */
 export async function syncGitHubRepo(owner: string, repo: string, targetPath: string): Promise<{ success: boolean; message: string }> {
   const { exec } = await import('child_process');
@@ -61,12 +62,40 @@ export async function syncGitHubRepo(owner: string, repo: string, targetPath: st
   const fullPath = path.resolve(targetPath);
   
   try {
+    // Get access token from GitHub connector
+    let accessToken: string | null = null;
+    try {
+      accessToken = await getAccessToken();
+    } catch (e) {
+      console.log(`[GitHub Sync] No GitHub token available, using public access`);
+    }
+    
+    // Environment to prevent git from prompting for credentials
+    const gitEnv = {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: '0',
+      GIT_ASKPASS: 'echo',
+    };
+    
+    // Build the clone URL with token if available
+    const cloneUrl = accessToken 
+      ? `https://x-access-token:${accessToken}@github.com/${owner}/${repo}.git`
+      : `https://github.com/${owner}/${repo}.git`;
+    
     // Check if directory exists and has a .git folder
     if (fs.existsSync(path.join(fullPath, '.git'))) {
-      // Pull latest changes
+      // Pull latest changes - update remote URL with token
       console.log(`[GitHub Sync] Pulling latest changes for ${owner}/${repo}...`);
-      const { stdout, stderr } = await execAsync(`cd ${fullPath} && git pull origin main 2>&1 || git pull origin master 2>&1`, {
-        timeout: 60000
+      
+      // Update remote URL with fresh token
+      await execAsync(`cd ${fullPath} && git remote set-url origin "${cloneUrl}"`, {
+        timeout: 10000,
+        env: gitEnv
+      });
+      
+      const { stdout, stderr } = await execAsync(`cd ${fullPath} && git fetch origin && git reset --hard origin/main 2>&1 || git reset --hard origin/master 2>&1`, {
+        timeout: 60000,
+        env: gitEnv
       });
       console.log(`[GitHub Sync] Pull output: ${stdout}`);
       if (stderr) console.log(`[GitHub Sync] Pull stderr: ${stderr}`);
@@ -83,12 +112,13 @@ export async function syncGitHubRepo(owner: string, repo: string, targetPath: st
       
       // Remove existing directory if it exists but isn't a git repo
       if (fs.existsSync(fullPath)) {
+        console.log(`[GitHub Sync] Removing existing non-git directory at ${fullPath}...`);
         fs.rmSync(fullPath, { recursive: true, force: true });
       }
       
-      const cloneUrl = `https://github.com/${owner}/${repo}.git`;
-      const { stdout, stderr } = await execAsync(`git clone ${cloneUrl} ${fullPath}`, {
-        timeout: 120000
+      const { stdout, stderr } = await execAsync(`git clone --depth 1 "${cloneUrl}" ${fullPath}`, {
+        timeout: 120000,
+        env: gitEnv
       });
       console.log(`[GitHub Sync] Clone output: ${stdout}`);
       if (stderr) console.log(`[GitHub Sync] Clone stderr: ${stderr}`);
