@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { registerOmiRoutes } from "./omi-routes";
-import { syncGitHubRepo, pushToGitHub } from "./github";
+import { syncGitHubRepo, pushToGitHub, createGitHubWebhook } from "./github";
 import { 
   createConversation, 
   getConversation, 
@@ -8993,6 +8993,28 @@ export async function registerRoutes(
       res.json({ results });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Failed to push to GitHub' });
+    }
+  });
+
+  // POST /api/github/create-webhook - Create webhook on GitHub repos
+  app.post("/api/github/create-webhook", async (req: Request, res: Response) => {
+    try {
+      const domain = process.env.REPLIT_DEV_DOMAIN || process.env.REPL_SLUG + '.replit.dev';
+      const webhookUrl = `https://${domain}/api/github/webhook`;
+      const results = [];
+      
+      for (const config of GITHUB_SYNC_CONFIG.repos) {
+        const result = await createGitHubWebhook(config.owner, config.repo, webhookUrl);
+        results.push({
+          repo: `${config.owner}/${config.repo}`,
+          webhookUrl,
+          ...result
+        });
+      }
+
+      res.json({ results });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to create webhook' });
     }
   });
   

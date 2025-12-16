@@ -133,6 +133,42 @@ export async function syncGitHubRepo(owner: string, repo: string, targetPath: st
 /**
  * Push local changes to a GitHub repository
  */
+/**
+ * Create a webhook on a GitHub repository
+ */
+export async function createGitHubWebhook(owner: string, repo: string, webhookUrl: string): Promise<{ success: boolean; message: string; webhookId?: number }> {
+  try {
+    const octokit = await getUncachableGitHubClient();
+    
+    // Check if webhook already exists
+    const { data: existingHooks } = await octokit.repos.listWebhooks({ owner, repo });
+    const existing = existingHooks.find(h => h.config?.url === webhookUrl);
+    
+    if (existing) {
+      return { success: true, message: 'Webhook already exists', webhookId: existing.id };
+    }
+    
+    // Create the webhook
+    const { data: webhook } = await octokit.repos.createWebhook({
+      owner,
+      repo,
+      config: {
+        url: webhookUrl,
+        content_type: 'json',
+        insecure_ssl: '0',
+      },
+      events: ['push'],
+      active: true,
+    });
+    
+    console.log(`[GitHub] Created webhook ${webhook.id} for ${owner}/${repo}`);
+    return { success: true, message: `Webhook created successfully`, webhookId: webhook.id };
+  } catch (error: any) {
+    console.error(`[GitHub] Error creating webhook:`, error);
+    return { success: false, message: error.message || 'Failed to create webhook' };
+  }
+}
+
 export async function pushToGitHub(owner: string, repo: string, targetPath: string, commitMessage: string): Promise<{ success: boolean; message: string }> {
   const { exec } = await import('child_process');
   const { promisify } = await import('util');
