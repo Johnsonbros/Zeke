@@ -10,7 +10,11 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.zekeai.companion"
+      "bundleIdentifier": "com.zekeai.companion",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "ZEKE uses Bluetooth to connect to your Omi DevKit 2 or Limitless Pendant for audio capture and transcription.",
+        "NSBluetoothPeripheralUsageDescription": "ZEKE uses Bluetooth to connect to your Omi DevKit 2 or Limitless Pendant for audio capture and transcription."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +25,14 @@
       },
       "package": "com.zekeai.companion",
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "output": "single",
@@ -40,7 +51,15 @@
           }
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": true,
+          "modes": ["peripheral", "central"],
+          "bluetoothAlwaysPermission": "ZEKE uses Bluetooth to connect to your Omi DevKit 2 or Limitless Pendant for audio capture and transcription."
+        }
+      ]
     ],
     "experiments": {
       "reactCompiler": true
