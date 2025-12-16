@@ -1,15 +1,16 @@
 import React, { useMemo } from "react";
-import { View, StyleSheet, ScrollView, Dimensions } from "react-native";
+import { View, StyleSheet, ScrollView, Dimensions, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { Feather } from "@expo/vector-icons";
+import { useQuery } from "@tanstack/react-query";
 
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius, Colors } from "@/constants/theme";
-import { mockMemories, mockDevices } from "@/lib/mockData";
+import { getZekeDevices, getRecentMemories, ZekeDevice, ZekeMemory } from "@/lib/zeke-api-adapter";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const CHART_HEIGHT = 120;
@@ -63,6 +64,7 @@ interface BarChartProps {
 
 function BarChart({ data, maxValue, color }: BarChartProps) {
   const { theme } = useTheme();
+  const safeMaxValue = maxValue > 0 ? maxValue : 1;
 
   return (
     <View style={styles.barChartContainer}>
@@ -73,7 +75,7 @@ function BarChart({ data, maxValue, color }: BarChartProps) {
               style={[
                 styles.bar,
                 {
-                  height: `${(item.value / maxValue) * 100}%`,
+                  height: `${(item.value / safeMaxValue) * 100}%`,
                   backgroundColor: color,
                 },
               ]}
@@ -94,14 +96,19 @@ interface PieSegmentProps {
   startAngle: number;
 }
 
-function DeviceUsageRing() {
+interface DeviceUsageRingProps {
+  memories: ZekeMemory[];
+}
+
+function DeviceUsageRing({ memories }: DeviceUsageRingProps) {
   const { theme } = useTheme();
   
-  const omiCount = mockMemories.filter(m => m.deviceType === "omi").length;
-  const limitlessCount = mockMemories.filter(m => m.deviceType === "limitless").length;
-  const total = omiCount + limitlessCount;
+  const omiCount = memories.filter(m => m.deviceId?.toLowerCase().includes('omi')).length;
+  const limitlessCount = memories.filter(m => m.deviceId?.toLowerCase().includes('limitless')).length;
+  const otherCount = memories.length - omiCount - limitlessCount;
+  const total = memories.length;
   const omiPercentage = total > 0 ? Math.round((omiCount / total) * 100) : 50;
-  const limitlessPercentage = 100 - omiPercentage;
+  const limitlessPercentage = total > 0 ? Math.round((limitlessCount / total) * 100) : 50;
 
   return (
     <View style={styles.pieContainer}>
@@ -142,16 +149,29 @@ export default function AnalyticsScreen() {
   const headerHeight = useHeaderHeight();
   const { theme } = useTheme();
 
+  const { data: devices = [], isLoading: isLoadingDevices } = useQuery({
+    queryKey: ['/api/devices'],
+    queryFn: getZekeDevices,
+    staleTime: 30000,
+  });
+
+  const { data: memories = [], isLoading: isLoadingMemories } = useQuery({
+    queryKey: ['/api/memories'],
+    queryFn: () => getRecentMemories(100),
+    staleTime: 30000,
+  });
+
+  const isLoading = isLoadingDevices || isLoadingMemories;
+
   const stats = useMemo(() => {
-    const totalMemories = mockMemories.length;
-    const starredMemories = mockMemories.filter(m => m.isStarred).length;
-    const connectedDevices = mockDevices.filter(d => d.isConnected).length;
+    const totalMemories = memories.length;
+    const starredMemories = memories.filter(m => m.isStarred).length;
+    const connectedDevices = devices.filter(d => d.isConnected).length;
     
-    const totalMinutes = mockMemories.reduce((acc, m) => {
-      const match = m.duration?.match(/(\d+)/);
-      return acc + (match ? parseInt(match[1], 10) : 0);
+    const totalSeconds = memories.reduce((acc, m) => {
+      return acc + (m.duration || 0);
     }, 0);
-    const totalHours = Math.round(totalMinutes / 60 * 10) / 10;
+    const totalHours = Math.round((totalSeconds / 3600) * 10) / 10;
 
     return {
       totalMemories,
@@ -159,25 +179,38 @@ export default function AnalyticsScreen() {
       connectedDevices,
       totalHours,
     };
-  }, []);
+  }, [memories, devices]);
 
   const weeklyData = useMemo(() => {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const counts: Record<string, number> = {};
+    days.forEach(d => counts[d] = 0);
+    
+    memories.forEach(memory => {
+      const date = new Date(memory.createdAt);
+      const day = days[date.getDay()];
+      counts[day] = (counts[day] || 0) + 1;
+    });
+    
     return [
-      { label: "Mon", value: 3 },
-      { label: "Tue", value: 5 },
-      { label: "Wed", value: 2 },
-      { label: "Thu", value: 7 },
-      { label: "Fri", value: 4 },
-      { label: "Sat", value: 1 },
-      { label: "Sun", value: 2 },
+      { label: "Mon", value: counts["Mon"] },
+      { label: "Tue", value: counts["Tue"] },
+      { label: "Wed", value: counts["Wed"] },
+      { label: "Thu", value: counts["Thu"] },
+      { label: "Fri", value: counts["Fri"] },
+      { label: "Sat", value: counts["Sat"] },
+      { label: "Sun", value: counts["Sun"] },
     ];
-  }, []);
+  }, [memories]);
 
   const speakerData = useMemo(() => {
     const speakerCounts: Record<string, number> = {};
-    mockMemories.forEach(memory => {
-      memory.speakers?.forEach(speaker => {
-        speakerCounts[speaker] = (speakerCounts[speaker] || 0) + 1;
+    memories.forEach(memory => {
+      const speakers = Array.isArray(memory.speakers) ? memory.speakers : [];
+      speakers.forEach((speaker: string) => {
+        if (typeof speaker === 'string') {
+          speakerCounts[speaker] = (speakerCounts[speaker] || 0) + 1;
+        }
       });
     });
     
@@ -185,7 +218,33 @@ export default function AnalyticsScreen() {
       .map(([speaker, count]) => ({ speaker, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
-  }, []);
+  }, [memories]);
+
+  const avgDuration = useMemo(() => {
+    if (memories.length === 0) return 0;
+    const totalSeconds = memories.reduce((acc, m) => acc + (m.duration || 0), 0);
+    return Math.round(totalSeconds / memories.length / 60);
+  }, [memories]);
+
+  const avgParticipants = useMemo(() => {
+    if (memories.length === 0) return 0;
+    const totalParticipants = memories.reduce((acc, m) => {
+      const speakers = Array.isArray(m.speakers) ? m.speakers.length : 0;
+      return acc + speakers;
+    }, 0);
+    return Math.round((totalParticipants / memories.length) * 10) / 10;
+  }, [memories]);
+
+  if (isLoading) {
+    return (
+      <View style={[styles.loadingContainer, { backgroundColor: theme.backgroundRoot }]}>
+        <ActivityIndicator size="large" color={Colors.dark.primary} />
+        <ThemedText type="body" secondary style={styles.loadingText}>
+          Loading analytics...
+        </ThemedText>
+      </View>
+    );
+  }
 
   return (
     <ScrollView
@@ -203,8 +262,6 @@ export default function AnalyticsScreen() {
           icon="file-text"
           label="Total Memories"
           value={stats.totalMemories.toString()}
-          trend="+12% this week"
-          trendPositive
         />
         <StatCard
           icon="star"
@@ -215,8 +272,6 @@ export default function AnalyticsScreen() {
           icon="clock"
           label="Recording Hours"
           value={`${stats.totalHours}h`}
-          trend="+5% this week"
-          trendPositive
         />
         <StatCard
           icon="bluetooth"
@@ -235,7 +290,7 @@ export default function AnalyticsScreen() {
         <View style={styles.chartContent}>
           <BarChart
             data={weeklyData}
-            maxValue={Math.max(...weeklyData.map(d => d.value))}
+            maxValue={Math.max(...weeklyData.map(d => d.value), 1)}
             color={Colors.dark.primary}
           />
         </View>
@@ -248,7 +303,7 @@ export default function AnalyticsScreen() {
             Memories by device type
           </ThemedText>
         </View>
-        <DeviceUsageRing />
+        <DeviceUsageRing memories={memories} />
       </Card>
 
       <Card elevation={1} style={styles.chartCard}>
@@ -259,32 +314,38 @@ export default function AnalyticsScreen() {
           </ThemedText>
         </View>
         <View style={styles.speakerList}>
-          {speakerData.map((item, index) => (
-            <View key={item.speaker} style={styles.speakerRow}>
-              <View style={styles.speakerRank}>
-                <ThemedText type="caption" secondary>
-                  {index + 1}
+          {speakerData.length > 0 ? (
+            speakerData.map((item, index) => (
+              <View key={item.speaker} style={styles.speakerRow}>
+                <View style={styles.speakerRank}>
+                  <ThemedText type="caption" secondary>
+                    {index + 1}
+                  </ThemedText>
+                </View>
+                <ThemedText type="body" style={styles.speakerName}>
+                  {item.speaker}
+                </ThemedText>
+                <View style={styles.speakerBarContainer}>
+                  <View
+                    style={[
+                      styles.speakerBar,
+                      {
+                        width: `${(item.count / speakerData[0].count) * 100}%`,
+                        backgroundColor: index === 0 ? Colors.dark.primary : Colors.dark.secondary,
+                      },
+                    ]}
+                  />
+                </View>
+                <ThemedText type="small" secondary style={styles.speakerCount}>
+                  {item.count}
                 </ThemedText>
               </View>
-              <ThemedText type="body" style={styles.speakerName}>
-                {item.speaker}
-              </ThemedText>
-              <View style={styles.speakerBarContainer}>
-                <View
-                  style={[
-                    styles.speakerBar,
-                    {
-                      width: `${(item.count / speakerData[0].count) * 100}%`,
-                      backgroundColor: index === 0 ? Colors.dark.primary : Colors.dark.secondary,
-                    },
-                  ]}
-                />
-              </View>
-              <ThemedText type="small" secondary style={styles.speakerCount}>
-                {item.count}
-              </ThemedText>
-            </View>
-          ))}
+            ))
+          ) : (
+            <ThemedText type="body" secondary style={styles.emptyText}>
+              No speaker data available
+            </ThemedText>
+          )}
         </View>
       </Card>
 
@@ -297,27 +358,27 @@ export default function AnalyticsScreen() {
         </View>
         <View style={styles.insightsList}>
           <View style={styles.insightRow}>
-            <Feather name="sun" size={16} color={Colors.dark.warning} />
-            <ThemedText type="body" style={styles.insightText}>
-              Most active time: 9:00 AM - 11:00 AM
-            </ThemedText>
-          </View>
-          <View style={styles.insightRow}>
-            <Feather name="calendar" size={16} color={Colors.dark.primary} />
-            <ThemedText type="body" style={styles.insightText}>
-              Most productive day: Thursday
-            </ThemedText>
-          </View>
-          <View style={styles.insightRow}>
             <Feather name="mic" size={16} color={Colors.dark.success} />
             <ThemedText type="body" style={styles.insightText}>
-              Average recording: 31 minutes
+              Average recording: {avgDuration > 0 ? `${avgDuration} minutes` : 'No data'}
             </ThemedText>
           </View>
           <View style={styles.insightRow}>
             <Feather name="users" size={16} color={Colors.dark.secondary} />
             <ThemedText type="body" style={styles.insightText}>
-              Average participants: 2.4 per memory
+              Average participants: {avgParticipants > 0 ? `${avgParticipants} per memory` : 'No data'}
+            </ThemedText>
+          </View>
+          <View style={styles.insightRow}>
+            <Feather name="database" size={16} color={Colors.dark.primary} />
+            <ThemedText type="body" style={styles.insightText}>
+              Total memories: {stats.totalMemories}
+            </ThemedText>
+          </View>
+          <View style={styles.insightRow}>
+            <Feather name="bluetooth" size={16} color={Colors.dark.warning} />
+            <ThemedText type="body" style={styles.insightText}>
+              Connected devices: {stats.connectedDevices}
             </ThemedText>
           </View>
         </View>
@@ -327,6 +388,18 @@ export default function AnalyticsScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: Spacing.md,
+  },
+  emptyText: {
+    textAlign: "center",
+    paddingVertical: Spacing.lg,
+  },
   statsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",

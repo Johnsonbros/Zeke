@@ -1,10 +1,11 @@
-import React from "react";
-import { StyleSheet } from "react-native";
-import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
+import React, { useEffect, useRef } from "react";
+import { StyleSheet, Platform } from "react-native";
+import { NavigationContainer, DefaultTheme, NavigationContainerRef } from "@react-navigation/native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import * as Notifications from "expo-notifications";
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/query-client";
@@ -28,13 +29,41 @@ const DarkTheme = {
 };
 
 export default function App() {
+  const navigationRef = useRef<NavigationContainerRef<any>>(null);
+  const notificationResponseListener = useRef<Notifications.Subscription | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+
+    notificationResponseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data;
+      
+      if (data?.type === 'grocery_prompt' && data?.screen === 'Grocery') {
+        if (navigationRef.current?.isReady()) {
+          navigationRef.current.navigate('Main', {
+            screen: 'TasksTab',
+            params: {
+              screen: 'Grocery',
+            },
+          });
+        }
+      }
+    });
+
+    return () => {
+      if (notificationResponseListener.current) {
+        Notifications.removeNotificationSubscription(notificationResponseListener.current);
+      }
+    };
+  }, []);
+
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <SafeAreaProvider>
           <GestureHandlerRootView style={styles.root}>
             <KeyboardProvider>
-              <NavigationContainer theme={DarkTheme}>
+              <NavigationContainer ref={navigationRef} theme={DarkTheme}>
                 <RootStackNavigator />
               </NavigationContainer>
               <StatusBar style="light" />

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, StyleSheet, ScrollView, Alert, ActivityIndicator, Platform, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -12,9 +12,9 @@ import { ThemedText } from "@/components/ThemedText";
 import { SettingsRow, SettingsSection } from "@/components/SettingsRow";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius, Colors } from "@/constants/theme";
-import { getMemories, getChatMessages, Memory } from "@/lib/storage";
+import { Memory } from "@/lib/storage";
 import { Message } from "@/components/ChatBubble";
-import { mockMemories, mockMessages } from "@/lib/mockData";
+import { getRecentMemories, getConversations, getConversationMessages, ZekeMemory, ZekeMessage } from "@/lib/zeke-api-adapter";
 
 type ExportType = "memories" | "conversations" | "all";
 type ExportFormat = "pdf" | "markdown";
@@ -56,13 +56,79 @@ function RadioOption({ icon, label, description, selected, onSelect }: RadioOpti
   );
 }
 
+function convertZekeMemoryToMemory(zekeMemory: ZekeMemory): Memory {
+  const date = new Date(zekeMemory.createdAt);
+  const formattedDate = date.toLocaleDateString('en-US', { 
+    month: 'short', 
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+  
+  return {
+    id: zekeMemory.id,
+    title: zekeMemory.title,
+    transcript: zekeMemory.transcript,
+    timestamp: formattedDate,
+    deviceType: 'omi',
+    speakers: Array.isArray(zekeMemory.speakers) ? zekeMemory.speakers : [],
+    isStarred: zekeMemory.isStarred,
+    duration: zekeMemory.duration ? `${Math.round(zekeMemory.duration / 60)} min` : undefined,
+  };
+}
+
+function convertZekeMessageToMessage(zekeMessage: ZekeMessage): Message {
+  const date = new Date(zekeMessage.createdAt);
+  const formattedTime = date.toLocaleTimeString('en-US', { 
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+  
+  return {
+    id: zekeMessage.id,
+    content: zekeMessage.content,
+    role: zekeMessage.role,
+    timestamp: formattedTime,
+  };
+}
+
 export default function DataExportScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const { theme } = useTheme();
 
   const [isExporting, setIsExporting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [memoriesCount, setMemoriesCount] = useState(0);
+  const [messagesCount, setMessagesCount] = useState(0);
   const [exportType, setExportType] = useState<ExportType>("all");
+
+  useEffect(() => {
+    async function checkDataAvailability() {
+      setIsLoading(true);
+      try {
+        const [memories, conversations] = await Promise.all([
+          getRecentMemories(100),
+          getConversations()
+        ]);
+        
+        setMemoriesCount(memories.length);
+        
+        let totalMessages = 0;
+        for (const conv of conversations.slice(0, 5)) {
+          const messages = await getConversationMessages(conv.id);
+          totalMessages += messages.length;
+        }
+        setMessagesCount(totalMessages);
+      } catch (error) {
+        console.error('Error checking data availability:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    checkDataAvailability();
+  }, []);
 
   const generateMemoriesMarkdown = (memories: Memory[]): string => {
     let markdown = "# ZEKE AI - Memories Export\n\n";
@@ -216,23 +282,37 @@ export default function DataExportScreen() {
     setIsExporting(true);
 
     try {
-      let storedMemories = await getMemories();
-      let storedMessages = await getChatMessages();
+      let memories: Memory[] = [];
+      let messages: Message[] = [];
 
-      if (storedMemories.length === 0) {
-        storedMemories = mockMemories;
-      }
-      if (storedMessages.length === 0) {
-        storedMessages = mockMessages;
+      if (exportType !== "conversations") {
+        const zekeMemories = await getRecentMemories(100);
+        memories = zekeMemories.map(convertZekeMemoryToMemory);
       }
 
-      const memoriesToExport = exportType === "conversations" ? [] : storedMemories;
-      const messagesToExport = exportType === "memories" ? [] : storedMessages;
+      if (exportType !== "memories") {
+        const conversations = await getConversations();
+        const allMessages: Message[] = [];
+        
+        for (const conv of conversations) {
+          const convMessages = await getConversationMessages(conv.id);
+          allMessages.push(...convMessages.map(convertZekeMessageToMessage));
+        }
+        messages = allMessages;
+      }
+
+      if (memories.length === 0 && messages.length === 0) {
+        Alert.alert(
+          "No Data Available",
+          "There is no data available to export. Start recording memories or chatting with ZEKE to create exportable data."
+        );
+        return;
+      }
 
       if (format === "markdown") {
-        await exportMarkdown(memoriesToExport, messagesToExport);
+        await exportMarkdown(memories, messages);
       } else {
-        await exportPDF(memoriesToExport, messagesToExport);
+        await exportPDF(memories, messages);
       }
     } catch (error) {
       console.error("Export error:", error);
@@ -300,6 +380,23 @@ export default function DataExportScreen() {
     });
   };
 
+  const hasNoData = memoriesCount === 0 && messagesCount === 0;
+  const canExportSelection = 
+    (exportType === "all" && (memoriesCount > 0 || messagesCount > 0)) ||
+    (exportType === "memories" && memoriesCount > 0) ||
+    (exportType === "conversations" && messagesCount > 0);
+
+  if (isLoading) {
+    return (
+      <View style={[styles.loadingScreen, { backgroundColor: theme.backgroundRoot, paddingTop: headerHeight + Spacing.xl }]}>
+        <ActivityIndicator size="large" color={Colors.dark.primary} />
+        <ThemedText type="body" secondary style={{ marginTop: Spacing.lg }}>
+          Checking available data...
+        </ThemedText>
+      </View>
+    );
+  }
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.backgroundRoot }}
@@ -317,59 +414,93 @@ export default function DataExportScreen() {
         </ThemedText>
       </View>
 
-      <SettingsSection title="WHAT TO EXPORT">
-        <View style={styles.radioGroup}>
-          <RadioOption
-            icon="layers"
-            label="All Data"
-            description="Export memories and conversations"
-            selected={exportType === "all"}
-            onSelect={() => setExportType("all")}
-          />
-          <RadioOption
-            icon="file-text"
-            label="Memories Only"
-            description="Export recorded memories"
-            selected={exportType === "memories"}
-            onSelect={() => setExportType("memories")}
-          />
-          <RadioOption
-            icon="message-circle"
-            label="Conversations Only"
-            description="Export AI chat history"
-            selected={exportType === "conversations"}
-            onSelect={() => setExportType("conversations")}
-          />
+      <View style={[styles.dataStatusCard, { backgroundColor: theme.backgroundDefault }]}>
+        <View style={styles.dataStatusRow}>
+          <Feather name="file-text" size={18} color={memoriesCount > 0 ? Colors.dark.success : theme.textSecondary} />
+          <ThemedText type="body" style={{ marginLeft: Spacing.sm }}>
+            {memoriesCount} {memoriesCount === 1 ? 'memory' : 'memories'} available
+          </ThemedText>
         </View>
-      </SettingsSection>
+        <View style={styles.dataStatusRow}>
+          <Feather name="message-circle" size={18} color={messagesCount > 0 ? Colors.dark.success : theme.textSecondary} />
+          <ThemedText type="body" style={{ marginLeft: Spacing.sm }}>
+            {messagesCount} {messagesCount === 1 ? 'message' : 'messages'} available
+          </ThemedText>
+        </View>
+      </View>
 
-      <SettingsSection title="EXPORT FORMAT">
-        <View style={{ borderRadius: BorderRadius.md, overflow: "hidden" }}>
-          <SettingsRow
-            icon="file"
-            label="Export as PDF"
-            value="Formatted document"
-            onPress={() => exportData("pdf")}
-            disabled={isExporting}
-          />
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
-          <SettingsRow
-            icon="hash"
-            label="Export as Markdown"
-            value="Plain text format"
-            onPress={() => exportData("markdown")}
-            disabled={isExporting}
-          />
+      {hasNoData ? (
+        <View style={[styles.emptyState, { backgroundColor: theme.backgroundDefault }]}>
+          <Feather name="inbox" size={48} color={theme.textSecondary} />
+          <ThemedText type="h4" style={{ marginTop: Spacing.lg, textAlign: 'center' }}>
+            No Data to Export
+          </ThemedText>
+          <ThemedText type="body" secondary style={{ marginTop: Spacing.sm, textAlign: 'center' }}>
+            Start recording memories or chatting with ZEKE to create exportable data.
+          </ThemedText>
         </View>
-        {isExporting ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color={Colors.dark.primary} />
-            <ThemedText type="caption" secondary style={styles.loadingText}>
-              Preparing export...
-            </ThemedText>
-          </View>
-        ) : null}
-      </SettingsSection>
+      ) : (
+        <>
+          <SettingsSection title="WHAT TO EXPORT">
+            <View style={styles.radioGroup}>
+              <RadioOption
+                icon="layers"
+                label="All Data"
+                description={`${memoriesCount} memories, ${messagesCount} messages`}
+                selected={exportType === "all"}
+                onSelect={() => setExportType("all")}
+              />
+              <RadioOption
+                icon="file-text"
+                label="Memories Only"
+                description={`${memoriesCount} recorded memories`}
+                selected={exportType === "memories"}
+                onSelect={() => setExportType("memories")}
+              />
+              <RadioOption
+                icon="message-circle"
+                label="Conversations Only"
+                description={`${messagesCount} chat messages`}
+                selected={exportType === "conversations"}
+                onSelect={() => setExportType("conversations")}
+              />
+            </View>
+          </SettingsSection>
+
+          <SettingsSection title="EXPORT FORMAT">
+            <View style={{ borderRadius: BorderRadius.md, overflow: "hidden" }}>
+              <SettingsRow
+                icon="file"
+                label="Export as PDF"
+                value="Formatted document"
+                onPress={() => exportData("pdf")}
+                disabled={isExporting || !canExportSelection}
+              />
+              <View style={[styles.divider, { backgroundColor: theme.border }]} />
+              <SettingsRow
+                icon="hash"
+                label="Export as Markdown"
+                value="Plain text format"
+                onPress={() => exportData("markdown")}
+                disabled={isExporting || !canExportSelection}
+              />
+            </View>
+            {isExporting ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={Colors.dark.primary} />
+                <ThemedText type="caption" secondary style={styles.loadingText}>
+                  Preparing export...
+                </ThemedText>
+              </View>
+            ) : null}
+            {!canExportSelection && !isExporting ? (
+              <ThemedText type="caption" secondary style={{ marginTop: Spacing.sm, marginLeft: Spacing.lg }}>
+                No data available for selected export type.
+              </ThemedText>
+            ) : null}
+          </SettingsSection>
+        </>
+      )}
 
       {Platform.OS === "web" ? (
         <View style={[styles.webWarning, { backgroundColor: theme.backgroundDefault }]}>
@@ -380,18 +511,41 @@ export default function DataExportScreen() {
         </View>
       ) : null}
 
-      <ThemedText type="caption" secondary style={styles.footerNote}>
-        Exported files can be shared via email, saved to your files, or sent to other apps on your device.
-      </ThemedText>
+      {!hasNoData ? (
+        <ThemedText type="caption" secondary style={styles.footerNote}>
+          Exported files can be shared via email, saved to your files, or sent to other apps on your device.
+        </ThemedText>
+      ) : null}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  loadingScreen: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   infoCard: {
     padding: Spacing.lg,
     borderRadius: BorderRadius.md,
+    marginBottom: Spacing.lg,
+  },
+  dataStatusCard: {
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.md,
     marginBottom: Spacing.xl,
+    gap: Spacing.sm,
+  },
+  dataStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  emptyState: {
+    padding: Spacing.xl,
+    borderRadius: BorderRadius.md,
+    alignItems: "center",
+    marginTop: Spacing.lg,
   },
   radioGroup: {
     gap: Spacing.sm,

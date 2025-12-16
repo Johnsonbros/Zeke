@@ -1,20 +1,23 @@
 import React, { useState, useCallback, useMemo } from "react";
-import { View, FlatList, StyleSheet, RefreshControl, Pressable, ActivityIndicator } from "react-native";
+import { View, FlatList, StyleSheet, RefreshControl, Pressable, ActivityIndicator, Modal, TextInput, Alert, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { EmptyState } from "@/components/EmptyState";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useTheme } from "@/hooks/useTheme";
-import { Spacing, Colors, BorderRadius } from "@/constants/theme";
+import { Spacing, Colors, BorderRadius, Gradients, Shadows } from "@/constants/theme";
 import { queryClient } from "@/lib/query-client";
-import { getSmsConversations, getConversations, ZekeContactConversation, ZekeConversation } from "@/lib/zeke-api-adapter";
+import { getSmsConversations, getConversations, ZekeContactConversation, ZekeConversation, sendSms, initiateCall } from "@/lib/zeke-api-adapter";
 import { CommunicationStackParamList } from "@/navigation/CommunicationStackNavigator";
 
 type FilterType = "all" | "sms" | "voice" | "app";
@@ -203,6 +206,10 @@ function CommunicationRow({ item, onPress }: CommunicationRowProps) {
   );
 }
 
+type ModalType = "none" | "action" | "sms" | "call";
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 export default function CommunicationLogScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
@@ -210,6 +217,14 @@ export default function CommunicationLogScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<CommunicationStackParamList>>();
 
   const [filter, setFilter] = useState<FilterType>("all");
+  const [modalType, setModalType] = useState<ModalType>("none");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [smsMessage, setSmsMessage] = useState("");
+  
+  const fabScale = useSharedValue(1);
+  const fabAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: fabScale.value }],
+  }));
 
   const { data: smsConversations, isLoading: smsLoading, isFetching: smsFetching } = useQuery<ZekeContactConversation[]>({
     queryKey: ["/api/sms-log"],
@@ -219,6 +234,34 @@ export default function CommunicationLogScreen() {
   const { data: appConversations, isLoading: appLoading, isFetching: appFetching } = useQuery<ZekeConversation[]>({
     queryKey: ["/api/conversations"],
     queryFn: getConversations,
+  });
+
+  const smsMutation = useMutation({
+    mutationFn: ({ to, message }: { to: string; message: string }) => sendSms(to, message),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sms-log"] });
+      setModalType("none");
+      setPhoneNumber("");
+      setSmsMessage("");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Success", "SMS sent successfully!");
+    },
+    onError: (error: Error) => {
+      Alert.alert("Error", error.message || "Failed to send SMS");
+    },
+  });
+
+  const callMutation = useMutation({
+    mutationFn: (to: string) => initiateCall(to),
+    onSuccess: () => {
+      setModalType("none");
+      setPhoneNumber("");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Success", "Call initiated successfully!");
+    },
+    onError: (error: Error) => {
+      Alert.alert("Error", error.message || "Failed to initiate call");
+    },
   });
 
   const isLoading = smsLoading || appLoading;
@@ -285,6 +328,45 @@ export default function CommunicationLogScreen() {
     }
   }, [navigation]);
 
+  const handleFabPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setModalType("action");
+  }, []);
+
+  const handleFabPressIn = () => {
+    fabScale.value = withSpring(0.92, { damping: 15, stiffness: 200 });
+  };
+
+  const handleFabPressOut = () => {
+    fabScale.value = withSpring(1, { damping: 15, stiffness: 200 });
+  };
+
+  const handleSendSms = useCallback(() => {
+    if (!phoneNumber.trim()) {
+      Alert.alert("Error", "Please enter a phone number");
+      return;
+    }
+    if (!smsMessage.trim()) {
+      Alert.alert("Error", "Please enter a message");
+      return;
+    }
+    smsMutation.mutate({ to: phoneNumber.trim(), message: smsMessage.trim() });
+  }, [phoneNumber, smsMessage, smsMutation]);
+
+  const handleInitiateCall = useCallback(() => {
+    if (!phoneNumber.trim()) {
+      Alert.alert("Error", "Please enter a phone number");
+      return;
+    }
+    callMutation.mutate(phoneNumber.trim());
+  }, [phoneNumber, callMutation]);
+
+  const closeModal = useCallback(() => {
+    setModalType("none");
+    setPhoneNumber("");
+    setSmsMessage("");
+  }, []);
+
   const renderItem = ({ item }: { item: CommunicationItem }) => (
     <CommunicationRow item={item} onPress={() => handleItemPress(item)} />
   );
@@ -313,13 +395,15 @@ export default function CommunicationLogScreen() {
     );
   };
 
+  const fabBottom = insets.bottom + Spacing["3xl"];
+
   return (
     <ThemedView style={styles.container}>
       <FlatList
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingTop: headerHeight + Spacing.xl,
-          paddingBottom: insets.bottom + Spacing["3xl"],
+          paddingBottom: insets.bottom + Spacing["3xl"] + 80,
           flexGrow: 1,
         }}
         scrollIndicatorInsets={{ bottom: insets.bottom }}
@@ -340,6 +424,254 @@ export default function CommunicationLogScreen() {
         }
         ItemSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
       />
+
+      <View style={[styles.fabWrapper, { bottom: fabBottom }]} pointerEvents="box-none">
+        <AnimatedPressable
+          onPress={handleFabPress}
+          onPressIn={handleFabPressIn}
+          onPressOut={handleFabPressOut}
+          style={[styles.fabContainer, fabAnimatedStyle]}
+        >
+          <LinearGradient
+            colors={Gradients.accent}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.fabGradient}
+          >
+            <Feather name="plus" size={28} color="#FFFFFF" />
+          </LinearGradient>
+        </AnimatedPressable>
+      </View>
+
+      <Modal
+        visible={modalType === "action"}
+        animationType="fade"
+        transparent
+        onRequestClose={closeModal}
+      >
+        <Pressable style={styles.modalOverlay} onPress={closeModal}>
+          <View style={[styles.actionSheet, { backgroundColor: theme.backgroundDefault }]}>
+            <View style={styles.actionSheetHandle} />
+            <ThemedText type="h3" style={styles.actionSheetTitle}>New Communication</ThemedText>
+            
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setModalType("sms");
+              }}
+              style={({ pressed }) => [
+                styles.actionOption,
+                { backgroundColor: pressed ? theme.backgroundSecondary : "transparent" },
+              ]}
+            >
+              <View style={[styles.actionIcon, { backgroundColor: Colors.dark.success + "20" }]}>
+                <Feather name="message-square" size={24} color={Colors.dark.success} />
+              </View>
+              <View style={styles.actionTextContainer}>
+                <ThemedText type="body" style={{ fontWeight: "600" }}>New SMS</ThemedText>
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  Send a text message
+                </ThemedText>
+              </View>
+              <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+            </Pressable>
+            
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setModalType("call");
+              }}
+              style={({ pressed }) => [
+                styles.actionOption,
+                { backgroundColor: pressed ? theme.backgroundSecondary : "transparent" },
+              ]}
+            >
+              <View style={[styles.actionIcon, { backgroundColor: Colors.dark.warning + "20" }]}>
+                <Feather name="phone" size={24} color={Colors.dark.warning} />
+              </View>
+              <View style={styles.actionTextContainer}>
+                <ThemedText type="body" style={{ fontWeight: "600" }}>New Call</ThemedText>
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  Initiate a phone call
+                </ThemedText>
+              </View>
+              <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+            </Pressable>
+            
+            <Pressable
+              onPress={closeModal}
+              style={[styles.cancelButton, { backgroundColor: theme.backgroundSecondary }]}
+            >
+              <ThemedText type="body" style={{ fontWeight: "600" }}>Cancel</ThemedText>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={modalType === "sms"}
+        animationType="slide"
+        transparent
+        onRequestClose={closeModal}
+      >
+        <View style={styles.modalOverlay}>
+          <KeyboardAwareScrollViewCompat
+            contentContainerStyle={styles.modalScrollContent}
+            bounces={false}
+          >
+            <View style={[styles.formModal, { backgroundColor: theme.backgroundDefault }]}>
+              <View style={styles.modalHeader}>
+                <Pressable onPress={closeModal} style={styles.modalCloseButton}>
+                  <Feather name="x" size={24} color={theme.text} />
+                </Pressable>
+                <ThemedText type="h3">Compose SMS</ThemedText>
+                <View style={{ width: 40 }} />
+              </View>
+
+              <View style={styles.formGroup}>
+                <ThemedText type="small" style={[styles.label, { color: theme.textSecondary }]}>
+                  Phone Number
+                </ThemedText>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.backgroundSecondary,
+                      color: theme.text,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                  value={phoneNumber}
+                  onChangeText={setPhoneNumber}
+                  placeholder="+1 (555) 123-4567"
+                  placeholderTextColor={theme.textSecondary}
+                  keyboardType="phone-pad"
+                  autoComplete="tel"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <ThemedText type="small" style={[styles.label, { color: theme.textSecondary }]}>
+                  Message
+                </ThemedText>
+                <TextInput
+                  style={[
+                    styles.textArea,
+                    {
+                      backgroundColor: theme.backgroundSecondary,
+                      color: theme.text,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                  value={smsMessage}
+                  onChangeText={setSmsMessage}
+                  placeholder="Type your message..."
+                  placeholderTextColor={theme.textSecondary}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              <Pressable
+                onPress={handleSendSms}
+                disabled={smsMutation.isPending}
+                style={({ pressed }) => [
+                  styles.submitButton,
+                  { opacity: pressed || smsMutation.isPending ? 0.7 : 1 },
+                ]}
+              >
+                <LinearGradient
+                  colors={Gradients.primary}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.submitGradient}
+                >
+                  {smsMutation.isPending ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <>
+                      <Feather name="send" size={18} color="#FFFFFF" />
+                      <ThemedText type="body" style={styles.submitText}>Send SMS</ThemedText>
+                    </>
+                  )}
+                </LinearGradient>
+              </Pressable>
+            </View>
+          </KeyboardAwareScrollViewCompat>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={modalType === "call"}
+        animationType="slide"
+        transparent
+        onRequestClose={closeModal}
+      >
+        <View style={styles.modalOverlay}>
+          <KeyboardAwareScrollViewCompat
+            contentContainerStyle={styles.modalScrollContent}
+            bounces={false}
+          >
+            <View style={[styles.formModal, { backgroundColor: theme.backgroundDefault }]}>
+              <View style={styles.modalHeader}>
+                <Pressable onPress={closeModal} style={styles.modalCloseButton}>
+                  <Feather name="x" size={24} color={theme.text} />
+                </Pressable>
+                <ThemedText type="h3">Initiate Call</ThemedText>
+                <View style={{ width: 40 }} />
+              </View>
+
+              <View style={styles.formGroup}>
+                <ThemedText type="small" style={[styles.label, { color: theme.textSecondary }]}>
+                  Phone Number
+                </ThemedText>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.backgroundSecondary,
+                      color: theme.text,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                  value={phoneNumber}
+                  onChangeText={setPhoneNumber}
+                  placeholder="+1 (555) 123-4567"
+                  placeholderTextColor={theme.textSecondary}
+                  keyboardType="phone-pad"
+                  autoComplete="tel"
+                />
+              </View>
+
+              <Pressable
+                onPress={handleInitiateCall}
+                disabled={callMutation.isPending}
+                style={({ pressed }) => [
+                  styles.submitButton,
+                  { opacity: pressed || callMutation.isPending ? 0.7 : 1 },
+                ]}
+              >
+                <LinearGradient
+                  colors={[Colors.dark.warning, Colors.dark.success]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.submitGradient}
+                >
+                  {callMutation.isPending ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <>
+                      <Feather name="phone" size={18} color="#FFFFFF" />
+                      <ThemedText type="body" style={styles.submitText}>Start Call</ThemedText>
+                    </>
+                  )}
+                </LinearGradient>
+              </Pressable>
+            </View>
+          </KeyboardAwareScrollViewCompat>
+        </View>
+      </Modal>
     </ThemedView>
   );
 }
@@ -413,5 +745,138 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingVertical: Spacing["3xl"],
+  },
+  fabWrapper: {
+    position: "absolute",
+    right: Spacing.lg,
+    zIndex: 9999,
+    ...Platform.select({
+      web: { elevation: 9999 },
+      default: {},
+    }),
+  },
+  fabContainer: {
+    ...Shadows.large,
+  },
+  fabGradient: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    justifyContent: "flex-end",
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+    justifyContent: "flex-end",
+  },
+  actionSheet: {
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing["2xl"],
+  },
+  actionSheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: Colors.dark.border,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginTop: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  actionSheetTitle: {
+    textAlign: "center",
+    marginBottom: Spacing.xl,
+  },
+  actionOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.sm,
+  },
+  actionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: Spacing.md,
+  },
+  actionTextContainer: {
+    flex: 1,
+    gap: 2,
+  },
+  cancelButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.md,
+  },
+  formModal: {
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing["2xl"],
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.border,
+    marginBottom: Spacing.xl,
+  },
+  modalCloseButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  formGroup: {
+    marginBottom: Spacing.lg,
+  },
+  label: {
+    marginBottom: Spacing.sm,
+    fontWeight: "500",
+  },
+  input: {
+    height: Spacing.inputHeight,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.md,
+    fontSize: 16,
+  },
+  textArea: {
+    minHeight: 120,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    fontSize: 16,
+  },
+  submitButton: {
+    marginTop: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    overflow: "hidden",
+  },
+  submitGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+    height: Spacing.buttonHeight,
+  },
+  submitText: {
+    color: "#FFFFFF",
+    fontWeight: "600",
   },
 });

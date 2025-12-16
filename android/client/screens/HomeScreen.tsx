@@ -28,10 +28,12 @@ import {
   getTodayEvents,
   getPendingTasks,
   getGroceryItems,
+  getRecentActivities,
   type ZekeEvent,
   type ZekeTask,
   type ZekeGroceryItem,
   type DashboardSummary,
+  type ActivityItem,
 } from "@/lib/zeke-api-adapter";
 
 interface ApiDevice {
@@ -132,20 +134,6 @@ function QuickActionButton({ icon, label, gradientColors, onPress }: QuickAction
     </Pressable>
   );
 }
-
-interface ActivityItem {
-  id: string;
-  action: string;
-  timestamp: string;
-  icon: keyof typeof Feather.glyphMap;
-}
-
-const mockActivities: ActivityItem[] = [
-  { id: '1', action: 'Sent SMS to Sarah', timestamp: '2 min ago', icon: 'message-circle' },
-  { id: '2', action: 'Recorded 5 min meeting', timestamp: '15 min ago', icon: 'mic' },
-  { id: '3', action: 'Added task: Review proposal', timestamp: '1 hr ago', icon: 'check-square' },
-  { id: '4', action: 'Synced calendar events', timestamp: '2 hr ago', icon: 'calendar' },
-];
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -262,6 +250,13 @@ export default function HomeScreen() {
     staleTime: 60000,
   });
 
+  const { data: activities = [], isLoading: isLoadingActivities } = useQuery<ActivityItem[]>({
+    queryKey: ['zeke-recent-activities'],
+    queryFn: () => getRecentActivities(8),
+    staleTime: 30000,
+    refetchInterval: 60000,
+  });
+
   const { data: devicesData, isLoading: isLoadingDevices } = useQuery<ApiDevice[]>({
     queryKey: ['/api/devices'],
     enabled: !isSyncMode,
@@ -273,6 +268,7 @@ export default function HomeScreen() {
 
   const onRefresh = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await queryClient.invalidateQueries({ queryKey: ['zeke-recent-activities'] });
     if (isSyncMode) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['zeke-connection-status'] }),
@@ -419,23 +415,42 @@ export default function HomeScreen() {
               <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>Activity Timeline</ThemedText>
             </View>
           </View>
-          {mockActivities.map((activity, index) => (
-            <View 
-              key={activity.id} 
-              style={[
-                styles.activityItem, 
-                index === mockActivities.length - 1 ? { marginBottom: 0 } : null
-              ]}
-            >
-              <View style={[styles.activityIconContainer, { backgroundColor: `${Colors.dark.primary}20` }]}>
-                <Feather name={activity.icon} size={14} color={Colors.dark.primary} />
-              </View>
-              <View style={styles.activityContent}>
-                <ThemedText type="small" numberOfLines={1}>{activity.action}</ThemedText>
-                <ThemedText type="caption" secondary>{activity.timestamp}</ThemedText>
-              </View>
+          {isLoadingActivities ? (
+            <View style={styles.activityLoadingContainer}>
+              <ActivityIndicator size="small" color={Colors.dark.primary} />
+              <ThemedText type="caption" secondary style={{ marginTop: Spacing.sm }}>
+                Loading activities...
+              </ThemedText>
             </View>
-          ))}
+          ) : activities.length === 0 ? (
+            <View style={styles.activityEmptyContainer}>
+              <Feather name="inbox" size={24} color={theme.textSecondary} />
+              <ThemedText type="small" secondary style={{ marginTop: Spacing.sm, textAlign: 'center' }}>
+                No recent activity
+              </ThemedText>
+              <ThemedText type="caption" secondary style={{ marginTop: Spacing.xs, textAlign: 'center' }}>
+                Actions like messages, recordings, and tasks will appear here
+              </ThemedText>
+            </View>
+          ) : (
+            activities.map((activity, index) => (
+              <View 
+                key={activity.id} 
+                style={[
+                  styles.activityItem, 
+                  index === activities.length - 1 ? { marginBottom: 0 } : null
+                ]}
+              >
+                <View style={[styles.activityIconContainer, { backgroundColor: `${Colors.dark.primary}20` }]}>
+                  <Feather name={activity.icon} size={14} color={Colors.dark.primary} />
+                </View>
+                <View style={styles.activityContent}>
+                  <ThemedText type="small" numberOfLines={1}>{activity.action}</ThemedText>
+                  <ThemedText type="caption" secondary>{activity.timestamp}</ThemedText>
+                </View>
+              </View>
+            ))
+          )}
         </View>
 
         {isSyncMode ? (
@@ -681,6 +696,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: Spacing.md,
+  },
+  activityLoadingContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.xl,
+  },
+  activityEmptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.xl,
   },
   activityIconContainer: {
     width: 32,

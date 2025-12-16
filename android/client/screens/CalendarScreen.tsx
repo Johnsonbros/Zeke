@@ -26,6 +26,7 @@ import { Spacing, Colors, BorderRadius } from "@/constants/theme";
 import { queryClient } from "@/lib/query-client";
 import {
   getTodayEvents,
+  getEventsForDateRange,
   createCalendarEvent,
   updateCalendarEvent,
   deleteCalendarEvent,
@@ -35,6 +36,79 @@ import {
   type ZekeEvent,
   type ZekeCalendar,
 } from "@/lib/zeke-api-adapter";
+
+type CalendarViewType = 'day' | 'week' | 'month';
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAYS_SHORT = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+function getWeekDates(date: Date): Date[] {
+  const startOfWeek = new Date(date);
+  const day = startOfWeek.getDay();
+  startOfWeek.setDate(startOfWeek.getDate() - day);
+  startOfWeek.setHours(0, 0, 0, 0);
+  
+  const dates: Date[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(startOfWeek);
+    d.setDate(d.getDate() + i);
+    dates.push(d);
+  }
+  return dates;
+}
+
+function getMonthDates(date: Date): (Date | null)[][] {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startDayOfWeek = firstDay.getDay();
+  const daysInMonth = lastDay.getDate();
+  
+  const weeks: (Date | null)[][] = [];
+  let currentWeek: (Date | null)[] = [];
+  
+  for (let i = 0; i < startDayOfWeek; i++) {
+    currentWeek.push(null);
+  }
+  
+  for (let day = 1; day <= daysInMonth; day++) {
+    currentWeek.push(new Date(year, month, day));
+    if (currentWeek.length === 7) {
+      weeks.push(currentWeek);
+      currentWeek = [];
+    }
+  }
+  
+  if (currentWeek.length > 0) {
+    while (currentWeek.length < 7) {
+      currentWeek.push(null);
+    }
+    weeks.push(currentWeek);
+  }
+  
+  return weeks;
+}
+
+function isSameDay(date1: Date, date2: Date): boolean {
+  return date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate();
+}
+
+function formatMonthYear(date: Date): string {
+  return date.toLocaleDateString(undefined, {
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function getEventsForDate(events: ZekeEvent[], date: Date): ZekeEvent[] {
+  return events.filter(event => {
+    const eventDate = new Date(event.startTime);
+    return isSameDay(eventDate, date);
+  });
+}
 
 const HOUR_HEIGHT = 60;
 const TIMELINE_START_HOUR = 6;
@@ -252,12 +326,78 @@ function EventCard({ event, onPress, onDelete, theme }: EventCardProps) {
   );
 }
 
+interface ViewToggleProps {
+  currentView: CalendarViewType;
+  onViewChange: (view: CalendarViewType) => void;
+  theme: any;
+}
+
+function ViewToggle({ currentView, onViewChange, theme }: ViewToggleProps) {
+  const views: { key: CalendarViewType; label: string }[] = [
+    { key: 'day', label: 'Day' },
+    { key: 'week', label: 'Week' },
+    { key: 'month', label: 'Month' },
+  ];
+
+  return (
+    <View style={[viewToggleStyles.container, { backgroundColor: theme.backgroundSecondary }]}>
+      {views.map((view) => {
+        const isActive = currentView === view.key;
+        return (
+          <Pressable
+            key={view.key}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onViewChange(view.key);
+            }}
+            style={[
+              viewToggleStyles.button,
+              isActive && { backgroundColor: Colors.dark.primary },
+            ]}
+          >
+            <ThemedText
+              style={[
+                viewToggleStyles.buttonText,
+                { color: isActive ? '#fff' : theme.textSecondary },
+              ]}
+            >
+              {view.label}
+            </ThemedText>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+const viewToggleStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    borderRadius: BorderRadius.sm,
+    padding: 2,
+  },
+  button: {
+    flex: 1,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+});
+
 export default function CalendarScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
 
+  const [viewType, setViewType] = useState<CalendarViewType>('day');
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingEvent, setEditingEvent] = useState<ZekeEvent | null>(null);
   const [eventTitle, setEventTitle] = useState("");
@@ -267,7 +407,29 @@ export default function CalendarScreen() {
   const [eventDescription, setEventDescription] = useState("");
   const [selectedCalendarId, setSelectedCalendarId] = useState<string>("primary");
   const [filterCalendarId, setFilterCalendarId] = useState<string | null>(null);
+  const [showCalendarFilter, setShowCalendarFilter] = useState(false);
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
+
+  const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
+  const monthDates = useMemo(() => getMonthDates(selectedDate), [selectedDate]);
+  
+  const dateRangeQuery = useMemo(() => {
+    if (viewType === 'day') {
+      return { key: 'calendar-events-today', start: null, end: null };
+    } else if (viewType === 'week') {
+      const start = new Date(weekDates[0]);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(weekDates[6]);
+      end.setHours(23, 59, 59, 999);
+      return { key: `calendar-events-week-${start.toISOString()}`, start, end };
+    } else {
+      const start = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
+      end.setHours(23, 59, 59, 999);
+      return { key: `calendar-events-month-${start.toISOString()}`, start, end };
+    }
+  }, [viewType, selectedDate, weekDates]);
 
   const {
     data: events = [],
@@ -275,8 +437,15 @@ export default function CalendarScreen() {
     refetch,
     isRefetching,
   } = useQuery<ZekeEvent[]>({
-    queryKey: ["calendar-events-today"],
-    queryFn: getTodayEvents,
+    queryKey: [dateRangeQuery.key],
+    queryFn: () => {
+      if (viewType === 'day') {
+        return getTodayEvents();
+      } else if (dateRangeQuery.start && dateRangeQuery.end) {
+        return getEventsForDateRange(dateRangeQuery.start, dateRangeQuery.end);
+      }
+      return getTodayEvents();
+    },
   });
 
   const { data: calendars = [] } = useQuery<ZekeCalendar[]>({
@@ -522,12 +691,17 @@ export default function CalendarScreen() {
       >
         <View style={styles.dateHeader}>
           <ThemedText type="h3" style={styles.dateText}>
-            {formatDateHeader()}
+            {viewType === 'day' 
+              ? formatDateHeader() 
+              : viewType === 'week'
+              ? `${weekDates[0].toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${weekDates[6].toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
+              : formatMonthYear(selectedDate)}
           </ThemedText>
           <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-            {sortedEvents.length} event{sortedEvents.length !== 1 ? "s" : ""} today
+            {sortedEvents.length} event{sortedEvents.length !== 1 ? "s" : ""}{viewType === 'day' ? ' today' : ''}
           </ThemedText>
         </View>
+        <ViewToggle currentView={viewType} onViewChange={setViewType} theme={theme} />
         <View style={styles.actionRow}>
           <Pressable
             onPress={openAddModal}
@@ -549,55 +723,69 @@ export default function CalendarScreen() {
         </View>
 
         {calendars.length > 0 ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.calendarFilters}
-          >
+          <View>
             <Pressable
-              onPress={() => setFilterCalendarId(null)}
-              style={[
-                styles.calendarChip,
-                {
-                  backgroundColor: !filterCalendarId ? Colors.dark.primary : theme.backgroundSecondary,
-                  borderColor: !filterCalendarId ? Colors.dark.primary : theme.border,
-                },
-              ]}
+              onPress={() => setShowCalendarFilter(!showCalendarFilter)}
+              style={[styles.filterToggle, { backgroundColor: theme.backgroundSecondary }]}
             >
-              <ThemedText
-                style={[
-                  styles.calendarChipText,
-                  { color: !filterCalendarId ? "#fff" : theme.textSecondary },
-                ]}
-              >
-                All Calendars
+              <Feather name="filter" size={16} color={theme.textSecondary} />
+              <ThemedText style={[styles.filterToggleText, { color: theme.textSecondary }]}>
+                {filterCalendarId ? calendars.find(c => c.id === filterCalendarId)?.name || 'Filter' : 'All Calendars'}
               </ThemedText>
+              <Feather name={showCalendarFilter ? "chevron-up" : "chevron-down"} size={16} color={theme.textSecondary} />
             </Pressable>
-            {calendars.filter((cal) => shouldShowCalendar(cal.name)).map((cal) => (
-              <Pressable
-                key={cal.id}
-                onPress={() => setFilterCalendarId(filterCalendarId === cal.id ? null : cal.id)}
-                style={[
-                  styles.calendarChip,
-                  {
-                    backgroundColor: filterCalendarId === cal.id ? `${cal.color}` : theme.backgroundSecondary,
-                    borderColor: filterCalendarId === cal.id ? cal.color : theme.border,
-                  },
-                ]}
+            {showCalendarFilter ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.calendarFilters}
               >
-                <View style={[styles.calendarDot, { backgroundColor: cal.color }]} />
-                <ThemedText
+                <Pressable
+                  onPress={() => { setFilterCalendarId(null); setShowCalendarFilter(false); }}
                   style={[
-                    styles.calendarChipText,
-                    { color: filterCalendarId === cal.id ? "#fff" : theme.text },
+                    styles.calendarChip,
+                    {
+                      backgroundColor: !filterCalendarId ? Colors.dark.primary : theme.backgroundSecondary,
+                      borderColor: !filterCalendarId ? Colors.dark.primary : theme.border,
+                    },
                   ]}
-                  numberOfLines={1}
                 >
-                  {getCalendarDisplayName(cal.name)}
-                </ThemedText>
-              </Pressable>
-            ))}
-          </ScrollView>
+                  <ThemedText
+                    style={[
+                      styles.calendarChipText,
+                      { color: !filterCalendarId ? "#fff" : theme.textSecondary },
+                    ]}
+                  >
+                    All Calendars
+                  </ThemedText>
+                </Pressable>
+                {calendars.filter((cal) => shouldShowCalendar(cal.name)).map((cal) => (
+                  <Pressable
+                    key={cal.id}
+                    onPress={() => { setFilterCalendarId(filterCalendarId === cal.id ? null : cal.id); setShowCalendarFilter(false); }}
+                    style={[
+                      styles.calendarChip,
+                      {
+                        backgroundColor: filterCalendarId === cal.id ? `${cal.color}` : theme.backgroundSecondary,
+                        borderColor: filterCalendarId === cal.id ? cal.color : theme.border,
+                      },
+                    ]}
+                  >
+                    <View style={[styles.calendarDot, { backgroundColor: cal.color }]} />
+                    <ThemedText
+                      style={[
+                        styles.calendarChipText,
+                        { color: filterCalendarId === cal.id ? "#fff" : theme.text },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {getCalendarDisplayName(cal.name)}
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : null}
+          </View>
         ) : null}
       </View>
 
@@ -605,6 +793,267 @@ export default function CalendarScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.dark.primary} />
         </View>
+      ) : viewType === 'week' ? (
+        <ScrollView
+          contentContainerStyle={{
+            paddingBottom: tabBarHeight + Spacing.xl,
+          }}
+          scrollIndicatorInsets={{ bottom: insets.bottom }}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={handleRefresh}
+              tintColor={Colors.dark.primary}
+            />
+          }
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.weekViewContainer}
+          >
+            {weekDates.map((date, index) => {
+              const dayEvents = getEventsForDate(filteredEvents, date);
+              const isToday = isSameDay(date, new Date());
+              const isSelected = isSameDay(date, selectedDate);
+              return (
+                <Pressable
+                  key={index}
+                  onPress={() => setSelectedDate(date)}
+                  style={[
+                    styles.weekDayColumn,
+                    { backgroundColor: isSelected ? `${Colors.dark.primary}20` : 'transparent' },
+                  ]}
+                >
+                  <ThemedText
+                    style={[
+                      styles.weekDayName,
+                      { color: isToday ? Colors.dark.primary : theme.textSecondary },
+                    ]}
+                  >
+                    {WEEKDAYS[date.getDay()]}
+                  </ThemedText>
+                  <View
+                    style={[
+                      styles.weekDayNumber,
+                      isToday && { backgroundColor: Colors.dark.primary },
+                    ]}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.weekDayNumberText,
+                        { color: isToday ? '#fff' : theme.text },
+                      ]}
+                    >
+                      {date.getDate()}
+                    </ThemedText>
+                  </View>
+                  <ThemedText
+                    style={[styles.weekEventCount, { color: theme.textSecondary }]}
+                  >
+                    {dayEvents.length > 0 ? `${dayEvents.length}` : '-'}
+                  </ThemedText>
+                  <View style={styles.weekEventIndicators}>
+                    {dayEvents.slice(0, 3).map((event, i) => (
+                      <View
+                        key={event.id}
+                        style={[
+                          styles.weekEventDot,
+                          { backgroundColor: event.color || Colors.dark.primary },
+                        ]}
+                      />
+                    ))}
+                    {dayEvents.length > 3 ? (
+                      <ThemedText style={styles.weekMoreIndicator}>+{dayEvents.length - 3}</ThemedText>
+                    ) : null}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          
+          <View style={styles.weekSelectedDayEvents}>
+            <ThemedText type="h4" style={{ marginBottom: Spacing.md }}>
+              {selectedDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+            </ThemedText>
+            {getEventsForDate(filteredEvents, selectedDate).length === 0 ? (
+              <ThemedText style={{ color: theme.textSecondary }}>No events on this day</ThemedText>
+            ) : (
+              getEventsForDate(filteredEvents, selectedDate).map((event) => {
+                const color = event.color || Colors.dark.primary;
+                return (
+                  <Pressable
+                    key={event.id}
+                    onPress={() => openEditModal(event)}
+                    style={[
+                      styles.weekEventCard,
+                      {
+                        backgroundColor: `${color}20`,
+                        borderLeftColor: color,
+                      },
+                    ]}
+                  >
+                    <ThemedText style={[styles.eventTime, { color }]}>
+                      {event.allDay ? 'All Day' : formatTime(event.startTime)}
+                      {event.endTime && !event.allDay ? ` - ${formatTime(event.endTime)}` : ''}
+                    </ThemedText>
+                    <ThemedText style={styles.eventTitle}>{event.title}</ThemedText>
+                    {event.location ? (
+                      <View style={styles.locationRow}>
+                        <Feather name="map-pin" size={12} color={theme.textSecondary} />
+                        <ThemedText type="caption" style={{ color: theme.textSecondary, marginLeft: 4 }}>
+                          {event.location}
+                        </ThemedText>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                );
+              })
+            )}
+          </View>
+        </ScrollView>
+      ) : viewType === 'month' ? (
+        <ScrollView
+          contentContainerStyle={{
+            paddingBottom: tabBarHeight + Spacing.xl,
+          }}
+          scrollIndicatorInsets={{ bottom: insets.bottom }}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={handleRefresh}
+              tintColor={Colors.dark.primary}
+            />
+          }
+        >
+          <View style={styles.monthNavigation}>
+            <Pressable
+              onPress={() => {
+                const newDate = new Date(selectedDate);
+                newDate.setMonth(newDate.getMonth() - 1);
+                setSelectedDate(newDate);
+              }}
+              style={styles.monthNavButton}
+            >
+              <Feather name="chevron-left" size={24} color={Colors.dark.primary} />
+            </Pressable>
+            <ThemedText type="h4">{formatMonthYear(selectedDate)}</ThemedText>
+            <Pressable
+              onPress={() => {
+                const newDate = new Date(selectedDate);
+                newDate.setMonth(newDate.getMonth() + 1);
+                setSelectedDate(newDate);
+              }}
+              style={styles.monthNavButton}
+            >
+              <Feather name="chevron-right" size={24} color={Colors.dark.primary} />
+            </Pressable>
+          </View>
+          
+          <View style={styles.monthGrid}>
+            <View style={styles.monthWeekdayHeader}>
+              {WEEKDAYS_SHORT.map((day, index) => (
+                <View key={index} style={styles.monthWeekdayCell}>
+                  <ThemedText style={[styles.monthWeekdayText, { color: theme.textSecondary }]}>
+                    {day}
+                  </ThemedText>
+                </View>
+              ))}
+            </View>
+            
+            {monthDates.map((week, weekIndex) => (
+              <View key={weekIndex} style={styles.monthWeekRow}>
+                {week.map((date, dayIndex) => {
+                  if (!date) {
+                    return <View key={dayIndex} style={styles.monthDayCell} />;
+                  }
+                  const dayEvents = getEventsForDate(filteredEvents, date);
+                  const isToday = isSameDay(date, new Date());
+                  const isSelected = isSameDay(date, selectedDate);
+                  return (
+                    <Pressable
+                      key={dayIndex}
+                      onPress={() => setSelectedDate(date)}
+                      style={[
+                        styles.monthDayCell,
+                        isSelected && { backgroundColor: `${Colors.dark.primary}20` },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.monthDayNumber,
+                          isToday && { backgroundColor: Colors.dark.primary },
+                        ]}
+                      >
+                        <ThemedText
+                          style={[
+                            styles.monthDayNumberText,
+                            { color: isToday ? '#fff' : theme.text },
+                          ]}
+                        >
+                          {date.getDate()}
+                        </ThemedText>
+                      </View>
+                      {dayEvents.length > 0 ? (
+                        <View style={styles.monthEventDots}>
+                          {dayEvents.slice(0, 3).map((event, i) => (
+                            <View
+                              key={event.id}
+                              style={[
+                                styles.monthEventDot,
+                                { backgroundColor: event.color || Colors.dark.primary },
+                              ]}
+                            />
+                          ))}
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
+          </View>
+          
+          <View style={styles.monthSelectedDayEvents}>
+            <ThemedText type="h4" style={{ marginBottom: Spacing.md }}>
+              {selectedDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+            </ThemedText>
+            {getEventsForDate(filteredEvents, selectedDate).length === 0 ? (
+              <ThemedText style={{ color: theme.textSecondary }}>No events on this day</ThemedText>
+            ) : (
+              getEventsForDate(filteredEvents, selectedDate).map((event) => {
+                const color = event.color || Colors.dark.primary;
+                return (
+                  <Pressable
+                    key={event.id}
+                    onPress={() => openEditModal(event)}
+                    style={[
+                      styles.weekEventCard,
+                      {
+                        backgroundColor: `${color}20`,
+                        borderLeftColor: color,
+                      },
+                    ]}
+                  >
+                    <ThemedText style={[styles.eventTime, { color }]}>
+                      {event.allDay ? 'All Day' : formatTime(event.startTime)}
+                      {event.endTime && !event.allDay ? ` - ${formatTime(event.endTime)}` : ''}
+                    </ThemedText>
+                    <ThemedText style={styles.eventTitle}>{event.title}</ThemedText>
+                    {event.location ? (
+                      <View style={styles.locationRow}>
+                        <Feather name="map-pin" size={12} color={theme.textSecondary} />
+                        <ThemedText type="caption" style={{ color: theme.textSecondary, marginLeft: 4 }}>
+                          {event.location}
+                        </ThemedText>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                );
+              })
+            )}
+          </View>
+        </ScrollView>
       ) : sortedEvents.length === 0 ? (
         <View
           style={[
@@ -1138,6 +1587,19 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
     gap: Spacing.sm,
   },
+  filterToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    alignSelf: "flex-start",
+  },
+  filterToggleText: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
   calendarChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -1222,5 +1684,125 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
     flex: 1,
+  },
+  weekViewContainer: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    gap: Spacing.sm,
+  },
+  weekDayColumn: {
+    width: 70,
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.xs,
+  },
+  weekDayName: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  weekDayNumber: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekDayNumberText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  weekEventCount: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  weekEventIndicators: {
+    flexDirection: 'row',
+    gap: 2,
+    alignItems: 'center',
+    height: 16,
+  },
+  weekEventDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  weekMoreIndicator: {
+    fontSize: 10,
+    color: Colors.dark.textSecondary,
+  },
+  weekSelectedDayEvents: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  weekEventCard: {
+    borderLeftWidth: 3,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  monthNavigation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  monthNavButton: {
+    padding: Spacing.sm,
+  },
+  monthGrid: {
+    paddingHorizontal: Spacing.lg,
+  },
+  monthWeekdayHeader: {
+    flexDirection: 'row',
+    marginBottom: Spacing.sm,
+  },
+  monthWeekdayCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: Spacing.xs,
+  },
+  monthWeekdayText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  monthWeekRow: {
+    flexDirection: 'row',
+  },
+  monthDayCell: {
+    flex: 1,
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: BorderRadius.sm,
+    padding: 2,
+  },
+  monthDayNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthDayNumberText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  monthEventDots: {
+    flexDirection: 'row',
+    gap: 2,
+    marginTop: 2,
+  },
+  monthEventDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
+  monthSelectedDayEvents: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    marginTop: Spacing.md,
   },
 });

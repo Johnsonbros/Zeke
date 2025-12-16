@@ -9,7 +9,7 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### Frontend Architecture
-The frontend is built with Expo SDK 54 and React Native 0.81, utilizing React 19 architecture with the React Compiler. Navigation is managed by React Navigation v7, featuring a root stack navigator, a bottom tab navigator with 4 tabs (Home, Comms, Calendar, Tasks), with Settings and Chat accessible from header icons. Each tab contains its own native stack navigator for nested views. State management combines TanStack React Query for server state and caching, `useState` for local component state, and AsyncStorage for persistent local data. The styling enforces a dark-mode theme with gradient accents (indigo→purple, purple→pink) using `expo-linear-gradient` and `Reanimated` for smooth animations. Key UI components include custom themed elements, gradient text, and specialized cards for contacts, memories, and chat bubbles, along with a `VoiceInputButton` for voice-to-text.
+The frontend is built with Expo SDK 54 and React Native 0.81, utilizing React 19 architecture with the React Compiler. Navigation is managed by React Navigation v7, featuring a root stack navigator, a bottom tab navigator with 5 tabs (Home, Comms, Calendar, Geo, Tasks), with Settings and Chat accessible from header icons. Each tab contains its own native stack navigator for nested views. State management combines TanStack React Query for server state and caching, `useState` for local component state, and AsyncStorage for persistent local data. The styling enforces a dark-mode theme with gradient accents (indigo→purple, purple→pink) using `expo-linear-gradient` and `Reanimated` for smooth animations. Key UI components include custom themed elements, gradient text, and specialized cards for contacts, memories, and chat bubbles, along with a `VoiceInputButton` for voice-to-text.
 
 ### Backend Architecture
 The backend is an Express.js server, featuring a minimal `/api` route structure and dynamic CORS configuration. It employs an interface-based storage abstraction (`IStorage`) currently using in-memory storage (`MemStorage`) but designed for migration to PostgreSQL with Drizzle ORM. The Drizzle ORM schema is defined in `shared/schema.ts` with Zod validation. Path aliases (`@/*` for client and `@shared/*` for shared code) are configured for streamlined development.
@@ -19,14 +19,20 @@ Client-side data is persisted using AsyncStorage with namespaced keys, storing d
 
 ### Feature Specifications
 - **Home Screen (Command Center):** Dynamic greeting with "ZEKE Command Center" subtitle, Quick Action Widgets (Call, Message, Record, Command buttons with gradient backgrounds), GPS Status card with live location tracking (tappable to navigate to full Location screen), Activity Timeline showing recent ZEKE actions, connection status, stats grid, and device management.
-- **Location Module:** Full geo-location system optimized for Android Pixel 8 with real-time GPS tracking using expo-location. Features include:
+- **Geo Tab (Location & Geofencing):** Full geo-location system with geofencing capabilities. Features include:
   - Current location display with reverse geocoding (city, region, country)
   - Location history tracking with local storage
   - Starred places management for frequently visited locations
+  - **Geofences:** Create virtual perimeters around locations with configurable radius (e.g., 500m)
+  - **Location Lists:** Group geofences into lists (e.g., "Grocery Stores") with shared settings
+  - **Trigger Types:** Enter, Exit, or Both - configure when to fire alerts
+  - **Action Types:** Notification, Grocery Prompt (shows unpurchased items), or Custom
+  - **Foreground Monitoring:** 30-second location checks with 5-minute cooldown per geofence
+  - **Quick Add:** One-tap "Add as Grocery Store" to create geofences with grocery prompt settings
   - Permission handling with settings navigation for denied permissions
-  - Distance calculations between current location and starred places
-  - Battery-optimized tracking with configurable accuracy settings
-  - API endpoints for location sync with ZEKE backend (`/api/location/*`)
+  - Distance calculations between current location and geofences
+  - API endpoints for location sync with ZEKE backend (`/api/location/*`, `/api/geofences/*`)
+  - Note: Background geofencing requires native build (Expo Go supports foreground only)
 - **Communications Hub (Comms):** Unified communications interface with four tabs (SMS, Voice, Chat, Contacts). SMS tab shows conversations with navigation to detail screens, Voice tab shows call history with details, Chat tab links to ZEKE AI chat, and Contacts tab provides searchable contact list with quick call/message actions. Contacts are color-coded by access level (Family, Close Friend, Friend, Acquaintance), with detail views accessible from the Comms stack.
 - **SMS Screens:** Chat-style conversation view with bubbles and date separators, and a modal for composing new SMS messages with character count.
 - **Calendar:** Full CRUD operations across all Google Calendars with dedicated ZEKE calendar support. Timeline view showing daily events color-coded by calendar source, calendar filter chips, all-day events section, add/edit/delete event modals with calendar selection, current time indicator, and voice input for adding events.

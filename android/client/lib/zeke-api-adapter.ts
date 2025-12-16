@@ -1,5 +1,11 @@
 import { getApiUrl, getLocalApiUrl, isZekeSyncMode, apiRequest } from "./query-client";
 
+function createTimeoutSignal(ms: number): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
+
 export interface ZekeConversation {
   id: string;
   title?: string;
@@ -231,7 +237,7 @@ export async function getGroceryItems(): Promise<ZekeGroceryItem[]> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(5000)
+      signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
       return [];
@@ -261,7 +267,7 @@ export async function getContacts(): Promise<ZekeContact[]> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(5000)
+      signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
       return [];
@@ -280,7 +286,7 @@ export async function getContact(id: string): Promise<ZekeContact | null> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(5000)
+      signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
       return null;
@@ -312,7 +318,7 @@ export async function getSmsConversations(): Promise<ZekeContactConversation[]> 
   try {
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(5000)
+      signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
       return [];
@@ -373,18 +379,18 @@ export async function getTwilioConversations(): Promise<TwilioSmsConversation[]>
   try {
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(10000)
+      signal: createTimeoutSignal(10000)
     });
     if (!res.ok) {
-      if (res.status === 404) {
-        return [];
-      }
-      throw new Error(`Failed to fetch conversations: ${res.statusText}`);
+      return [];
+    }
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return [];
     }
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   } catch (error) {
-    console.error('[Twilio] Error fetching conversations:', error);
     return [];
   }
 }
@@ -396,18 +402,18 @@ export async function getTwilioConversation(phoneNumber: string): Promise<Twilio
   try {
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(10000)
+      signal: createTimeoutSignal(10000)
     });
     if (!res.ok) {
-      if (res.status === 404) {
-        return null;
-      }
-      throw new Error(`Failed to fetch conversation: ${res.statusText}`);
+      return null;
+    }
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return null;
     }
     const data = await res.json();
     return data;
   } catch (error) {
-    console.error('[Twilio] Error fetching conversation:', error);
     return null;
   }
 }
@@ -419,18 +425,18 @@ export async function getTwilioCalls(): Promise<TwilioCallRecord[]> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(10000)
+      signal: createTimeoutSignal(10000)
     });
     if (!res.ok) {
-      if (res.status === 404) {
-        return [];
-      }
-      throw new Error(`Failed to fetch calls: ${res.statusText}`);
+      return [];
+    }
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return [];
     }
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   } catch (error) {
-    console.error('[Twilio] Error fetching calls:', error);
     return [];
   }
 }
@@ -442,15 +448,18 @@ export async function getTwilioPhoneNumber(): Promise<string | null> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(5000)
+      signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
+      return null;
+    }
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
       return null;
     }
     const data = await res.json();
     return data.phoneNumber || null;
   } catch (error) {
-    console.error('[Twilio] Error fetching phone number:', error);
     return null;
   }
 }
@@ -462,7 +471,7 @@ export async function getHealthStatus(): Promise<{ status: string; connected: bo
     
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(5000)
+      signal: createTimeoutSignal(5000)
     });
     
     return { 
@@ -483,7 +492,7 @@ export async function getZekeDevices(): Promise<ZekeDevice[]> {
       
       const res = await fetch(url, { 
         credentials: 'include',
-        signal: AbortSignal.timeout(5000)
+        signal: createTimeoutSignal(5000)
       });
       
       if (!res.ok) {
@@ -519,7 +528,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     const url = new URL('/api/dashboard/summary', baseUrl);
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(5000)
+      signal: createTimeoutSignal(5000)
     });
     
     if (res.ok) {
@@ -543,6 +552,33 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   };
 }
 
+export async function getEventsForDateRange(startDate: Date, endDate: Date): Promise<ZekeEvent[]> {
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/calendar/events', baseUrl);
+  url.searchParams.set('timeMin', startDate.toISOString());
+  url.searchParams.set('timeMax', endDate.toISOString());
+  
+  console.log('[Calendar] Fetching events for range:', startDate.toISOString(), 'to', endDate.toISOString());
+  
+  try {
+    const res = await fetch(url, { 
+      credentials: 'include',
+      signal: createTimeoutSignal(10000)
+    });
+    console.log('[Calendar] Range response status:', res.status);
+    if (!res.ok) {
+      console.log('[Calendar] Range response not OK, falling back to today events');
+      return getTodayEvents();
+    }
+    const data = await res.json();
+    console.log('[Calendar] Fetched range events count:', Array.isArray(data) ? data.length : (data.events?.length ?? 0));
+    return data.events || data || [];
+  } catch (error) {
+    console.error('[Calendar] Range fetch error:', error);
+    return [];
+  }
+}
+
 export async function getTodayEvents(): Promise<ZekeEvent[]> {
   // Always use local backend for Google Calendar integration
   const baseUrl = getLocalApiUrl();
@@ -553,7 +589,7 @@ export async function getTodayEvents(): Promise<ZekeEvent[]> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(10000)
+      signal: createTimeoutSignal(10000)
     });
     console.log('[Calendar] Response status:', res.status);
     if (!res.ok) {
@@ -577,7 +613,7 @@ export async function getPendingTasks(): Promise<ZekeTask[]> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(5000)
+      signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
       return [];
@@ -625,7 +661,7 @@ export async function getAllTasks(): Promise<ZekeTask[]> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(5000)
+      signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
       return [];
@@ -724,7 +760,7 @@ export async function getUpcomingEvents(limit: number = 10): Promise<ZekeEvent[]
   try {
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(5000)
+      signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
       return [];
@@ -760,7 +796,7 @@ export async function getCalendarList(): Promise<ZekeCalendar[]> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(10000)
+      signal: createTimeoutSignal(10000)
     });
     if (!res.ok) {
       return [];
@@ -778,7 +814,7 @@ export async function getZekeCalendar(): Promise<ZekeCalendar | null> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
-      signal: AbortSignal.timeout(10000)
+      signal: createTimeoutSignal(10000)
     });
     if (!res.ok) {
       return null;
@@ -786,5 +822,528 @@ export async function getZekeCalendar(): Promise<ZekeCalendar | null> {
     return res.json();
   } catch {
     return null;
+  }
+}
+
+export interface ActivityItem {
+  id: string;
+  action: string;
+  timestamp: string;
+  icon: 'message-circle' | 'mic' | 'check-square' | 'calendar' | 'shopping-cart' | 'user';
+  rawDate: Date;
+}
+
+function getRelativeTime(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min ago`;
+  
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours} hr ago`;
+  
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  
+  return date.toLocaleDateString();
+}
+
+export async function getRecentActivities(limit: number = 10): Promise<ActivityItem[]> {
+  const activities: ActivityItem[] = [];
+  
+  try {
+    const [memories, tasks, smsConversations, events] = await Promise.all([
+      getRecentMemories(5).catch(() => []),
+      getAllTasks().catch(() => []),
+      getTwilioConversations().catch(() => []),
+      getTodayEvents().catch(() => []),
+    ]);
+    
+    for (const memory of memories) {
+      const date = new Date(memory.createdAt);
+      const durationMin = Math.round((memory.duration || 0) / 60);
+      activities.push({
+        id: `memory-${memory.id}`,
+        action: durationMin > 0 
+          ? `Recorded ${durationMin} min ${memory.title || 'audio'}` 
+          : `Recorded: ${memory.title || 'audio memory'}`,
+        timestamp: getRelativeTime(date),
+        icon: 'mic',
+        rawDate: date,
+      });
+    }
+    
+    const recentTasks = tasks
+      .filter((t: ZekeTask) => t.status === 'completed' || t.createdAt)
+      .slice(0, 5);
+    
+    for (const task of recentTasks) {
+      const date = new Date(task.createdAt);
+      const isCompleted = task.status === 'completed';
+      activities.push({
+        id: `task-${task.id}`,
+        action: isCompleted 
+          ? `Completed: ${task.title}` 
+          : `Added task: ${task.title}`,
+        timestamp: getRelativeTime(date),
+        icon: 'check-square',
+        rawDate: date,
+      });
+    }
+    
+    for (const convo of smsConversations.slice(0, 5)) {
+      if (convo.messages && convo.messages.length > 0) {
+        const lastMsg = convo.messages[convo.messages.length - 1];
+        const date = new Date(lastMsg.dateCreated || lastMsg.dateSent || new Date());
+        const isOutbound = lastMsg.direction?.includes('outbound');
+        const contactName = convo.contactName || convo.phoneNumber || 'Unknown';
+        
+        activities.push({
+          id: `sms-${lastMsg.sid || convo.phoneNumber}`,
+          action: isOutbound 
+            ? `Sent SMS to ${contactName}` 
+            : `Received SMS from ${contactName}`,
+          timestamp: getRelativeTime(date),
+          icon: 'message-circle',
+          rawDate: date,
+        });
+      }
+    }
+    
+    for (const event of events.slice(0, 3)) {
+      const date = new Date(event.startTime);
+      activities.push({
+        id: `event-${event.id}`,
+        action: `Synced: ${event.title}`,
+        timestamp: getRelativeTime(date),
+        icon: 'calendar',
+        rawDate: date,
+      });
+    }
+    
+    activities.sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime());
+    
+    return activities.slice(0, limit);
+  } catch (error) {
+    console.error('[Activities] Error fetching activities:', error);
+    return [];
+  }
+}
+
+export interface LocationSample {
+  id: string;
+  latitude: number;
+  longitude: number;
+  altitude?: number | null;
+  accuracy?: number | null;
+  heading?: number | null;
+  speed?: number | null;
+  timestamp: number;
+  geocodedAddress?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  createdAt: string;
+}
+
+export interface StarredPlace {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  altitude?: number | null;
+  geocodedAddress?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  icon?: string;
+  createdAt: string;
+}
+
+export async function syncLocationSamples(samples: LocationSample[]): Promise<{ synced: number }> {
+  const baseUrl = getApiUrl();
+  const url = new URL('/api/location/samples', baseUrl);
+  
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ samples }),
+      signal: createTimeoutSignal(10000),
+    });
+    
+    if (!res.ok) {
+      return { synced: 0 };
+    }
+    
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return { synced: 0 };
+    }
+    
+    const data = await res.json();
+    return { synced: data.synced || 0 };
+  } catch {
+    return { synced: 0 };
+  }
+}
+
+export async function getLocationSamplesFromBackend(since?: string, limit?: number): Promise<LocationSample[]> {
+  const baseUrl = getApiUrl();
+  const url = new URL('/api/location/samples', baseUrl);
+  
+  if (since) {
+    url.searchParams.set('since', since);
+  }
+  if (limit) {
+    url.searchParams.set('limit', limit.toString());
+  }
+  
+  try {
+    const res = await fetch(url, {
+      credentials: 'include',
+      signal: createTimeoutSignal(10000),
+    });
+    
+    if (!res.ok) {
+      return [];
+    }
+    
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return [];
+    }
+    
+    const data = await res.json();
+    return data.samples || data || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function syncStarredPlaces(places: StarredPlace[]): Promise<{ synced: number }> {
+  const baseUrl = getApiUrl();
+  const url = new URL('/api/location/starred', baseUrl);
+  
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ places }),
+      signal: createTimeoutSignal(10000),
+    });
+    
+    if (!res.ok) {
+      return { synced: 0 };
+    }
+    
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return { synced: 0 };
+    }
+    
+    const data = await res.json();
+    return { synced: data.synced || 0 };
+  } catch {
+    return { synced: 0 };
+  }
+}
+
+export async function getStarredPlacesFromBackend(): Promise<StarredPlace[]> {
+  const baseUrl = getApiUrl();
+  const url = new URL('/api/location/starred', baseUrl);
+  
+  try {
+    const res = await fetch(url, {
+      credentials: 'include',
+      signal: createTimeoutSignal(10000),
+    });
+    
+    if (!res.ok) {
+      return [];
+    }
+    
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return [];
+    }
+    
+    const data = await res.json();
+    return data.places || data || [];
+  } catch {
+    return [];
+  }
+}
+
+export interface Geofence {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radius: number;
+  listId?: string;
+  triggerOn: 'enter' | 'exit' | 'both';
+  isActive: boolean;
+  actionType: 'notification' | 'grocery_prompt' | 'custom';
+  actionData?: any;
+  createdAt: string;
+}
+
+export interface LocationList {
+  id: string;
+  name: string;
+  description?: string;
+  defaultRadius: number;
+  actionType: 'notification' | 'grocery_prompt' | 'custom';
+  isActive: boolean;
+  geofenceIds: string[];
+  createdAt: string;
+}
+
+const GEOFENCE_STORAGE_KEY = '@zeke/geofences';
+const LOCATION_LISTS_STORAGE_KEY = '@zeke/location_lists';
+
+async function getAsyncStorage() {
+  const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+  return AsyncStorage;
+}
+
+export async function getGeofences(): Promise<Geofence[]> {
+  try {
+    const AsyncStorage = await getAsyncStorage();
+    const data = await AsyncStorage.getItem(GEOFENCE_STORAGE_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveGeofences(geofences: Geofence[]): Promise<void> {
+  try {
+    const AsyncStorage = await getAsyncStorage();
+    await AsyncStorage.setItem(GEOFENCE_STORAGE_KEY, JSON.stringify(geofences));
+  } catch (error) {
+    console.error('Error saving geofences:', error);
+  }
+}
+
+export async function addGeofence(geofence: Geofence): Promise<Geofence> {
+  const geofences = await getGeofences();
+  geofences.unshift(geofence);
+  await saveGeofences(geofences);
+  return geofence;
+}
+
+export async function updateGeofence(id: string, updates: Partial<Geofence>): Promise<Geofence | null> {
+  const geofences = await getGeofences();
+  const index = geofences.findIndex(g => g.id === id);
+  if (index === -1) return null;
+  
+  geofences[index] = { ...geofences[index], ...updates };
+  await saveGeofences(geofences);
+  return geofences[index];
+}
+
+export async function deleteGeofence(id: string): Promise<void> {
+  const geofences = await getGeofences();
+  const filtered = geofences.filter(g => g.id !== id);
+  await saveGeofences(filtered);
+}
+
+export async function getLocationLists(): Promise<LocationList[]> {
+  try {
+    const AsyncStorage = await getAsyncStorage();
+    const data = await AsyncStorage.getItem(LOCATION_LISTS_STORAGE_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveLocationLists(lists: LocationList[]): Promise<void> {
+  try {
+    const AsyncStorage = await getAsyncStorage();
+    await AsyncStorage.setItem(LOCATION_LISTS_STORAGE_KEY, JSON.stringify(lists));
+  } catch (error) {
+    console.error('Error saving location lists:', error);
+  }
+}
+
+export async function addLocationList(list: LocationList): Promise<LocationList> {
+  const lists = await getLocationLists();
+  lists.unshift(list);
+  await saveLocationLists(lists);
+  return list;
+}
+
+export async function updateLocationList(id: string, updates: Partial<LocationList>): Promise<LocationList | null> {
+  const lists = await getLocationLists();
+  const index = lists.findIndex(l => l.id === id);
+  if (index === -1) return null;
+  
+  lists[index] = { ...lists[index], ...updates };
+  await saveLocationLists(lists);
+  return lists[index];
+}
+
+export async function deleteLocationList(id: string): Promise<void> {
+  const lists = await getLocationLists();
+  const filtered = lists.filter(l => l.id !== id);
+  await saveLocationLists(filtered);
+}
+
+export async function syncGeofencesToBackend(geofences: Geofence[]): Promise<{ synced: number }> {
+  const baseUrl = getApiUrl();
+  const url = new URL('/api/geofences', baseUrl);
+  
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ geofences }),
+      signal: createTimeoutSignal(10000),
+    });
+    
+    if (!res.ok) {
+      return { synced: 0 };
+    }
+    
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return { synced: 0 };
+    }
+    
+    const data = await res.json();
+    return { synced: data.synced || 0 };
+  } catch {
+    return { synced: 0 };
+  }
+}
+
+export async function getGeofencesFromBackend(): Promise<Geofence[]> {
+  const baseUrl = getApiUrl();
+  const url = new URL('/api/geofences', baseUrl);
+  
+  try {
+    const res = await fetch(url, {
+      credentials: 'include',
+      signal: createTimeoutSignal(10000),
+    });
+    
+    if (!res.ok) {
+      return [];
+    }
+    
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return [];
+    }
+    
+    const data = await res.json();
+    return data.geofences || data || [];
+  } catch {
+    return [];
+  }
+}
+
+export interface GeofenceTriggerEvent {
+  id: string;
+  geofenceId: string;
+  event: 'enter' | 'exit';
+  timestamp: string;
+  latitude: number;
+  longitude: number;
+  synced: boolean;
+}
+
+const GEOFENCE_EVENTS_STORAGE_KEY = '@zeke/geofence-events';
+
+export async function saveGeofenceTriggerEvent(event: GeofenceTriggerEvent): Promise<void> {
+  try {
+    const AsyncStorage = await getAsyncStorage();
+    const existing = await getGeofenceTriggerEvents();
+    existing.unshift(event);
+    const trimmed = existing.slice(0, 100);
+    await AsyncStorage.setItem(GEOFENCE_EVENTS_STORAGE_KEY, JSON.stringify(trimmed));
+  } catch (error) {
+    console.error('Error saving geofence trigger event:', error);
+  }
+}
+
+export async function getGeofenceTriggerEvents(): Promise<GeofenceTriggerEvent[]> {
+  try {
+    const AsyncStorage = await getAsyncStorage();
+    const data = await AsyncStorage.getItem(GEOFENCE_EVENTS_STORAGE_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function markTriggerEventsSynced(eventIds: string[]): Promise<void> {
+  try {
+    const AsyncStorage = await getAsyncStorage();
+    const events = await getGeofenceTriggerEvents();
+    const updated = events.map(e => 
+      eventIds.includes(e.id) ? { ...e, synced: true } : e
+    );
+    await AsyncStorage.setItem(GEOFENCE_EVENTS_STORAGE_KEY, JSON.stringify(updated));
+  } catch (error) {
+    console.error('Error marking events synced:', error);
+  }
+}
+
+export async function syncTriggerEventsToBackend(): Promise<{ synced: number }> {
+  const baseUrl = getApiUrl();
+  const url = new URL('/api/geofence-events', baseUrl);
+  
+  try {
+    const events = await getGeofenceTriggerEvents();
+    const unsyncedEvents = events.filter(e => !e.synced);
+    
+    if (unsyncedEvents.length === 0) {
+      return { synced: 0 };
+    }
+    
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ events: unsyncedEvents }),
+      signal: createTimeoutSignal(10000),
+    });
+    
+    if (!res.ok) {
+      return { synced: 0 };
+    }
+    
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return { synced: 0 };
+    }
+    
+    const data = await res.json();
+    const syncedCount = data.synced || unsyncedEvents.length;
+    
+    await markTriggerEventsSynced(unsyncedEvents.map(e => e.id));
+    
+    return { synced: syncedCount };
+  } catch {
+    return { synced: 0 };
+  }
+}
+
+export async function clearGeofenceTriggerEvents(): Promise<void> {
+  try {
+    const AsyncStorage = await getAsyncStorage();
+    await AsyncStorage.removeItem(GEOFENCE_EVENTS_STORAGE_KEY);
+  } catch (error) {
+    console.error('Error clearing geofence events:', error);
   }
 }

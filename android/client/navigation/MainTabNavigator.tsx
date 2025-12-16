@@ -7,6 +7,7 @@ import { BlurView } from "expo-blur";
 import HomeStackNavigator from "@/navigation/HomeStackNavigator";
 import CommunicationStackNavigator from "@/navigation/CommunicationStackNavigator";
 import CalendarStackNavigator from "@/navigation/CalendarStackNavigator";
+import GeoStackNavigator from "@/navigation/GeoStackNavigator";
 import TasksStackNavigator from "@/navigation/TasksStackNavigator";
 import { useTheme } from "@/hooks/useTheme";
 import { Colors } from "@/constants/theme";
@@ -15,6 +16,7 @@ export type MainTabParamList = {
   HomeTab: undefined;
   CommsTab: undefined;
   CalendarTab: undefined;
+  GeoTab: undefined;
   TasksTab: undefined;
 };
 
@@ -83,6 +85,16 @@ export default function MainTabNavigator() {
             title: "Calendar",
             tabBarIcon: ({ color, size }) => (
               <Feather name="calendar" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="GeoTab"
+          component={GeoStackNavigator}
+          options={{
+            title: "Geo",
+            tabBarIcon: ({ color, size }) => (
+              <Feather name="map-pin" size={size} color={color} />
             ),
           }}
         />
