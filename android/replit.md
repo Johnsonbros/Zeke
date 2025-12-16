@@ -55,7 +55,19 @@ Client-side data is persisted using AsyncStorage with namespaced keys, storing d
 - **Grocery:** Filterable grocery lists (All, Unpurchased) grouped by category (Produce, Dairy, Meat, etc.), with quantity/unit fields, category badges, and voice input. Accessible from Tasks stack navigator.
 - **Lists:** Custom lists feature for any type of list (packing, shopping, checklists, etc.). Full CRUD for lists and items with color coding, swipe-to-delete items, toggle checked status, and clear checked items. Accessible from Tasks screen header.
 - **Memories:** Filterable (All, Starred), date-grouped memory cards with star toggles and swipe actions.
-- **Settings:** Device configuration, preference toggles, and app information.
+- **Settings:** Device configuration, preference toggles, app information, and access to Device Features hub.
+- **Device Features (Native Capabilities):** Comprehensive native device feature access via Settings. Includes:
+  - **Device Contacts:** Access device contacts with expo-contacts
+  - **Sensors Dashboard:** Real-time accelerometer, gyroscope, barometer pressure, and pedometer step count
+  - **Battery Monitor:** Live battery level, charging state, and low power mode detection
+  - **Device Info:** Device name, model, brand, OS version, and screen dimensions
+  - **Network Status:** Connection type, internet reachability, and network state
+  - **Biometric Authentication:** Fingerprint/Face ID authentication with expo-local-authentication
+  - **Document Picker:** Select documents (PDF, Word, text) from device storage
+  - **Share Functionality:** Native sharing capabilities with expo-sharing
+  - **Text-to-Speech:** Speech synthesis for reading text aloud
+  - Note: Native-only features show "Run in Expo Go to use this feature" message on web platform
+- **Battery Widget on Home Screen:** Real-time battery level indicator with color-coded status (green/yellow/red), charging state display, and status messages.
 - **Chat Screen:** Full-screen ZEKE AI chat with message history and keyboard-aware text input.
 - **Real-Time Transcription:** Integrates Deepgram via a secure WebSocket proxy for real-time transcription from BLE audio devices (Omi, Limitless), with a dedicated `LiveCaptureScreen` for display and saving to ZEKE.
 - **Real-Time WebSocket Sync:** Uses `/ws/zeke` endpoint for real-time updates between app and ZEKE backend. Client hook (`useZekeSync`) with auto-reconnect and React Query cache invalidation. `SyncStatus` component shows connection status with colored indicators. Supports message types: `sms`, `voice`, `activity`, `device_status`, `notification`, `task`, `grocery`, `list`, `calendar`, `contact`. When messages arrive, corresponding React Query caches are automatically invalidated for real-time data freshness.

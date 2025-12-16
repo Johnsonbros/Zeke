@@ -1,5 +1,6 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { View, ScrollView, StyleSheet, RefreshControl, Pressable, ActivityIndicator, Alert, Platform } from "react-native";
+import * as Battery from "expo-battery";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -152,6 +153,56 @@ export default function HomeScreen() {
     requestPermission,
     refreshLocation,
   } = useLocation();
+
+  const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
+  const [batteryState, setBatteryState] = useState<Battery.BatteryState | null>(null);
+
+  useEffect(() => {
+    let batteryLevelSubscription: { remove: () => void } | null = null;
+    let batteryStateSubscription: { remove: () => void } | null = null;
+
+    const loadBatteryInfo = async () => {
+      if (Platform.OS === 'web') {
+        setBatteryLevel(null);
+        setBatteryState(null);
+        return;
+      }
+      try {
+        const level = await Battery.getBatteryLevelAsync();
+        const state = await Battery.getBatteryStateAsync();
+        setBatteryLevel(level);
+        setBatteryState(state);
+
+        batteryLevelSubscription = Battery.addBatteryLevelListener(({ batteryLevel: lvl }) => {
+          setBatteryLevel(lvl);
+        });
+        batteryStateSubscription = Battery.addBatteryStateListener(({ batteryState: st }) => {
+          setBatteryState(st);
+        });
+      } catch (error) {
+        console.log('Battery monitoring not available');
+      }
+    };
+
+    loadBatteryInfo();
+
+    return () => {
+      batteryLevelSubscription?.remove();
+      batteryStateSubscription?.remove();
+    };
+  }, []);
+
+  const getBatteryColor = () => {
+    if (batteryLevel === null) return theme.textSecondary;
+    if (batteryLevel < 0.2) return Colors.dark.error;
+    if (batteryLevel < 0.4) return Colors.dark.warning;
+    return Colors.dark.success;
+  };
+
+  const getBatteryIcon = (): keyof typeof Feather.glyphMap => {
+    if (batteryState === Battery.BatteryState.CHARGING) return "battery-charging";
+    return "battery";
+  };
 
   const handleUploadPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -453,6 +504,49 @@ export default function HomeScreen() {
           )}
         </View>
 
+        {Platform.OS !== 'web' && batteryLevel !== null ? (
+          <View style={[styles.monitoringCard, { backgroundColor: theme.backgroundDefault }]}>
+            <View style={styles.monitoringHeader}>
+              <View style={styles.monitoringTitleRow}>
+                <Feather name={getBatteryIcon()} size={18} color={getBatteryColor()} />
+                <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>Device Battery</ThemedText>
+              </View>
+              <View style={styles.statusIndicator}>
+                <View style={[styles.batteryLevelIndicator, { backgroundColor: `${getBatteryColor()}20` }]}>
+                  <View 
+                    style={[
+                      styles.batteryLevelFill, 
+                      { 
+                        backgroundColor: getBatteryColor(),
+                        width: `${Math.round(batteryLevel * 100)}%`,
+                      }
+                    ]} 
+                  />
+                </View>
+                <ThemedText type="body" style={{ marginLeft: Spacing.sm, color: getBatteryColor(), fontWeight: '600' }}>
+                  {Math.round(batteryLevel * 100)}%
+                </ThemedText>
+              </View>
+            </View>
+            <View style={styles.locationInfo}>
+              <ThemedText type="body">
+                {batteryState === Battery.BatteryState.CHARGING 
+                  ? 'Charging' 
+                  : batteryState === Battery.BatteryState.FULL 
+                    ? 'Fully Charged' 
+                    : 'On Battery'}
+              </ThemedText>
+              <ThemedText type="caption" secondary style={{ marginTop: Spacing.xs }}>
+                {batteryLevel < 0.2 
+                  ? 'Low battery - consider charging soon' 
+                  : batteryLevel >= 0.8 
+                    ? 'Battery is healthy' 
+                    : 'Battery level is moderate'}
+              </ThemedText>
+            </View>
+          </View>
+        ) : null}
+
         {isSyncMode ? (
           <>
             <View style={styles.statsGrid}>
@@ -688,6 +782,16 @@ const styles = StyleSheet.create({
   statusIndicator: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  batteryLevelIndicator: {
+    width: 60,
+    height: 20,
+    borderRadius: BorderRadius.sm,
+    overflow: "hidden",
+  },
+  batteryLevelFill: {
+    height: "100%",
+    borderRadius: BorderRadius.sm,
   },
   locationInfo: {
     marginTop: Spacing.xs,

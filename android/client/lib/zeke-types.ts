@@ -33,10 +33,10 @@ export type {
   AutomationType,
   Preference,
   InsertPreference,
-} from '../../zeke-sync/shared/schema';
+} from '@shared/schema';
 
 export {
   accessLevels,
   customListTypes,
   customListItemPriorities,
-} from '../../zeke-sync/shared/schema';
+} from '@shared/schema';

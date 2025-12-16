@@ -238,6 +238,16 @@ export default function SettingsScreen() {
               navigation.navigate("Analytics");
             }}
           />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          <SettingsRow
+            icon="cpu"
+            label="Device Features"
+            value="Sensors, contacts & more"
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              navigation.navigate("DeviceFeatures");
+            }}
+          />
         </View>
       </SettingsSection>
 

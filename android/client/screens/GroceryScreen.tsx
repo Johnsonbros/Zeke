@@ -2,8 +2,6 @@ import React, { useState, useCallback, useMemo } from "react";
 import {
   View,
   StyleSheet,
-  FlatList,
-  RefreshControl,
   Pressable,
   TextInput,
   Modal,
@@ -16,24 +14,15 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useQuery, useMutation } from "@tanstack/react-query";
 
 import { ThemedText } from "@/components/ThemedText";
-import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, Colors, BorderRadius } from "@/constants/theme";
-import { queryClient, isZekeSyncMode, getApiUrl } from "@/lib/query-client";
-import {
-  getGroceryItems,
-  addGroceryItem,
-  toggleGroceryPurchased,
-  deleteGroceryItem,
-  chatWithZeke,
-  type ZekeGroceryItem,
-} from "@/lib/zeke-api-adapter";
+import { GroceryRepository, type GroceryItemData } from "@/lib/filesystem-repository";
+import { useSyncStatus } from "@/hooks/useLocalLists";
 
 type FilterType = "all" | "unpurchased";
 
@@ -67,8 +56,8 @@ function getCategoryColor(category: string): string {
 }
 
 interface GroceryItemRowProps {
-  item: ZekeGroceryItem;
-  onToggle: (id: string, purchased: boolean) => void;
+  item: GroceryItemData;
+  onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   theme: any;
 }
@@ -76,7 +65,7 @@ interface GroceryItemRowProps {
 function GroceryItemRow({ item, onToggle, onDelete, theme }: GroceryItemRowProps) {
   const handleToggle = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onToggle(item.id, !item.isPurchased);
+    onToggle(item.id);
   };
 
   const handleDelete = () => {
@@ -149,60 +138,39 @@ export default function GroceryScreen() {
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
-  const isSyncMode = isZekeSyncMode();
 
+  const { pendingChanges, isSyncing, syncNow } = useSyncStatus();
+
+  const [groceryItems, setGroceryItems] = useState<GroceryItemData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefetching, setIsRefetching] = useState(false);
   const [filter, setFilter] = useState<FilterType>("all");
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [newItemQuantity, setNewItemQuantity] = useState("");
   const [newItemUnit, setNewItemUnit] = useState("");
   const [newItemCategory, setNewItemCategory] = useState("");
-  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
+  const [isAddingItem, setIsAddingItem] = useState(false);
 
-  const {
-    data: groceryItems = [],
-    isLoading,
-    refetch,
-    isRefetching,
-  } = useQuery<ZekeGroceryItem[]>({
-    queryKey: ["grocery-items"],
-    queryFn: getGroceryItems,
-    enabled: isSyncMode,
-  });
+  const loadItems = useCallback(async () => {
+    try {
+      const items = await GroceryRepository.getItems();
+      setGroceryItems(items);
+    } catch (err) {
+      console.error("Error loading grocery items:", err);
+    }
+  }, []);
 
-  const addMutation = useMutation({
-    mutationFn: (data: { name: string; quantity?: number; unit?: string; category?: string }) =>
-      addGroceryItem(data.name, data.quantity, data.unit, data.category),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["grocery-items"] });
-      setIsAddModalVisible(false);
-      resetForm();
-    },
-    onError: (error) => {
-      Alert.alert("Error", "Failed to add item. Please try again.");
-    },
-  });
+  React.useEffect(() => {
+    setIsLoading(true);
+    loadItems().finally(() => setIsLoading(false));
+  }, [loadItems]);
 
-  const toggleMutation = useMutation({
-    mutationFn: ({ id, purchased }: { id: string; purchased: boolean }) =>
-      toggleGroceryPurchased(id, purchased),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["grocery-items"] });
-    },
-    onError: () => {
-      Alert.alert("Error", "Failed to update item. Please try again.");
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteGroceryItem(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["grocery-items"] });
-    },
-    onError: () => {
-      Alert.alert("Error", "Failed to delete item. Please try again.");
-    },
-  });
+  const refetch = useCallback(async () => {
+    setIsRefetching(true);
+    await loadItems();
+    setIsRefetching(false);
+  }, [loadItems]);
 
   const resetForm = () => {
     setNewItemName("");
@@ -211,45 +179,82 @@ export default function GroceryScreen() {
     setNewItemCategory("");
   };
 
-  const handleAddItem = () => {
+  const handleAddItem = async () => {
     if (!newItemName.trim()) {
       Alert.alert("Error", "Please enter an item name.");
       return;
     }
 
-    addMutation.mutate({
-      name: newItemName.trim(),
-      quantity: newItemQuantity ? parseFloat(newItemQuantity) : undefined,
-      unit: newItemUnit.trim() || undefined,
-      category: newItemCategory.trim() || undefined,
-    });
+    setIsAddingItem(true);
+    try {
+      await GroceryRepository.addItem(
+        newItemName.trim(),
+        newItemQuantity ? parseFloat(newItemQuantity) : undefined,
+        newItemUnit.trim() || undefined,
+        newItemCategory.trim() || undefined
+      );
+      await loadItems();
+      setIsAddModalVisible(false);
+      resetForm();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      Alert.alert("Error", "Failed to add item. Please try again.");
+    } finally {
+      setIsAddingItem(false);
+    }
   };
 
-  const handleToggle = useCallback((id: string, purchased: boolean) => {
-    toggleMutation.mutate({ id, purchased });
-  }, [toggleMutation]);
+  const handleToggle = useCallback(async (id: string) => {
+    try {
+      await GroceryRepository.togglePurchased(id);
+      await loadItems();
+    } catch (err) {
+      Alert.alert("Error", "Failed to update item. Please try again.");
+    }
+  }, [loadItems]);
 
-  const handleDelete = useCallback((id: string) => {
-    deleteMutation.mutate(id);
-  }, [deleteMutation]);
+  const handleDelete = useCallback(async (id: string) => {
+    try {
+      await GroceryRepository.deleteItem(id);
+      await loadItems();
+    } catch (err) {
+      Alert.alert("Error", "Failed to delete item. Please try again.");
+    }
+  }, [loadItems]);
+
+  const handleClearPurchased = async () => {
+    const purchasedCount = groceryItems.filter(i => i.isPurchased).length;
+    if (purchasedCount === 0) {
+      Alert.alert("No Items", "There are no purchased items to clear.");
+      return;
+    }
+    Alert.alert(
+      "Clear Purchased Items",
+      `Remove ${purchasedCount} purchased item${purchasedCount > 1 ? 's' : ''}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await GroceryRepository.clearPurchased();
+              await loadItems();
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } catch (err) {
+              Alert.alert("Error", "Failed to clear purchased items. Please try again.");
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleVoiceRecordingComplete = async (audioUri: string, durationSeconds: number) => {
-    setIsProcessingVoice(true);
-    try {
-      const response = await chatWithZeke(
-        "I just recorded a voice message to add items to my grocery list. Please help me add the items I mentioned.",
-        "mobile-app"
-      );
-      await refetch();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error) {
-      Alert.alert(
-        "Voice Input",
-        "Voice input was recorded. To add items via voice, please use the Chat feature and say something like 'Add eggs and milk to my grocery list'."
-      );
-    } finally {
-      setIsProcessingVoice(false);
-    }
+    Alert.alert(
+      "Voice Input",
+      "Voice input recorded. Use the Chat feature and say something like 'Add eggs and milk to my grocery list' to add items via voice."
+    );
   };
 
   const filteredItems = useMemo(() => {
@@ -260,7 +265,7 @@ export default function GroceryScreen() {
   }, [groceryItems, filter]);
 
   const groupedItems = useMemo(() => {
-    const groups: Record<string, ZekeGroceryItem[]> = {};
+    const groups: Record<string, GroceryItemData[]> = {};
 
     filteredItems.forEach((item) => {
       const category = item.category || "Other";
@@ -276,31 +281,6 @@ export default function GroceryScreen() {
     }));
   }, [filteredItems]);
 
-  const handleRefresh = useCallback(() => {
-    refetch();
-  }, [refetch]);
-
-  if (!isSyncMode) {
-    return (
-      <View
-        style={[
-          styles.container,
-          {
-            backgroundColor: theme.backgroundRoot,
-            paddingTop: headerHeight + Spacing.xl,
-            paddingBottom: tabBarHeight + Spacing.xl,
-          },
-        ]}
-      >
-        <EmptyState
-          icon="wifi-off"
-          title="Connection Required"
-          description="Grocery list sync requires a connection to ZEKE. Please connect to ZEKE in Settings to access your grocery list."
-        />
-      </View>
-    );
-  }
-
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
       <View
@@ -312,41 +292,60 @@ export default function GroceryScreen() {
           },
         ]}
       >
-        <View style={styles.filterRow}>
-          <Pressable
-            onPress={() => setFilter("all")}
-            style={[
-              styles.filterButton,
-              filter === "all" && styles.filterButtonActive,
-              { borderColor: filter === "all" ? Colors.dark.primary : theme.border },
-            ]}
-          >
-            <ThemedText
+        <View style={styles.topRow}>
+          <View style={styles.filterRow}>
+            <Pressable
+              onPress={() => setFilter("all")}
               style={[
-                styles.filterText,
-                filter === "all" && { color: Colors.dark.primary },
+                styles.filterButton,
+                filter === "all" && styles.filterButtonActive,
+                { borderColor: filter === "all" ? Colors.dark.primary : theme.border },
               ]}
             >
-              All
-            </ThemedText>
-          </Pressable>
-          <Pressable
-            onPress={() => setFilter("unpurchased")}
-            style={[
-              styles.filterButton,
-              filter === "unpurchased" && styles.filterButtonActive,
-              { borderColor: filter === "unpurchased" ? Colors.dark.primary : theme.border },
-            ]}
-          >
-            <ThemedText
+              <ThemedText
+                style={[
+                  styles.filterText,
+                  filter === "all" && { color: Colors.dark.primary },
+                ]}
+              >
+                All
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              onPress={() => setFilter("unpurchased")}
               style={[
-                styles.filterText,
-                filter === "unpurchased" && { color: Colors.dark.primary },
+                styles.filterButton,
+                filter === "unpurchased" && styles.filterButtonActive,
+                { borderColor: filter === "unpurchased" ? Colors.dark.primary : theme.border },
               ]}
             >
-              Unpurchased
-            </ThemedText>
-          </Pressable>
+              <ThemedText
+                style={[
+                  styles.filterText,
+                  filter === "unpurchased" && { color: Colors.dark.primary },
+                ]}
+              >
+                Unpurchased
+              </ThemedText>
+            </Pressable>
+          </View>
+          <View style={styles.syncStatusRow}>
+            {pendingChanges > 0 ? (
+              <Pressable 
+                onPress={syncNow} 
+                disabled={isSyncing}
+                style={styles.syncButton}
+              >
+                <Feather 
+                  name={isSyncing ? "loader" : "cloud"} 
+                  size={14} 
+                  color={Colors.dark.warning} 
+                />
+              </Pressable>
+            ) : (
+              <Feather name="check-circle" size={14} color={Colors.dark.success} />
+            )}
+          </View>
         </View>
         <View style={styles.actionRow}>
           <Pressable
@@ -356,15 +355,17 @@ export default function GroceryScreen() {
             <Feather name="plus" size={20} color="#fff" />
             <ThemedText style={styles.addButtonText}>Add Item</ThemedText>
           </Pressable>
+          <Pressable
+            onPress={handleClearPurchased}
+            style={[styles.clearButton, { borderColor: theme.border }]}
+          >
+            <Feather name="trash-2" size={18} color={theme.textSecondary} />
+          </Pressable>
           <View style={styles.voiceContainer}>
-            {isProcessingVoice ? (
-              <ActivityIndicator color={Colors.dark.primary} />
-            ) : (
-              <VoiceInputButton
-                onRecordingComplete={handleVoiceRecordingComplete}
-                disabled={isProcessingVoice}
-              />
-            )}
+            <VoiceInputButton
+              onRecordingComplete={handleVoiceRecordingComplete}
+              disabled={false}
+            />
           </View>
         </View>
       </View>
@@ -386,7 +387,7 @@ export default function GroceryScreen() {
             description={
               filter === "unpurchased"
                 ? "All items have been purchased! Switch to 'All' to see your complete list."
-                : "Add items to your grocery list using the button above or voice input."
+                : "Add items to your grocery list. Items are stored locally on your device."
             }
           />
         </View>
@@ -423,13 +424,8 @@ export default function GroceryScreen() {
             paddingHorizontal: Spacing.lg,
           }}
           stickySectionHeadersEnabled
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefetching}
-              onRefresh={handleRefresh}
-              tintColor={Colors.dark.primary}
-            />
-          }
+          onRefresh={refetch}
+          refreshing={isRefetching}
           ItemSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
           SectionSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
         />
@@ -447,8 +443,8 @@ export default function GroceryScreen() {
               <ThemedText style={{ color: Colors.dark.primary }}>Cancel</ThemedText>
             </Pressable>
             <ThemedText type="h4">Add Item</ThemedText>
-            <Pressable onPress={handleAddItem} disabled={addMutation.isPending}>
-              {addMutation.isPending ? (
+            <Pressable onPress={handleAddItem} disabled={isAddingItem}>
+              {isAddingItem ? (
                 <ActivityIndicator size="small" color={Colors.dark.primary} />
               ) : (
                 <ThemedText style={{ color: Colors.dark.primary, fontWeight: "600" }}>
@@ -579,9 +575,21 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
     gap: Spacing.md,
   },
+  topRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   filterRow: {
     flexDirection: "row",
     gap: Spacing.sm,
+  },
+  syncStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  syncButton: {
+    padding: Spacing.xs,
   },
   filterButton: {
     paddingHorizontal: Spacing.lg,
@@ -613,6 +621,11 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
     fontSize: 14,
+  },
+  clearButton: {
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
   },
   voiceContainer: {
     marginLeft: "auto",

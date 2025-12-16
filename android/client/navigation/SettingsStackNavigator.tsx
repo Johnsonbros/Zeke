@@ -6,6 +6,7 @@ import DataExportScreen from "@/screens/DataExportScreen";
 import AnalyticsScreen from "@/screens/AnalyticsScreen";
 import BluetoothConnectionScreen from "@/screens/BluetoothConnectionScreen";
 import LiveCaptureScreen from "@/screens/LiveCaptureScreen";
+import DeviceFeaturesScreen from "@/screens/DeviceFeaturesScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 
 export type SettingsStackParamList = {
@@ -15,6 +16,7 @@ export type SettingsStackParamList = {
   Analytics: undefined;
   BluetoothConnection: undefined;
   LiveCapture: undefined;
+  DeviceFeatures: undefined;
 };
 
 const Stack = createNativeStackNavigator<SettingsStackParamList>();
@@ -64,6 +66,13 @@ export default function SettingsStackNavigator() {
         component={LiveCaptureScreen}
         options={{
           headerTitle: "Live Capture",
+        }}
+      />
+      <Stack.Screen
+        name="DeviceFeatures"
+        component={DeviceFeaturesScreen}
+        options={{
+          headerTitle: "Device Features",
         }}
       />
     </Stack.Navigator>

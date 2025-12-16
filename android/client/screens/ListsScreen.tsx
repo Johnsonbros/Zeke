@@ -15,7 +15,6 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useQuery, useMutation } from "@tanstack/react-query";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useAnimatedStyle,
@@ -30,20 +29,8 @@ import { EmptyState } from "@/components/EmptyState";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, Colors, BorderRadius } from "@/constants/theme";
-import { queryClient, isZekeSyncMode } from "@/lib/query-client";
-import {
-  getLists,
-  getListWithItems,
-  createList,
-  deleteList,
-  addListItem,
-  toggleListItem,
-  deleteListItem,
-  clearCheckedItems,
-  type ZekeList,
-  type ZekeListItem,
-  type ZekeListWithItems,
-} from "@/lib/zeke-api-adapter";
+import { useLocalLists, useSyncStatus, type ListWithItems } from "@/hooks/useLocalLists";
+import type { ListData, ListItemData } from "@/lib/filesystem-repository";
 
 const LIST_COLORS = [
   "#6366F1",
@@ -57,7 +44,7 @@ const LIST_COLORS = [
 ];
 
 interface ListItemRowProps {
-  item: ZekeListItem;
+  item: ListItemData;
   listId: string;
   onToggle: (listId: string, itemId: string) => void;
   onDelete: (listId: string, itemId: string) => void;
@@ -142,8 +129,8 @@ function ListItemRow({ item, listId, onToggle, onDelete, theme }: ListItemRowPro
 }
 
 interface ListCardProps {
-  list: ZekeList;
-  onPress: (list: ZekeList) => void;
+  list: ListData & { itemCount?: number };
+  onPress: (list: ListData) => void;
   onDelete: (id: string) => void;
   theme: any;
 }
@@ -198,109 +185,32 @@ export default function ListsScreen() {
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
-  const isSyncMode = isZekeSyncMode();
+
+  const {
+    lists,
+    isLoading,
+    isRefetching,
+    refetch,
+    createList,
+    deleteList,
+    getListWithItems,
+    addListItem,
+    toggleListItem,
+    deleteListItem,
+    clearCheckedItems,
+  } = useLocalLists();
+
+  const { pendingChanges, isSyncing, syncNow } = useSyncStatus();
 
   const [isAddListModalVisible, setIsAddListModalVisible] = useState(false);
   const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
-  const [selectedList, setSelectedList] = useState<ZekeListWithItems | null>(null);
+  const [selectedList, setSelectedList] = useState<ListWithItems | null>(null);
   const [newListName, setNewListName] = useState("");
   const [newListDescription, setNewListDescription] = useState("");
   const [newListColor, setNewListColor] = useState(LIST_COLORS[0]);
   const [newItemText, setNewItemText] = useState("");
-
-  const {
-    data: lists = [],
-    isLoading,
-    refetch,
-    isRefetching,
-  } = useQuery<ZekeList[]>({
-    queryKey: ["lists"],
-    queryFn: getLists,
-    enabled: isSyncMode,
-  });
-
-  const createListMutation = useMutation({
-    mutationFn: (data: { name: string; description?: string; color?: string }) =>
-      createList(data.name, data.description, data.color),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["lists"] });
-      setIsAddListModalVisible(false);
-      resetAddListForm();
-    },
-    onError: () => {
-      Alert.alert("Error", "Failed to create list. Please try again.");
-    },
-  });
-
-  const deleteListMutation = useMutation({
-    mutationFn: (id: string) => deleteList(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["lists"] });
-    },
-    onError: () => {
-      Alert.alert("Error", "Failed to delete list. Please try again.");
-    },
-  });
-
-  const addItemMutation = useMutation({
-    mutationFn: ({ listId, text }: { listId: string; text: string }) =>
-      addListItem(listId, text),
-    onSuccess: async () => {
-      if (selectedList) {
-        const updated = await getListWithItems(selectedList.id);
-        if (updated) setSelectedList(updated);
-      }
-      queryClient.invalidateQueries({ queryKey: ["lists"] });
-      setNewItemText("");
-    },
-    onError: () => {
-      Alert.alert("Error", "Failed to add item. Please try again.");
-    },
-  });
-
-  const toggleItemMutation = useMutation({
-    mutationFn: ({ listId, itemId }: { listId: string; itemId: string }) =>
-      toggleListItem(listId, itemId),
-    onSuccess: async () => {
-      if (selectedList) {
-        const updated = await getListWithItems(selectedList.id);
-        if (updated) setSelectedList(updated);
-      }
-      queryClient.invalidateQueries({ queryKey: ["lists"] });
-    },
-    onError: () => {
-      Alert.alert("Error", "Failed to update item. Please try again.");
-    },
-  });
-
-  const deleteItemMutation = useMutation({
-    mutationFn: ({ listId, itemId }: { listId: string; itemId: string }) =>
-      deleteListItem(listId, itemId),
-    onSuccess: async () => {
-      if (selectedList) {
-        const updated = await getListWithItems(selectedList.id);
-        if (updated) setSelectedList(updated);
-      }
-      queryClient.invalidateQueries({ queryKey: ["lists"] });
-    },
-    onError: () => {
-      Alert.alert("Error", "Failed to delete item. Please try again.");
-    },
-  });
-
-  const clearCheckedMutation = useMutation({
-    mutationFn: (listId: string) => clearCheckedItems(listId),
-    onSuccess: async () => {
-      if (selectedList) {
-        const updated = await getListWithItems(selectedList.id);
-        if (updated) setSelectedList(updated);
-      }
-      queryClient.invalidateQueries({ queryKey: ["lists"] });
-    },
-    onError: () => {
-      Alert.alert("Error", "Failed to clear checked items. Please try again.");
-    },
-  });
+  const [isCreating, setIsCreating] = useState(false);
+  const [isAddingItem, setIsAddingItem] = useState(false);
 
   const resetAddListForm = () => {
     setNewListName("");
@@ -308,45 +218,82 @@ export default function ListsScreen() {
     setNewListColor(LIST_COLORS[0]);
   };
 
-  const handleCreateList = () => {
+  const handleCreateList = async () => {
     if (!newListName.trim()) {
       Alert.alert("Error", "Please enter a list name.");
       return;
     }
-    createListMutation.mutate({
-      name: newListName.trim(),
-      description: newListDescription.trim() || undefined,
-      color: newListColor,
-    });
+    setIsCreating(true);
+    try {
+      await createList(
+        newListName.trim(),
+        newListDescription.trim() || undefined,
+        newListColor
+      );
+      setIsAddListModalVisible(false);
+      resetAddListForm();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      Alert.alert("Error", "Failed to create list. Please try again.");
+    } finally {
+      setIsCreating(false);
+    }
   };
 
-  const handleOpenList = useCallback(async (list: ZekeList) => {
+  const handleOpenList = useCallback(async (list: ListData) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const listWithItems = await getListWithItems(list.id);
     if (listWithItems) {
       setSelectedList(listWithItems);
       setIsDetailModalVisible(true);
     }
-  }, []);
+  }, [getListWithItems]);
 
-  const handleDeleteList = useCallback((id: string) => {
-    deleteListMutation.mutate(id);
-  }, [deleteListMutation]);
+  const handleDeleteList = useCallback(async (id: string) => {
+    try {
+      await deleteList(id);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      Alert.alert("Error", "Failed to delete list. Please try again.");
+    }
+  }, [deleteList]);
 
-  const handleToggleItem = useCallback((listId: string, itemId: string) => {
-    toggleItemMutation.mutate({ listId, itemId });
-  }, [toggleItemMutation]);
+  const handleToggleItem = useCallback(async (listId: string, itemId: string) => {
+    try {
+      await toggleListItem(listId, itemId);
+      const updated = await getListWithItems(listId);
+      if (updated) setSelectedList(updated);
+    } catch (err) {
+      Alert.alert("Error", "Failed to update item. Please try again.");
+    }
+  }, [toggleListItem, getListWithItems]);
 
-  const handleDeleteItem = useCallback((listId: string, itemId: string) => {
-    deleteItemMutation.mutate({ listId, itemId });
-  }, [deleteItemMutation]);
+  const handleDeleteItem = useCallback(async (listId: string, itemId: string) => {
+    try {
+      await deleteListItem(listId, itemId);
+      const updated = await getListWithItems(listId);
+      if (updated) setSelectedList(updated);
+    } catch (err) {
+      Alert.alert("Error", "Failed to delete item. Please try again.");
+    }
+  }, [deleteListItem, getListWithItems]);
 
-  const handleAddItem = () => {
+  const handleAddItem = async () => {
     if (!newItemText.trim() || !selectedList) return;
-    addItemMutation.mutate({ listId: selectedList.id, text: newItemText.trim() });
+    setIsAddingItem(true);
+    try {
+      await addListItem(selectedList.id, newItemText.trim());
+      const updated = await getListWithItems(selectedList.id);
+      if (updated) setSelectedList(updated);
+      setNewItemText("");
+    } catch (err) {
+      Alert.alert("Error", "Failed to add item. Please try again.");
+    } finally {
+      setIsAddingItem(false);
+    }
   };
 
-  const handleClearChecked = () => {
+  const handleClearChecked = async () => {
     if (!selectedList) return;
     const checkedCount = selectedList.items.filter(i => i.checked).length;
     if (checkedCount === 0) {
@@ -361,7 +308,15 @@ export default function ListsScreen() {
         {
           text: "Clear",
           style: "destructive",
-          onPress: () => clearCheckedMutation.mutate(selectedList.id),
+          onPress: async () => {
+            try {
+              await clearCheckedItems(selectedList.id);
+              const updated = await getListWithItems(selectedList.id);
+              if (updated) setSelectedList(updated);
+            } catch (err) {
+              Alert.alert("Error", "Failed to clear checked items. Please try again.");
+            }
+          },
         },
       ]
     );
@@ -379,27 +334,6 @@ export default function ListsScreen() {
     refetch();
   }, [refetch]);
 
-  if (!isSyncMode) {
-    return (
-      <View
-        style={[
-          styles.container,
-          {
-            backgroundColor: theme.backgroundRoot,
-            paddingTop: headerHeight + Spacing.xl,
-            paddingBottom: tabBarHeight + Spacing.xl,
-          },
-        ]}
-      >
-        <EmptyState
-          icon="wifi-off"
-          title="Connection Required"
-          description="Lists require a connection to ZEKE. Please connect to ZEKE in Settings to access your lists."
-        />
-      </View>
-    );
-  }
-
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
       <View
@@ -411,6 +345,31 @@ export default function ListsScreen() {
           },
         ]}
       >
+        <View style={styles.syncStatusRow}>
+          {pendingChanges > 0 ? (
+            <Pressable 
+              onPress={syncNow} 
+              disabled={isSyncing}
+              style={styles.syncButton}
+            >
+              <Feather 
+                name={isSyncing ? "loader" : "cloud"} 
+                size={16} 
+                color={Colors.dark.warning} 
+              />
+              <ThemedText type="caption" style={{ color: Colors.dark.warning }}>
+                {isSyncing ? "Syncing..." : `${pendingChanges} pending`}
+              </ThemedText>
+            </Pressable>
+          ) : (
+            <View style={styles.syncButton}>
+              <Feather name="check-circle" size={16} color={Colors.dark.success} />
+              <ThemedText type="caption" style={{ color: Colors.dark.success }}>
+                Synced locally
+              </ThemedText>
+            </View>
+          )}
+        </View>
         <Pressable
           onPress={() => setIsAddListModalVisible(true)}
           style={[styles.addButton, { backgroundColor: Colors.dark.primary }]}
@@ -429,7 +388,7 @@ export default function ListsScreen() {
           <EmptyState
             icon="list"
             title="No Lists Yet"
-            description="Create your first list to get organized."
+            description="Create your first list to get organized. Lists are stored locally on your device."
             actionLabel="Create List"
             onAction={() => setIsAddListModalVisible(true)}
           />
@@ -473,9 +432,9 @@ export default function ListsScreen() {
               <ThemedText style={{ color: Colors.dark.primary }}>Cancel</ThemedText>
             </Pressable>
             <ThemedText type="h4">New List</ThemedText>
-            <Pressable onPress={handleCreateList} disabled={createListMutation.isPending}>
+            <Pressable onPress={handleCreateList} disabled={isCreating}>
               <ThemedText style={{ color: Colors.dark.primary }}>
-                {createListMutation.isPending ? "Creating..." : "Create"}
+                {isCreating ? "Creating..." : "Create"}
               </ThemedText>
             </Pressable>
           </View>
@@ -592,11 +551,11 @@ export default function ListsScreen() {
             />
             <Pressable
               onPress={handleAddItem}
-              disabled={!newItemText.trim() || addItemMutation.isPending}
+              disabled={!newItemText.trim() || isAddingItem}
               style={[
                 styles.addItemButton,
                 { backgroundColor: Colors.dark.primary },
-                (!newItemText.trim() || addItemMutation.isPending) && { opacity: 0.5 },
+                (!newItemText.trim() || isAddingItem) && { opacity: 0.5 },
               ]}
             >
               <Feather name="plus" size={20} color="#fff" />
@@ -644,6 +603,17 @@ const styles = StyleSheet.create({
   headerControls: {
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.md,
+    gap: Spacing.md,
+  },
+  syncStatusRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
+  syncButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    paddingVertical: Spacing.xs,
   },
   addButton: {
     flexDirection: "row",
@@ -713,22 +683,21 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     flex: 1,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xl,
+    padding: Spacing.lg,
   },
   inputGroup: {
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.lg,
   },
   inputLabel: {
     marginBottom: Spacing.sm,
-    opacity: 0.7,
+    fontWeight: "500",
   },
   textInput: {
-    height: Spacing.inputHeight,
+    height: 48,
+    borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.lg,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
     fontSize: 16,
+    borderWidth: 1,
   },
   colorSelector: {
     flexDirection: "row",
@@ -743,41 +712,42 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   colorOptionSelected: {
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: "#fff",
   },
   addItemRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.sm,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.dark.border,
+    gap: Spacing.sm,
   },
   addItemInput: {
     flex: 1,
-    height: Spacing.inputHeight,
+    height: 44,
+    borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.lg,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
     fontSize: 16,
+    borderWidth: 1,
   },
   addItemButton: {
-    width: Spacing.inputHeight,
-    height: Spacing.inputHeight,
-    borderRadius: BorderRadius.sm,
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.md,
     justifyContent: "center",
     alignItems: "center",
   },
   emptyListItems: {
     flex: 1,
     justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: Spacing.xl,
   },
   listItemRow: {
     flexDirection: "row",
     alignItems: "center",
-    padding: Spacing.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
     borderRadius: BorderRadius.md,
     gap: Spacing.md,
   },
@@ -790,18 +760,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  checkboxChecked: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-  },
   checkboxUnchecked: {
     width: 22,
     height: 22,
-    borderRadius: 11,
+    borderRadius: 6,
     borderWidth: 2,
+  },
+  checkboxChecked: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    justifyContent: "center",
+    alignItems: "center",
   },
   listItemText: {
     flex: 1,
