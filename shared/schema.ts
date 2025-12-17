@@ -178,9 +178,124 @@ export const chatRequestSchema = z.object({
 
 export type ChatRequest = z.infer<typeof chatRequestSchema>;
 
+// Structured card types for rich chat responses
+export type CardType = 
+  | "task" 
+  | "reminder" 
+  | "weather" 
+  | "calendar_event" 
+  | "grocery_list" 
+  | "contact" 
+  | "location"
+  | "task_list"
+  | "reminder_list";
+
+export interface TaskCard {
+  type: "task";
+  id: string;
+  title: string;
+  priority: string;
+  dueDate: string | null;
+  completed: boolean;
+  description?: string | null;
+}
+
+export interface ReminderCard {
+  type: "reminder";
+  id: string;
+  message: string;
+  scheduledFor: string;
+  sent: boolean;
+}
+
+export interface WeatherCard {
+  type: "weather";
+  location: string;
+  temperature: number;
+  condition: string;
+  humidity?: number;
+  windSpeed?: number;
+  icon?: string;
+  forecast?: Array<{
+    day: string;
+    high: number;
+    low: number;
+    condition: string;
+  }>;
+}
+
+export interface CalendarEventCard {
+  type: "calendar_event";
+  id: string;
+  title: string;
+  startTime: string;
+  endTime?: string;
+  location?: string;
+  description?: string;
+}
+
+export interface GroceryListCard {
+  type: "grocery_list";
+  items: Array<{
+    id: string;
+    name: string;
+    quantity: string;
+    category: string;
+    purchased: boolean;
+  }>;
+  totalItems: number;
+  purchasedCount: number;
+}
+
+export interface ContactCard {
+  type: "contact";
+  id: string;
+  firstName: string;
+  lastName?: string;
+  phone?: string;
+  email?: string;
+  relationship?: string;
+}
+
+export interface LocationCard {
+  type: "location";
+  name: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  category?: string;
+}
+
+export interface TaskListCard {
+  type: "task_list";
+  title: string;
+  tasks: TaskCard[];
+  totalCount: number;
+  completedCount: number;
+}
+
+export interface ReminderListCard {
+  type: "reminder_list";
+  title: string;
+  reminders: ReminderCard[];
+  totalCount: number;
+}
+
+export type ChatCard = 
+  | TaskCard 
+  | ReminderCard 
+  | WeatherCard 
+  | CalendarEventCard 
+  | GroceryListCard 
+  | ContactCard 
+  | LocationCard
+  | TaskListCard
+  | ReminderListCard;
+
 export type ChatResponse = {
   message: Message;
   conversation: Conversation;
+  cards?: ChatCard[];
 };
 
 // API response types
