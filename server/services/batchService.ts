@@ -15,6 +15,9 @@
 
 import OpenAI from "openai";
 import { v4 as uuidv4 } from "uuid";
+import fs from "fs";
+import path from "path";
+import os from "os";
 import {
   createBatchJob,
   getBatchJob,
@@ -117,15 +120,19 @@ export function buildBatchRequestLine(customId: string, systemPrompt: string, us
 export async function submitBatchJob(jobId: string, jsonlContent: string): Promise<string> {
   const client = getOpenAIClient();
   const job = getBatchJob(jobId);
-  if (!job) throw new Error(`Batch job ${jobId} not found`);
+  if (!job) throw new Error(`[BatchService] Batch job ${jobId} not found`);
   
   // Increment attempts
   updateBatchJobStatus(jobId, job.status, { attempts: job.attempts + 1 });
   
+  // Write JSONL to a temp file for Node.js fs.createReadStream compatibility
+  const tempPath = path.join(os.tmpdir(), `batch_${jobId}.jsonl`);
+  fs.writeFileSync(tempPath, jsonlContent, "utf-8");
+  
   try {
-    // Upload file
+    // Upload file using fs.createReadStream (Node.js compatible)
     const file = await client.files.create({
-      file: new File([jsonlContent], "batch_input.jsonl", { type: "application/jsonl" }),
+      file: fs.createReadStream(tempPath),
       purpose: "batch"
     });
     
@@ -147,6 +154,11 @@ export async function submitBatchJob(jobId: string, jsonlContent: string): Promi
     updateBatchJobStatus(jobId, "FAILED", { error: errorMessage });
     console.error(`[BatchService] Failed to submit batch for job ${jobId}:`, error);
     throw error;
+  } finally {
+    // Clean up temp file
+    if (fs.existsSync(tempPath)) {
+      fs.unlinkSync(tempPath);
+    }
   }
 }
 

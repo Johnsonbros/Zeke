@@ -214,6 +214,16 @@ export async function createNightlyEnrichmentJob(autoSubmit: boolean = true): Pr
     return { jobId: "", submitted: false, itemCount: 0 };
   }
   
+  // Build JSONL FIRST and check if there are any prompts BEFORE checking idempotency
+  const jsonl = buildEnrichmentJsonl(data);
+  const itemCount = jsonl.split("\n").filter(l => l.trim()).length;
+  
+  if (itemCount === 0) {
+    console.log("[NightlyEnrichment] No batch requests generated (all conversations too small or no valid feedback)");
+    return { jobId: "", submitted: false, itemCount: 0 };
+  }
+  
+  // Now check idempotency key (only after we know we have actual prompts)
   const windowStart = data.start.toISOString();
   const windowEnd = data.end.toISOString();
   const idempotencyKey = generateIdempotencyKey(JOB_TYPE, windowStart, windowEnd);
@@ -224,14 +234,7 @@ export async function createNightlyEnrichmentJob(autoSubmit: boolean = true): Pr
     return { jobId: existing.id, submitted: existing.status !== "QUEUED", itemCount: existing.inputItemCount || 0 };
   }
   
-  const jsonl = buildEnrichmentJsonl(data);
-  const itemCount = jsonl.split("\n").filter(l => l.trim()).length;
-  
-  if (itemCount === 0) {
-    console.log("[NightlyEnrichment] No batch requests generated");
-    return { jobId: "", submitted: false, itemCount: 0 };
-  }
-  
+  // Only create job record if there are actual prompts to submit
   const job = createBatchJob({
     type: JOB_TYPE,
     status: "QUEUED",

@@ -1,8 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "include": ["shared/**/*"],
-  "compilerOptions": {
-    "noEmit": true,
-    "target": "ES2020"
-  }
-}
