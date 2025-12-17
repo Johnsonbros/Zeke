@@ -1,0 +1,67 @@
+Implement secure HMAC-signed request verification for communication with the ZEKE mobile companion app.
+
+## Context
+The ZEKE mobile app (running on a separate Replit project) sends requests to this backend with HMAC signatures for authentication. We need to verify these signatures to ensure requests are legitimate.
+
+## Requirements
+
+1. **Create verification middleware** that:
+   - Reads these headers from incoming requests:
+     - `X-ZEKE-Signature`: HMAC-SHA256 signature (base64 encoded)
+     - `X-ZEKE-Timestamp`: Unix timestamp (ms) when request was signed
+     - `X-ZEKE-Nonce`: Unique nonce to prevent replay attacks
+     - `X-ZEKE-Proxy-ID`: Identifier of the requesting proxy
+     - `X-ZEKE-Request-ID`: Unique request ID for tracing
+   
+   - Verifies the signature by:
+     - Creating payload string: `${timestamp}.${nonce}.${method}.${path}.${bodyHash}`
+     - Body hash = SHA-256 of request body (empty string if no body)
+     - Computing HMAC-SHA256 of payload using `ZEKE_SHARED_SECRET` environment variable
+     - Comparing computed signature with received signature
+   
+   - Rejects requests if:
+     - Timestamp is more than 5 minutes old (replay protection)
+     - Signature doesn't match
+     - Required headers are missing
+
+2. **Add communication logging**:
+   - Log all verified requests with: request ID, timestamp, path, method, status, latency
+   - Store in memory (last 100 entries) or database
+   - Create endpoint `GET /api/mobile/security/logs` to view audit trail
+
+3. **Apply middleware** to these routes (used by mobile app):
+   - `/api/tasks/*`
+   - `/api/grocery/*`
+   - `/api/lists/*`
+   - `/api/contacts/*`
+   - `/api/chat/*`
+   - `/api/dashboard`
+   - `/api/memories/*`
+
+4. **Environment variable**: 
+   - Use `ZEKE_SHARED_SECRET` (already set) for signature verification
+   - The mobile app uses the same secret to sign requests
+
+## Signature Verification Code Reference
+```typescript
+import crypto from 'crypto';
+
+function verifySignature(req, secret) {
+  const signature = req.headers['x-zeke-signature'];
+  const timestamp = req.headers['x-zeke-timestamp'];
+  const nonce = req.headers['x-zeke-nonce'];
+  
+  // Check timestamp freshness (5 min tolerance)
+  const age = Date.now() - parseInt(timestamp);
+  if (age > 5 * 60 * 1000) return false;
+  
+  // Compute body hash
+  const body = JSON.stringify(req.body || {});
+  const bodyHash = body ? crypto.createHash('sha256').update(body).digest('hex') : '';
+  
+  // Create payload and compute expected signature
+  const payload = `${timestamp}.${nonce}.${req.method}.${req.path}.${bodyHash}`;
+  const expectedSig = crypto.createHmac('sha256', secret).update(payload).digest('base64');
+  
+  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig));
+}
