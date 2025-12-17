@@ -442,6 +442,8 @@ import { analyzeMmsImage, type ImageAnalysisResult, type PersonPhotoAnalysisResu
 import { setPendingPlaceSave, hasPendingPlaceSave, completePendingPlaceSave, cleanupExpiredPendingPlaces } from "./pendingPlaceSave";
 import { verifyPlace, manuallyVerifyPlace } from "./locationVerifier";
 import { recordSleepQuality, shouldAskSleepQuality, markSleepQualityAsked } from "./sleepTracker";
+import { parseSmsReaction, buildFeedbackEvent, generateFeedbackTwimlResponse } from "./feedback/parseSmsReaction";
+import { createFeedbackEvent } from "./db";
 
 // Format phone number for Twilio - handles various input formats
 function formatPhoneNumber(phone: string): string {
@@ -1460,6 +1462,38 @@ export async function registerRoutes(
       try {
         // Find or create SMS conversation using formatted phone number
         const conversation = findOrCreateSmsConversation(fromNumber);
+        
+        // ============================================
+        // CHECK FOR FEEDBACK REACTIONS FIRST
+        // ============================================
+        const reaction = parseSmsReaction(message || "");
+        if (reaction.isReaction) {
+          console.log(`[Feedback] Detected reaction: ${reaction.reactionType} (${reaction.feedback > 0 ? "positive" : "negative"})`);
+          
+          try {
+            const feedbackData = await buildFeedbackEvent(
+              reaction,
+              conversation.id,
+              fromNumber,
+              messageSid,
+              message
+            );
+            
+            if (feedbackData) {
+              createFeedbackEvent(feedbackData);
+              console.log(`[Feedback] Created feedback event: ${reaction.reactionType}`);
+            }
+          } catch (fbError: any) {
+            console.error("[Feedback] Failed to create feedback event:", fbError);
+          }
+          
+          // Send short TwiML response
+          const twimlResponse = generateFeedbackTwimlResponse(reaction);
+          console.log(`[Feedback] Sending response: "${twimlResponse}"`);
+          res.type('text/xml');
+          res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Message>${twimlResponse}</Message></Response>`);
+          return; // Exit early - don't process as normal message
+        }
         
         // Get sender info for context
         const contact = getContactByPhone(fromNumber);
