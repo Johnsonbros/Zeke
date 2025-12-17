@@ -445,6 +445,7 @@ import { recordSleepQuality, shouldAskSleepQuality, markSleepQualityAsked } from
 import { parseSmsReaction, buildFeedbackEvent, generateFeedbackTwimlResponse } from "./feedback/parseSmsReaction";
 import { createFeedbackEvent } from "./db";
 import { startFeedbackTrainer } from "./jobs/feedbackTrainer";
+import { trackUserMessage, isRepeatedRequest, createImplicitFeedback } from "./feedback/implicitFeedback";
 
 // Format phone number for Twilio - handles various input formats
 function formatPhoneNumber(phone: string): string {
@@ -1628,12 +1629,24 @@ export async function registerRoutes(
         }
         
         // Store user message (only if not a pending place reply)
-        createMessage({
+        const userMsg = createMessage({
           conversationId: conversation.id,
           role: "user",
           content: fullMessage,
           source: "sms",
         });
+        
+        // ============================================
+        // CHECK FOR IMPLICIT NEGATIVE FEEDBACK (REPEAT REQUEST)
+        // ============================================
+        // Track this message in rolling window
+        trackUserMessage(fromNumber, conversation.id, message || fullMessage, userMsg.id);
+        
+        // Check if this is a repeated request within 10 minutes
+        if (message && isRepeatedRequest(fromNumber, message)) {
+          console.log(`[ImplicitFeedback] Auto-flagging as repeat: "${message.substring(0, 50)}..."`);
+          await createImplicitFeedback(conversation.id, fromNumber, message);
+        }
         
         // Check for sleep quality response (1-10 rating or A/B/C/D from morning briefing)
         if (message && shouldAskSleepQuality()) {
