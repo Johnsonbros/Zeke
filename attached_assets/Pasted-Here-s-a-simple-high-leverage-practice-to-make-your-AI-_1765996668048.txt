@@ -1,0 +1,73 @@
+Here’s a simple, high‑leverage practice to make your AI systems saner and debuggable: always record the exact model string with every request and response. This lets you spot silent model changes vs. bugs in your code or data.
+
+What to capture per call
+	•	timestamp (UTC)
+	•	model (e.g., gpt-5.2, gpt-4o-mini—the exact string you pass)
+	•	endpoint / mode (chat, responses, realtime, batch)
+	•	request_id (from the API response headers when available)
+	•	input size (tokens/chars) and output size
+	•	key flags (system prompt hash, temperature, tools enabled, etc.)
+	•	upstream/version info (your app version, git SHA)
+
+Minimal schema (JSON)
+
+{
+  "ts": "2025-12-17T12:34:56Z",
+  "model": "gpt-5.2",
+  "endpoint": "responses",
+  "request_id": "req_abc123",
+  "app_sha": "d41d8cd",
+  "system_prompt_hash": "sha256:…",
+  "temperature": 0.7,
+  "tools": ["code_interpreter","web"],
+  "in_tokens": 1824,
+  "out_tokens": 512,
+  "latency_ms": 964,
+  "status": "ok"
+}
+
+Drop‑in logging (Node.js/TypeScript)
+
+type AiLog = {
+  ts: string;
+  model: string;
+  endpoint: string;
+  request_id?: string;
+  app_sha?: string;
+  system_prompt_hash?: string;
+  temperature?: number;
+  tools?: string[];
+  in_tokens?: number;
+  out_tokens?: number;
+  latency_ms?: number;
+  status: "ok" | "error";
+  error?: { type: string; message: string };
+};
+
+export function logAiEvent(partial: Partial<AiLog>) {
+  const rec: AiLog = {
+    ts: new Date().toISOString(),
+    model: partial.model ?? "unknown",
+    endpoint: partial.endpoint ?? "unknown",
+    status: partial.status ?? "ok",
+    request_id: partial.request_id,
+    app_sha: process.env.APP_SHA,
+    system_prompt_hash: partial.system_prompt_hash,
+    temperature: partial.temperature,
+    tools: partial.tools,
+    in_tokens: partial.in_tokens,
+    out_tokens: partial.out_tokens,
+    latency_ms: partial.latency_ms,
+    error: partial.error
+  };
+  console.log(JSON.stringify({ ai_event: rec })); // or send to your logger
+}
+
+Quick checklist
+	•	Use the exact model string you pass to the API (don’t normalize it).
+	•	Hash long prompts (system/tools) to detect drift without storing secrets.
+	•	Attach your git SHA/build ID to every call.
+	•	Alert when the model string changes or token/latency stats jump.
+	•	Keep per‑model cost calculators so ZEKE can show true run‑rate.
+
+If you want, I can adapt this to your ZEKE + Replit Agent v3 stack and wire it into your existing logger with token+cost tracking.
