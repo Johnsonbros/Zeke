@@ -14,6 +14,7 @@ import {
   getOmiSummariesInRange,
 } from "./db";
 import type { OmiSummary, InsertOmiSummary } from "@shared/schema";
+import { wrapOmi } from "../lib/reliability/client_wrap";
 
 const OMI_API_BASE = "https://api.omi.me";
 const TIMEZONE = "America/New_York";
@@ -126,7 +127,7 @@ function getApiKey(): string {
   return apiKey;
 }
 
-async function fetchFromOmi<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
+async function fetchFromOmiRaw<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
   const apiKey = getApiKey();
   
   const url = new URL(`${OMI_API_BASE}${endpoint}`);
@@ -148,14 +149,20 @@ async function fetchFromOmi<T>(endpoint: string, params?: Record<string, string 
   });
   
   if (!response.ok) {
+    const error = new Error(`Omi API error: ${response.status} ${response.statusText}`) as any;
+    error.status = response.status;
     if (response.status === 429) {
       const retryAfter = response.headers.get("Retry-After") || "60";
-      throw new Error(`Rate limit exceeded. Retry after ${retryAfter} seconds.`);
+      error.message = `Rate limit exceeded. Retry after ${retryAfter} seconds.`;
     }
-    throw new Error(`Omi API error: ${response.status} ${response.statusText}`);
+    throw error;
   }
   
   return response.json() as Promise<T>;
+}
+
+async function fetchFromOmi<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
+  return wrapOmi(() => fetchFromOmiRaw<T>(endpoint, params));
 }
 
 /**

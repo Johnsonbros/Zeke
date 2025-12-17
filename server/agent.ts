@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
+import { wrapOpenAI, openaiBreaker } from "../lib/reliability/client_wrap";
 import {
   getRecentMessages,
   getAllMemoryNotes,
@@ -246,6 +247,13 @@ function getOpenAIClient(): OpenAI {
     openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
   return openai;
+}
+
+async function createChatCompletion(
+  params: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming
+): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+  const client = getOpenAIClient();
+  return wrapOpenAI(() => client.chat.completions.create(params));
 }
 
 // Load profile and knowledge files, plus database profile sections
@@ -1003,8 +1011,6 @@ export async function chat(
   ];
 
   try {
-    const client = getOpenAIClient();
-
     // Tool calling loop - continue until we get a final response
     let maxIterations = 10;
     let iterations = 0;
@@ -1012,7 +1018,7 @@ export async function chat(
     while (iterations < maxIterations) {
       iterations++;
 
-      const response = await client.chat.completions.create({
+      const response = await createChatCompletion({
         model: getOpenAIModel(),
         messages,
         tools: toolDefinitions,
@@ -1040,7 +1046,7 @@ export async function chat(
         if (choice.finish_reason === "length" && !message.content) {
           console.log("Response truncated due to length - retrying with more context");
           // Try to get a response without tool calls
-          const retryResponse = await client.chat.completions.create({
+          const retryResponse = await createChatCompletion({
             model: getOpenAIModel(),
             messages: [...messages, { role: "assistant", content: null, tool_calls: [] } as any],
             max_completion_tokens: 2048,
