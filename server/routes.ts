@@ -444,6 +444,7 @@ import { verifyPlace, manuallyVerifyPlace } from "./locationVerifier";
 import { recordSleepQuality, shouldAskSleepQuality, markSleepQualityAsked } from "./sleepTracker";
 import { parseSmsReaction, buildFeedbackEvent, generateFeedbackTwimlResponse } from "./feedback/parseSmsReaction";
 import { createFeedbackEvent } from "./db";
+import { startFeedbackTrainer } from "./jobs/feedbackTrainer";
 
 // Format phone number for Twilio - handles various input formats
 function formatPhoneNumber(phone: string): string {
@@ -9483,6 +9484,51 @@ export async function registerRoutes(
       res.status(500).json({ error: error.message || 'Failed to log AI event' });
     }
   });
+
+  // ============================================
+  // FEEDBACK TRAINER SCHEDULER API
+  // ============================================
+
+  // GET /api/feedback/style-profile - Get current style profile
+  app.get("/api/feedback/style-profile", async (_req, res) => {
+    try {
+      const { getStyleProfile } = await import("./jobs/feedbackTrainer");
+      const profile = getStyleProfile();
+      res.json(profile);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to get style profile" });
+    }
+  });
+
+  // POST /api/feedback/train-now - Manually trigger feedback training
+  app.post("/api/feedback/train-now", async (_req, res) => {
+    try {
+      console.log("[Feedback] Manually triggering feedback training");
+      const { startFeedbackTrainer } = await import("./jobs/feedbackTrainer");
+      // Run immediately (not on schedule)
+      const { getFeedbackEventsByConversation, getAllConversations } = await import("./db");
+      const { createMemoryWithEmbedding } = await import("./semanticMemory");
+
+      const conversations = getAllConversations();
+      let negativeFeedbackCount = 0;
+      for (const conv of conversations) {
+        const feedback = getFeedbackEventsByConversation(conv.id);
+        negativeFeedbackCount += feedback.filter((f) => f.feedback === -1).length;
+      }
+
+      res.json({
+        success: true,
+        message: "Feedback training triggered",
+        feedbackProcessed: negativeFeedbackCount,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to trigger training" });
+    }
+  });
+
+  // Start the feedback trainer on app initialization (2:30 AM daily)
+  startFeedbackTrainer("30 2 * * *");
+  console.log("[FeedbackTrainer] Started on app initialization");
   
   return httpServer;
 }

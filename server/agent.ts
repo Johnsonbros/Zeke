@@ -35,6 +35,7 @@ import {
   type ConflictDetectionResult,
 } from "./memoryConflicts";
 import { supersedeMemoryNote } from "./db";
+import { getStyleProfile } from "./jobs/feedbackTrainer";
 import type { Message, Contact } from "@shared/schema";
 import { isMasterAdmin } from "@shared/schema";
 import { 
@@ -713,12 +714,24 @@ async function buildSystemPrompt(
   
   // Get pending memory conflicts context
   const pendingConflictContext = userPermissions.isAdmin ? getPendingMemoryConflictContext() : "";
+  
+  // Inject learned style profile
+  const styleProfile = getStyleProfile();
+  const stylePrompt = `LEARNED PREFERENCES (from feedback):
+- Verbosity: ${styleProfile.verbosity} (${styleProfile.formatting.concise ? "concise" : "detailed"})
+- Tone: ${styleProfile.tone}
+- User preferences: ${styleProfile.preferences.join("; ")}
+`;
 
   return `You are ZEKE — Nate Johnson's personal AI assistant (single-user, SMS + web).
 
-STYLE (default):
+STYLE (learned + default):
 - Direct, professional, conversational. Minimal fluff.
 - Be concise by default; expand only when needed.
+- ${styleProfile.formatting.concise ? "Prioritize brevity." : "Include details."}
+- Tone: ${styleProfile.tone}
+
+${stylePrompt}
 
 MISSION:
 - Reduce Nate's cognitive load: plan, decide, track, remind, summarize, and execute.
