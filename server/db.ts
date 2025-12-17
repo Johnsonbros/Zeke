@@ -1012,7 +1012,27 @@ try {
   // Indexes may already exist
 }
 
-console.log("Conversation metrics and memory confidence tables initialized");
+// Migration: Add memory TTL bucket fields
+try {
+  db.exec(`ALTER TABLE memory_notes ADD COLUMN scope TEXT DEFAULT 'long_term'`);
+} catch (e) {
+  // Column may already exist
+}
+try {
+  db.exec(`ALTER TABLE memory_notes ADD COLUMN expires_at TEXT`);
+} catch (e) {
+  // Column may already exist
+}
+
+// Create indexes for TTL cleanup
+try {
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_memory_notes_scope ON memory_notes(scope)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_memory_notes_expires ON memory_notes(expires_at)`);
+} catch (e) {
+  // Indexes may already exist
+}
+
+console.log("Conversation metrics, memory confidence, and TTL bucket tables initialized");
 
 // ============================================
 // CUSTOM LISTS SYSTEM TABLES
@@ -1858,6 +1878,8 @@ interface MemoryNoteRow {
   contact_id: string | null;
   source_type: string | null;
   source_id: string | null;
+  scope: string | null;
+  expires_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -2276,6 +2298,8 @@ function mapMemoryNote(row: MemoryNoteRow): MemoryNote {
     contactId: row.contact_id || null,
     sourceType: (row.source_type as "conversation" | "lifelog" | "manual" | "observation") || "conversation",
     sourceId: row.source_id || null,
+    scope: (row.scope as "transient" | "session" | "long_term") || "long_term",
+    expiresAt: row.expires_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -2695,6 +2719,25 @@ export function deleteMessage(id: string): boolean {
 // Type for creating memory notes with optional embedding as number[]
 export type CreateMemoryNoteInput = Omit<InsertMemoryNote, 'embedding'> & { embedding?: number[] };
 
+// Auto-calculate expiresAt based on scope if not provided
+function calculateExpiresAtForScope(scope: string, providedExpiresAt?: string | null): string | null {
+  if (providedExpiresAt !== undefined) return providedExpiresAt;
+  
+  const now = new Date();
+  const transientTtlSeconds = parseInt(process.env.MEM_TTL_TRANSIENT || "129600", 10); // 36 hours default
+  const sessionTtlSeconds = parseInt(process.env.MEM_TTL_SESSION || "604800", 10); // 7 days default
+  
+  switch (scope) {
+    case "transient":
+      return new Date(now.getTime() + transientTtlSeconds * 1000).toISOString();
+    case "session":
+      return new Date(now.getTime() + sessionTtlSeconds * 1000).toISOString();
+    case "long_term":
+    default:
+      return null;
+  }
+}
+
 // Memory notes operations
 export function createMemoryNote(data: CreateMemoryNoteInput): MemoryNote {
   const result = wrapDbOperation("createMemoryNote", () => {
@@ -2702,11 +2745,13 @@ export function createMemoryNote(data: CreateMemoryNoteInput): MemoryNote {
     const now = getCurrentTimestamp();
     const context = data.context || "";
     const embeddingStr = data.embedding ? JSON.stringify(data.embedding) : null;
+    const scope = data.scope || "long_term";
+    const expiresAt = calculateExpiresAtForScope(scope, data.expiresAt);
     
     db.prepare(`
-      INSERT INTO memory_notes (id, type, content, context, embedding, place_id, contact_id, source_type, source_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, data.type, data.content, context, embeddingStr, data.placeId || null, data.contactId || null, data.sourceType || "conversation", data.sourceId || null, now, now);
+      INSERT INTO memory_notes (id, type, content, context, embedding, place_id, contact_id, source_type, source_id, scope, expires_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.type, data.content, context, embeddingStr, data.placeId || null, data.contactId || null, data.sourceType || "conversation", data.sourceId || null, scope, expiresAt, now, now);
     
     return { 
       id, 
@@ -2720,6 +2765,8 @@ export function createMemoryNote(data: CreateMemoryNoteInput): MemoryNote {
       contactId: data.contactId || null,
       sourceType: (data.sourceType || "conversation") as "conversation" | "lifelog" | "manual" | "observation",
       sourceId: data.sourceId || null,
+      scope: scope as "transient" | "session" | "long_term",
+      expiresAt: expiresAt,
       createdAt: now, 
       updatedAt: now 
     };
@@ -2814,6 +2861,77 @@ export function searchMemoryNotes(query: string): MemoryNote[] {
 export function deleteMemoryNote(id: string): boolean {
   const result = wrapDbOperation("deleteMemoryNote", () => {
     const dbResult = db.prepare(`DELETE FROM memory_notes WHERE id = ?`).run(id);
+    return dbResult.changes > 0;
+  });
+  if (result) invalidateMemoryCache();
+  return result;
+}
+
+// Memory TTL cleanup - delete expired memories
+export function cleanupExpiredMemories(): { deleted: number; errors: string[] } {
+  const now = getCurrentTimestamp();
+  const errors: string[] = [];
+  
+  try {
+    const result = db.prepare(`
+      DELETE FROM memory_notes 
+      WHERE expires_at IS NOT NULL 
+      AND expires_at < ?
+    `).run(now);
+    
+    if (result.changes > 0) {
+      console.log(`[Memory TTL] Deleted ${result.changes} expired memories`);
+      invalidateMemoryCache();
+    }
+    
+    return { deleted: result.changes, errors };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    errors.push(msg);
+    console.error(`[Memory TTL] Cleanup error: ${msg}`);
+    throw e; // Re-throw to surface the error
+  }
+}
+
+// Get memory statistics by scope
+export function getMemoryScopeStats(): Record<string, number> {
+  return wrapDbOperation("getMemoryScopeStats", () => {
+    const rows = db.prepare(`
+      SELECT 
+        COALESCE(scope, 'long_term') as scope,
+        COUNT(*) as count
+      FROM memory_notes
+      WHERE is_superseded = 0
+      GROUP BY scope
+    `).all() as Array<{ scope: string; count: number }>;
+    
+    const stats: Record<string, number> = {
+      transient: 0,
+      session: 0,
+      long_term: 0,
+    };
+    
+    for (const row of rows) {
+      stats[row.scope] = row.count;
+    }
+    
+    return stats;
+  });
+}
+
+// Update memory scope and expiration
+export function updateMemoryScope(
+  id: string, 
+  scope: "transient" | "session" | "long_term",
+  expiresAt: string | null
+): boolean {
+  const result = wrapDbOperation("updateMemoryScope", () => {
+    const now = getCurrentTimestamp();
+    const dbResult = db.prepare(`
+      UPDATE memory_notes 
+      SET scope = ?, expires_at = ?, updated_at = ?
+      WHERE id = ?
+    `).run(scope, expiresAt, now, id);
     return dbResult.changes > 0;
   });
   if (result) invalidateMemoryCache();

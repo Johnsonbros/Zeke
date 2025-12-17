@@ -43,6 +43,10 @@ export const insertMessageSchema = createInsertSchema(messages).omit({
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Message = typeof messages.$inferSelect;
 
+// Memory TTL scopes for automatic expiration
+export const memoryScopes = ["transient", "session", "long_term"] as const;
+export type MemoryScope = typeof memoryScopes[number];
+
 // Memory notes table with confidence scoring
 export const memoryNotes = sqliteTable("memory_notes", {
   id: text("id").primaryKey(),
@@ -56,6 +60,9 @@ export const memoryNotes = sqliteTable("memory_notes", {
   contactId: text("contact_id"),
   sourceType: text("source_type", { enum: ["conversation", "lifelog", "manual", "observation"] }).default("conversation"),
   sourceId: text("source_id"),
+  // TTL bucket fields
+  scope: text("scope", { enum: memoryScopes }).default("long_term"), // transient=36h, session=7d, long_term=permanent
+  expiresAt: text("expires_at"), // ISO timestamp when memory should be deleted (null=never)
   // Confidence scoring fields
   confidenceScore: text("confidence_score").default("0.8"), // 0-1 scale, stored as text for precision
   lastConfirmedAt: text("last_confirmed_at"), // When the memory was last verified/used successfully

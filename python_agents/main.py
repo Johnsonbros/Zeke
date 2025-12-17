@@ -223,7 +223,17 @@ app.add_middleware(
 
 def get_circuit_breaker_status() -> dict[str, CircuitBreakerStatus]:
     """Get status of all circuit breakers."""
-    return {}
+    from python_agents.resilience import get_all_circuit_states
+    
+    states = get_all_circuit_states()
+    result = {}
+    for name, info in states.items():
+        result[name] = CircuitBreakerStatus(
+            state=info["state"],
+            failure_count=info["failure_count"],
+            time_until_retry=info.get("time_until_retry", 0),
+        )
+    return result
 
 
 def check_memory_db() -> str:

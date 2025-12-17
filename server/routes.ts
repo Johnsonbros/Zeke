@@ -242,6 +242,7 @@ import { createReminderSequenceData } from "./capabilities/workflows";
 import { scheduleReminderExecution } from "./capabilities/reminders";
 import { setDailyCheckInSmsCallback, initializeDailyCheckIn } from "./dailyCheckIn";
 import { startPeopleProcessor } from "./peopleProcessor";
+import { startMemoryTtlCleanup } from "./jobs/memoryTtlCleanup";
 import { 
   startContextAgent, 
   stopContextAgent, 
@@ -700,6 +701,9 @@ export async function registerRoutes(
   
   // Start background people extraction from lifelogs
   startPeopleProcessor();
+  
+  // Start memory TTL cleanup job (hourly)
+  startMemoryTtlCleanup();
   
   // Initialize smart notification batching
   setNotificationSmsCallback(async (phone: string, message: string) => {
