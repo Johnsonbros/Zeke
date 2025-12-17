@@ -7,6 +7,7 @@ import { log } from "./logger";
 import { initializeGroceryAutoClear } from "./jobs/groceryAutoClear";
 import { initializeConversationSummarizer } from "./jobs/conversationSummarizer";
 import { startDailySummaryScheduler } from "./jobs/dailySummaryAgent";
+import { startNightlyEnrichmentScheduler } from "./jobs/nightlyEnrichment";
 import { initializeVoicePipeline, startVoicePipeline, isVoicePipelineAvailable } from "./voice";
 import { initializeOmiDigest } from "./omiDigest";
 import { initializeOmiProcessor, startOmiProcessor } from "./jobs/omiProcessor";
@@ -130,6 +131,10 @@ app.use((req, res, next) => {
   // Initialize daily journal summary scheduler (runs at 11 PM)
   startDailySummaryScheduler({ enabled: true });
   log("Daily journal summary scheduler initialized", "startup");
+  
+  // Initialize nightly enrichment batch scheduler (runs at 3 AM, polls every 2 hours)
+  startNightlyEnrichmentScheduler({ enabled: true });
+  log("Nightly enrichment batch scheduler initialized", "startup");
   
   // Initialize and auto-start voice pipeline if API keys are configured
   if (isVoicePipelineAvailable()) {

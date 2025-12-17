@@ -51,6 +51,12 @@ Key technical implementations and features include:
 - **Pendant Health Monitor**: Sends SMS alerts when Omi pendant audio stops flowing (5-minute timeout), auto-detects wake-up to trigger morning briefings.
 - **A/B/C Response Format**: All decisions use structured A/B/C or 1-2-3 options with pros/cons, one question at a time for clarity.
 - **Journal / Daily Summary System**: Nightly automated journal entries for daily summaries with insights and key events.
+- **Overnight Batch Factory**: Uses OpenAI Batch API for cost-efficient overnight processing. Features include:
+  - Nightly enrichment job (3 AM) processes day's conversations into memory summaries, knowledge graph edges, and feedback fixes
+  - Batch polling scheduler (every 2 hours) checks submitted jobs for completion
+  - Artifact consumer integrates batch results into memory notes and knowledge graph
+  - Admin endpoints (`/api/admin/batch/*`) for status, manual triggering, and polling
+  - Environment config: `BATCH_ENABLED` (default: true), `BATCH_MODEL` (default: gpt-4o), `BATCH_MAX_ITEMS_PER_RUN` (default: 500)
 - **AI Usage Logging System**: Comprehensive tracking of all OpenAI API calls across Node.js and Python services. Captures model strings, token usage, latency, costs (with pricing per model), and errors. Features include:
   - SQLite `ai_logs` table with full audit trail
   - Automatic logging via `wrapOpenAI` reliability wrapper with context-based logging

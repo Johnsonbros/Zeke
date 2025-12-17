@@ -5,6 +5,12 @@
  * - Memory summaries
  * - Knowledge graph extraction
  * - Feedback rehabilitation
+ * 
+ * Environment Variables:
+ * - BATCH_ENABLED: Enable/disable batch processing (default: true)
+ * - BATCH_MODEL: Model to use for batch processing (default: gpt-4o)
+ * - BATCH_MAX_ITEMS_PER_RUN: Maximum items per batch run (default: 500)
+ * - BATCH_RUN_HOUR: Hour to run nightly enrichment in UTC (default: 3, for 3 AM)
  */
 
 import OpenAI from "openai";

@@ -7,6 +7,7 @@
  * - Feedback fixes (improvements for thumbs-down items)
  */
 
+import * as cron from "node-cron";
 import {
   createBatchJob,
   getBatchJobByIdempotencyKey,
@@ -19,8 +20,30 @@ import {
   buildBatchRequestLine,
   submitBatchJob,
   isBatchEnabled,
+  pollAllSubmittedJobs,
 } from "../services/batchService";
 import type { Message, FeedbackEvent, BatchJobType } from "@shared/schema";
+
+export interface NightlyEnrichmentConfig {
+  enabled: boolean;
+  cronSchedule: string;
+  pollSchedule: string;
+  timezone: string;
+}
+
+let config: NightlyEnrichmentConfig = {
+  enabled: true,
+  cronSchedule: "0 3 * * *",
+  pollSchedule: "0 */2 * * *",
+  timezone: "America/New_York",
+};
+
+let scheduledTask: cron.ScheduledTask | null = null;
+let pollTask: cron.ScheduledTask | null = null;
+let lastRunTime: Date | null = null;
+let lastRunStatus: "success" | "failed" | "pending" | null = null;
+let lastRunError: string | null = null;
+let lastPollTime: Date | null = null;
 
 const JOB_TYPE: BatchJobType = "NIGHTLY_ENRICHMENT";
 
@@ -252,9 +275,122 @@ export async function runNightlyEnrichment(): Promise<void> {
   }
 }
 
+/**
+ * Start the nightly enrichment scheduler
+ */
+export function startNightlyEnrichmentScheduler(options?: Partial<NightlyEnrichmentConfig>): void {
+  if (options) {
+    config = { ...config, ...options };
+  }
+
+  if (scheduledTask) {
+    scheduledTask.stop();
+  }
+  if (pollTask) {
+    pollTask.stop();
+  }
+
+  if (!config.enabled) {
+    console.log("[BatchFactory] Nightly enrichment scheduler is disabled");
+    return;
+  }
+
+  if (!isBatchEnabled()) {
+    console.log("[BatchFactory] Batch processing is disabled via BATCH_ENABLED=false");
+    return;
+  }
+
+  scheduledTask = cron.schedule(
+    config.cronSchedule,
+    async () => {
+      console.log(`[BatchFactory] Running nightly enrichment at ${new Date().toISOString()}`);
+      lastRunStatus = "pending";
+      lastRunError = null;
+      
+      try {
+        await runNightlyEnrichment();
+        lastRunStatus = "success";
+        lastRunTime = new Date();
+      } catch (error) {
+        console.error("[BatchFactory] Nightly enrichment failed:", error);
+        lastRunStatus = "failed";
+        lastRunError = error instanceof Error ? error.message : String(error);
+      }
+    },
+    {
+      timezone: config.timezone,
+    }
+  );
+
+  pollTask = cron.schedule(
+    config.pollSchedule,
+    async () => {
+      console.log(`[BatchFactory] Polling submitted batch jobs at ${new Date().toISOString()}`);
+      try {
+        await pollAllSubmittedJobs();
+        lastPollTime = new Date();
+      } catch (error) {
+        console.error("[BatchFactory] Batch polling failed:", error);
+      }
+    },
+    {
+      timezone: config.timezone,
+    }
+  );
+
+  console.log(`[BatchFactory] Nightly enrichment scheduled at "${config.cronSchedule}" (${config.timezone})`);
+  console.log(`[BatchFactory] Batch polling scheduled at "${config.pollSchedule}" (${config.timezone})`);
+}
+
+/**
+ * Stop the nightly enrichment scheduler
+ */
+export function stopNightlyEnrichmentScheduler(): void {
+  if (scheduledTask) {
+    scheduledTask.stop();
+    scheduledTask = null;
+    console.log("[BatchFactory] Nightly enrichment scheduler stopped");
+  }
+  if (pollTask) {
+    pollTask.stop();
+    pollTask = null;
+    console.log("[BatchFactory] Batch polling scheduler stopped");
+  }
+}
+
+/**
+ * Get the current status of the nightly enrichment scheduler
+ */
+export function getNightlyEnrichmentStatus(): {
+  enabled: boolean;
+  cronSchedule: string;
+  pollSchedule: string;
+  timezone: string;
+  lastRunTime: Date | null;
+  lastRunStatus: string | null;
+  lastRunError: string | null;
+  lastPollTime: Date | null;
+  batchEnabled: boolean;
+} {
+  return {
+    enabled: config.enabled,
+    cronSchedule: config.cronSchedule,
+    pollSchedule: config.pollSchedule,
+    timezone: config.timezone,
+    lastRunTime,
+    lastRunStatus,
+    lastRunError,
+    lastPollTime,
+    batchEnabled: isBatchEnabled(),
+  };
+}
+
 export default {
   gatherEnrichmentData,
   buildEnrichmentJsonl,
   createNightlyEnrichmentJob,
   runNightlyEnrichment,
+  startNightlyEnrichmentScheduler,
+  stopNightlyEnrichmentScheduler,
+  getNightlyEnrichmentStatus,
 };

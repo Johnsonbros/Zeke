@@ -9501,6 +9501,108 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // BATCH FACTORY ADMIN API
+  // ============================================
+
+  // GET /api/admin/batch/status - Get batch job stats and scheduler status
+  app.get("/api/admin/batch/status", async (_req, res) => {
+    try {
+      const { getBatchJobStats, getRecentBatchJobs } = await import("./db");
+      const { getNightlyEnrichmentStatus } = await import("./jobs/nightlyEnrichment");
+      const { isBatchEnabled, getBatchModel, getBatchMaxItems } = await import("./services/batchService");
+      
+      const stats = getBatchJobStats();
+      const schedulerStatus = getNightlyEnrichmentStatus();
+      
+      res.json({
+        config: {
+          enabled: isBatchEnabled(),
+          model: getBatchModel(),
+          maxItems: getBatchMaxItems(),
+        },
+        scheduler: schedulerStatus,
+        stats,
+      });
+    } catch (error: any) {
+      console.error("[BatchFactory] Error getting batch status:", error);
+      res.status(500).json({ error: error.message || "Failed to get batch status" });
+    }
+  });
+
+  // GET /api/admin/batch/jobs - Get recent batch jobs
+  app.get("/api/admin/batch/jobs", async (req, res) => {
+    try {
+      const { getRecentBatchJobs } = await import("./db");
+      const limit = parseInt(req.query.limit as string) || 20;
+      const jobs = getRecentBatchJobs(limit);
+      res.json({ jobs, count: jobs.length });
+    } catch (error: any) {
+      console.error("[BatchFactory] Error getting batch jobs:", error);
+      res.status(500).json({ error: error.message || "Failed to get batch jobs" });
+    }
+  });
+
+  // POST /api/admin/batch/trigger - Manually trigger nightly enrichment
+  app.post("/api/admin/batch/trigger", async (_req, res) => {
+    try {
+      const { createNightlyEnrichmentJob } = await import("./jobs/nightlyEnrichment");
+      console.log("[BatchFactory] Manually triggering nightly enrichment...");
+      
+      const result = await createNightlyEnrichmentJob(true);
+      
+      res.json({
+        success: true,
+        jobId: result.jobId,
+        submitted: result.submitted,
+        itemCount: result.itemCount,
+        message: result.jobId 
+          ? `Created job ${result.jobId} with ${result.itemCount} items`
+          : "No job created (no data or batch disabled)",
+      });
+    } catch (error: any) {
+      console.error("[BatchFactory] Error triggering batch job:", error);
+      res.status(500).json({ error: error.message || "Failed to trigger batch job" });
+    }
+  });
+
+  // POST /api/admin/batch/poll - Manually poll submitted batch jobs
+  app.post("/api/admin/batch/poll", async (_req, res) => {
+    try {
+      const { pollAllSubmittedJobs } = await import("./services/batchService");
+      console.log("[BatchFactory] Manually polling submitted batch jobs...");
+      
+      await pollAllSubmittedJobs();
+      
+      res.json({
+        success: true,
+        message: "Batch polling completed",
+      });
+    } catch (error: any) {
+      console.error("[BatchFactory] Error polling batch jobs:", error);
+      res.status(500).json({ error: error.message || "Failed to poll batch jobs" });
+    }
+  });
+
+  // POST /api/admin/batch/consume - Manually consume artifacts
+  app.post("/api/admin/batch/consume", async (_req, res) => {
+    try {
+      const { consumeAllArtifacts } = await import("./services/artifactConsumer");
+      console.log("[BatchFactory] Manually consuming batch artifacts...");
+      
+      const results = await consumeAllArtifacts();
+      
+      res.json({
+        success: true,
+        results,
+        message: "Artifact consumption completed",
+      });
+    } catch (error: any) {
+      console.error("[BatchFactory] Error consuming artifacts:", error);
+      res.status(500).json({ error: error.message || "Failed to consume artifacts" });
+    }
+  });
+
+  // ============================================
   // FEEDBACK TRAINER SCHEDULER API
   // ============================================
 
