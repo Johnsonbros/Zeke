@@ -421,6 +421,7 @@ import {
 import { analyzeMmsImage, type ImageAnalysisResult, type PersonPhotoAnalysisResult } from "./services/fileProcessor";
 import { setPendingPlaceSave, hasPendingPlaceSave, completePendingPlaceSave, cleanupExpiredPendingPlaces } from "./pendingPlaceSave";
 import { verifyPlace, manuallyVerifyPlace } from "./locationVerifier";
+import { recordSleepQuality, shouldAskSleepQuality, markSleepQualityAsked } from "./sleepTracker";
 
 // Format phone number for Twilio - handles various input formats
 function formatPhoneNumber(phone: string): string {
@@ -1439,6 +1440,76 @@ export async function registerRoutes(
           content: fullMessage,
           source: "sms",
         });
+        
+        // Check for sleep quality response (1-10 rating or A/B/C/D from morning briefing)
+        if (message && shouldAskSleepQuality()) {
+          const trimmedMsg = message.trim().toUpperCase();
+          
+          // Parse rating - accept 1-10 directly or A/B/C/D mapped to ranges
+          let quality: number | null = null;
+          const numericMatch = trimmedMsg.match(/^([1-9]|10)$/);
+          
+          if (numericMatch) {
+            quality = parseInt(numericMatch[1]);
+          } else if (trimmedMsg === "A") {
+            quality = 2; // Poor: 1-3
+          } else if (trimmedMsg === "B") {
+            quality = 5; // Fair: 4-5
+          } else if (trimmedMsg === "C") {
+            quality = 7; // Good: 6-7
+          } else if (trimmedMsg === "D") {
+            quality = 9; // Great: 8-10
+          }
+          
+          if (quality !== null) {
+            recordSleepQuality(quality);
+            markSleepQualityAsked(); // Mark as asked to prevent repeat prompts
+            
+            let qualityResponse = "";
+            if (quality >= 8) {
+              qualityResponse = `Great, recorded sleep quality ${quality}/10. Have a productive day!`;
+            } else if (quality >= 6) {
+              qualityResponse = `Recorded ${quality}/10 sleep. Solid rest. Have a good day!`;
+            } else if (quality >= 4) {
+              qualityResponse = `Recorded ${quality}/10 sleep. Maybe a power nap later if needed.`;
+            } else {
+              qualityResponse = `Noted ${quality}/10 sleep. Take it easy today if you can.`;
+            }
+            
+            createMessage({
+              conversationId: conversation.id,
+              role: "assistant",
+              content: qualityResponse,
+              source: "sms",
+            });
+            
+            try {
+              const replyFromNumber = await getTwilioFromPhoneNumber();
+              if (replyFromNumber) {
+                const client = await getTwilioClient();
+                await client.messages.create({
+                  body: qualityResponse,
+                  from: replyFromNumber,
+                  to: fromNumber,
+                });
+                logTwilioMessage({
+                  direction: "outbound",
+                  source: "reply",
+                  fromNumber: replyFromNumber,
+                  toNumber: fromNumber,
+                  body: qualityResponse,
+                  status: "sent",
+                  conversationId: conversation.id,
+                });
+                console.log(`[SleepQuality] Recorded quality ${quality}/10 from ${fromNumber}`);
+              }
+            } catch (sendErr: any) {
+              console.error(`[SleepQuality] Failed to send confirmation SMS:`, sendErr);
+            }
+            
+            return; // Exit early, handled as sleep quality response
+          }
+        }
         
         // Check for quick action commands first (GROCERY, REMIND, REMEMBER, LIST)
         // Skip quick actions if there are images - let AI handle them for memory/contact updates

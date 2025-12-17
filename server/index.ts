@@ -22,7 +22,8 @@ import { initializeAutomations } from "./automations";
 import { initializeNLAutomations } from "./nlAutomationExecutor";
 import { startContextAgent } from "./zekeContextAgent";
 import { startPeopleProcessor } from "./peopleProcessor";
-import { startPendantHealthMonitor } from "./pendantHealthMonitor";
+import { startPendantHealthMonitor, setMorningBriefingCallback } from "./pendantHealthMonitor";
+import { sendWakeTriggeredBriefing } from "./morningBriefingService";
 
 export { log };
 
@@ -210,6 +211,10 @@ app.use((req, res, next) => {
   
   // Start pendant health monitor (alerts if audio stops coming from Omi pendant)
   if (isVoicePipelineAvailable()) {
+    // Register morning briefing callback for wake detection
+    setMorningBriefingCallback(async () => {
+      await sendWakeTriggeredBriefing();
+    });
     startPendantHealthMonitor();
     log("Pendant health monitor started", "startup");
   }

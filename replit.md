@@ -45,8 +45,11 @@ Key technical implementations and features include:
 - **Town Copy Cache**: LRU cache with version-based invalidation for town-specific content.
 - **Async Memory Processing Queue**: Robust job queue system for processing Omi memories.
 - **Specialized Intelligence Workers**: Background workers for deep memory analysis (TaskExtractor, CommitmentTracker, RelationshipAnalyzer).
-- **Anticipation Engine & Morning Briefings**: Generates personalized morning briefings.
+- **Anticipation Engine & Morning Briefings**: Generates personalized morning briefings triggered by wake detection.
 - **Pattern Detection System**: Identifies behavioral patterns from conversation history.
+- **Sleep Tracking System**: Monitors pendant on/off patterns to infer sleep/wake times, tracks night disturbances, collects sleep quality ratings (1-10), saves to data/sleep_log.json.
+- **Pendant Health Monitor**: Sends SMS alerts when Omi pendant audio stops flowing (5-minute timeout), auto-detects wake-up to trigger morning briefings.
+- **A/B/C Response Format**: All decisions use structured A/B/C or 1-2-3 options with pros/cons, one question at a time for clarity.
 - **Journal / Daily Summary System**: Nightly automated journal entries for daily summaries with insights and key events.
 
 The Python multi-agent system (`python_agents/`) includes production-grade reliability features such as PII Redaction, a Health Endpoint, Request Tracing, Graceful Shutdown, and configurable environment variables for runtime control.

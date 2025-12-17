@@ -674,8 +674,10 @@ export function registerOmiRoutes(app: Express): void {
 
       console.log(`[Omi] Received audio bytes: uid=${uid}, sample_rate=${sampleRate}, size=${audioSize} bytes, duration=${durationSeconds.toFixed(2)}s`);
 
-      // Record audio received for pendant health monitoring
-      recordAudioReceived();
+      // Record audio received for pendant health monitoring (async - handles wake detection)
+      recordAudioReceived().catch(err => {
+        console.error("[Omi] Error in pendant health recordAudioReceived:", err);
+      });
 
       // Return 200 OK quickly as per Omi best practices
       res.json({ 
