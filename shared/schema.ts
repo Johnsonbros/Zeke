@@ -684,6 +684,62 @@ export type InsertTwilioMessage = z.infer<typeof insertTwilioMessageSchema>;
 export type TwilioMessage = typeof twilioMessages.$inferSelect;
 
 // ============================================
+// OUTBOUND MESSAGE TRACKING (for feedback loop)
+// ============================================
+
+// Outbound messages table - tracks all SMS sent out with reference codes
+export const outboundMessages = sqliteTable("outbound_messages", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id"),
+  toPhone: text("to_phone").notNull(),
+  fromPhone: text("from_phone").notNull(),
+  twilioMessageSid: text("twilio_message_sid"),
+  refCode: text("ref_code").notNull(), // Short code like K7Q2 for user feedback
+  body: text("body").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertOutboundMessageSchema = createInsertSchema(outboundMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertOutboundMessage = z.infer<typeof insertOutboundMessageSchema>;
+export type OutboundMessage = typeof outboundMessages.$inferSelect;
+
+// ============================================
+// FEEDBACK EVENTS (user reactions to messages)
+// ============================================
+
+// Feedback event types
+export const reactionTypes = ["liked", "disliked", "loved", "laughed", "emphasized", "questioned", "unknown"] as const;
+export type ReactionType = typeof reactionTypes[number];
+
+// Feedback events table - tracks user reactions and feedback
+export const feedbackEvents = sqliteTable("feedback_events", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id").notNull(),
+  source: text("source", { enum: ["sms", "app"] }).notNull(),
+  feedback: integer("feedback").notNull(), // +1 or -1
+  reactionType: text("reaction_type", { enum: reactionTypes }).notNull().default("unknown"),
+  inboundMessageSid: text("inbound_message_sid"), // Original Twilio SID if replying
+  targetOutboundMessageId: text("target_outbound_message_id"), // Reference to outbound_messages.id
+  targetRefCode: text("target_ref_code"), // Short code feedback is for
+  quotedText: text("quoted_text"), // What text the user is reacting to
+  rawBody: text("raw_body").notNull(), // Full user response/feedback
+  reason: text("reason"), // Why they liked/disliked
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertFeedbackEventSchema = createInsertSchema(feedbackEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertFeedbackEvent = z.infer<typeof insertFeedbackEventSchema>;
+export type FeedbackEvent = typeof feedbackEvents.$inferSelect;
+
+// ============================================
 // SMART NOTIFICATION BATCHING SYSTEM
 // ============================================
 

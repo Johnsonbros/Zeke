@@ -30,6 +30,11 @@ import type {
   TwilioMessageDirection,
   TwilioMessageStatus,
   TwilioMessageSource,
+  OutboundMessage,
+  InsertOutboundMessage,
+  FeedbackEvent,
+  InsertFeedbackEvent,
+  ReactionType,
   LocationHistory,
   InsertLocationHistory,
   SavedPlace,
@@ -664,6 +669,46 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_twilio_messages_from ON twilio_messages(from_number);
   CREATE INDEX IF NOT EXISTS idx_twilio_messages_to ON twilio_messages(to_number);
   CREATE INDEX IF NOT EXISTS idx_twilio_messages_contact ON twilio_messages(contact_id);
+`);
+
+// Create outbound_messages table for tracking SMS sent with feedback codes
+db.exec(`
+  CREATE TABLE IF NOT EXISTS outbound_messages (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT,
+    to_phone TEXT NOT NULL,
+    from_phone TEXT NOT NULL,
+    twilio_message_sid TEXT,
+    ref_code TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_outbound_messages_ref_code ON outbound_messages(ref_code);
+  CREATE INDEX IF NOT EXISTS idx_outbound_messages_to_phone ON outbound_messages(to_phone);
+  CREATE INDEX IF NOT EXISTS idx_outbound_messages_created ON outbound_messages(created_at);
+  CREATE INDEX IF NOT EXISTS idx_outbound_messages_conversation ON outbound_messages(conversation_id);
+`);
+
+// Create feedback_events table for tracking user reactions
+db.exec(`
+  CREATE TABLE IF NOT EXISTS feedback_events (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    feedback INTEGER NOT NULL,
+    reaction_type TEXT NOT NULL,
+    inbound_message_sid TEXT,
+    target_outbound_message_id TEXT,
+    target_ref_code TEXT,
+    quoted_text TEXT,
+    raw_body TEXT NOT NULL,
+    reason TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_feedback_events_conversation ON feedback_events(conversation_id);
+  CREATE INDEX IF NOT EXISTS idx_feedback_events_ref_code ON feedback_events(target_ref_code);
+  CREATE INDEX IF NOT EXISTS idx_feedback_events_created ON feedback_events(created_at);
+  CREATE INDEX IF NOT EXISTS idx_feedback_events_source ON feedback_events(source);
 `);
 
 // ============================================
@@ -12333,6 +12378,194 @@ export function getJournalEntryCount(): number {
   return wrapDbOperation("getJournalEntryCount", () => {
     const result = db.prepare(`SELECT COUNT(*) as count FROM journal_entries`).get() as { count: number };
     return result.count;
+  });
+}
+
+// ============================================
+// OUTBOUND MESSAGE TRACKING
+// ============================================
+
+interface OutboundMessageRow {
+  id: string;
+  conversation_id: string | null;
+  to_phone: string;
+  from_phone: string;
+  twilio_message_sid: string | null;
+  ref_code: string;
+  body: string;
+  created_at: string;
+}
+
+function mapOutboundMessage(row: OutboundMessageRow): OutboundMessage {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    toPhone: row.to_phone,
+    fromPhone: row.from_phone,
+    twilioMessageSid: row.twilio_message_sid,
+    refCode: row.ref_code,
+    body: row.body,
+    createdAt: row.created_at,
+  };
+}
+
+export function createOutboundMessage(data: InsertOutboundMessage): OutboundMessage {
+  return wrapDbOperation("createOutboundMessage", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO outbound_messages (id, conversation_id, to_phone, from_phone, twilio_message_sid, ref_code, body, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.conversationId || null,
+      data.toPhone,
+      data.fromPhone,
+      data.twilioMessageSid || null,
+      data.refCode,
+      data.body,
+      now
+    );
+    
+    return {
+      id,
+      conversationId: data.conversationId || null,
+      toPhone: data.toPhone,
+      fromPhone: data.fromPhone,
+      twilioMessageSid: data.twilioMessageSid || null,
+      refCode: data.refCode,
+      body: data.body,
+      createdAt: now,
+    };
+  });
+}
+
+export function updateOutboundMessageSid(id: string, sid: string): OutboundMessage | undefined {
+  return wrapDbOperation("updateOutboundMessageSid", () => {
+    db.prepare(`UPDATE outbound_messages SET twilio_message_sid = ? WHERE id = ?`).run(sid, id);
+    const row = db.prepare(`SELECT * FROM outbound_messages WHERE id = ?`).get(id) as OutboundMessageRow | undefined;
+    return row ? mapOutboundMessage(row) : undefined;
+  });
+}
+
+export function getRecentOutboundMessages(toPhone: string, lookbackMinutes: number = 60): OutboundMessage[] {
+  return wrapDbOperation("getRecentOutboundMessages", () => {
+    const cutoffTime = new Date(Date.now() - lookbackMinutes * 60 * 1000).toISOString();
+    const rows = db.prepare(`
+      SELECT * FROM outbound_messages 
+      WHERE to_phone = ? AND created_at >= ?
+      ORDER BY created_at DESC
+    `).all(toPhone, cutoffTime) as OutboundMessageRow[];
+    return rows.map(mapOutboundMessage);
+  });
+}
+
+export function getOutboundMessageByRefCode(refCode: string): OutboundMessage | undefined {
+  return wrapDbOperation("getOutboundMessageByRefCode", () => {
+    const row = db.prepare(`
+      SELECT * FROM outbound_messages WHERE ref_code = ?
+    `).get(refCode) as OutboundMessageRow | undefined;
+    return row ? mapOutboundMessage(row) : undefined;
+  });
+}
+
+// ============================================
+// FEEDBACK EVENTS
+// ============================================
+
+interface FeedbackEventRow {
+  id: string;
+  conversation_id: string;
+  source: string;
+  feedback: number;
+  reaction_type: string;
+  inbound_message_sid: string | null;
+  target_outbound_message_id: string | null;
+  target_ref_code: string | null;
+  quoted_text: string | null;
+  raw_body: string;
+  reason: string | null;
+  created_at: string;
+}
+
+function mapFeedbackEvent(row: FeedbackEventRow): FeedbackEvent {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    source: row.source as "sms" | "app",
+    feedback: row.feedback,
+    reactionType: row.reaction_type as ReactionType,
+    inboundMessageSid: row.inbound_message_sid,
+    targetOutboundMessageId: row.target_outbound_message_id,
+    targetRefCode: row.target_ref_code,
+    quotedText: row.quoted_text,
+    rawBody: row.raw_body,
+    reason: row.reason,
+    createdAt: row.created_at,
+  };
+}
+
+export function createFeedbackEvent(data: InsertFeedbackEvent): FeedbackEvent {
+  return wrapDbOperation("createFeedbackEvent", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO feedback_events (id, conversation_id, source, feedback, reaction_type, inbound_message_sid, 
+        target_outbound_message_id, target_ref_code, quoted_text, raw_body, reason, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.conversationId,
+      data.source,
+      data.feedback,
+      data.reactionType || "unknown",
+      data.inboundMessageSid || null,
+      data.targetOutboundMessageId || null,
+      data.targetRefCode || null,
+      data.quotedText || null,
+      data.rawBody,
+      data.reason || null,
+      now
+    );
+    
+    return {
+      id,
+      conversationId: data.conversationId,
+      source: data.source as "sms" | "app",
+      feedback: data.feedback,
+      reactionType: (data.reactionType || "unknown") as ReactionType,
+      inboundMessageSid: data.inboundMessageSid || null,
+      targetOutboundMessageId: data.targetOutboundMessageId || null,
+      targetRefCode: data.targetRefCode || null,
+      quotedText: data.quotedText || null,
+      rawBody: data.rawBody,
+      reason: data.reason || null,
+      createdAt: now,
+    };
+  });
+}
+
+export function getFeedbackEventsByConversation(conversationId: string): FeedbackEvent[] {
+  return wrapDbOperation("getFeedbackEventsByConversation", () => {
+    const rows = db.prepare(`
+      SELECT * FROM feedback_events 
+      WHERE conversation_id = ?
+      ORDER BY created_at DESC
+    `).all(conversationId) as FeedbackEventRow[];
+    return rows.map(mapFeedbackEvent);
+  });
+}
+
+export function getFeedbackEventsByRefCode(refCode: string): FeedbackEvent[] {
+  return wrapDbOperation("getFeedbackEventsByRefCode", () => {
+    const rows = db.prepare(`
+      SELECT * FROM feedback_events 
+      WHERE target_ref_code = ?
+      ORDER BY created_at DESC
+    `).all(refCode) as FeedbackEventRow[];
+    return rows.map(mapFeedbackEvent);
   });
 }
 
