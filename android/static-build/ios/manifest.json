@@ -1,0 +1,105 @@
+{
+  "id": "45f86153-7630-4102-8005-0ca07fa0855a",
+  "createdAt": "2025-12-16T19:22:19.225Z",
+  "runtimeVersion": "exposdk:54.0.0",
+  "launchAsset": {
+    "key": "bundle-1765912939225-828",
+    "contentType": "application/javascript",
+    "url": "https://90d774c0-b4b4-45fb-946f-d806b2cb8b3b-00-33xxc4a4d8ay1.kirk.replit.dev/1765912939225-828/_expo/static/js/ios/bundle.js"
+  },
+  "assets": [],
+  "metadata": {},
+  "extra": {
+    "eas": {},
+    "expoClient": {
+      "name": "ZEKE AI",
+      "slug": "zeke-ai",
+      "version": "1.0.0",
+      "orientation": "portrait",
+      "icon": "./assets/images/icon.png",
+      "scheme": "zekeai",
+      "userInterfaceStyle": "dark",
+      "newArchEnabled": true,
+      "ios": {
+        "supportsTablet": true,
+        "bundleIdentifier": "com.zekeai.companion"
+      },
+      "android": {
+        "adaptiveIcon": {
+          "backgroundColor": "#0F172A",
+          "foregroundImage": "./assets/images/android-icon-foreground.png",
+          "backgroundImage": "./assets/images/android-icon-background.png",
+          "monochromeImage": "./assets/images/android-icon-monochrome.png",
+          "foregroundImageUrl": "https://90d774c0-b4b4-45fb-946f-d806b2cb8b3b-00-33xxc4a4d8ay1.kirk.replit.dev/assets/./assets/images/android-icon-foreground.png",
+          "monochromeImageUrl": "https://90d774c0-b4b4-45fb-946f-d806b2cb8b3b-00-33xxc4a4d8ay1.kirk.replit.dev/assets/./assets/images/android-icon-monochrome.png",
+          "backgroundImageUrl": "https://90d774c0-b4b4-45fb-946f-d806b2cb8b3b-00-33xxc4a4d8ay1.kirk.replit.dev/assets/./assets/images/android-icon-background.png"
+        },
+        "package": "com.zekeai.companion",
+        "edgeToEdgeEnabled": true,
+        "predictiveBackGestureEnabled": false
+      },
+      "web": {
+        "output": "single",
+        "favicon": "./assets/images/favicon.png"
+      },
+      "plugins": [
+        [
+          "expo-splash-screen",
+          {
+            "image": "./assets/images/splash-icon.png",
+            "imageWidth": 200,
+            "resizeMode": "contain",
+            "backgroundColor": "#0F172A",
+            "dark": {
+              "backgroundColor": "#0F172A"
+            }
+          }
+        ],
+        "expo-web-browser"
+      ],
+      "experiments": {
+        "reactCompiler": true
+      },
+      "_internal": {
+        "isDebug": false,
+        "projectRoot": "/home/runner/workspace",
+        "dynamicConfigPath": {},
+        "staticConfigPath": "/home/runner/workspace/app.json",
+        "packageJsonPath": "/home/runner/workspace/package.json",
+        "pluginHistory": {
+          "expo-splash-screen": {
+            "name": "expo-splash-screen",
+            "version": "31.0.11"
+          },
+          "expo-web-browser": {
+            "name": "expo-web-browser",
+            "version": "15.0.9"
+          }
+        }
+      },
+      "sdkVersion": "54.0.0",
+      "platforms": [
+        "ios",
+        "android",
+        "web"
+      ],
+      "androidStatusBar": {
+        "backgroundColor": "#0F172A"
+      },
+      "iconUrl": "https://90d774c0-b4b4-45fb-946f-d806b2cb8b3b-00-33xxc4a4d8ay1.kirk.replit.dev/assets/./assets/images/icon.png",
+      "hostUri": "90d774c0-b4b4-45fb-946f-d806b2cb8b3b-00-33xxc4a4d8ay1.kirk.replit.dev/ios"
+    },
+    "expoGo": {
+      "debuggerHost": "90d774c0-b4b4-45fb-946f-d806b2cb8b3b-00-33xxc4a4d8ay1.kirk.replit.dev/ios",
+      "developer": {
+        "tool": "expo-cli",
+        "projectRoot": "/home/runner/workspace"
+      },
+      "packagerOpts": {
+        "dev": false
+      },
+      "mainModuleName": "client/index"
+    },
+    "scopeKey": "@anonymous/zeke-ai-c27ca3e1-9ace-44ec-83b7-52790073a2ad"
+  }
+}
