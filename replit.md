@@ -75,6 +75,14 @@ Key technical implementations and features include:
   - Weekly memory prune: Sundays 3 AM, marks old low-heat memories (< 0.2 heat, > 30 days) as inactive
   - Test harness: `tests/test-feedback-simple.ts` with comprehensive SMS parsing tests
 - **Structured Chat Cards**: Rich interactive cards displayed in chat responses instead of plain text. Supports TaskCard, ReminderCard, WeatherCard, GroceryCard, CalendarCard, ContactCard, and LocationCard. Cards are extracted from AI responses using JSON markers (`<!--CARD:...-->`) or heuristic detection. Implementation in `server/cardExtractor.ts` and `client/src/pages/chat.tsx`.
+- **Mobile App HMAC Authentication**: Secure request verification for ZEKE mobile companion app. Features:
+  - HMAC-SHA256 signature verification with payload format: `${timestamp}.${nonce}.${method}.${path}.${bodyHash}`
+  - 5-minute timestamp tolerance for replay protection
+  - Timing-safe signature comparison to prevent timing attacks
+  - In-memory audit log (last 100 entries) with request tracking
+  - Security logs endpoint at `GET /api/mobile/security/logs`
+  - Protected routes: `/api/tasks/*`, `/api/grocery/*`, `/api/lists/*`, `/api/contacts/*`, `/api/chat/*`, `/api/dashboard`, `/api/memories/*`
+  - Uses `ZEKE_SHARED_SECRET` environment variable (shared with mobile app)
 
 The Python multi-agent system (`python_agents/`) includes production-grade reliability features such as PII Redaction, a Health Endpoint, Request Tracing, Graceful Shutdown, and configurable environment variables for runtime control.
 
