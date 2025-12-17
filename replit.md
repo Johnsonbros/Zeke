@@ -50,6 +50,7 @@ Key technical implementations and features include:
 - **MMS Image Processing**: Receives, downloads, and analyzes images sent via SMS/MMS using GPT-4o Vision, enabling ZEKE to understand photos of people, places, and occasions for memory creation and contact updates.
 - **Mobile UI Enhancements**: Includes swipe gestures for sidebar navigation and a customizable Quick Menu bottom drawer.
 - **Replit Key-Value Store Integration**: Persistent caching layer for session state, preferences, and rate limiting.
+- **Town Copy Cache**: LRU cache with version-based invalidation for town-specific content (`lib/cache/townCopy.ts`). Features `getTownCopy(town, service)` API, async content loader support, TTL expiration, and `onTownCopyChange()` invalidation hook.
 - **Async Memory Processing Queue**: Robust job queue system for processing Omi memories with priority-based scheduling and retry mechanisms.
 - **Specialized Intelligence Workers**: Background workers for deep memory analysis (TaskExtractor, CommitmentTracker, RelationshipAnalyzer).
 - **Anticipation Engine & Morning Briefings**: Generates personalized morning briefings summarizing pending tasks, meetings, and commitments.
