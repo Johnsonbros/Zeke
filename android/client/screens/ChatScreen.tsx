@@ -59,6 +59,7 @@ export default function ChatScreen() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [inputText, setInputText] = useState("");
   const [isInitializing, setIsInitializing] = useState(true);
+  const [initError, setInitError] = useState<string | null>(null);
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
 
@@ -102,19 +103,27 @@ export default function ChatScreen() {
           const url = new URL(`/api/chat/sessions/${storedSessionId}/messages`, getApiUrl());
           const res = await fetch(url.toString(), { credentials: 'include' });
           if (res.ok) {
-            setSessionId(storedSessionId);
-            setIsInitializing(false);
-            return;
+            const contentType = res.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+              setSessionId(storedSessionId);
+              setIsInitializing(false);
+              return;
+            }
           }
         }
         
         const createRes = await apiRequest('POST', '/api/chat/sessions', { title: 'Chat with ZEKE' });
+        const contentType = createRes.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Server returned non-JSON response');
+        }
         const newSession: ApiChatSession = await createRes.json();
         await AsyncStorage.setItem(CHAT_SESSION_KEY, newSession.id);
         setSessionId(newSession.id);
       }
     } catch (error) {
       console.error('Failed to initialize chat session:', error);
+      setInitError('Unable to connect to chat. Please check your connection and try again.');
     } finally {
       setIsInitializing(false);
     }
@@ -138,6 +147,10 @@ export default function ChatScreen() {
         const url = new URL(`/api/chat/sessions/${sessionId}/messages`, getApiUrl());
         const res = await fetch(url.toString(), { credentials: 'include' });
         if (!res.ok) throw new Error('Failed to fetch messages');
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Server returned non-JSON response');
+        }
         return res.json();
       }
     },
@@ -213,6 +226,27 @@ export default function ChatScreen() {
           <ThemedText type="body" secondary style={{ marginTop: Spacing.md }}>
             Loading conversation...
           </ThemedText>
+        </View>
+      );
+    }
+    if (initError) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Feather name="wifi-off" size={48} color={Colors.dark.textSecondary} />
+          <ThemedText type="h3" style={{ marginBottom: Spacing.sm, marginTop: Spacing.lg }}>Connection Issue</ThemedText>
+          <ThemedText type="body" secondary style={{ textAlign: "center", marginBottom: Spacing.lg }}>
+            {initError}
+          </ThemedText>
+          <Pressable
+            onPress={() => {
+              setInitError(null);
+              setIsInitializing(true);
+              initializeSession();
+            }}
+            style={({ pressed }) => [styles.retryButton, pressed && { opacity: 0.7 }]}
+          >
+            <ThemedText type="body" style={{ color: Colors.dark.primary }}>Retry</ThemedText>
+          </Pressable>
         </View>
       );
     }
@@ -352,5 +386,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: Spacing.xl,
+  },
+  retryButton: {
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.dark.primary,
   },
 });

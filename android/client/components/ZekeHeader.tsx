@@ -63,18 +63,24 @@ export function ZekeHeaderButtons() {
     navigation.navigate("HomeTab", { screen: "Settings" });
   };
 
+  const hitSlop = { top: 12, bottom: 12, left: 12, right: 12 };
+
   const ButtonContent = (
     <>
       <Pressable
         onPress={handleChatPress}
+        hitSlop={hitSlop}
+        android_ripple={{ color: "rgba(255,255,255,0.2)", borderless: true, radius: 22 }}
         style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
       >
         <View style={styles.chatButtonGlow} />
         <GradientIcon name="message-circle" size={24} colors={Gradients.accent} />
       </Pressable>
-      <View style={styles.divider} />
+      <View style={styles.divider} pointerEvents="none" />
       <Pressable
         onPress={handleSettingsPress}
+        hitSlop={hitSlop}
+        android_ripple={{ color: "rgba(255,255,255,0.2)", borderless: true, radius: 22 }}
         style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
       >
         <Feather name="settings" size={22} color={Colors.dark.textSecondary} />
@@ -84,14 +90,15 @@ export function ZekeHeaderButtons() {
 
   if (Platform.OS === "ios") {
     return (
-      <BlurView intensity={40} tint="dark" style={styles.glassContainer}>
+      <View style={styles.glassContainer} pointerEvents="box-none">
+        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
         <View style={styles.glassInner}>{ButtonContent}</View>
-      </BlurView>
+      </View>
     );
   }
 
   return (
-    <View style={[styles.glassContainer, styles.glassContainerFallback]}>
+    <View style={[styles.glassContainer, styles.glassContainerFallback]} pointerEvents="box-none">
       <View style={styles.glassInner}>{ButtonContent}</View>
     </View>
   );
