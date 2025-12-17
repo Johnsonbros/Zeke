@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { registerOmiRoutes } from "./omi-routes";
+import { createMobileAuthMiddleware, registerSecurityLogsEndpoint } from "./mobileAuth";
 import { extractCardsFromResponse } from "./cardExtractor";
 import { syncGitHubRepo, pushToGitHub, createGitHubWebhook } from "./github";
 import { 
@@ -647,6 +648,10 @@ export async function registerRoutes(
   
   // Wire up AI logging to the reliability wrapper so all wrapOpenAI calls are logged
   setAiLoggerFunction(logAiEvent);
+  
+  // Register ZEKE mobile app HMAC authentication middleware for protected routes
+  app.use(createMobileAuthMiddleware());
+  registerSecurityLogsEndpoint(app);
   
   // Set up SMS callback for tools (reminders and send_sms tool)
   setSendSmsCallback(async (phone: string, message: string, source?: string) => {
