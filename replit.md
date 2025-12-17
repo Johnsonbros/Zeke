@@ -74,6 +74,7 @@ Key technical implementations and features include:
   - Memory heat tracking: tracks access count, heat score (0-1), last access time
   - Weekly memory prune: Sundays 3 AM, marks old low-heat memories (< 0.2 heat, > 30 days) as inactive
   - Test harness: `tests/test-feedback-simple.ts` with comprehensive SMS parsing tests
+- **Structured Chat Cards**: Rich interactive cards displayed in chat responses instead of plain text. Supports TaskCard, ReminderCard, WeatherCard, GroceryCard, CalendarCard, ContactCard, and LocationCard. Cards are extracted from AI responses using JSON markers (`<!--CARD:...-->`) or heuristic detection. Implementation in `server/cardExtractor.ts` and `client/src/pages/chat.tsx`.
 
 The Python multi-agent system (`python_agents/`) includes production-grade reliability features such as PII Redaction, a Health Endpoint, Request Tracing, Graceful Shutdown, and configurable environment variables for runtime control.
 
