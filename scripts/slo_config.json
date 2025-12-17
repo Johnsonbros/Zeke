@@ -1,0 +1,7 @@
+{
+  "minPassRate": 0.95,
+  "maxP50LatencyMs": 500,
+  "maxP95LatencyMs": 2000,
+  "maxCostPerRun": 1.0,
+  "maxAgeHours": 168
+}

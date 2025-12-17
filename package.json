@@ -19,7 +19,8 @@
     "db:init": "tsx script/db-init.ts",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx server/scripts/seed.ts",
-    "smoke": "tsx script/smoke.ts"
+    "smoke": "tsx script/smoke.ts",
+    "slo:check": "tsx scripts/slo_check.ts"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.27.0",
