@@ -446,6 +446,8 @@ import { parseSmsReaction, buildFeedbackEvent, generateFeedbackTwimlResponse } f
 import { createFeedbackEvent } from "./db";
 import { startFeedbackTrainer } from "./jobs/feedbackTrainer";
 import { trackUserMessage, isRepeatedRequest, createImplicitFeedback } from "./feedback/implicitFeedback";
+import { boostMemoryHeat, downweightMemoryHeat, boostMemoriesByIds, downweightMemoriesByIds } from "./db-memory-heat";
+import { startMemoryPruneScheduler } from "./jobs/memoryPruneScheduler";
 
 // Format phone number for Twilio - handles various input formats
 function formatPhoneNumber(phone: string): string {
@@ -9542,6 +9544,10 @@ export async function registerRoutes(
   // Start the feedback trainer on app initialization (2:30 AM daily)
   startFeedbackTrainer("30 2 * * *");
   console.log("[FeedbackTrainer] Started on app initialization");
+
+  // Start memory prune scheduler (weekly, Sunday 3 AM)
+  startMemoryPruneScheduler("0 3 * * 0");
+  console.log("[MemoryPrune] Prune scheduler started on app initialization");
   
   return httpServer;
 }

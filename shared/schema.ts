@@ -69,6 +69,11 @@ export const memoryNotes = sqliteTable("memory_notes", {
   confirmationCount: integer("confirmation_count").default(0), // Times this memory was confirmed accurate
   usageCount: integer("usage_count").default(0), // Times this memory was used in responses
   lastUsedAt: text("last_used_at"), // When this memory was last used
+  // Heat tracking for memory prioritization
+  accessCount: integer("access_count").default(0), // Times this memory was retrieved/accessed
+  lastAccessedAt: text("last_accessed_at"), // When this memory was last accessed
+  heatScore: text("heat_score").default("0.5"), // 0-1 heat score (from feedback + usage)
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true), // Mark for pruning
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
