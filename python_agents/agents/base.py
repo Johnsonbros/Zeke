@@ -22,6 +22,7 @@ from openai.types.responses import ResponseTextDeltaEvent
 
 from ..bridge import get_bridge, NodeBridge
 from ..tracing import TraceContext, get_tracing_logger, create_trace_context
+from ..guards import RunBudget, RunBudgetExceeded
 
 
 logger = logging.getLogger(__name__)
@@ -248,6 +249,7 @@ class AgentContext:
         phone_number: Optional phone number for SMS context
         metadata: Additional metadata
         trace_context: Optional tracing context for audit logging
+        run_budget: Optional run budget guard for limiting execution
     """
     user_message: str
     conversation_id: str | None = None
@@ -256,6 +258,7 @@ class AgentContext:
     phone_number: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     trace_context: TraceContext | None = None
+    run_budget: RunBudget | None = None
     
     def ensure_trace_context(self) -> TraceContext:
         """Get or create a trace context for this request."""
@@ -265,6 +268,28 @@ class AgentContext:
                 "source": self.metadata.get("source", "unknown")
             })
         return self.trace_context
+    
+    def ensure_run_budget(
+        self, 
+        max_tool_calls: int = RunBudget.DEFAULT_MAX_TOOL_CALLS,
+        timeout_seconds: float = RunBudget.DEFAULT_TIMEOUT_SECONDS
+    ) -> RunBudget:
+        """
+        Get or create a run budget guard for this request.
+        
+        Args:
+            max_tool_calls: Maximum tool calls allowed (default: 25)
+            timeout_seconds: Maximum execution time in seconds (default: 120)
+            
+        Returns:
+            RunBudget: The run budget guard
+        """
+        if self.run_budget is None:
+            self.run_budget = RunBudget(
+                max_tool_calls=max_tool_calls,
+                timeout_seconds=timeout_seconds
+            )
+        return self.run_budget
 
 
 class BaseAgent(ABC):
@@ -607,6 +632,9 @@ class BaseAgent(ABC):
         """
         Execute a tool through the Node.js bridge with optional tracing.
         
+        Checks run budget before execution and records tool call after.
+        If budget is exceeded, emits RUN_BUDGET_EXCEEDED event and raises.
+        
         Args:
             tool_name: Name of the tool to execute
             arguments: Arguments for the tool
@@ -614,7 +642,29 @@ class BaseAgent(ABC):
             
         Returns:
             dict: Tool execution result
+            
+        Raises:
+            RunBudgetExceeded: If the run budget has been exceeded
         """
+        if context and context.run_budget:
+            if not context.run_budget.can_execute_tool():
+                summary = context.run_budget.get_summary()
+                if context.trace_context:
+                    trace_logger.log_run_budget_exceeded(
+                        context.trace_context,
+                        reason=summary.exceeded_reason.value if summary.exceeded_reason else "unknown",
+                        tool_calls_used=summary.tool_calls_used,
+                        tool_calls_limit=summary.tool_calls_limit,
+                        elapsed_seconds=summary.elapsed_seconds,
+                        timeout_seconds=summary.timeout_seconds,
+                        tools_called=summary.tools_called,
+                        agent_id=self.agent_id.value
+                    )
+                raise RunBudgetExceeded(summary)
+        
+        if context and context.run_budget:
+            context.run_budget.record_tool_call(tool_name)
+        
         span_id = None
         if context and context.trace_context:
             _, span_id = trace_logger.log_tool_start(

@@ -40,6 +40,7 @@ class TraceEventType(str, Enum):
     VALIDATION_COMPLETE = "validation_complete"
     MEMORY_ACCESS = "memory_access"
     SECURITY_CHECK = "security_check"
+    RUN_BUDGET_EXCEEDED = "run_budget_exceeded"
 
 
 @dataclass
@@ -537,6 +538,47 @@ class TracingLogger:
             operation=operation,
             memory_type=memory_type,
             count=count
+        )
+        self.log_event(event)
+        return event
+    
+    def log_run_budget_exceeded(
+        self,
+        context: TraceContext,
+        reason: str,
+        tool_calls_used: int,
+        tool_calls_limit: int,
+        elapsed_seconds: float,
+        timeout_seconds: float,
+        tools_called: list[str],
+        agent_id: str | None = None
+    ) -> TraceEvent:
+        """
+        Log a run budget exceeded event.
+        
+        This is emitted when an agent run is stopped due to exceeding
+        the tool call limit or timeout.
+        
+        Args:
+            context: The trace context
+            reason: Reason for budget exhaustion ("tool_calls" or "timeout")
+            tool_calls_used: Number of tool calls made
+            tool_calls_limit: Maximum tool calls allowed
+            elapsed_seconds: Time elapsed in seconds
+            timeout_seconds: Maximum time allowed
+            tools_called: List of tool names that were called
+            agent_id: Optional agent ID
+        """
+        event = context.add_event(
+            TraceEventType.RUN_BUDGET_EXCEEDED,
+            agent_id=agent_id,
+            reason=reason,
+            tool_calls_used=tool_calls_used,
+            tool_calls_limit=tool_calls_limit,
+            elapsed_seconds=round(elapsed_seconds, 2),
+            timeout_seconds=timeout_seconds,
+            tools_called=tools_called,
+            summary=f"Budget exceeded: {reason} ({tool_calls_used}/{tool_calls_limit} calls, {elapsed_seconds:.1f}s/{timeout_seconds}s)"
         )
         self.log_event(event)
         return event

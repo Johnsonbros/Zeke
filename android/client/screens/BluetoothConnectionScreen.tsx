@@ -35,6 +35,7 @@ export default function BluetoothConnectionScreen() {
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isMockMode = bluetoothService.getIsMockMode();
+  const bleStatus = bluetoothService.getBleStatus();
 
   useEffect(() => {
     const unsubscribeDiscovery = bluetoothService.onDeviceDiscovered((device) => {
@@ -189,15 +190,28 @@ export default function BluetoothConnectionScreen() {
     >
       <View style={[styles.warningCard, { backgroundColor: theme.backgroundDefault }]}>
         <View style={styles.warningIconContainer}>
-          <Feather name="info" size={20} color={Colors.dark.warning} />
+          <Feather 
+            name={bleStatus.mode === "real" ? "check-circle" : "info"} 
+            size={20} 
+            color={bleStatus.mode === "real" ? Colors.dark.success : Colors.dark.warning} 
+          />
         </View>
         <View style={styles.warningContent}>
           <ThemedText type="body" style={{ fontWeight: "600" }}>
-            Expo Go Limitation
+            {bleStatus.mode === "real" ? "Bluetooth Ready" : "Simulation Mode"}
           </ThemedText>
           <ThemedText type="small" secondary style={{ marginTop: Spacing.xs }}>
-            Bluetooth Low Energy requires a native build. This demo shows the pairing UI with simulated devices.
+            {bleStatus.reason}
           </ThemedText>
+          <View style={styles.bleStatusBadge}>
+            <View style={[
+              styles.bleStatusDot, 
+              { backgroundColor: bleStatus.mode === "real" ? Colors.dark.success : Colors.dark.warning }
+            ]} />
+            <ThemedText type="caption" secondary>
+              {bleStatus.mode.toUpperCase()} BLE ({bleStatus.platform})
+            </ThemedText>
+          </View>
         </View>
       </View>
 
@@ -358,6 +372,17 @@ const styles = StyleSheet.create({
   },
   warningContent: {
     flex: 1,
+  },
+  bleStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: Spacing.sm,
+    gap: Spacing.xs,
+  },
+  bleStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   scanSection: {
     alignItems: "center",

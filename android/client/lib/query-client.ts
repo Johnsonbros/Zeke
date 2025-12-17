@@ -21,7 +21,8 @@ export function getApiUrl(): string {
   let host = process.env.EXPO_PUBLIC_DOMAIN;
 
   if (!host) {
-    throw new Error("EXPO_PUBLIC_DOMAIN is not set");
+    // Fallback for standalone builds - use the main ZEKE backend
+    return 'https://zekeai.replit.app/';
   }
 
   let url = new URL(`https://${host}`);
@@ -45,7 +46,8 @@ export function getLocalApiUrl(): string {
   let host = process.env.EXPO_PUBLIC_DOMAIN;
 
   if (!host) {
-    throw new Error("EXPO_PUBLIC_DOMAIN is not set");
+    // Fallback for standalone builds - use the main ZEKE backend
+    return 'https://zekeai.replit.app/';
   }
 
   let url = new URL(`https://${host}`);

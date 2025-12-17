@@ -1,0 +1,41 @@
+# Node modules - installed during build
+node_modules/
+
+# Build outputs
+dist/
+build/
+.expo/
+web-build/
+
+# Git
+.git/
+
+# Development files
+*.log
+.DS_Store
+coverage/
+*.test.js
+*.spec.js
+
+# Sync folder from GitHub integration
+zeke-sync/
+
+# Large asset folders
+raw-assets/
+design-files/
+
+# Temp files
+*.tmp
+*.temp
+.cache/
+
+# IDE
+.idea/
+.vscode/
+
+# Attached assets (generated images)
+attached_assets/
+
+# Documentation
+*.md
+!README.md

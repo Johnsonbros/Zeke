@@ -684,8 +684,7 @@ export default function CalendarScreen() {
         style={[
           styles.headerControls,
           {
-            paddingTop: headerHeight + Spacing.md,
-            backgroundColor: theme.backgroundRoot,
+            marginTop: headerHeight + Spacing.md,
           },
         ]}
       >

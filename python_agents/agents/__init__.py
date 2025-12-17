@@ -103,6 +103,12 @@ from ..tracing import (
     create_trace_context,
 )
 
+from ..guards import (
+    RunBudget,
+    RunBudgetExceeded,
+    BudgetExceededReason,
+)
+
 __all__ = [
     "BaseAgent",
     "AgentId",
@@ -158,4 +164,7 @@ __all__ = [
     "TracingLogger",
     "get_tracing_logger",
     "create_trace_context",
+    "RunBudget",
+    "RunBudgetExceeded",
+    "BudgetExceededReason",
 ]

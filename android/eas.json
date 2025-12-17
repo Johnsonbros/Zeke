@@ -12,11 +12,19 @@
       "android": {
         "buildType": "apk"
       },
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_ZEKE_BACKEND_URL": "https://zekeai.replit.app",
+        "EXPO_PUBLIC_DOMAIN": "zekeai.replit.app:5000"
+      }
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_ZEKE_BACKEND_URL": "https://zekeai.replit.app",
+        "EXPO_PUBLIC_DOMAIN": "zekeai.replit.app:5000"
       }
     }
   },

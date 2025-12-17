@@ -344,8 +344,7 @@ export default function TasksScreen() {
         style={[
           styles.headerControls,
           {
-            paddingTop: headerHeight + Spacing.md,
-            backgroundColor: theme.backgroundRoot,
+            marginTop: headerHeight + Spacing.md,
           },
         ]}
       >

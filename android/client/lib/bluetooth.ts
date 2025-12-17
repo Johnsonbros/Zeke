@@ -2,7 +2,7 @@ import { Platform, PermissionsAndroid } from "react-native";
 import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Mock types for Expo Go compatibility - real BLE only works in native builds
+// Types for BLE devices and characteristics
 type Device = {
   id: string;
   name: string | null;
@@ -27,8 +27,26 @@ type Characteristic = {
   value: string | null;
 };
 
-// BleManager stub for Expo Go - real implementation requires native build
-class BleManager {
+// Determine if we're in mock mode (Expo Go or web)
+const isMockEnvironment = (): boolean => {
+  if (Platform.OS === "web") return true;
+  if (Constants.appOwnership === "expo") return true;
+  return false;
+};
+
+// Real BleManager from react-native-ble-plx (for native builds)
+let RealBleManager: any = null;
+try {
+  if (!isMockEnvironment()) {
+    RealBleManager = require("react-native-ble-plx").BleManager;
+    console.log("BLE: Using real react-native-ble-plx BleManager for native build");
+  }
+} catch (e) {
+  console.log("BLE: react-native-ble-plx not available, using mock mode");
+}
+
+// Mock BleManager stub for Expo Go - real implementation requires native build
+class MockBleManager {
   private stateChangeCallback: ((state: string) => void) | null = null;
 
   state(): Promise<string> {
@@ -59,6 +77,21 @@ class BleManager {
 
   destroy(): void {}
 }
+
+// Factory function to create appropriate BleManager
+function createBleManager(): MockBleManager {
+  if (RealBleManager && !isMockEnvironment()) {
+    console.log("BLE: Creating real BleManager instance");
+    return new RealBleManager();
+  }
+  console.log("BLE: Creating mock BleManager instance (Expo Go mode)");
+  return new MockBleManager();
+}
+
+// Export whether we're using real BLE (for UI display)
+export const isRealBleAvailable = (): boolean => {
+  return RealBleManager !== null && !isMockEnvironment();
+};
 
 const STORAGE_KEY = "@zeke/connected_device";
 
@@ -275,7 +308,7 @@ class LimitlessProtocol {
 }
 
 class BluetoothService {
-  private bleManager: BleManager | null = null;
+  private bleManager: MockBleManager | null = null;
   private connectedBleDevice: Device | null = null;
   private isScanning: boolean = false;
   private connectionState: ConnectionState = "disconnected";
@@ -304,9 +337,9 @@ class BluetoothService {
   }
 
   private initializeBleManager(): void {
-    if (!this.isMockMode) {
-      this.bleManager = new BleManager();
-    }
+    // Always create a BleManager - use real or mock based on environment
+    this.bleManager = createBleManager();
+    console.log("BLE: Manager initialized, mock mode:", this.isMockMode);
   }
 
   private async requestBluetoothPermissions(): Promise<boolean> {
@@ -347,7 +380,26 @@ class BluetoothService {
   }
 
   private get isMockMode(): boolean {
-    return Platform.OS === "web" || Constants.appOwnership === "expo";
+    return isMockEnvironment();
+  }
+
+  // Public method to check if using real BLE
+  public isUsingRealBle(): boolean {
+    return isRealBleAvailable();
+  }
+
+  // Get BLE status for UI display
+  public getBleStatus(): { mode: "real" | "mock"; platform: string; reason: string } {
+    if (Platform.OS === "web") {
+      return { mode: "mock", platform: "web", reason: "BLE not available on web" };
+    }
+    if (Constants.appOwnership === "expo") {
+      return { mode: "mock", platform: "expo-go", reason: "Use native APK for real BLE" };
+    }
+    if (isRealBleAvailable()) {
+      return { mode: "real", platform: Platform.OS, reason: "Native BLE enabled" };
+    }
+    return { mode: "mock", platform: Platform.OS, reason: "BLE library not loaded" };
   }
 
   private async loadConnectedDevice(): Promise<void> {

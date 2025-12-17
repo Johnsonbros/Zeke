@@ -729,7 +729,7 @@ export default function CommunicationsHubScreen() {
         style={[
           styles.contentContainer,
           {
-            paddingTop: headerHeight + Spacing.lg,
+            marginTop: headerHeight + Spacing.lg,
             paddingBottom: tabBarHeight + Spacing.xl,
           },
         ]}

@@ -34,7 +34,9 @@ from .agents import (
     get_safety_auditor,
     get_omi_analyst,
     get_foresight_strategist,
+    RunBudgetExceeded,
 )
+from .guards import RunBudget
 
 logger = logging.getLogger(__name__)
 trace_logger = get_tracing_logger()
@@ -216,12 +218,18 @@ async def chat(request: ChatRequest) -> ChatResponse:
         if learned_preferences:
             metadata_with_preferences["learned_preferences_prompt"] = learned_preferences
         
+        run_budget = RunBudget(
+            max_tool_calls=RunBudget.DEFAULT_MAX_TOOL_CALLS,
+            timeout_seconds=RunBudget.DEFAULT_TIMEOUT_SECONDS
+        )
+        
         context = AgentContext(
             user_message=request.message,
             conversation_id=request.conversation_id,
             phone_number=request.phone_number,
             metadata=metadata_with_preferences,
             trace_context=trace_ctx,
+            run_budget=run_budget,
         )
         
         conductor = get_configured_conductor()
@@ -230,6 +238,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         
         completion_status = conductor.get_completion_status()
         handoff_chain = conductor.get_handoff_chain()
+        budget_summary = run_budget.get_summary().to_dict()
         
         trace_logger.log_request_complete(
             trace_ctx,
@@ -247,6 +256,24 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 "completion_status": completion_status.value,
                 "completion_message": conductor.last_completion_message,
                 "handoff_chain": handoff_chain,
+                "trace_summary": trace_ctx.to_summary(),
+                "budget_summary": budget_summary,
+            }
+        )
+    
+    except RunBudgetExceeded as e:
+        logger.warning(f"Run budget exceeded: {e.summary.format_message()} [trace_id={trace_ctx.trace_id}]")
+        trace_logger.log_request_complete(trace_ctx, success=False)
+        
+        return ChatResponse(
+            response=f"I had to stop early because {e.summary.format_message()}. Here's a summary of what I attempted: {', '.join(e.summary.tools_called[:5])}{'...' if len(e.summary.tools_called) > 5 else ''}",
+            agent_id="conductor",
+            conversation_id=request.conversation_id,
+            trace_id=trace_ctx.trace_id,
+            metadata={
+                "processed_by": "python_agents",
+                "completion_status": "budget_exceeded",
+                "budget_summary": e.summary.to_dict(),
                 "trace_summary": trace_ctx.to_summary(),
             }
         )

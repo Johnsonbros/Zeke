@@ -3,6 +3,7 @@ import { View, StyleSheet, Platform } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import HomeStackNavigator from "@/navigation/HomeStackNavigator";
 import CommunicationStackNavigator from "@/navigation/CommunicationStackNavigator";
@@ -24,6 +25,10 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export default function MainTabNavigator() {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  const androidBottomPadding = Math.max(insets.bottom, 16);
+  const tabBarHeight = Platform.OS === "android" ? 60 + androidBottomPadding : 80;
 
   return (
     <View style={styles.container}>
@@ -40,8 +45,8 @@ export default function MainTabNavigator() {
             }),
             borderTopWidth: 0,
             elevation: 0,
-            height: 80,
-            paddingBottom: Platform.OS === "ios" ? 24 : 12,
+            height: tabBarHeight,
+            paddingBottom: Platform.OS === "ios" ? 24 : androidBottomPadding,
           },
           tabBarBackground: () =>
             Platform.OS === "ios" ? (
