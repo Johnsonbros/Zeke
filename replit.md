@@ -59,6 +59,15 @@ Key technical implementations and features include:
   - Dashboard widget showing today's/week's usage, costs, latency, and error rates
   - SMS-based anomaly alerting (hourly checks for cost spikes, latency increases, error rate changes)
   - System prompt hashing for drift detection without storing sensitive content
+- **Feedback Learning Loop System** (COMPLETE):
+  - SMS feedback capture: emoji reactions (👍/👎), iMessage reactions (Liked/Disliked/Loved/etc), ref codes, quoted text
+  - Implicit feedback detection: tracks repeated requests (10-minute window, 65% similarity threshold) and auto-creates -1 feedback
+  - Reference codes: 4-character alphanumeric (no vowels) auto-appended to outbound SMS
+  - Feedback parser: `server/feedback/parseSmsReaction.ts` with 8/10 test cases passing
+  - Feedback trainer: nightly job (2:30 AM) clusters feedback into style profiles (tone, verbosity, correctness)
+  - Memory heat tracking: tracks access count, heat score (0-1), last access time
+  - Weekly memory prune: Sundays 3 AM, marks old low-heat memories (< 0.2 heat, > 30 days) as inactive
+  - Test harness: `tests/test-feedback-simple.ts` with comprehensive SMS parsing tests
 
 The Python multi-agent system (`python_agents/`) includes production-grade reliability features such as PII Redaction, a Health Endpoint, Request Tracing, Graceful Shutdown, and configurable environment variables for runtime control.
 

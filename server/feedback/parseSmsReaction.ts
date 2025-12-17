@@ -77,9 +77,11 @@ export function parseSmsReaction(messageBody: string): ParsedReaction {
       const quotedText = match[1];
       const reason = match[2];
 
+      // Questioned and Disliked are negative feedback
+      const isNegativeFeedback = type === "disliked" || type === "questioned";
       return {
         isReaction: true,
-        feedback: type === "disliked" ? (-1 as const) : (1 as const),
+        feedback: isNegativeFeedback ? (-1 as const) : (1 as const),
         reactionType: type,
         quotedText,
         reason: reason?.trim(),
