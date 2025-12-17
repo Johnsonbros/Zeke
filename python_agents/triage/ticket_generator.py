@@ -17,7 +17,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from python_agents.guards.tool_policy import get_policy_validator
+from python_agents.utils.pii import redact_object
 
 
 class FailureType(Enum):
@@ -240,9 +240,8 @@ class TriageTicketGenerator:
             )
     
     def _redact_inputs(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        """Redact sensitive information from inputs."""
-        validator = get_policy_validator()
-        return validator.redact_output("_global", inputs)
+        """Redact sensitive information from inputs using comprehensive PII masking."""
+        return redact_object(inputs)
     
     def create_ticket(
         self,

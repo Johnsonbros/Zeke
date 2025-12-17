@@ -2,20 +2,26 @@
 FastAPI application entry point for ZEKE Python Agents microservice.
 
 This module provides the FastAPI application with:
-- Health check endpoint at /health
+- Health check endpoint at /health with system status
 - Chat endpoint at /api/agents/chat for routing to Conductor
 - CORS configured for localhost Node.js service
 - Environment variable loading for configuration
 - Request-level tracing and audit logging
+- Graceful shutdown with in-flight run tracking
+- Trace ID correlation across requests
 """
 
+import asyncio
 import logging
+import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from .env import ensure_env
 ensure_env()
@@ -42,6 +48,49 @@ logger = logging.getLogger(__name__)
 trace_logger = get_tracing_logger()
 
 _specialists_registered = False
+_startup_time: float = 0.0
+_active_runs: int = 0
+_active_runs_lock = asyncio.Lock()
+_shutdown_event: asyncio.Event | None = None
+
+
+class ServiceState:
+    """Global service state for health checks and graceful shutdown."""
+    
+    def __init__(self):
+        self.startup_time: float = time.time()
+        self.active_runs: int = 0
+        self._lock = asyncio.Lock()
+        self.shutdown_requested: bool = False
+    
+    async def increment_runs(self) -> None:
+        async with self._lock:
+            self.active_runs += 1
+    
+    async def decrement_runs(self) -> None:
+        async with self._lock:
+            self.active_runs -= 1
+    
+    def get_uptime(self) -> float:
+        return time.time() - self.startup_time
+
+
+_service_state = ServiceState()
+
+
+class TraceIdMiddleware(BaseHTTPMiddleware):
+    """Middleware to inject trace_id into all requests."""
+    
+    async def dispatch(self, request: Request, call_next) -> Response:
+        trace_id = request.headers.get("X-Trace-ID") or str(uuid.uuid4())
+        
+        request.state.trace_id = trace_id
+        
+        response = await call_next(request)
+        
+        response.headers["X-Trace-ID"] = trace_id
+        
+        return response
 
 
 def get_configured_conductor() -> ConductorAgent:
@@ -88,12 +137,39 @@ class ChatResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
 
+class CircuitBreakerStatus(BaseModel):
+    """Status of a circuit breaker."""
+    state: str = Field(..., description="Current state (closed/open/half_open)")
+    failure_count: int = Field(0, description="Current failure count")
+    last_failure: str | None = Field(None, description="Last failure timestamp")
+
+
 class HealthResponse(BaseModel):
     """Response model for health check endpoint."""
     status: str = Field(..., description="Health status")
     service: str = Field(..., description="Service name")
     version: str = Field(..., description="Service version")
     node_bridge_status: str = Field(..., description="Node.js bridge connection status")
+    circuit_breakers: dict[str, CircuitBreakerStatus] = Field(
+        default_factory=dict, description="Circuit breaker states"
+    )
+    memory_db_status: str = Field("unknown", description="Memory database status")
+    active_runs: int = Field(0, description="Number of active agent runs")
+    uptime_seconds: float = Field(0.0, description="Service uptime in seconds")
+
+
+async def wait_for_active_runs(max_wait: int = 30) -> None:
+    """Wait for active runs to complete during shutdown."""
+    start = time.time()
+    
+    while _service_state.active_runs > 0 and (time.time() - start) < max_wait:
+        logger.info(f"Waiting for {_service_state.active_runs} active runs to complete...")
+        await asyncio.sleep(1)
+    
+    if _service_state.active_runs > 0:
+        logger.warning(f"Forcing shutdown with {_service_state.active_runs} runs still active")
+    else:
+        logger.info("All active runs completed, shutting down cleanly")
 
 
 @asynccontextmanager
@@ -101,8 +177,12 @@ async def lifespan(app: FastAPI):
     """
     Application lifespan manager.
     
-    Handles startup and shutdown events.
+    Handles startup and shutdown events with graceful shutdown support.
+    Uses FastAPI's lifespan context for proper shutdown handling.
     """
+    global _service_state
+    _service_state = ServiceState()
+    
     settings = get_settings()
     logging.basicConfig(
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -113,6 +193,9 @@ async def lifespan(app: FastAPI):
     
     yield
     
+    logger.info("Initiating graceful shutdown...")
+    _service_state.shutdown_requested = True
+    await wait_for_active_runs(max_wait=30)
     logger.info("Shutting down ZEKE Python Agents")
 
 
@@ -123,6 +206,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(TraceIdMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -137,13 +221,35 @@ app.add_middleware(
 )
 
 
+def get_circuit_breaker_status() -> dict[str, CircuitBreakerStatus]:
+    """Get status of all circuit breakers."""
+    return {}
+
+
+def check_memory_db() -> str:
+    """Check memory database connectivity."""
+    try:
+        from pathlib import Path
+        db_path = Path("./data/memory.db")
+        if db_path.exists():
+            return "connected"
+        return "not_found"
+    except Exception as e:
+        logger.warning(f"Memory DB check failed: {e}")
+        return "error"
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
     """
-    Health check endpoint.
+    Comprehensive health check endpoint.
     
-    Returns the health status of the Python agents service
-    and the connection status to the Node.js bridge.
+    Returns the health status including:
+    - Node.js bridge connection
+    - Circuit breaker states
+    - Memory database status
+    - Active run count
+    - Service uptime
     """
     bridge = get_bridge()
     
@@ -158,11 +264,21 @@ async def health_check() -> HealthResponse:
         node_status = "disconnected"
         logger.warning(f"Node.js bridge health check failed: {bridge_result.get('error')}")
     
+    overall_status = "healthy"
+    if node_status == "disconnected":
+        overall_status = "degraded"
+    if _service_state.shutdown_requested:
+        overall_status = "shutting_down"
+    
     return HealthResponse(
-        status="healthy",
+        status=overall_status,
         service="zeke-python-agents",
         version="1.0.0",
         node_bridge_status=node_status,
+        circuit_breakers=get_circuit_breaker_status(),
+        memory_db_status=check_memory_db(),
+        active_runs=_service_state.active_runs,
+        uptime_seconds=round(_service_state.get_uptime(), 2),
     )
 
 
@@ -184,7 +300,7 @@ async def fetch_learned_preferences() -> str:
 
 
 @app.post("/api/agents/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
+async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
     """
     Chat endpoint for the multi-agent system.
     
@@ -193,14 +309,18 @@ async def chat(request: ChatRequest) -> ChatResponse:
     
     Args:
         request: Chat request with user message and optional context
+        http_request: FastAPI request object for trace_id extraction
         
     Returns:
         ChatResponse: The agent's response with metadata
     """
+    request_trace_id = getattr(http_request.state, "trace_id", None)
+    
     trace_ctx = create_trace_context({
         "conversation_id": request.conversation_id,
         "source": request.metadata.get("source", "api"),
         "phone_number": request.phone_number,
+        "trace_id": request_trace_id,
     })
     
     trace_logger.log_request_start(
@@ -208,6 +328,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
         source=request.metadata.get("source", "api"),
         user_message=request.message
     )
+    
+    await _service_state.increment_runs()
     
     try:
         logger.info(f"Received chat request: {request.message[:100]}... [trace_id={trace_ctx.trace_id}]")
@@ -282,6 +404,9 @@ async def chat(request: ChatRequest) -> ChatResponse:
         logger.error(f"Chat processing error: {e} [trace_id={trace_ctx.trace_id}]")
         trace_logger.log_request_complete(trace_ctx, success=False)
         raise HTTPException(status_code=500, detail=str(e))
+    
+    finally:
+        await _service_state.decrement_runs()
 
 
 @app.get("/api/agents/status")

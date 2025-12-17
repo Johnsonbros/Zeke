@@ -4,74 +4,18 @@ Rotating JSONL log writer with PII masking and retention cleanup.
 Features:
 - Size-based rotation (default 10MB)
 - Time-based rotation (daily)
-- PII masking for phone numbers and emails
+- Comprehensive PII masking (email, phone, SSN, CC, address, IP)
 - 30-day retention with automatic cleanup
 """
 
 import json
 import os
-import re
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-
-class PIIMasker:
-    """
-    Masks personally identifiable information in log entries.
-    
-    Handles:
-    - Phone numbers: +1-555-123-4567 -> +1-555-***-****
-    - Emails: user@domain.com -> u***@domain.com
-    """
-    
-    PHONE_PATTERN = re.compile(
-        r'(\+?1?[-.\s]?\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}'
-    )
-    
-    EMAIL_PATTERN = re.compile(
-        r'([a-zA-Z0-9._%+-])[a-zA-Z0-9._%+-]*@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
-    )
-    
-    @classmethod
-    def mask_phone(cls, text: str) -> str:
-        """Mask phone numbers, preserving area code prefix."""
-        def replacer(match: re.Match) -> str:
-            prefix = match.group(1)
-            return f"{prefix}***-****"
-        return cls.PHONE_PATTERN.sub(replacer, text)
-    
-    @classmethod
-    def mask_email(cls, text: str) -> str:
-        """Mask emails, preserving first char and domain."""
-        def replacer(match: re.Match) -> str:
-            first_char = match.group(1)
-            domain = match.group(2)
-            return f"{first_char}***@{domain}"
-        return cls.EMAIL_PATTERN.sub(replacer, text)
-    
-    @classmethod
-    def mask(cls, value: Any) -> Any:
-        """
-        Recursively mask PII in any value (str, dict, list).
-        
-        Args:
-            value: Any JSON-serializable value
-            
-        Returns:
-            Value with PII masked
-        """
-        if isinstance(value, str):
-            result = cls.mask_phone(value)
-            result = cls.mask_email(result)
-            return result
-        elif isinstance(value, dict):
-            return {k: cls.mask(v) for k, v in value.items()}
-        elif isinstance(value, list):
-            return [cls.mask(item) for item in value]
-        else:
-            return value
+from python_agents.utils.pii import redact_object, PIIRedactor
 
 
 class RotatingJSONLWriter:
@@ -191,7 +135,7 @@ class RotatingJSONLWriter:
             entry: Dictionary to write as JSON line
         """
         if self.mask_pii:
-            entry = PIIMasker.mask(entry)
+            entry = redact_object(entry)
         
         if "timestamp" not in entry:
             entry["timestamp"] = datetime.now().isoformat()
