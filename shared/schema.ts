@@ -3024,3 +3024,143 @@ export interface AiCostAnomaly {
   threshold: number;
   detectedAt: string;
 }
+
+// ============================================
+// OVERNIGHT BATCH FACTORY SYSTEM
+// ============================================
+
+// Batch job types
+export const batchJobTypes = ["NIGHTLY_ENRICHMENT", "FEEDBACK_REHAB", "KG_REBUILD", "EVAL_GENERATION"] as const;
+export type BatchJobType = typeof batchJobTypes[number];
+
+// Batch job statuses
+export const batchJobStatuses = ["QUEUED", "SUBMITTED", "COMPLETED", "FAILED", "PARTIAL"] as const;
+export type BatchJobStatus = typeof batchJobStatuses[number];
+
+// Batch artifact types
+export const batchArtifactTypes = ["MEMORY_SUMMARY", "KG_EDGES", "FEEDBACK_FIX", "EVAL_TESTCASE"] as const;
+export type BatchArtifactType = typeof batchArtifactTypes[number];
+
+// Batch jobs table - tracks OpenAI Batch API submissions
+export const batchJobs = sqliteTable("batch_jobs", {
+  id: text("id").primaryKey(),
+  type: text("type", { enum: batchJobTypes }).notNull(),
+  status: text("status", { enum: batchJobStatuses }).notNull().default("QUEUED"),
+  inputWindowStart: text("input_window_start").notNull(), // ISO timestamp
+  inputWindowEnd: text("input_window_end").notNull(), // ISO timestamp
+  openAiBatchId: text("openai_batch_id"), // Populated after submission
+  idempotencyKey: text("idempotency_key").notNull().unique(), // Prevents duplicate runs
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(5),
+  error: text("error"), // Error message if failed
+  inputItemCount: integer("input_item_count").default(0), // Number of items submitted
+  outputItemCount: integer("output_item_count").default(0), // Number of items returned
+  model: text("model").notNull().default("gpt-4o"), // Model used for batch
+  estimatedCostCents: integer("estimated_cost_cents"), // Pre-submission estimate
+  actualCostCents: integer("actual_cost_cents"), // Post-completion actual cost
+  submittedAt: text("submitted_at"), // When batch was submitted to OpenAI
+  completedAt: text("completed_at"), // When batch finished
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertBatchJobSchema = createInsertSchema(batchJobs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertBatchJob = z.infer<typeof insertBatchJobSchema>;
+export type BatchJob = typeof batchJobs.$inferSelect;
+
+// Batch artifacts table - stores derived data from batch processing
+export const batchArtifacts = sqliteTable("batch_artifacts", {
+  id: text("id").primaryKey(),
+  batchJobId: text("batch_job_id").notNull().references(() => batchJobs.id),
+  artifactType: text("artifact_type", { enum: batchArtifactTypes }).notNull(),
+  sourceRef: text("source_ref").notNull(), // e.g., message_id(s), day_key, etc.
+  payloadJson: text("payload_json").notNull(), // JSON blob with artifact data
+  isProcessed: integer("is_processed", { mode: "boolean" }).notNull().default(false), // Whether artifact has been consumed
+  processedAt: text("processed_at"), // When artifact was used
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertBatchArtifactSchema = createInsertSchema(batchArtifacts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertBatchArtifact = z.infer<typeof insertBatchArtifactSchema>;
+export type BatchArtifact = typeof batchArtifacts.$inferSelect;
+
+// Memory summary artifact payload structure
+export interface MemorySummaryPayload {
+  dayKey: string; // YYYY-MM-DD
+  summaries: Array<{
+    sourceMessageIds: string[];
+    summary: string;
+    tags: string[];
+    importance: number; // 0-1
+    surprise: number; // 0-1
+    actionItems: Array<{
+      text: string;
+      dueDate: string | null; // YYYY-MM-DD or null
+    }>;
+  }>;
+}
+
+// Knowledge graph edges artifact payload structure
+export interface KgEdgesPayload {
+  entities: Array<{
+    id: string; // canonical ID
+    name: string;
+    type: "PERSON" | "PLACE" | "ORG" | "DEVICE" | "PROJECT" | "OTHER";
+    aliases: string[];
+  }>;
+  edges: Array<{
+    from: string; // entity_id
+    to: string; // entity_id
+    relation: string; // OWNS, USES, LIKES, WORKS_ON, RELATED_TO, etc.
+    confidence: number; // 0-1
+    evidenceMessageIds: string[];
+  }>;
+}
+
+// Feedback fix artifact payload structure
+export interface FeedbackFixPayload {
+  fixes: Array<{
+    messageId: string;
+    betterResponse: string;
+    betterToolPlan: string[];
+    rootCause: "style" | "tool_miss" | "hallucination" | "missing_context" | "other";
+    newEvalTestcase: {
+      prompt: string;
+      expected: string;
+      toolsExpected: string[];
+    };
+  }>;
+}
+
+// Eval testcase artifact payload structure
+export interface EvalTestcasePayload {
+  testcases: Array<{
+    id: string;
+    sourceMessageId: string;
+    prompt: string;
+    expectedBehavior: string;
+    expectedTools: string[];
+    category: string;
+    severity: "critical" | "important" | "nice_to_have";
+  }>;
+}
+
+// Batch job stats for observability
+export interface BatchJobStats {
+  totalJobs: number;
+  byStatus: Record<BatchJobStatus, number>;
+  byType: Record<BatchJobType, number>;
+  lastCompletedAt: string | null;
+  totalArtifactsProduced: number;
+  totalCostCents: number;
+  averageProcessingTimeMs: number;
+}

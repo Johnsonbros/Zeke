@@ -158,7 +158,15 @@ import type {
   JournalEntry,
   InsertJournalEntry,
   VerificationStatus,
-  VerifiedBy
+  VerifiedBy,
+  BatchJob,
+  InsertBatchJob,
+  BatchJobType,
+  BatchJobStatus,
+  BatchArtifact,
+  InsertBatchArtifact,
+  BatchArtifactType,
+  BatchJobStats,
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -12001,6 +12009,52 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_journal_entries_date ON journal_entries(date);
 `);
 
+// Create batch_jobs table for OpenAI Batch API tracking
+db.exec(`
+  CREATE TABLE IF NOT EXISTS batch_jobs (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'QUEUED',
+    input_window_start TEXT NOT NULL,
+    input_window_end TEXT NOT NULL,
+    openai_batch_id TEXT,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 5,
+    error TEXT,
+    input_item_count INTEGER DEFAULT 0,
+    output_item_count INTEGER DEFAULT 0,
+    model TEXT NOT NULL DEFAULT 'gpt-4o',
+    estimated_cost_cents INTEGER,
+    actual_cost_cents INTEGER,
+    submitted_at TEXT,
+    completed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_batch_jobs_status ON batch_jobs(status);
+  CREATE INDEX IF NOT EXISTS idx_batch_jobs_type ON batch_jobs(type);
+  CREATE INDEX IF NOT EXISTS idx_batch_jobs_idempotency ON batch_jobs(idempotency_key);
+`);
+
+// Create batch_artifacts table for storing batch processing results
+db.exec(`
+  CREATE TABLE IF NOT EXISTS batch_artifacts (
+    id TEXT PRIMARY KEY,
+    batch_job_id TEXT NOT NULL,
+    artifact_type TEXT NOT NULL,
+    source_ref TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    is_processed INTEGER NOT NULL DEFAULT 0,
+    processed_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (batch_job_id) REFERENCES batch_jobs(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_batch_artifacts_job ON batch_artifacts(batch_job_id);
+  CREATE INDEX IF NOT EXISTS idx_batch_artifacts_type ON batch_artifacts(artifact_type);
+  CREATE INDEX IF NOT EXISTS idx_batch_artifacts_processed ON batch_artifacts(is_processed);
+`);
+
 interface UploadedFileRow {
   id: string;
   filename: string;
@@ -12566,6 +12620,390 @@ export function getFeedbackEventsByRefCode(refCode: string): FeedbackEvent[] {
       ORDER BY created_at DESC
     `).all(refCode) as FeedbackEventRow[];
     return rows.map(mapFeedbackEvent);
+  });
+}
+
+// ============================================
+// BATCH JOBS CRUD OPERATIONS
+// ============================================
+
+interface BatchJobRow {
+  id: string;
+  type: string;
+  status: string;
+  input_window_start: string;
+  input_window_end: string;
+  openai_batch_id: string | null;
+  idempotency_key: string;
+  attempts: number;
+  max_attempts: number;
+  error: string | null;
+  input_item_count: number | null;
+  output_item_count: number | null;
+  model: string;
+  estimated_cost_cents: number | null;
+  actual_cost_cents: number | null;
+  submitted_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapBatchJobRow(row: BatchJobRow): BatchJob {
+  return {
+    id: row.id,
+    type: row.type as BatchJobType,
+    status: row.status as BatchJobStatus,
+    inputWindowStart: row.input_window_start,
+    inputWindowEnd: row.input_window_end,
+    openAiBatchId: row.openai_batch_id,
+    idempotencyKey: row.idempotency_key,
+    attempts: row.attempts,
+    maxAttempts: row.max_attempts,
+    error: row.error,
+    inputItemCount: row.input_item_count,
+    outputItemCount: row.output_item_count,
+    model: row.model,
+    estimatedCostCents: row.estimated_cost_cents,
+    actualCostCents: row.actual_cost_cents,
+    submittedAt: row.submitted_at,
+    completedAt: row.completed_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function createBatchJob(data: InsertBatchJob): BatchJob {
+  return wrapDbOperation("createBatchJob", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO batch_jobs (
+        id, type, status, input_window_start, input_window_end, openai_batch_id,
+        idempotency_key, attempts, max_attempts, error, input_item_count, output_item_count,
+        model, estimated_cost_cents, actual_cost_cents, submitted_at, completed_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.type,
+      data.status || "QUEUED",
+      data.inputWindowStart,
+      data.inputWindowEnd,
+      data.openAiBatchId || null,
+      data.idempotencyKey,
+      data.attempts ?? 0,
+      data.maxAttempts ?? 5,
+      data.error || null,
+      data.inputItemCount ?? 0,
+      data.outputItemCount ?? 0,
+      data.model || "gpt-4o",
+      data.estimatedCostCents ?? null,
+      data.actualCostCents ?? null,
+      data.submittedAt || null,
+      data.completedAt || null,
+      now,
+      now
+    );
+    
+    return {
+      id,
+      type: data.type,
+      status: (data.status || "QUEUED") as BatchJobStatus,
+      inputWindowStart: data.inputWindowStart,
+      inputWindowEnd: data.inputWindowEnd,
+      openAiBatchId: data.openAiBatchId || null,
+      idempotencyKey: data.idempotencyKey,
+      attempts: data.attempts ?? 0,
+      maxAttempts: data.maxAttempts ?? 5,
+      error: data.error || null,
+      inputItemCount: data.inputItemCount ?? 0,
+      outputItemCount: data.outputItemCount ?? 0,
+      model: data.model || "gpt-4o",
+      estimatedCostCents: data.estimatedCostCents ?? null,
+      actualCostCents: data.actualCostCents ?? null,
+      submittedAt: data.submittedAt || null,
+      completedAt: data.completedAt || null,
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+}
+
+export function getBatchJob(id: string): BatchJob | undefined {
+  return wrapDbOperation("getBatchJob", () => {
+    const row = db.prepare(`SELECT * FROM batch_jobs WHERE id = ?`).get(id) as BatchJobRow | undefined;
+    return row ? mapBatchJobRow(row) : undefined;
+  });
+}
+
+export function getBatchJobByIdempotencyKey(key: string): BatchJob | undefined {
+  return wrapDbOperation("getBatchJobByIdempotencyKey", () => {
+    const row = db.prepare(`SELECT * FROM batch_jobs WHERE idempotency_key = ?`).get(key) as BatchJobRow | undefined;
+    return row ? mapBatchJobRow(row) : undefined;
+  });
+}
+
+export function getQueuedBatchJobs(): BatchJob[] {
+  return wrapDbOperation("getQueuedBatchJobs", () => {
+    const rows = db.prepare(`
+      SELECT * FROM batch_jobs 
+      WHERE status = 'QUEUED' AND attempts < max_attempts
+      ORDER BY created_at ASC
+    `).all() as BatchJobRow[];
+    return rows.map(mapBatchJobRow);
+  });
+}
+
+export function getSubmittedBatchJobs(): BatchJob[] {
+  return wrapDbOperation("getSubmittedBatchJobs", () => {
+    const rows = db.prepare(`
+      SELECT * FROM batch_jobs 
+      WHERE status = 'SUBMITTED'
+      ORDER BY submitted_at ASC
+    `).all() as BatchJobRow[];
+    return rows.map(mapBatchJobRow);
+  });
+}
+
+export function updateBatchJobStatus(
+  id: string, 
+  status: BatchJobStatus, 
+  updates?: Partial<BatchJob>
+): BatchJob | undefined {
+  return wrapDbOperation("updateBatchJobStatus", () => {
+    const now = getCurrentTimestamp();
+    const existing = getBatchJob(id);
+    if (!existing) return undefined;
+    
+    const newAttempts = updates?.attempts ?? existing.attempts;
+    const newError = updates?.error ?? existing.error;
+    const newInputItemCount = updates?.inputItemCount ?? existing.inputItemCount;
+    const newOutputItemCount = updates?.outputItemCount ?? existing.outputItemCount;
+    const newEstimatedCostCents = updates?.estimatedCostCents ?? existing.estimatedCostCents;
+    const newActualCostCents = updates?.actualCostCents ?? existing.actualCostCents;
+    const newSubmittedAt = updates?.submittedAt ?? existing.submittedAt;
+    const newCompletedAt = updates?.completedAt ?? existing.completedAt;
+    
+    db.prepare(`
+      UPDATE batch_jobs SET 
+        status = ?, attempts = ?, error = ?, input_item_count = ?, output_item_count = ?,
+        estimated_cost_cents = ?, actual_cost_cents = ?, submitted_at = ?, completed_at = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      status,
+      newAttempts,
+      newError,
+      newInputItemCount,
+      newOutputItemCount,
+      newEstimatedCostCents,
+      newActualCostCents,
+      newSubmittedAt,
+      newCompletedAt,
+      now,
+      id
+    );
+    
+    return {
+      ...existing,
+      status,
+      attempts: newAttempts,
+      error: newError,
+      inputItemCount: newInputItemCount,
+      outputItemCount: newOutputItemCount,
+      estimatedCostCents: newEstimatedCostCents,
+      actualCostCents: newActualCostCents,
+      submittedAt: newSubmittedAt,
+      completedAt: newCompletedAt,
+      updatedAt: now,
+    };
+  });
+}
+
+export function updateBatchJobOpenAiId(id: string, openAiBatchId: string): void {
+  wrapDbOperation("updateBatchJobOpenAiId", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      UPDATE batch_jobs SET openai_batch_id = ?, updated_at = ? WHERE id = ?
+    `).run(openAiBatchId, now, id);
+  });
+}
+
+export function getRecentBatchJobs(limit: number = 10): BatchJob[] {
+  return wrapDbOperation("getRecentBatchJobs", () => {
+    const rows = db.prepare(`
+      SELECT * FROM batch_jobs 
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(limit) as BatchJobRow[];
+    return rows.map(mapBatchJobRow);
+  });
+}
+
+export function getBatchJobStats(): BatchJobStats {
+  return wrapDbOperation("getBatchJobStats", () => {
+    const totalJobs = (db.prepare(`SELECT COUNT(*) as count FROM batch_jobs`).get() as { count: number }).count;
+    
+    const statusRows = db.prepare(`
+      SELECT status, COUNT(*) as count FROM batch_jobs GROUP BY status
+    `).all() as Array<{ status: string; count: number }>;
+    
+    const byStatus: Record<BatchJobStatus, number> = {
+      QUEUED: 0,
+      SUBMITTED: 0,
+      COMPLETED: 0,
+      FAILED: 0,
+      PARTIAL: 0,
+    };
+    for (const row of statusRows) {
+      byStatus[row.status as BatchJobStatus] = row.count;
+    }
+    
+    const typeRows = db.prepare(`
+      SELECT type, COUNT(*) as count FROM batch_jobs GROUP BY type
+    `).all() as Array<{ type: string; count: number }>;
+    
+    const byType: Record<BatchJobType, number> = {
+      NIGHTLY_ENRICHMENT: 0,
+      FEEDBACK_REHAB: 0,
+      KG_REBUILD: 0,
+      EVAL_GENERATION: 0,
+    };
+    for (const row of typeRows) {
+      byType[row.type as BatchJobType] = row.count;
+    }
+    
+    const lastCompleted = db.prepare(`
+      SELECT completed_at FROM batch_jobs WHERE status = 'COMPLETED' ORDER BY completed_at DESC LIMIT 1
+    `).get() as { completed_at: string } | undefined;
+    
+    const totalArtifacts = (db.prepare(`SELECT COUNT(*) as count FROM batch_artifacts`).get() as { count: number }).count;
+    
+    const totalCost = (db.prepare(`
+      SELECT COALESCE(SUM(actual_cost_cents), 0) as total FROM batch_jobs WHERE actual_cost_cents IS NOT NULL
+    `).get() as { total: number }).total;
+    
+    const completedJobs = db.prepare(`
+      SELECT submitted_at, completed_at FROM batch_jobs 
+      WHERE status = 'COMPLETED' AND submitted_at IS NOT NULL AND completed_at IS NOT NULL
+    `).all() as Array<{ submitted_at: string; completed_at: string }>;
+    
+    let averageProcessingTimeMs = 0;
+    if (completedJobs.length > 0) {
+      const totalMs = completedJobs.reduce((acc, job) => {
+        const submitted = new Date(job.submitted_at).getTime();
+        const completed = new Date(job.completed_at).getTime();
+        return acc + (completed - submitted);
+      }, 0);
+      averageProcessingTimeMs = Math.round(totalMs / completedJobs.length);
+    }
+    
+    return {
+      totalJobs,
+      byStatus,
+      byType,
+      lastCompletedAt: lastCompleted?.completed_at || null,
+      totalArtifactsProduced: totalArtifacts,
+      totalCostCents: totalCost,
+      averageProcessingTimeMs,
+    };
+  });
+}
+
+// ============================================
+// BATCH ARTIFACTS CRUD OPERATIONS
+// ============================================
+
+interface BatchArtifactRow {
+  id: string;
+  batch_job_id: string;
+  artifact_type: string;
+  source_ref: string;
+  payload_json: string;
+  is_processed: number;
+  processed_at: string | null;
+  created_at: string;
+}
+
+function mapBatchArtifactRow(row: BatchArtifactRow): BatchArtifact {
+  return {
+    id: row.id,
+    batchJobId: row.batch_job_id,
+    artifactType: row.artifact_type as BatchArtifactType,
+    sourceRef: row.source_ref,
+    payloadJson: row.payload_json,
+    isProcessed: row.is_processed === 1,
+    processedAt: row.processed_at,
+    createdAt: row.created_at,
+  };
+}
+
+export function createBatchArtifact(data: InsertBatchArtifact): BatchArtifact {
+  return wrapDbOperation("createBatchArtifact", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    db.prepare(`
+      INSERT INTO batch_artifacts (
+        id, batch_job_id, artifact_type, source_ref, payload_json, is_processed, processed_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.batchJobId,
+      data.artifactType,
+      data.sourceRef,
+      data.payloadJson,
+      data.isProcessed ? 1 : 0,
+      data.processedAt || null,
+      now
+    );
+    
+    return {
+      id,
+      batchJobId: data.batchJobId,
+      artifactType: data.artifactType as BatchArtifactType,
+      sourceRef: data.sourceRef,
+      payloadJson: data.payloadJson,
+      isProcessed: data.isProcessed ?? false,
+      processedAt: data.processedAt || null,
+      createdAt: now,
+    };
+  });
+}
+
+export function getBatchArtifactsByJob(batchJobId: string): BatchArtifact[] {
+  return wrapDbOperation("getBatchArtifactsByJob", () => {
+    const rows = db.prepare(`
+      SELECT * FROM batch_artifacts WHERE batch_job_id = ? ORDER BY created_at ASC
+    `).all(batchJobId) as BatchArtifactRow[];
+    return rows.map(mapBatchArtifactRow);
+  });
+}
+
+export function getUnprocessedArtifactsByType(type: BatchArtifactType): BatchArtifact[] {
+  return wrapDbOperation("getUnprocessedArtifactsByType", () => {
+    const rows = db.prepare(`
+      SELECT * FROM batch_artifacts WHERE artifact_type = ? AND is_processed = 0 ORDER BY created_at ASC
+    `).all(type) as BatchArtifactRow[];
+    return rows.map(mapBatchArtifactRow);
+  });
+}
+
+export function markArtifactProcessed(id: string): void {
+  wrapDbOperation("markArtifactProcessed", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      UPDATE batch_artifacts SET is_processed = 1, processed_at = ? WHERE id = ?
+    `).run(now, id);
+  });
+}
+
+export function getArtifactCountByJob(batchJobId: string): number {
+  return wrapDbOperation("getArtifactCountByJob", () => {
+    const result = db.prepare(`
+      SELECT COUNT(*) as count FROM batch_artifacts WHERE batch_job_id = ?
+    `).get(batchJobId) as { count: number };
+    return result.count;
   });
 }
 
