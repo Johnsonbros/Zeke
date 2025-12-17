@@ -1,0 +1,855 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "version": "1.0.0",
+  "description": "Tool policy definitions for ZEKE's Python agent system",
+  "settings": {
+    "default_allow": false,
+    "log_redaction_enabled": true,
+    "strict_schema_validation": true
+  },
+  "redact_patterns": [
+    "api_key",
+    "apiKey", 
+    "password",
+    "secret",
+    "token",
+    "authorization",
+    "phone_number",
+    "phoneNumber",
+    "ssn",
+    "credit_card",
+    "creditCard"
+  ],
+  "tools": {
+    "send_sms": {
+      "allowed": true,
+      "requires_admin": true,
+      "description": "Send SMS messages",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string",
+            "pattern": "^\\+?[0-9]{10,15}$",
+            "description": "Phone number to send to"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 1600,
+            "description": "Message content"
+          }
+        },
+        "required": ["to", "message"],
+        "additionalProperties": false
+      },
+      "redact_output": ["to"]
+    },
+    "search_lifelogs": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Search Omi lifelogs",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Search query"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 10
+          },
+          "include_raw": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": ["query"],
+        "additionalProperties": false
+      }
+    },
+    "get_recent_lifelogs": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Get recent lifelogs",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "hours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 168,
+            "default": 24
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 10
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "get_lifelog_context": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Get lifelog context for topic",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": ["topic"],
+        "additionalProperties": false
+      }
+    },
+    "check_omi_status": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Check Omi API status",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "add_task": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Add a task",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "due_date": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "required": ["title"],
+        "additionalProperties": false
+      }
+    },
+    "list_tasks": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "List tasks",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["pending", "completed", "all"]
+          },
+          "category": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "update_task": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Update a task",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": ["string", "integer"]
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "due_date": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          }
+        },
+        "required": ["task_id"],
+        "additionalProperties": false
+      }
+    },
+    "complete_task": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Complete a task",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": ["string", "integer"]
+          }
+        },
+        "required": ["task_id"],
+        "additionalProperties": false
+      }
+    },
+    "delete_task": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Delete a task",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": ["string", "integer"]
+          }
+        },
+        "required": ["task_id"],
+        "additionalProperties": false
+      }
+    },
+    "clear_completed_tasks": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Clear completed tasks",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "set_reminder": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Set a reminder",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "time": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string",
+            "enum": ["sms", "conversation"]
+          }
+        },
+        "required": ["message", "time"],
+        "additionalProperties": false
+      }
+    },
+    "list_reminders": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "List reminders",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "cancel_reminder": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Cancel a reminder",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "reminder_id": {
+            "type": ["string", "integer"]
+          }
+        },
+        "required": ["reminder_id"],
+        "additionalProperties": false
+      }
+    },
+    "get_calendar_events": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Get calendar events",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "start_date": {
+            "type": "string"
+          },
+          "end_date": {
+            "type": "string"
+          },
+          "max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "get_today_events": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Get today's events",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "get_upcoming_events": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Get upcoming events",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "web_search": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Web search via DuckDuckGo",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "num_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          }
+        },
+        "required": ["query"],
+        "additionalProperties": false
+      }
+    },
+    "perplexity_search": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "AI-powered search via Perplexity",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "required": ["query"],
+        "additionalProperties": false
+      }
+    },
+    "configure_daily_checkin": {
+      "allowed": true,
+      "requires_admin": true,
+      "description": "Configure daily check-in",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "phone_number": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "redact_output": ["phone_number"]
+    },
+    "get_daily_checkin_status": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Get check-in status",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "stop_daily_checkin": {
+      "allowed": true,
+      "requires_admin": true,
+      "description": "Stop daily check-in",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "send_checkin_now": {
+      "allowed": true,
+      "requires_admin": true,
+      "description": "Send check-in immediately",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "build_fused_context": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Build fused context",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "look_ahead_hours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 168
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "get_active_patterns": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Get active patterns",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "detect_anomalies": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Detect anomalies",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "context": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "create_prediction": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Create prediction",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "prediction_type": {
+            "type": "string"
+          },
+          "context": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "suggested_action": {
+            "type": "string"
+          }
+        },
+        "required": ["prediction_type", "suggested_action"],
+        "additionalProperties": false
+      }
+    },
+    "get_pending_predictions": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Get pending predictions",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "execute_prediction": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Execute prediction",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "prediction_id": {
+            "type": ["string", "integer"]
+          }
+        },
+        "required": ["prediction_id"],
+        "additionalProperties": false
+      }
+    },
+    "record_prediction_feedback": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Record prediction feedback",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "prediction_id": {
+            "type": ["string", "integer"]
+          },
+          "was_accurate": {
+            "type": "boolean"
+          },
+          "feedback": {
+            "type": "string"
+          }
+        },
+        "required": ["prediction_id", "was_accurate"],
+        "additionalProperties": false
+      }
+    },
+    "get_prediction_accuracy_stats": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Get prediction accuracy stats",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "discover_new_patterns": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Discover new patterns",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "get_current_time": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Get current time",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "create_calendar_event": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Create calendar event",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "start_time": {
+            "type": "string"
+          },
+          "end_time": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "location": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": ["title", "start_time"],
+        "additionalProperties": false
+      }
+    },
+    "update_calendar_event": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Update calendar event",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "start_time": {
+            "type": "string"
+          },
+          "end_time": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "location": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": ["event_id"],
+        "additionalProperties": false
+      }
+    },
+    "delete_calendar_event": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Delete calendar event",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          }
+        },
+        "required": ["event_id"],
+        "additionalProperties": false
+      }
+    },
+    "add_grocery_item": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Add grocery item",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "quantity": {
+            "type": ["string", "integer"]
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      }
+    },
+    "list_grocery_items": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "List grocery items",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "mark_grocery_purchased": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Mark grocery as purchased",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "item_id": {
+            "type": ["string", "integer"]
+          }
+        },
+        "required": ["item_id"],
+        "additionalProperties": false
+      }
+    },
+    "remove_grocery_item": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Remove grocery item",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "item_id": {
+            "type": ["string", "integer"]
+          }
+        },
+        "required": ["item_id"],
+        "additionalProperties": false
+      }
+    },
+    "clear_purchased_groceries": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Clear purchased groceries",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "clear_all_groceries": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Clear all groceries",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "get_weather": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Get weather information",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "include_forecast": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "get_location": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Get current location",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "redact_output": ["latitude", "longitude", "address"]
+    },
+    "save_memory": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Save a memory",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["content"],
+        "additionalProperties": false
+      }
+    },
+    "search_memories": {
+      "allowed": true,
+      "requires_admin": false,
+      "description": "Search memories",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "category": {
+            "type": "string"
+          }
+        },
+        "required": ["query"],
+        "additionalProperties": false
+      }
+    },
+    "delete_memory": {
+      "allowed": true,
+      "requires_admin": true,
+      "description": "Delete a memory",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": ["string", "integer"]
+          }
+        },
+        "required": ["memory_id"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "blocked_tools": {
+    "dangerous_shell_command": {
+      "reason": "Direct shell access not permitted"
+    },
+    "delete_all_data": {
+      "reason": "Destructive operations require manual approval"
+    },
+    "export_user_data": {
+      "reason": "Data export requires explicit authorization"
+    }
+  }
+}

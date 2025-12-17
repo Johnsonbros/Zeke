@@ -22,7 +22,12 @@ from openai.types.responses import ResponseTextDeltaEvent
 
 from ..bridge import get_bridge, NodeBridge
 from ..tracing import TraceContext, get_tracing_logger, create_trace_context
-from ..guards import RunBudget, RunBudgetExceeded
+from ..guards import (
+    RunBudget, 
+    RunBudgetExceeded, 
+    get_policy_validator,
+    InputPolicyViolation,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -627,25 +632,43 @@ class BaseAgent(ABC):
         self, 
         tool_name: str, 
         arguments: dict[str, Any],
-        context: AgentContext | None = None
+        context: AgentContext | None = None,
+        is_admin: bool = True
     ) -> dict[str, Any]:
         """
         Execute a tool through the Node.js bridge with optional tracing.
         
         Checks run budget before execution and records tool call after.
         If budget is exceeded, emits RUN_BUDGET_EXCEEDED event and raises.
+        Validates input against tool policy before execution.
         
         Args:
             tool_name: Name of the tool to execute
             arguments: Arguments for the tool
             context: Optional agent context for tracing
+            is_admin: Whether the caller has admin permissions
             
         Returns:
             dict: Tool execution result
             
         Raises:
             RunBudgetExceeded: If the run budget has been exceeded
+            InputPolicyViolation: If input validation fails
         """
+        policy_validator = get_policy_validator()
+        violation = policy_validator.validate_input(tool_name, arguments, is_admin)
+        if violation:
+            if context and context.trace_context:
+                trace_logger.log_input_policy_violation(
+                    context.trace_context,
+                    tool_name=tool_name,
+                    violation_type=violation.violation_type.value,
+                    message=violation.message,
+                    field=violation.field,
+                    agent_id=self.agent_id.value,
+                )
+            raise InputPolicyViolation(violation)
+        
         if context and context.run_budget:
             if not context.run_budget.can_execute_tool():
                 summary = context.run_budget.get_summary()
@@ -665,17 +688,21 @@ class BaseAgent(ABC):
         if context and context.run_budget:
             context.run_budget.record_tool_call(tool_name)
         
+        redacted_args = policy_validator.redact_output(tool_name, arguments)
+        
         span_id = None
         if context and context.trace_context:
             _, span_id = trace_logger.log_tool_start(
                 context.trace_context,
                 tool_name,
                 agent_id=self.agent_id.value,
-                args_preview=json.dumps(arguments)[:200] if arguments else ""
+                args_preview=json.dumps(redacted_args)[:200] if redacted_args else ""
             )
         
         try:
             result = await self.bridge.execute_tool(tool_name, arguments)
+            
+            redacted_result = policy_validator.redact_output(tool_name, result)
             
             if context and context.trace_context and span_id:
                 success = result.get("success", True) if isinstance(result, dict) else True
@@ -684,7 +711,7 @@ class BaseAgent(ABC):
                     tool_name,
                     span_id,
                     agent_id=self.agent_id.value,
-                    result_preview=json.dumps(result)[:200] if result else "",
+                    result_preview=json.dumps(redacted_result)[:200] if redacted_result else "",
                     success=success
                 )
             

@@ -41,6 +41,7 @@ class TraceEventType(str, Enum):
     MEMORY_ACCESS = "memory_access"
     SECURITY_CHECK = "security_check"
     RUN_BUDGET_EXCEEDED = "run_budget_exceeded"
+    INPUT_POLICY_VIOLATION = "input_policy_violation"
 
 
 @dataclass
@@ -579,6 +580,39 @@ class TracingLogger:
             timeout_seconds=timeout_seconds,
             tools_called=tools_called,
             summary=f"Budget exceeded: {reason} ({tool_calls_used}/{tool_calls_limit} calls, {elapsed_seconds:.1f}s/{timeout_seconds}s)"
+        )
+        self.log_event(event)
+        return event
+    
+    def log_input_policy_violation(
+        self,
+        context: TraceContext,
+        tool_name: str,
+        violation_type: str,
+        message: str,
+        field: str | None = None,
+        agent_id: str | None = None
+    ) -> TraceEvent:
+        """
+        Log an input policy violation event.
+        
+        This is emitted when tool input validation fails.
+        
+        Args:
+            context: The trace context
+            tool_name: Name of the tool that was called
+            violation_type: Type of violation (e.g., "additional_properties")
+            message: Human-readable violation message
+            field: Optional field that caused the violation
+            agent_id: Optional agent ID
+        """
+        event = context.add_event(
+            TraceEventType.INPUT_POLICY_VIOLATION,
+            agent_id=agent_id,
+            tool_name=tool_name,
+            violation_type=violation_type,
+            message=message,
+            field=field,
         )
         self.log_event(event)
         return event
