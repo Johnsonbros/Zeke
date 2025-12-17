@@ -40,22 +40,58 @@ from .integration import (
     remember_calendar_outcome,
     format_memories_for_prompt,
 )
+from .ttl_buckets import (
+    TTLBucket,
+    get_bucket_ttl,
+    get_bucket_for_scope,
+    apply_bucket_ttl,
+    bucket_from_string,
+    list_all_buckets,
+)
+from .thread_recap import (
+    RecapConfig,
+    ThreadStats,
+    RecapResult,
+    calculate_thread_stats,
+    generate_summary,
+    recap_thread,
+    find_threads_needing_recap,
+)
 
 __all__ = [
+    # Core schemas
     "MemoryItem",
     "MemoryScope", 
     "MemoryConfig",
+    # CRUD operations
     "remember",
     "recall",
     "forget",
     "get_memory",
+    # Eviction
     "evict_stale_and_lru",
     "get_memory_stats",
     "MemoryStore",
+    # Integration helpers
     "get_relevant_context",
     "remember_tool_outcome",
     "remember_user_preference",
     "remember_task_context",
     "remember_calendar_outcome",
     "format_memories_for_prompt",
+    # TTL Buckets
+    "TTLBucket",
+    "get_bucket_ttl",
+    "get_bucket_for_scope",
+    "apply_bucket_ttl",
+    "bucket_from_string",
+    "list_all_buckets",
+    # Thread Recap
+    "RecapConfig",
+    "ThreadStats",
+    "RecapResult",
+    "calculate_thread_stats",
+    "generate_summary",
+    "recap_thread",
+    "find_threads_needing_recap",
 ]
