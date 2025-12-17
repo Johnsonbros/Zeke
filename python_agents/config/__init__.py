@@ -12,6 +12,8 @@ from .env_config import (
     reload_config,
 )
 
+get_settings = get_config
+
 __all__ = [
     "AgentConfig",
     "RunBudgetConfig",
@@ -21,5 +23,6 @@ __all__ = [
     "SLOConfig",
     "load_config",
     "get_config",
+    "get_settings",
     "reload_config",
 ]

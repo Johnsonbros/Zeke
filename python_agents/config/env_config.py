@@ -57,6 +57,9 @@ class AgentConfig:
     
     openai_api_key: Optional[str] = None
     python_agents_port: int = 5001
+    log_level: str = "INFO"
+    node_bridge_url: str = "http://localhost:5000"
+    internal_bridge_key: Optional[str] = None
 
 
 def _get_int(key: str, default: int) -> int:
@@ -101,6 +104,9 @@ def load_config() -> AgentConfig:
         ),
         openai_api_key=os.environ.get("OPENAI_API_KEY"),
         python_agents_port=_get_int("PYTHON_AGENTS_PORT", 5001),
+        log_level=_get_str("LOG_LEVEL", "INFO"),
+        node_bridge_url=_get_str("NODE_BRIDGE_URL", "http://localhost:5000"),
+        internal_bridge_key=os.environ.get("INTERNAL_BRIDGE_KEY"),
     )
 
 

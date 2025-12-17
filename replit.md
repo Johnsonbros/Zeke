@@ -51,6 +51,11 @@ Key technical implementations and features include:
 
 The Python multi-agent system (`python_agents/`) includes production-grade reliability features such as PII Redaction, a Health Endpoint, Request Tracing, Graceful Shutdown, and configurable environment variables for runtime control.
 
+**Resilience Features**:
+- **Circuit Breaker**: Per-service circuit breaker with CLOSED/OPEN/HALF_OPEN states, configurable thresholds (CB_FAIL_THRESHOLD=5, CB_COOLDOWN_SEC=60), prevents cascade failures.
+- **Retry with Jittered Backoff**: Decorrelated jitter strategy (1s base, 30s max), automatically retries transient failures with circuit breaker integration.
+- **Memory TTL Buckets**: Memories have scope (transient/session/long_term) with auto-calculated expiration (36h/7d/never). Hourly cleanup job removes expired memories.
+
 ## External Dependencies
 - **OpenAI API**: AI responses, agent logic, and text embeddings.
 - **Twilio**: SMS messaging and voice calling.
