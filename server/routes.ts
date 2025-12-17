@@ -162,6 +162,8 @@ import {
   getContactNotesByType,
   deleteContactNote,
   deleteAllContactNotes,
+  createOutboundMessage,
+  updateOutboundMessageSid,
   getLifelogsAtPlace,
   getLifelogsNearLocation,
   getRecentLifelogLocations,
@@ -500,6 +502,68 @@ const sendSmsSchema = z.object({
   to: z.string().min(10, "Phone number required"),
   message: z.string().min(1, "Message required"),
 });
+
+// Generate a 4-character reference code (A-Z, 0-9, no vowels)
+function generateRefCode(): string {
+  const chars = "BCDFGHJKLMNPQRSTVWXYZ0123456789"; // No vowels
+  let code = "";
+  for (let i = 0; i < 4; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+// Helper to send SMS with ref code tracking
+async function sendSmsWithRef(params: {
+  toPhone: string;
+  fromPhone: string;
+  body: string;
+  conversationId?: string;
+  source: TwilioMessageSource;
+}): Promise<{ sid: string; refCode: string; outboundMessageId: string }> {
+  const client = await getTwilioClient();
+  const refCode = generateRefCode();
+  
+  // Create DB record BEFORE sending
+  const outboundMsg = createOutboundMessage({
+    conversationId: params.conversationId || null,
+    toPhone: params.toPhone,
+    fromPhone: params.fromPhone,
+    body: params.body,
+    refCode: refCode,
+  });
+  
+  // Append ref code to body (check if already has ref to avoid double-append)
+  const bodyWithRef = params.body.includes("(ref:") ? params.body : `${params.body} (ref: ${refCode})`;
+  
+  // Send SMS with ref code
+  const result = await client.messages.create({
+    body: bodyWithRef,
+    from: params.fromPhone,
+    to: params.toPhone,
+  });
+  
+  // Update DB with Twilio SID
+  updateOutboundMessageSid(outboundMsg.id, result.sid);
+  
+  // Log the outbound message
+  logTwilioMessage({
+    direction: "outbound",
+    source: params.source,
+    fromNumber: params.fromPhone,
+    toNumber: params.toPhone,
+    body: bodyWithRef,
+    twilioSid: result.sid,
+    status: "sent",
+    conversationId: params.conversationId,
+  });
+  
+  return {
+    sid: result.sid,
+    refCode: refCode,
+    outboundMessageId: outboundMsg.id,
+  };
+}
 
 // Helper to build a location context summary for proactive surfacing
 function buildLocationContextSummary(
@@ -1228,14 +1292,15 @@ export async function registerRoutes(
         try {
           const fromNumber = await getTwilioFromPhoneNumber();
           if (fromNumber) {
-            const client = await getTwilioClient();
             const formattedPhone = formatPhoneNumber(conversation.phoneNumber);
-            await client.messages.create({
+            const { refCode } = await sendSmsWithRef({
+              toPhone: formattedPhone,
+              fromPhone: fromNumber,
               body: aiResponse,
-              from: fromNumber,
-              to: formattedPhone,
+              conversationId: conversation.id,
+              source: "reply",
             });
-            console.log(`SMS reply sent to ${formattedPhone} from web chat`);
+            console.log(`SMS reply sent to ${formattedPhone} from web chat (ref: ${refCode})`);
           } else {
             console.warn("Twilio phone number not configured - SMS reply not sent");
           }
@@ -2259,41 +2324,33 @@ export async function registerRoutes(
       // Log privileged operation for security audit
       console.log(`PRIVILEGED: Direct SMS send requested via web interface to ${to}`);
       
-      const client = await getTwilioClient();
-      
       // Format phone number
       const formattedTo = formatPhoneNumber(to);
       
       try {
-        const result = await client.messages.create({
+        const { sid, refCode, outboundMessageId } = await sendSmsWithRef({
+          toPhone: formattedTo,
+          fromPhone: fromNumber,
           body: message,
-          from: fromNumber,
-          to: formattedTo,
-        });
-        
-        logTwilioMessage({
-          direction: "outbound",
           source: "web_ui",
-          fromNumber: fromNumber,
-          toNumber: formattedTo,
-          body: message,
-          twilioSid: result.sid,
-          status: "sent",
         });
         
-        console.log(`SMS sent to ${formattedTo}: ${result.sid}`);
+        console.log(`SMS sent to ${formattedTo}: ${sid} (ref: ${refCode})`);
         
         res.json({ 
           success: true, 
-          sid: result.sid,
+          sid: sid,
+          refCode: refCode,
+          outboundMessageId: outboundMessageId,
           to: formattedTo,
         });
       } catch (sendError: any) {
+        const formattedTo2 = formatPhoneNumber(to);
         logTwilioMessage({
           direction: "outbound",
           source: "web_ui",
           fromNumber: fromNumber,
-          toNumber: formattedTo,
+          toNumber: formattedTo2,
           body: message,
           status: "failed",
           errorCode: sendError.code?.toString() || "UNKNOWN",
