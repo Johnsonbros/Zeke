@@ -5,7 +5,7 @@
  * automatically creating a -1 feedback event (suggesting prior response didn't satisfy)
  */
 
-import { getRecentMessages, createFeedbackEvent, getOutboundMessageByConversationId } from "../db";
+import { getRecentMessages, createFeedbackEvent } from "../db";
 import type { InsertFeedbackEvent } from "@shared/schema";
 
 interface RecentUserMessage {
@@ -152,8 +152,8 @@ export async function createImplicitFeedback(
         conversationId,
         source: "sms",
         feedback: -1,
-        reactionType: "implicit_repeat",
-        reason: "User repeated request",
+        reactionType: "disliked",
+        reason: "implicit_repeat: User repeated request",
         targetOutboundMessageId: assistantMessageId,
         rawBody: userMessage,
       };

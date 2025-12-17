@@ -170,7 +170,6 @@ async function generateLearningNotes(clusters: FeedbackCluster[]): Promise<void>
         await createMemoryWithEmbedding({
           type: "preference",
           content: memory,
-          source: "feedback_training",
         });
         console.log(`[FeedbackTrainer] Created memory: ${memory.substring(0, 60)}...`);
       } catch (error) {
@@ -239,7 +238,7 @@ async function trainOnFeedback(): Promise<void> {
         // Negative feedback from last 24h
         if (
           fb.feedback === -1 &&
-          now - new Date(fb.created_at).getTime() < oneDayMs
+          now - new Date(fb.createdAt).getTime() < oneDayMs
         ) {
           negativeFeedback.push(fb);
         }

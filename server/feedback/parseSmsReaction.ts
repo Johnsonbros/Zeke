@@ -13,9 +13,9 @@ export interface ParsedReaction {
   reason?: string;
 }
 
-// Reaction emoji patterns
-const POSITIVE_EMOJI = /[👍✅💯]/;
-const NEGATIVE_EMOJI = /[👎❌]/;
+// Reaction emoji patterns (using Unicode code points for reliability)
+const POSITIVE_EMOJI = /\u{1F44D}|\u2705|\u{1F4AF}/u;
+const NEGATIVE_EMOJI = /\u{1F44E}|\u274C/u;
 
 // iMessage/SMS reaction patterns (handles both straight and smart quotes)
 const REACTION_PATTERNS = [

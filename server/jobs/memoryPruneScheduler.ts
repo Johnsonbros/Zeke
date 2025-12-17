@@ -3,7 +3,7 @@
  * Weekly job to archive low-heat, old memories
  */
 
-import cron from "node-cron";
+import * as cron from "node-cron";
 import { pruneOldLowHeatMemories } from "../db-memory-heat";
 
 let pruneScheduler: cron.ScheduledTask | null = null;
