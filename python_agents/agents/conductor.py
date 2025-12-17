@@ -35,6 +35,14 @@ from .base import (
 from ..bridge import get_bridge
 from ..intent_router import classify_intent_fast, RouterIntent
 
+try:
+    from core.memory import get_relevant_context, remember_task_context
+    MEMORY_MODULE_AVAILABLE = True
+except ImportError:
+    MEMORY_MODULE_AVAILABLE = False
+    get_relevant_context = None
+    remember_task_context = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -1052,6 +1060,17 @@ Always call the classify_intent tool with your classification.""",
         self.last_completion_status = CompletionStatus.COMPLETE
         self.last_completion_message = ""
         
+        if MEMORY_MODULE_AVAILABLE and get_relevant_context:
+            try:
+                python_memory_context = await get_relevant_context(input_text, scope="persona:zeke", k=3)
+                if python_memory_context:
+                    if not context.memory_context:
+                        context.memory_context = {}
+                    context.memory_context["python_memory"] = python_memory_context
+                    logger.debug(f"Retrieved Python memory context: {len(python_memory_context)} chars")
+            except Exception as e:
+                logger.warning(f"Failed to retrieve Python memory context: {e}")
+        
         learned_preferences_prompt = context.metadata.get("learned_preferences_prompt", "")
         
         intent = await self.classify_intent(input_text, {
@@ -1222,6 +1241,30 @@ Always call the classify_intent tool with your classification.""",
             f"Message: {self.last_completion_message}, "
             f"Agents called: {[a.value for a in agents_called]}"
         )
+        
+        actionable_intents = [
+            IntentType.SEND_MESSAGE, IntentType.CREATE_EVENT, IntentType.UPDATE_EVENT,
+            IntentType.SET_REMINDER, IntentType.ADD_TASK, IntentType.COMPLETE_TASK,
+            IntentType.SAVE_MEMORY, IntentType.RECALL_FACT,
+        ]
+        if (
+            MEMORY_MODULE_AVAILABLE 
+            and remember_task_context
+            and self.last_completion_status == CompletionStatus.COMPLETE
+            and intent.type in actionable_intents
+            and any(r.success for r in responses)
+        ):
+            try:
+                summary = final_response[:300] if len(final_response) > 300 else final_response
+                await remember_task_context(
+                    task_description=input_text[:200],
+                    result_summary=summary,
+                    scope=f"ops:{intent.type.value}",
+                    tags=[intent.category.value],
+                )
+                logger.debug(f"Remembered task outcome for {intent.type.value}")
+            except Exception as e:
+                logger.warning(f"Failed to remember task context: {e}")
         
         return final_response
     

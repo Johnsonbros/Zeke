@@ -116,3 +116,73 @@ const GITHUB_SYNC_CONFIG = {
 2. Payload URL: `https://your-replit-domain/api/github/webhook`
 3. Content type: `application/json`
 4. Events: Select "Just the push event"
+
+## Long-term Memory System
+
+ZEKE has a persistent SQLite-based memory system located in `/core/memory/` that provides:
+
+**Core Features:**
+- **SQLite + FTS5**: Full-text search with BM25 ranking
+- **Vector Embeddings**: Semantic search using OpenAI embeddings
+- **Scoped Memories**: Organize by `persona:`, `task:`, `ops:`, `calendar:`, `notes`
+- **TTL & Eviction**: Automatic expiration and LRU cleanup
+
+**Key Functions:**
+```python
+from core.memory import remember, recall, evict_stale_and_lru
+
+# Store a memory
+await remember(
+    text="User prefers morning meetings",
+    scope="persona:zeke",
+    tags=["preference", "scheduling"]
+)
+
+# Retrieve relevant memories
+memories = await recall(
+    query="What time does user like meetings?",
+    scope="persona:zeke",
+    k=5
+)
+
+# Clean up expired/excess memories
+await evict_stale_and_lru()
+```
+
+**Environment Variables:**
+- `MEMORY_DB`: Path to SQLite database (default: `./data/memory.db`)
+- `EMBED_MODEL`: Embedding model (default: `text-embedding-3-small`)
+- `MEMORY_MAX_ROWS`: Global memory limit (default: `20000`)
+
+**Scope Defaults:**
+- `persona:*`: No TTL, 5000 row cap
+- `task:*` / `ops:*`: 90-day TTL, 10000 row cap
+- `calendar:*`: 90-day TTL
+
+## Evaluation Harness
+
+Located in `/eval/`, the regression test system uses pytest with golden data:
+
+**Structure:**
+```
+/eval/
+  tests/              # Test modules
+    test_summarize.py
+    test_planner.py
+    test_tool_router.py
+  golden/             # Expected outputs (JSONL)
+  runs/               # Saved test run logs
+  runner.py           # CLI for running evals
+```
+
+**Running Evals:**
+```bash
+python eval/runner.py              # Run all
+python eval/runner.py -t router    # Run specific tests
+python eval/runner.py --tasks      # Generate TASKS.md from failures
+```
+
+**Adding Tests:**
+1. Add golden data in `eval/golden/*.jsonl`
+2. Create test in `eval/tests/test_*.py`
+3. Use `@pytest.mark.issue("KEY")` to link to tasks
