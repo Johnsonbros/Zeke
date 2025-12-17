@@ -1,0 +1,169 @@
+TARGETED STRIKE PROMPT FOR REPLIT AGENT V3 (PASTE THIS AS-IS)
+
+GOAL
+Implement “OVERNIGHT BATCH FACTORY” INTO ZEKE’S CORE: a nightly/off-hours pipeline that (1) collects heavy token tasks (KG build, memory compression, feedback rehab, eval generation), (2) submits them to OpenAI Batch, (3) polls results, (4) writes derived artifacts back into ZEKE’s DB, and (5) uses those artifacts to improve retrieval + behavior the next day.
+
+HARD RULES
+	1.	USE ZEKE’S REAL CODE. DO NOT INVENT NEW ARCHITECTURE IF THE REPO ALREADY HAS PATTERNS FOR: DB ACCESS, JOBS/CRONS, OPENAI CLIENT, LOGGING, CONFIG.
+	2.	BEFORE CODING: SEARCH THE REPO AND IDENTIFY:
+	•	WHERE OPENAI CALLS LIVE (OPENAI CLIENT WRAPPER OR DIRECT SDK USAGE)
+	•	WHERE BACKGROUND JOBS/CRON TASKS LIVE (ANY “scripts/”, “server/”, “python_agents/”, “jobs”, “worker”, “cron”)
+	•	HOW DB TABLES ARE DEFINED (DRIZZLE SCHEMA FILES, MIGRATIONS, DB INIT)
+	•	HOW ZEKE STORES “MEMORIES”, “MESSAGES”, “FEEDBACK”, “EVALS”, OR “NOTES”
+	3.	IMPLEMENT MINIMUM VIABLE PIPELINE FIRST: ONE NIGHTLY BATCH JOB TYPE (“NIGHTLY_ENRICHMENT”) THAT PROCESSES THE LAST 24H OF USER MESSAGES INTO:
+A) MEMORY SUMMARIES
+B) ENTITY+RELATION EXTRACTION FOR KNOWLEDGE GRAPH
+C) FEEDBACK REHAB: FOR THUMBS-DOWN ITEMS, GENERATE “BETTER RESPONSE + BETTER TOOL PLAN + TEST CASE”
+	4.	ADD GUARDRAILS: IDEMPOTENCY, RETRIES, RATE LIMIT FRIENDLINESS, SAFE LOGGING (NO PII LEAKS), AND CLEAR VISIBILITY (STATUS + LAST RUN).
+
+DELIVERABLES (WHAT TO BUILD)
+A) DB TABLES (DRIZZLE / MIGRATIONS)
+Create tables consistent with existing schema style:
+	1.	batch_jobs
+	•	id (uuid)
+	•	type (enum/string): NIGHTLY_ENRICHMENT, FEEDBACK_REHAB, KG_REBUILD, EVAL_GENERATION (start with NIGHTLY_ENRICHMENT only)
+	•	status: QUEUED | SUBMITTED | COMPLETED | FAILED | PARTIAL
+	•	input_window_start (datetime)
+	•	input_window_end (datetime)
+	•	openai_batch_id (string, nullable until submitted)
+	•	idempotency_key (string, unique)
+	•	attempts (int)
+	•	error (text nullable)
+	•	created_at, updated_at
+	2.	batch_artifacts
+	•	id (uuid)
+	•	batch_job_id (fk)
+	•	artifact_type: MEMORY_SUMMARY | KG_EDGES | FEEDBACK_FIX | EVAL_TESTCASE
+	•	source_ref (string) (ex: message_id(s) or day key)
+	•	payload_json (json)
+	•	created_at
+	3.	OPTIONAL IF NOT ALREADY PRESENT: feedback_events
+	•	id, message_id, channel (sms/web), rating (+1/-1), reason (nullable), created_at
+
+B) OPENAI BATCH INTEGRATION (SERVER SIDE)
+	1.	Locate existing OpenAI client wrapper or create one in the same style (same config/env patterns).
+	2.	Add a “BatchService” module:
+	•	createBatchJob(jobId): builds a JSONL request file in memory (or temp file) matching OpenAI Batch format
+	•	submitBatch(jobId): uploads file + submits batch, stores openai_batch_id
+	•	pollBatch(jobId): checks batch status; when done, downloads output file; parses responses; writes batch_artifacts; marks job completed/partial/failed
+	3.	STRICT IDEMPOTENCY:
+	•	idempotency_key should be deterministic: ${type}:${input_window_start_iso}:${input_window_end_iso}:${schema_version}
+	•	if a job exists with same idempotency_key and COMPLETED, skip.
+	•	if SUBMITTED and not done, do not resubmit; only poll.
+	4.	FAIL-SAFE:
+	•	if some items fail, store PARTIAL and keep artifacts you got; record failures in error field.
+
+C) NIGHTLY SCHEDULER (CRON / LOOP)
+	1.	Find existing cron/job runner pattern. If none exists, implement a lightweight scheduler that runs inside server process OR a script in “scripts/” that Replit can run on a schedule.
+	2.	Nightly run should:
+	•	compute window: last 24 hours (or since last completed job)
+	•	enqueue batch_jobs row (QUEUED) with idempotency_key
+	•	submit if queued
+	•	poll until terminal OR exit and let next scheduled run poll again (preferred: poll every X minutes with a separate scheduled task)
+	3.	Add env knobs in .env.schema (match existing style):
+	•	BATCH_ENABLED=true/false
+	•	BATCH_NIGHTLY_HOUR_LOCAL=2 (default 2AM America/New_York)
+	•	BATCH_POLL_INTERVAL_MINUTES=10
+	•	BATCH_MAX_ATTEMPTS=5
+	•	BATCH_MAX_ITEMS_PER_RUN=500 (or similar)
+	•	BATCH_MODEL (the model ZEKE uses for batch enrichment)
+
+D) WHAT GOES INTO THE BATCH REQUESTS (THE CORE VALUE)
+For NIGHTLY_ENRICHMENT, build one batch request per “chunk” of messages (keep each request reasonably sized).
+Each request prompt must produce STRICT JSON outputs, with these shapes:
+	1.	MEMORY_SUMMARY OUTPUT JSON
+{
+“day_key”: “YYYY-MM-DD”,
+“summaries”: [
+{
+“source_message_ids”: [”…”],
+“summary”: “short”,
+“tags”: [”…”],
+“importance”: 0-1,
+“surprise”: 0-1,
+“action_items”: [{“text”:”…”, “due_date”: “YYYY-MM-DD|null”}]
+}
+]
+}
+	2.	KG_EDGES OUTPUT JSON
+{
+“entities”: [{“id”:“canonical”, “name”:””, “type”:“PERSON|PLACE|ORG|DEVICE|PROJECT|OTHER”, “aliases”:[”…”]}],
+“edges”: [{“from”:“entity_id”,“to”:“entity_id”,“relation”:“OWNS|USES|LIKES|WORKS_ON|RELATED_TO|…”,“confidence”:0-1,“evidence_message_ids”:[”…”]}]
+}
+	3.	FEEDBACK_FIX OUTPUT JSON (ONLY IF THUMBS-DOWN EXISTS IN WINDOW)
+{
+“fixes”: [
+{
+“message_id”: “…”,
+“better_response”: “…”,
+“better_tool_plan”: [“step 1…”, “step 2…”],
+“root_cause”: “style|tool_miss|hallucination|missing_context|other”,
+“new_eval_testcase”: {
+“prompt”: “user prompt that triggered failure”,
+“expected”: “what ZEKE should do”,
+“tools_expected”: [“toolA”, “toolB”]
+}
+}
+]
+}
+
+IMPORTANT: STORE THESE JSON BLOBS AS batch_artifacts.payload_json.
+
+E) MAKING ZEKE USE THE ARTIFACTS (NEXT-DAY PAYOFF)
+	1.	Retrieval / Context:
+	•	Find where ZEKE builds context or memory injection.
+	•	Add: “include latest MEMORY_SUMMARY artifacts for relevant day/topic” before pulling raw transcripts.
+	•	Add: “KG edges” used for entity resolution (canonicalization).
+	2.	Feedback loop:
+	•	If a message has thumbs-down, and a FEEDBACK_FIX artifact exists, show the better_response in admin UI (if there is one) OR store it so ZEKE can learn:
+	•	At runtime, when encountering similar intent, prefer the improved tool plan (use tags/root_cause + similarity strategy you already have; if none exists, start with a simple keyword/tag match and leave TODO for embeddings later).
+	3.	Evals:
+	•	Find existing “eval/” or “evals/” structure.
+	•	Append generated new_eval_testcase entries to the existing eval format (match exactly).
+	•	Ensure they run in CI/test scripts if that exists; otherwise add a simple “npm run eval:smoke” script.
+
+F) OBSERVABILITY (SO NATE CAN TRUST IT)
+	1.	Add an admin/debug endpoint (or CLI script) to view:
+	•	last 10 batch_jobs
+	•	status counts
+	•	last completed time
+	•	artifacts produced count
+	2.	Add logs that are PII-safe (use existing redactor if present).
+
+STEP-BY-STEP EXECUTION PLAN (DO THIS IN ORDER)
+	1.	Repo reconnaissance (MUST DO FIRST)
+	•	ripgrep for: “openai”, “OpenAI”, “chat.completions”, “responses”, “cron”, “schedule”, “setInterval”, “worker”, “queue”, “drizzle”, “schema”, “memory”, “eval”.
+	•	Write down the exact files you will modify/create.
+	2.	DB work
+	•	Add tables + migration.
+	•	Add minimal DB access helpers consistent with repo patterns.
+	3.	BatchService
+	•	Implement submit + poll + parse + persist artifacts.
+	•	Use existing OpenAI SDK wrapper style.
+	4.	Nightly scheduler
+	•	Implement enqueue + submit job.
+	•	Implement poller that runs on interval.
+	5.	Artifact consumption
+	•	Wire MEMORY_SUMMARY into context building.
+	•	Wire FEEDBACK_FIX into eval generation and storage.
+	6.	Tests
+	•	Add unit tests for idempotency and parsing.
+	•	Add a smoke test that runs BatchService in “mock mode” (no real OpenAI call) and validates artifacts saved.
+	7.	Docs
+	•	Update README or docs folder: how to enable batch, how to run locally, how to see status.
+
+ACCEPTANCE CRITERIA (MUST PASS)
+	1.	When BATCH_ENABLED=false, nothing changes and app runs normally.
+	2.	When enabled, a NIGHTLY_ENRICHMENT job is created with deterministic idempotency_key and does not duplicate on repeated runs.
+	3.	Batch submission stores openai_batch_id and transitions QUEUED -> SUBMITTED.
+	4.	Polling transitions SUBMITTED -> COMPLETED/PARTIAL and stores batch_artifacts rows.
+	5.	ZEKE context builder uses MEMORY_SUMMARY artifacts (verify by a log line or test).
+	6.	A thumbs-down event results in a FEEDBACK_FIX artifact and a new eval testcase appended in the correct repo format.
+
+DO NOT DO (SCOPE CONTROL)
+	•	Do NOT integrate business logic or Housecall Pro.
+	•	Do NOT redesign the whole memory system. Just add the batch pipeline + artifact storage + minimal consumption.
+	•	Do NOT block real-time chat/SMS on batch completion.
+
+START NOW
+Begin by listing the exact files you found for: OpenAI calls, DB schema, memory/context building, and eval runner. Then implement the pipeline above using those real files and patterns.
