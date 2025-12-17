@@ -167,6 +167,43 @@ await evict_stale_and_lru()
 - `task:*` / `ops:*`: 90-day TTL, 10000 row cap
 - `calendar:*`: 90-day TTL
 
+**TTL Buckets:**
+```python
+from core.memory import TTLBucket, get_bucket_ttl, apply_bucket_ttl
+
+# Three bucket types with automatic scope-based assignment:
+# - TRANSIENT (36h): calendar:* scopes
+# - SESSION (7d): task:*, ops:* scopes  
+# - LONG_TERM (no TTL): persona:*, notes, recap:* scopes
+
+# Get TTL for a bucket
+ttl = get_bucket_ttl(TTLBucket.SESSION)  # Returns 604800 (7 days)
+
+# Auto-apply bucket TTL based on scope
+ttl = apply_bucket_ttl("task:groceries")  # Returns 604800
+```
+
+**Thread Auto-Recap:**
+```python
+from core.memory import recap_thread, find_threads_needing_recap, RecapConfig
+
+# Summarize long conversations (>20 messages or >8KB)
+result = await recap_thread(
+    conversation_id="conv-123",
+    messages=messages,
+    openai_client=client,
+    store_callback=store_fn,
+    purge_callback=purge_fn,  # Optional: delete raw messages
+    config=RecapConfig(max_summary_bytes=1024)
+)
+
+# Find threads needing recap (>6h old, exceeds thresholds)
+threads = await find_threads_needing_recap(
+    get_conversations_callback=get_convs,
+    get_messages_callback=get_msgs
+)
+```
+
 ## Evaluation Harness
 
 Located in `/eval/`, the regression test system uses pytest with golden data:
