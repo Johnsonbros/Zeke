@@ -30,6 +30,7 @@ import {
 } from "./db";
 import { chat, getAdminPermissions } from "./agent";
 import { processOmiWebhook } from "./voice/omiListener";
+import { recordAudioReceived } from "./pendantHealthMonitor";
 
 const openai = new OpenAI();
 
@@ -672,6 +673,9 @@ export function registerOmiRoutes(app: Express): void {
       });
 
       console.log(`[Omi] Received audio bytes: uid=${uid}, sample_rate=${sampleRate}, size=${audioSize} bytes, duration=${durationSeconds.toFixed(2)}s`);
+
+      // Record audio received for pendant health monitoring
+      recordAudioReceived();
 
       // Return 200 OK quickly as per Omi best practices
       res.json({ 

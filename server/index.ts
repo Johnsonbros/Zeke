@@ -22,6 +22,7 @@ import { initializeAutomations } from "./automations";
 import { initializeNLAutomations } from "./nlAutomationExecutor";
 import { startContextAgent } from "./zekeContextAgent";
 import { startPeopleProcessor } from "./peopleProcessor";
+import { startPendantHealthMonitor } from "./pendantHealthMonitor";
 
 export { log };
 
@@ -205,6 +206,12 @@ app.use((req, res, next) => {
   if (isVoicePipelineAvailable()) {
     startOmiProcessor();
     log("Omi processor started", "startup");
+  }
+  
+  // Start pendant health monitor (alerts if audio stops coming from Omi pendant)
+  if (isVoicePipelineAvailable()) {
+    startPendantHealthMonitor();
+    log("Pendant health monitor started", "startup");
   }
   
   log("=== ZEKE cold start complete - all services operational ===", "startup");
