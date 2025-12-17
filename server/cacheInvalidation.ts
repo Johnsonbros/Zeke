@@ -10,6 +10,7 @@
 
 import { invalidateCache } from "./contextCache";
 import { unifiedContextCache } from "./unifiedContextCache";
+import { invalidateTownCopy } from "../lib/cache/townCopy";
 import { log } from "./logger";
 
 async function safeInvalidateUnifiedBundle(bundleName: Parameters<typeof unifiedContextCache.invalidateBundle>[0]): Promise<void> {
@@ -76,5 +77,24 @@ export async function onAnyChange(): Promise<void> {
     await unifiedContextCache.invalidateAllBundles();
   } catch (error) {
     log(`[CacheInvalidation] Failed to invalidate all unified bundles: ${error}`, "error");
+  }
+}
+
+/**
+ * Invalidate town copy cache when content changes
+ * @param town - Town name (optional, invalidates all if not provided)
+ * @param service - Service type (optional, invalidates all town services if not provided)
+ */
+export function onTownCopyChange(town?: string, service?: string): void {
+  try {
+    if (town) {
+      invalidateTownCopy(town, service);
+    } else {
+      // Import and call invalidateAll for full reset
+      const { townCopyCache } = require("../lib/cache/townCopy");
+      townCopyCache.invalidateAll();
+    }
+  } catch (error) {
+    log(`[CacheInvalidation] Failed to invalidate town copy cache: ${error}`, "error");
   }
 }
