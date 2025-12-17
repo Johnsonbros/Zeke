@@ -40,8 +40,22 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import type { Conversation, Message, ChatResponse, Reminder, Task, UploadedFile } from "@shared/schema";
+import type { 
+  Conversation, 
+  Message, 
+  ChatResponse, 
+  Reminder, 
+  Task, 
+  UploadedFile,
+  ChatCard,
+  TaskCard,
+  ReminderCard,
+  WeatherCard,
+  GroceryListCard,
+  CalendarEventCard
+} from "@shared/schema";
 import { format, isToday, isTomorrow, isPast, parseISO } from "date-fns";
+import { Cloud, Sun, CloudRain, Snowflake, ShoppingCart, MapPin, User } from "lucide-react";
 
 function TypingIndicator() {
   return (
@@ -57,6 +71,199 @@ function TypingIndicator() {
           <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
           <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function getWeatherIcon(condition: string) {
+  const lower = condition.toLowerCase();
+  if (lower.includes('rain') || lower.includes('shower')) return CloudRain;
+  if (lower.includes('snow')) return Snowflake;
+  if (lower.includes('cloud') || lower.includes('overcast')) return Cloud;
+  return Sun;
+}
+
+function TaskCardDisplay({ card }: { card: TaskCard }) {
+  const isOverdue = card.dueDate && isPast(parseISO(card.dueDate)) && !isToday(parseISO(card.dueDate));
+  
+  return (
+    <Card className="p-3 flex items-start gap-3" data-testid={`card-task-${card.id}`}>
+      <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${
+        card.completed ? "bg-green-500/10" : isOverdue ? "bg-destructive/10" : "bg-blue-500/10"
+      }`}>
+        {card.completed ? (
+          <CheckCircle2 className="h-4 w-4 text-green-500" />
+        ) : isOverdue ? (
+          <AlertCircle className="h-4 w-4 text-destructive" />
+        ) : (
+          <ListTodo className="h-4 w-4 text-blue-500" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-medium ${card.completed ? "line-through text-muted-foreground" : ""}`}>
+          {card.title}
+        </p>
+        <div className="flex flex-wrap items-center gap-2 mt-1">
+          <Badge variant="secondary" className="text-[10px]">{card.priority}</Badge>
+          {card.dueDate && (
+            <span className={`text-xs ${isOverdue ? "text-destructive" : "text-muted-foreground"}`}>
+              {isToday(parseISO(card.dueDate)) ? "Due today" : 
+               isTomorrow(parseISO(card.dueDate)) ? "Due tomorrow" :
+               isOverdue ? "Overdue" : format(parseISO(card.dueDate), "MMM d")}
+            </span>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ReminderCardDisplay({ card }: { card: ReminderCard }) {
+  return (
+    <Card className="p-3 flex items-start gap-3" data-testid={`card-reminder-${card.id}`}>
+      <div className="h-8 w-8 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0">
+        <Bell className="h-4 w-4 text-amber-500" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium">{card.message}</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          {isToday(parseISO(card.scheduledFor)) 
+            ? `Today at ${format(parseISO(card.scheduledFor), "h:mm a")}`
+            : isTomorrow(parseISO(card.scheduledFor))
+            ? `Tomorrow at ${format(parseISO(card.scheduledFor), "h:mm a")}`
+            : format(parseISO(card.scheduledFor), "MMM d 'at' h:mm a")}
+        </p>
+      </div>
+    </Card>
+  );
+}
+
+function WeatherCardDisplay({ card }: { card: WeatherCard }) {
+  const WeatherIcon = getWeatherIcon(card.condition);
+  
+  return (
+    <Card className="p-4" data-testid="card-weather">
+      <div className="flex items-center gap-4">
+        <div className="h-14 w-14 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
+          <WeatherIcon className="h-7 w-7 text-blue-500" />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-semibold">{card.temperature}</span>
+            <span className="text-lg text-muted-foreground">°F</span>
+          </div>
+          <p className="text-sm text-muted-foreground">{card.condition}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{card.location}</p>
+        </div>
+      </div>
+      {card.humidity !== undefined && (
+        <div className="flex gap-4 mt-3 pt-3 border-t text-xs text-muted-foreground">
+          <span>Humidity: {card.humidity}%</span>
+          {card.windSpeed !== undefined && <span>Wind: {card.windSpeed} mph</span>}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function GroceryCardDisplay({ card }: { card: GroceryListCard }) {
+  return (
+    <Card className="p-3" data-testid="card-grocery">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="h-8 w-8 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
+          <ShoppingCart className="h-4 w-4 text-green-500" />
+        </div>
+        <div>
+          <p className="text-sm font-medium">Grocery List</p>
+          <p className="text-xs text-muted-foreground">{card.totalItems} items</p>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {card.items.slice(0, 5).map((item) => (
+          <div key={item.id} className="flex items-center gap-2 text-sm">
+            <div className={`w-1.5 h-1.5 rounded-full ${item.purchased ? "bg-green-500" : "bg-muted-foreground"}`} />
+            <span className={item.purchased ? "line-through text-muted-foreground" : ""}>
+              {item.quantity !== "1" && `${item.quantity} `}{item.name}
+            </span>
+          </div>
+        ))}
+        {card.items.length > 5 && (
+          <p className="text-xs text-muted-foreground mt-2">+{card.items.length - 5} more items</p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function CalendarCardDisplay({ card }: { card: CalendarEventCard }) {
+  return (
+    <Card className="p-3 flex items-start gap-3" data-testid={`card-calendar-${card.id}`}>
+      <div className="h-8 w-8 rounded-full bg-purple-500/10 flex items-center justify-center shrink-0">
+        <Calendar className="h-4 w-4 text-purple-500" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium">{card.title}</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          {format(parseISO(card.startTime), "MMM d 'at' h:mm a")}
+          {card.endTime && ` - ${format(parseISO(card.endTime), "h:mm a")}`}
+        </p>
+        {card.location && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+            <MapPin className="h-3 w-3" />
+            {card.location}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function ChatCardDisplay({ card }: { card: ChatCard }) {
+  switch (card.type) {
+    case "task":
+      return <TaskCardDisplay card={card} />;
+    case "reminder":
+      return <ReminderCardDisplay card={card} />;
+    case "weather":
+      return <WeatherCardDisplay card={card} />;
+    case "grocery_list":
+      return <GroceryCardDisplay card={card} />;
+    case "calendar_event":
+      return <CalendarCardDisplay card={card} />;
+    case "task_list":
+      return (
+        <div className="space-y-2" data-testid="card-task-list">
+          {card.tasks.map((task) => (
+            <TaskCardDisplay key={task.id} card={task} />
+          ))}
+        </div>
+      );
+    case "reminder_list":
+      return (
+        <div className="space-y-2" data-testid="card-reminder-list">
+          {card.reminders.map((reminder) => (
+            <ReminderCardDisplay key={reminder.id} card={reminder} />
+          ))}
+        </div>
+      );
+    default:
+      return null;
+  }
+}
+
+function CardsDisplay({ cards }: { cards: ChatCard[] }) {
+  if (!cards || cards.length === 0) return null;
+  
+  return (
+    <div className="flex items-start gap-3 px-4 py-2">
+      <Avatar className="h-8 w-8 sm:h-9 sm:w-9 shrink-0 invisible" aria-hidden>
+        <AvatarFallback>Z</AvatarFallback>
+      </Avatar>
+      <div className="flex flex-col gap-2 max-w-[85%] sm:max-w-[75%] md:max-w-[70%]">
+        {cards.map((card, index) => (
+          <ChatCardDisplay key={`${card.type}-${index}`} card={card} />
+        ))}
       </div>
     </div>
   );
@@ -402,6 +609,7 @@ export default function ChatPage() {
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [messageCards, setMessageCards] = useState<Record<string, ChatCard[]>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -438,6 +646,14 @@ export default function ChatPage() {
         setActiveConversationId(data.conversation.id);
         queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
         queryClient.invalidateQueries({ queryKey: ["/api/conversations", data.conversation.id] });
+        
+        // Store cards associated with this message
+        if (data.cards && data.cards.length > 0 && data.message?.id) {
+          setMessageCards(prev => ({
+            ...prev,
+            [data.message.id]: data.cards as ChatCard[]
+          }));
+        }
       }
     },
     onError: (error: Error) => {
@@ -770,7 +986,12 @@ export default function ChatPage() {
                 ) : (
                   <>
                     {messages.map((msg) => (
-                      <MessageBubble key={msg.id} message={msg} />
+                      <div key={msg.id}>
+                        <MessageBubble message={msg} />
+                        {msg.role === "assistant" && messageCards[msg.id] && (
+                          <CardsDisplay cards={messageCards[msg.id]} />
+                        )}
+                      </div>
                     ))}
                     {sendMessageMutation.isPending && <TypingIndicator />}
                   </>
