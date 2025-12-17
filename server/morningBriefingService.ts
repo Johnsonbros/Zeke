@@ -24,6 +24,7 @@ import {
   getPreference,
   setPreference,
 } from "./db";
+import { getAiUsageStats } from "./aiLogger";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -38,6 +39,11 @@ interface BriefingData {
   overdueTasks: number;
   meetingsToday: Array<{ title: string; time: string; location?: string }>;
   urgentDecisions: Array<{ topic: string; options: string[]; proscons?: { pros: string[]; cons: string[] }[] }>;
+  yesterdayAiUsage: {
+    totalCalls: number;
+    totalTokens: number;
+    totalCost: number;
+  } | null;
 }
 
 async function gatherBriefingData(): Promise<BriefingData> {
@@ -48,6 +54,9 @@ async function gatherBriefingData(): Promise<BriefingData> {
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
   
+  // Get yesterday's date range for AI usage stats
+  const startOfYesterday = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000);
+  
   const [tasksDueToday, tasksDueTomorrow, overdueTasks, todaysMeetings] = await Promise.all([
     Promise.resolve(getTasksDueToday()),
     Promise.resolve(getTasksDueTomorrow()),
@@ -57,6 +66,21 @@ async function gatherBriefingData(): Promise<BriefingData> {
   
   const sleepSummary = getSleepSummaryForBriefing();
   const sleepStats = getSleepStats(7);
+  
+  // Get yesterday's AI usage stats
+  let yesterdayAiUsage: BriefingData['yesterdayAiUsage'] = null;
+  try {
+    const aiStats = getAiUsageStats(startOfYesterday.toISOString(), startOfToday.toISOString());
+    if (aiStats.totalCalls > 0) {
+      yesterdayAiUsage = {
+        totalCalls: aiStats.totalCalls,
+        totalTokens: aiStats.totalInputTokens + aiStats.totalOutputTokens,
+        totalCost: aiStats.totalCost,
+      };
+    }
+  } catch (error) {
+    log(`[MorningBriefing] Failed to get AI usage stats: ${error}`, "voice");
+  }
   
   const meetingsFormatted = todaysMeetings.slice(0, 5).map(m => ({
     title: m.title,
@@ -79,6 +103,7 @@ async function gatherBriefingData(): Promise<BriefingData> {
     overdueTasks: overdueTasks.length,
     meetingsToday: meetingsFormatted,
     urgentDecisions: [],
+    yesterdayAiUsage,
   };
 }
 
@@ -120,6 +145,15 @@ function formatDataRichBriefing(data: BriefingData): string {
       }
       lines.push(meetingLine);
     }
+    lines.push("");
+  }
+  
+  // Yesterday's AI usage
+  if (data.yesterdayAiUsage) {
+    const cost = data.yesterdayAiUsage.totalCost.toFixed(2);
+    const tokens = data.yesterdayAiUsage.totalTokens.toLocaleString();
+    lines.push("AI USAGE (yesterday):");
+    lines.push(`- ${data.yesterdayAiUsage.totalCalls} calls, ${tokens} tokens, $${cost}`);
     lines.push("");
   }
   
