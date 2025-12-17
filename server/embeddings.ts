@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { wrapOpenAI, setAiLoggingContext, clearAiLoggingContext } from "../lib/reliability/client_wrap";
 
 let openai: OpenAI | null = null;
 
@@ -16,22 +17,50 @@ function getOpenAIClient(): OpenAI {
 
 export async function generateEmbedding(text: string): Promise<number[]> {
   const client = getOpenAIClient();
-  const response = await client.embeddings.create({
-    model: "text-embedding-3-small",
-    input: text,
+  const model = "text-embedding-3-small";
+  
+  // Set logging context - wrapOpenAI will auto-log
+  setAiLoggingContext({
+    model,
+    endpoint: "embeddings",
+    agentId: "embeddings",
   });
-  return response.data[0].embedding;
+  
+  try {
+    const response = await wrapOpenAI(() => client.embeddings.create({
+      model,
+      input: text,
+    }));
+    
+    return response.data[0].embedding;
+  } finally {
+    clearAiLoggingContext();
+  }
 }
 
 export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
   
   const client = getOpenAIClient();
-  const response = await client.embeddings.create({
-    model: "text-embedding-3-small",
-    input: texts,
+  const model = "text-embedding-3-small";
+  
+  // Set logging context - wrapOpenAI will auto-log
+  setAiLoggingContext({
+    model,
+    endpoint: "embeddings",
+    agentId: "embeddings_batch",
   });
-  return response.data.map(d => d.embedding);
+  
+  try {
+    const response = await wrapOpenAI(() => client.embeddings.create({
+      model,
+      input: texts,
+    }));
+    
+    return response.data.map(d => d.embedding);
+  } finally {
+    clearAiLoggingContext();
+  }
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {

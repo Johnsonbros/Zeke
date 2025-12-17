@@ -1766,6 +1766,46 @@ db.exec(`
 
 console.log("Documents & files system tables initialized");
 
+// ============================================
+// AI USAGE LOGGING SYSTEM TABLE
+// ============================================
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ai_logs (
+    id TEXT PRIMARY KEY,
+    timestamp TEXT NOT NULL,
+    request_id TEXT,
+    model TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    agent_id TEXT,
+    tool_name TEXT,
+    conversation_id TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    total_tokens INTEGER,
+    input_cost_cents INTEGER,
+    output_cost_cents INTEGER,
+    total_cost_cents INTEGER,
+    latency_ms INTEGER,
+    temperature TEXT,
+    max_tokens INTEGER,
+    system_prompt_hash TEXT,
+    tools_enabled TEXT,
+    app_version TEXT,
+    status TEXT NOT NULL DEFAULT 'ok',
+    error_type TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_ai_logs_timestamp ON ai_logs(timestamp);
+  CREATE INDEX IF NOT EXISTS idx_ai_logs_model ON ai_logs(model);
+  CREATE INDEX IF NOT EXISTS idx_ai_logs_agent ON ai_logs(agent_id);
+  CREATE INDEX IF NOT EXISTS idx_ai_logs_status ON ai_logs(status);
+  CREATE INDEX IF NOT EXISTS idx_ai_logs_created ON ai_logs(created_at);
+`);
+
+console.log("AI usage logging system table initialized");
+
 // Seed initial family members if table is empty
 try {
   const existingMembers = db.prepare(`SELECT COUNT(*) as count FROM family_members`).get() as { count: number };

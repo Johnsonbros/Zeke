@@ -2866,3 +2866,100 @@ export interface JournalEntryWithDetails extends JournalEntry {
   }>;
   parsedHighlights: string[];
 }
+
+// ============================================
+// AI USAGE LOGGING SYSTEM
+// ============================================
+
+// AI endpoint types
+export const aiEndpoints = ["chat", "responses", "embeddings", "tts", "vision", "batch", "realtime"] as const;
+export type AiEndpoint = typeof aiEndpoints[number];
+
+// AI log status
+export const aiLogStatuses = ["ok", "error", "timeout", "rate_limited"] as const;
+export type AiLogStatus = typeof aiLogStatuses[number];
+
+// AI logs table for tracking all AI API calls
+export const aiLogs = sqliteTable("ai_logs", {
+  id: text("id").primaryKey(),
+  // Request identification
+  timestamp: text("timestamp").notNull(), // UTC ISO timestamp
+  requestId: text("request_id"), // From API response headers when available
+  // Model info - EXACT string passed to API
+  model: text("model").notNull(),
+  endpoint: text("endpoint", { enum: aiEndpoints }).notNull(),
+  // Agent/caller identification
+  agentId: text("agent_id"), // Which agent made the call (conductor, memory_curator, etc.)
+  toolName: text("tool_name"), // If called from a tool
+  conversationId: text("conversation_id"), // Associated conversation if any
+  // Token usage
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  totalTokens: integer("total_tokens"),
+  // Cost tracking (in cents for precision)
+  inputCostCents: integer("input_cost_cents"),
+  outputCostCents: integer("output_cost_cents"),
+  totalCostCents: integer("total_cost_cents"),
+  // Performance
+  latencyMs: integer("latency_ms"),
+  // Configuration snapshot
+  temperature: text("temperature"),
+  maxTokens: integer("max_tokens"),
+  systemPromptHash: text("system_prompt_hash"), // SHA256 hash of system prompt
+  toolsEnabled: text("tools_enabled"), // JSON array of tool names
+  // App metadata
+  appVersion: text("app_version"), // Git SHA or version string
+  // Status
+  status: text("status", { enum: aiLogStatuses }).notNull().default("ok"),
+  errorType: text("error_type"),
+  errorMessage: text("error_message"),
+  // Timestamps
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertAiLogSchema = createInsertSchema(aiLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAiLog = z.infer<typeof insertAiLogSchema>;
+export type AiLog = typeof aiLogs.$inferSelect;
+
+// Aggregated AI usage stats
+export interface AiUsageStats {
+  periodStart: string;
+  periodEnd: string;
+  totalCalls: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCostCents: number;
+  averageLatencyMs: number;
+  errorCount: number;
+  errorRate: number;
+  byModel: Record<string, {
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    costCents: number;
+    averageLatencyMs: number;
+  }>;
+  byAgent: Record<string, {
+    calls: number;
+    costCents: number;
+  }>;
+  byEndpoint: Record<string, {
+    calls: number;
+    costCents: number;
+  }>;
+}
+
+// AI cost anomaly for alerting
+export interface AiCostAnomaly {
+  type: "spike" | "model_change" | "latency_increase" | "error_rate_increase";
+  severity: "info" | "warning" | "critical";
+  message: string;
+  currentValue: number;
+  previousValue: number;
+  threshold: number;
+  detectedAt: string;
+}

@@ -49,6 +49,10 @@ import {
   Bell,
   BellOff,
   Moon,
+  Activity,
+  DollarSign,
+  TrendingUp,
+  BarChart3,
 } from "lucide-react";
 import type { Task, GroceryItem, MemoryNote, Conversation, Message, ChatResponse } from "@shared/schema";
 import { format, isPast, isToday, parseISO, isWithinInterval, startOfDay, endOfDay } from "date-fns";
@@ -145,6 +149,27 @@ interface NotificationStatus {
   preferences: NotificationPreferences;
   isInQuietHours: boolean;
   schedulerActive: boolean;
+}
+
+interface AiUsageStats {
+  periodStart: string;
+  periodEnd: string;
+  totalCalls: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCostCents: number;
+  averageLatencyMs: number;
+  errorCount: number;
+  errorRate: number;
+  byModel: Record<string, {
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    costCents: number;
+    averageLatencyMs: number;
+  }>;
+  byAgent: Record<string, { calls: number; costCents: number }>;
+  byEndpoint: Record<string, { calls: number; costCents: number }>;
 }
 
 type DashboardStats = {
@@ -1472,6 +1497,122 @@ function SystemDateTime() {
   );
 }
 
+function AiUsageWidget({
+  todayStats,
+  weekStats,
+  isLoading,
+}: {
+  todayStats?: AiUsageStats;
+  weekStats?: AiUsageStats;
+  isLoading?: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <Card data-testid="widget-ai-usage">
+        <CardHeader className="pb-2 sm:pb-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-primary/10">
+              <Activity className="h-4 w-4 text-primary" />
+            </div>
+            <CardTitle className="text-sm sm:text-base">AI Usage</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-12" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const todayCost = (todayStats?.totalCostCents || 0) / 100;
+  const weekCost = (weekStats?.totalCostCents || 0) / 100;
+  const todayCalls = todayStats?.totalCalls || 0;
+  const weekCalls = weekStats?.totalCalls || 0;
+  const avgLatency = todayStats?.averageLatencyMs || 0;
+  const errorRate = ((todayStats?.errorRate || 0) * 100).toFixed(1);
+  
+  const topModel = todayStats?.byModel 
+    ? Object.entries(todayStats.byModel)
+        .sort((a, b) => b[1].calls - a[1].calls)[0]
+    : null;
+
+  return (
+    <Card data-testid="widget-ai-usage">
+      <CardHeader className="pb-2 sm:pb-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-primary/10">
+              <Activity className="h-4 w-4 text-primary" />
+            </div>
+            <CardTitle className="text-sm sm:text-base">AI Usage</CardTitle>
+          </div>
+          <Badge variant="secondary" className="text-[10px] sm:text-xs">
+            Today
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3 sm:space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5">
+              <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Cost Today</span>
+            </div>
+            <p className="text-lg sm:text-xl font-semibold" data-testid="ai-cost-today">
+              ${todayCost.toFixed(2)}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5">
+              <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">API Calls</span>
+            </div>
+            <p className="text-lg sm:text-xl font-semibold" data-testid="ai-calls-today">
+              {todayCalls.toLocaleString()}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 pt-2 border-t">
+          <div className="text-center">
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Week Cost</p>
+            <p className="text-sm sm:text-base font-medium" data-testid="ai-cost-week">
+              ${weekCost.toFixed(2)}
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Avg Latency</p>
+            <p className="text-sm sm:text-base font-medium" data-testid="ai-latency">
+              {avgLatency}ms
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Error Rate</p>
+            <p className={`text-sm sm:text-base font-medium ${parseFloat(errorRate) > 5 ? 'text-red-500' : ''}`} data-testid="ai-error-rate">
+              {errorRate}%
+            </p>
+          </div>
+        </div>
+
+        {topModel && (
+          <div className="pt-2 border-t">
+            <p className="text-[10px] sm:text-xs text-muted-foreground mb-1">Top Model</p>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs sm:text-sm font-medium truncate" data-testid="ai-top-model">
+                {topModel[0]}
+              </span>
+              <Badge variant="secondary" className="text-[9px] sm:text-[10px] shrink-0">
+                {topModel[1].calls} calls
+              </Badge>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function DashboardChatWidget() {
   return (
     <Link href="/chat">
@@ -1547,6 +1688,18 @@ export default function DashboardPage() {
   const { data: notificationStatus, isLoading: notificationStatusLoading } = useQuery<NotificationStatus>({
     queryKey: ["/api/notifications/status"],
   });
+
+  const { data: aiStatsToday, isLoading: aiStatsTodayLoading } = useQuery<AiUsageStats>({
+    queryKey: ["/api/ai-logs/stats/today"],
+    refetchInterval: 60000,
+  });
+
+  const { data: aiStatsWeek, isLoading: aiStatsWeekLoading } = useQuery<AiUsageStats>({
+    queryKey: ["/api/ai-logs/stats/week"],
+    refetchInterval: 60000,
+  });
+
+  const isAiStatsLoading = aiStatsTodayLoading || aiStatsWeekLoading;
 
   const updateNotificationPrefsMutation = useMutation({
     mutationFn: async (updates: Partial<NotificationPreferences>) => {
@@ -1849,6 +2002,11 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
+          <AiUsageWidget
+            todayStats={aiStatsToday}
+            weekStats={aiStatsWeek}
+            isLoading={isAiStatsLoading}
+          />
           <ProactiveInsightsWidget
             insights={insights}
             isLoading={insightsLoading}

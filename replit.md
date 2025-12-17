@@ -51,6 +51,14 @@ Key technical implementations and features include:
 - **Pendant Health Monitor**: Sends SMS alerts when Omi pendant audio stops flowing (5-minute timeout), auto-detects wake-up to trigger morning briefings.
 - **A/B/C Response Format**: All decisions use structured A/B/C or 1-2-3 options with pros/cons, one question at a time for clarity.
 - **Journal / Daily Summary System**: Nightly automated journal entries for daily summaries with insights and key events.
+- **AI Usage Logging System**: Comprehensive tracking of all OpenAI API calls across Node.js and Python services. Captures model strings, token usage, latency, costs (with pricing per model), and errors. Features include:
+  - SQLite `ai_logs` table with full audit trail
+  - Automatic logging via `wrapOpenAI` reliability wrapper with context-based logging
+  - Python bridge (`python_agents/logging/ai_logger.py`) for cross-service logging
+  - API endpoints for querying logs, stats by model/agent, and detecting anomalies
+  - Dashboard widget showing today's/week's usage, costs, latency, and error rates
+  - SMS-based anomaly alerting (hourly checks for cost spikes, latency increases, error rate changes)
+  - System prompt hashing for drift detection without storing sensitive content
 
 The Python multi-agent system (`python_agents/`) includes production-grade reliability features such as PII Redaction, a Health Endpoint, Request Tracing, Graceful Shutdown, and configurable environment variables for runtime control.
 

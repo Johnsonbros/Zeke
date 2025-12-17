@@ -1,7 +1,8 @@
 import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
-import { wrapOpenAI, openaiBreaker } from "../lib/reliability/client_wrap";
+import { wrapOpenAI, openaiBreaker, setAiLoggingContext, clearAiLoggingContext } from "../lib/reliability/client_wrap";
+import { logAiEvent, logAiError, hashSystemPrompt } from "./aiLogger";
 import {
   getRecentMessages,
   getAllMemoryNotes,
@@ -250,10 +251,38 @@ function getOpenAIClient(): OpenAI {
 }
 
 async function createChatCompletion(
-  params: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming
+  params: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
+  context?: { agentId?: string; toolName?: string; conversationId?: string }
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   const client = getOpenAIClient();
-  return wrapOpenAI(() => client.chat.completions.create(params));
+  const model = params.model;
+  
+  // Extract system prompt hash for drift detection
+  const systemPrompt = params.messages.find(m => m.role === 'system')?.content;
+  const systemPromptHashValue = typeof systemPrompt === 'string' ? hashSystemPrompt(systemPrompt) : undefined;
+  
+  // Extract tool names if present
+  const toolNames = params.tools?.map(t => t.function?.name).filter(Boolean).join(',');
+  
+  // Set logging context before the call - wrapOpenAI will auto-log
+  setAiLoggingContext({
+    model,
+    endpoint: "chat",
+    agentId: context?.agentId || "zeke_main",
+    toolName: context?.toolName,
+    conversationId: context?.conversationId,
+    systemPromptHash: systemPromptHashValue,
+    temperature: params.temperature?.toString(),
+    maxTokens: params.max_completion_tokens || params.max_tokens as number | undefined,
+    toolsEnabled: toolNames,
+  });
+  
+  try {
+    const response = await wrapOpenAI(() => client.chat.completions.create(params));
+    return response;
+  } finally {
+    clearAiLoggingContext();
+  }
 }
 
 // Load profile and knowledge files, plus database profile sections

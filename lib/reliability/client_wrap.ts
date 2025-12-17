@@ -355,13 +355,134 @@ export const omiBreaker = getCircuitBreaker('omi', {
   openDurationMs: 60000,
 });
 
+// Context for AI logging - set before making OpenAI calls
+interface AiLoggingContext {
+  model?: string;
+  endpoint?: 'chat' | 'responses' | 'embeddings' | 'tts' | 'vision' | 'batch' | 'realtime';
+  agentId?: string;
+  toolName?: string;
+  conversationId?: string;
+  systemPromptHash?: string;
+  temperature?: string;
+  maxTokens?: number;
+  toolsEnabled?: string;
+}
+
+let currentLoggingContext: AiLoggingContext = {};
+
+export function setAiLoggingContext(context: AiLoggingContext): void {
+  currentLoggingContext = { ...currentLoggingContext, ...context };
+}
+
+export function clearAiLoggingContext(): void {
+  currentLoggingContext = {};
+}
+
+export function getAiLoggingContext(): AiLoggingContext {
+  return { ...currentLoggingContext };
+}
+
+// Import the AI logger - using dynamic import to avoid circular deps
+let logAiEventFn: ((data: any) => string) | null = null;
+
+export function setAiLoggerFunction(fn: (data: any) => string): void {
+  logAiEventFn = fn;
+  console.log("[Reliability] AI logging function configured");
+}
+
 export async function wrapOpenAI<T>(fn: () => Promise<T>): Promise<T> {
-  return withReliability(fn, openaiBreaker, {
-    maxRetries: 3,
-    baseDelayMs: 1000,
-    maxDelayMs: 30000,
-    retryOn: (error) => is429Error(error) || is5xxError(error),
-  });
+  const context = getAiLoggingContext();
+  const startTime = Date.now();
+  
+  try {
+    const result = await withReliability(fn, openaiBreaker, {
+      maxRetries: 3,
+      baseDelayMs: 1000,
+      maxDelayMs: 30000,
+      retryOn: (error) => is429Error(error) || is5xxError(error),
+    });
+    
+    const latencyMs = Date.now() - startTime;
+    
+    // Auto-log if context has model and endpoint set AND usage data is present
+    // This ensures we only log when we have meaningful metrics
+    const usage = (result as any)?.usage;
+    if (context.model && context.endpoint && logAiEventFn && usage) {
+      try {
+        const inputTokens = usage.prompt_tokens || 0;
+        const outputTokens = usage.completion_tokens || 0;
+        
+        logAiEventFn({
+          model: context.model,
+          endpoint: context.endpoint,
+          agentId: context.agentId,
+          toolName: context.toolName,
+          conversationId: context.conversationId,
+          inputTokens,
+          outputTokens,
+          latencyMs,
+          status: 'success',
+          systemPromptHash: context.systemPromptHash,
+          temperature: context.temperature,
+          maxTokens: context.maxTokens,
+          toolsEnabled: context.toolsEnabled,
+        });
+      } catch (logError) {
+        console.error("[Reliability] Failed to log AI call:", logError);
+      }
+    }
+    
+    return result;
+  } catch (error) {
+    const latencyMs = Date.now() - startTime;
+    
+    // Log errors if context is set (errors should always be logged)
+    if (context.model && context.endpoint && logAiEventFn) {
+      try {
+        logAiEventFn({
+          model: context.model,
+          endpoint: context.endpoint,
+          agentId: context.agentId,
+          toolName: context.toolName,
+          conversationId: context.conversationId,
+          inputTokens: 0,
+          outputTokens: 0,
+          latencyMs,
+          status: 'error',
+          errorType: (error as Error).name || 'Error',
+          errorMessage: (error as Error).message || String(error),
+          systemPromptHash: context.systemPromptHash,
+          temperature: context.temperature,
+          maxTokens: context.maxTokens,
+          toolsEnabled: context.toolsEnabled,
+        });
+      } catch (logError) {
+        console.error("[Reliability] Failed to log AI error:", logError);
+      }
+    }
+    
+    throw error;
+  }
+}
+
+// Wrapped version that logs AI calls with explicit context
+export async function wrapOpenAIWithLogging<T>(
+  fn: () => Promise<T>,
+  context: AiLoggingContext & { model: string; endpoint: AiLoggingContext['endpoint'] }
+): Promise<{ result: T; latencyMs: number }> {
+  // Set context before calling wrapOpenAI
+  setAiLoggingContext(context);
+  
+  const startTime = Date.now();
+  
+  try {
+    const result = await wrapOpenAI(fn);
+    const latencyMs = Date.now() - startTime;
+    return { result, latencyMs };
+  } finally {
+    // Clear context after call
+    clearAiLoggingContext();
+  }
 }
 
 export async function wrapOmi<T>(fn: () => Promise<T>): Promise<T> {

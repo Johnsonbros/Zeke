@@ -219,6 +219,24 @@ import {
 } from "./db";
 import type { TwilioMessageSource, UploadedFileType } from "@shared/schema";
 import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema, locationSampleBatchSchema, insertSavedPlaceSchema } from "@shared/schema";
+import {
+  logAiEvent,
+  getRecentAiLogs,
+  getAiLogsByModel,
+  getAiLogsByAgent,
+  getAiUsageStats,
+  getTodayAiUsageStats,
+  getWeekAiUsageStats,
+  detectAnomalies,
+  getDistinctModels,
+  getDistinctAgents,
+  cleanupOldAiLogs,
+  configureAnomalyAlerts,
+  setAnomalyAlertCallback,
+  checkAndAlertAnomalies,
+  getAnomalyAlertConfig,
+} from "./aiLogger";
+import { setAiLoggerFunction } from "../lib/reliability/client_wrap";
 import multer from "multer";
 import path from "path";
 import fsNode from "fs";
@@ -555,6 +573,9 @@ export async function registerRoutes(
   } catch (error) {
     console.log("[Twilio] Not configured via Replit connector, SMS features will be disabled");
   }
+  
+  // Wire up AI logging to the reliability wrapper so all wrapOpenAI calls are logged
+  setAiLoggerFunction(logAiEvent);
   
   // Set up SMS callback for tools (reminders and send_sms tool)
   setSendSmsCallback(async (phone: string, message: string, source?: string) => {
@@ -903,6 +924,79 @@ export async function registerRoutes(
   const { startHealthMonitoring } = await import("./locationIntelligence");
   startHealthMonitoring(10); // Check every 10 minutes
   console.log("[LocationIntelligence] Health monitoring initialized");
+
+  // Set up AI usage anomaly alerting via SMS
+  setAnomalyAlertCallback(async (phone: string, message: string) => {
+    const fromNumber = await getTwilioFromPhoneNumber();
+    if (!fromNumber) {
+      console.log("[AiAnomalyAlert] Twilio not configured, cannot send SMS");
+      throw new Error("Twilio not configured");
+    }
+
+    const formattedPhone = phone.startsWith('+') ? phone : `+1${phone}`;
+
+    try {
+      const client = await getTwilioClient();
+      const result = await client.messages.create({
+        body: message,
+        from: fromNumber,
+        to: formattedPhone,
+      });
+
+      logTwilioMessage({
+        direction: "outbound",
+        source: "automation",
+        fromNumber: fromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        twilioSid: result.sid,
+        status: "sent",
+      });
+
+      console.log(`[AiAnomalyAlert] SMS sent to ${formattedPhone}`);
+    } catch (error: any) {
+      logTwilioMessage({
+        direction: "outbound",
+        source: "automation",
+        fromNumber: fromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        status: "failed",
+        errorCode: error.code?.toString() || "UNKNOWN",
+        errorMessage: error.message || "Unknown error",
+      });
+
+      console.error("[AiAnomalyAlert] Failed to send SMS:", error);
+      throw error;
+    }
+  });
+
+  // Enable anomaly alerts if NATE_PHONE is configured
+  if (process.env.NATE_PHONE) {
+    configureAnomalyAlerts({
+      enabled: true,
+      recipientPhone: process.env.NATE_PHONE,
+      minSeverity: "warning",
+      cooldownMinutes: 60,
+    });
+    
+    // Schedule hourly anomaly check
+    cron.schedule('0 * * * *', async () => {
+      console.log("[AiAnomalyAlert] Running scheduled anomaly check...");
+      try {
+        const anomalies = await checkAndAlertAnomalies();
+        if (anomalies.length > 0) {
+          console.log(`[AiAnomalyAlert] Found ${anomalies.length} anomalies`);
+        }
+      } catch (error) {
+        console.error("[AiAnomalyAlert] Error during scheduled check:", error);
+      }
+    });
+    
+    console.log("[AiAnomalyAlert] Anomaly monitoring enabled - hourly checks scheduled");
+  } else {
+    console.log("[AiAnomalyAlert] NATE_PHONE not set - anomaly SMS alerts disabled");
+  }
 
   // Health check endpoint for Python agents bridge
   app.get("/api/health", (_req, res) => {
@@ -9098,6 +9192,204 @@ export async function registerRoutes(
       res.json({ results });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Failed to create webhook' });
+    }
+  });
+
+  // ============================================
+  // ======== AI USAGE LOGGING API ==============
+  // ============================================
+  
+  // GET /api/ai-logs - Get recent AI logs with optional filters
+  app.get("/api/ai-logs", (req: Request, res: Response) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const model = req.query.model as string;
+      const agentId = req.query.agent_id as string;
+      
+      let logs;
+      if (model) {
+        logs = getAiLogsByModel(model, limit);
+      } else if (agentId) {
+        logs = getAiLogsByAgent(agentId, limit);
+      } else {
+        logs = getRecentAiLogs(limit);
+      }
+      
+      res.json(logs);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to fetch AI logs' });
+    }
+  });
+  
+  // GET /api/ai-logs/stats/today - Get today's AI usage stats
+  app.get("/api/ai-logs/stats/today", (req: Request, res: Response) => {
+    try {
+      const stats = getTodayAiUsageStats();
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to fetch AI stats' });
+    }
+  });
+  
+  // GET /api/ai-logs/stats/week - Get this week's AI usage stats
+  app.get("/api/ai-logs/stats/week", (req: Request, res: Response) => {
+    try {
+      const stats = getWeekAiUsageStats();
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to fetch AI stats' });
+    }
+  });
+  
+  // GET /api/ai-logs/stats - Get AI usage stats for a custom date range
+  app.get("/api/ai-logs/stats", (req: Request, res: Response) => {
+    try {
+      const startDate = req.query.start_date as string;
+      const endDate = req.query.end_date as string;
+      
+      if (!startDate || !endDate) {
+        return res.status(400).json({ error: 'start_date and end_date are required' });
+      }
+      
+      const stats = getAiUsageStats(startDate, endDate);
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to fetch AI stats' });
+    }
+  });
+  
+  // GET /api/ai-logs/anomalies - Detect cost and performance anomalies
+  app.get("/api/ai-logs/anomalies", (req: Request, res: Response) => {
+    try {
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const twoDaysAgo = new Date(today);
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+      
+      const currentStats = getAiUsageStats(
+        yesterday.toISOString(),
+        today.toISOString()
+      );
+      const previousStats = getAiUsageStats(
+        twoDaysAgo.toISOString(),
+        yesterday.toISOString()
+      );
+      
+      const anomalies = detectAnomalies(currentStats, previousStats);
+      res.json({ anomalies, currentStats, previousStats });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to detect anomalies' });
+    }
+  });
+  
+  // GET /api/ai-logs/models - Get list of distinct models used
+  app.get("/api/ai-logs/models", (req: Request, res: Response) => {
+    try {
+      const models = getDistinctModels();
+      res.json(models);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to fetch models' });
+    }
+  });
+  
+  // GET /api/ai-logs/agents - Get list of distinct agents
+  app.get("/api/ai-logs/agents", (req: Request, res: Response) => {
+    try {
+      const agents = getDistinctAgents();
+      res.json(agents);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to fetch agents' });
+    }
+  });
+  
+  // POST /api/ai-logs/cleanup - Cleanup old logs
+  app.post("/api/ai-logs/cleanup", (req: Request, res: Response) => {
+    try {
+      const daysToKeep = parseInt(req.body.days_to_keep) || 30;
+      const deleted = cleanupOldAiLogs(daysToKeep);
+      res.json({ deleted, daysKept: daysToKeep });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to cleanup logs' });
+    }
+  });
+  
+  // GET /api/ai-logs/alerts/config - Get current anomaly alert configuration
+  app.get("/api/ai-logs/alerts/config", (req: Request, res: Response) => {
+    try {
+      const config = getAnomalyAlertConfig();
+      res.json(config);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get alert config' });
+    }
+  });
+  
+  // PATCH /api/ai-logs/alerts/config - Update anomaly alert configuration
+  app.patch("/api/ai-logs/alerts/config", (req: Request, res: Response) => {
+    try {
+      const { enabled, minSeverity, cooldownMinutes } = req.body;
+      const updates: any = {};
+      
+      if (typeof enabled === 'boolean') updates.enabled = enabled;
+      if (minSeverity && ['info', 'warning', 'critical'].includes(minSeverity)) {
+        updates.minSeverity = minSeverity;
+      }
+      if (typeof cooldownMinutes === 'number' && cooldownMinutes > 0) {
+        updates.cooldownMinutes = cooldownMinutes;
+      }
+      
+      configureAnomalyAlerts(updates);
+      res.json({ success: true, config: getAnomalyAlertConfig() });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to update alert config' });
+    }
+  });
+  
+  // POST /api/ai-logs/alerts/check - Manually trigger anomaly check
+  app.post("/api/ai-logs/alerts/check", async (req: Request, res: Response) => {
+    try {
+      const anomalies = await checkAndAlertAnomalies();
+      res.json({ 
+        checked: true, 
+        anomaliesFound: anomalies.length,
+        anomalies 
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to check anomalies' });
+    }
+  });
+  
+  // POST /api/ai-logs - Log an AI event (for Python bridge)
+  app.post("/api/ai-logs", (req: Request, res: Response) => {
+    try {
+      const eventData = req.body;
+      const id = logAiEvent({
+        model: eventData.model,
+        endpoint: eventData.endpoint,
+        timestamp: eventData.timestamp,
+        requestId: eventData.request_id,
+        agentId: eventData.agent_id,
+        toolName: eventData.tool_name,
+        conversationId: eventData.conversation_id,
+        inputTokens: eventData.input_tokens,
+        outputTokens: eventData.output_tokens,
+        totalTokens: eventData.total_tokens,
+        inputCostCents: eventData.input_cost_cents,
+        outputCostCents: eventData.output_cost_cents,
+        totalCostCents: eventData.total_cost_cents,
+        latencyMs: eventData.latency_ms,
+        temperature: eventData.temperature,
+        maxTokens: eventData.max_tokens,
+        systemPromptHash: eventData.system_prompt_hash,
+        toolsEnabled: eventData.tools_enabled,
+        appVersion: eventData.app_version,
+        status: eventData.status || 'ok',
+        errorType: eventData.error_type,
+        errorMessage: eventData.error_message,
+      });
+      res.json({ id, success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to log AI event' });
     }
   });
   
