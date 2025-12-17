@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { registerOmiRoutes } from "./omi-routes";
+import { extractCardsFromResponse } from "./cardExtractor";
 import { syncGitHubRepo, pushToGitHub, createGitHubWebhook } from "./github";
 import { 
   createConversation, 
@@ -1319,9 +1320,13 @@ export async function registerRoutes(
       // Get updated conversation (for new title if generated)
       const updatedConversation = getConversation(conversation.id);
       
+      // Extract structured cards from the response
+      const { cards } = extractCardsFromResponse(aiResponse, message);
+      
       res.json({
         message: assistantMessage,
         conversation: updatedConversation,
+        cards: cards.length > 0 ? cards : undefined,
       });
     } catch (error: any) {
       console.error("Chat error:", error);
