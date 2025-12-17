@@ -1,5 +1,13 @@
 # Project: ZEKE – Nate's Personal AI Assistant
 
+## Documentation
+
+Detailed documentation is available in the `/docs/` folder:
+- **[AGENTS.md](docs/AGENTS.md)** - Multi-agent architecture, Conductor orchestration, specialist agent roles
+- **[MEMORY.md](docs/MEMORY.md)** - Long-term memory system, SQLite+FTS5+vectors, scopes, eviction
+- **[DEVELOPMENT.md](docs/DEVELOPMENT.md)** - Coding guidelines, conventions, how to extend ZEKE
+- **[TOOLS.md](docs/TOOLS.md)** - Complete tool reference by category
+
 ## Overview
 ZEKE is a single-user personal AI assistant designed for Nate Johnson, focusing on high-quality, long-term memory and accessible interaction via SMS and a simple web UI. Its core purpose is to provide action-oriented, proactive, and personalized assistance through respectful and precise communication. Key capabilities include comprehensive personal context management, intelligent communication, task/calendar integration, location awareness, and sophisticated food preference tracking, aiming for a highly personalized, efficient, and intelligent assistant experience.
 
