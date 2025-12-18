@@ -8,7 +8,7 @@ function runCommand(command, args) {
     console.log(`Running: ${command} ${args.join(' ')}`);
     const proc = spawn(command, args, { 
       stdio: 'inherit',
-      shell: true 
+      shell: false 
     });
     proc.on('close', (code) => {
       if (code === 0) {

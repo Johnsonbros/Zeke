@@ -41,6 +41,7 @@
     "expo-blur": "^15.0.7",
     "expo-constants": "~18.0.9",
     "expo-contacts": "^15.0.11",
+    "expo-dev-client": "^6.0.20",
     "expo-device": "^8.0.10",
     "expo-document-picker": "^14.0.8",
     "expo-file-system": "^19.0.21",
