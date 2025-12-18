@@ -225,7 +225,7 @@ import {
   getJournalEntryByDate,
 } from "./db";
 import type { TwilioMessageSource, UploadedFileType } from "@shared/schema";
-import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema, locationSampleBatchSchema, insertSavedPlaceSchema } from "@shared/schema";
+import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema, locationSampleBatchSchema, insertSavedPlaceSchema, companionLocationHistorySchema, companionLocationSampleBatchSchema } from "@shared/schema";
 import {
   logAiEvent,
   getRecentAiLogs,
@@ -5298,6 +5298,93 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Location samples fetch error:", error);
       res.status(500).json({ error: error.message || "Failed to fetch location samples" });
+    }
+  });
+
+  // === Companion App Location Endpoints (New Format) ===
+  
+  // POST /api/location-history - Single location update from companion app (real-time)
+  // This endpoint accepts geocoded location data from the Zeke Companion mobile app
+  app.post("/api/location-history", (req, res) => {
+    try {
+      const parseResult = companionLocationHistorySchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid request body", 
+          details: parseResult.error.flatten() 
+        });
+      }
+      
+      const data = parseResult.data;
+      
+      const location = createLocationHistory({
+        latitude: String(data.latitude),
+        longitude: String(data.longitude),
+        altitude: data.altitude ? String(data.altitude) : undefined,
+        accuracy: data.accuracy ? String(data.accuracy) : undefined,
+        heading: data.heading ? String(data.heading) : undefined,
+        speed: data.speed ? String(data.speed) : undefined,
+        source: "companion",
+        city: data.city,
+        region: data.region,
+        country: data.country,
+        street: data.street,
+        postalCode: data.postalCode,
+        formattedAddress: data.formattedAddress,
+        label: data.label,
+        recordedAt: data.recordedAt,
+      });
+      
+      res.status(201).json({ 
+        id: location.id, 
+        success: true 
+      });
+    } catch (error: any) {
+      console.error("Companion location-history error:", error);
+      res.status(500).json({ error: error.message || "Failed to record location" });
+    }
+  });
+  
+  // POST /api/location-samples/batch - Batch location samples from companion app (fallback queue flush)
+  // This endpoint accepts batched GPS samples with activity detection
+  app.post("/api/location-samples/batch", (req, res) => {
+    try {
+      const parseResult = companionLocationSampleBatchSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid request body", 
+          details: parseResult.error.flatten() 
+        });
+      }
+      
+      const { samples } = parseResult.data;
+      
+      if (samples.length === 0) {
+        return res.status(400).json({ error: "samples array cannot be empty" });
+      }
+      
+      // Normalize samples for database (map recordedAt to timestamp)
+      const normalizedSamples = samples.map((s) => ({
+        latitude: String(s.latitude),
+        longitude: String(s.longitude),
+        accuracy: s.accuracy ? String(s.accuracy) : undefined,
+        altitude: s.altitude ? String(s.altitude) : undefined,
+        speed: s.speed ? String(s.speed) : undefined,
+        heading: s.heading ? String(s.heading) : undefined,
+        activity: s.activity,
+        source: "fused" as const,
+        timestamp: s.recordedAt, // Map recordedAt to timestamp
+      }));
+      
+      const created = createLocationSamples(normalizedSamples);
+      
+      res.status(200).json({
+        synced: created.length,
+        success: true
+      });
+    } catch (error: any) {
+      console.error("Companion location-samples/batch error:", error);
+      res.status(500).json({ error: error.message || "Failed to sync location samples" });
     }
   });
 

@@ -739,6 +739,35 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_location_history_created ON location_history(created_at);
 `);
 
+// Add geocoding columns to location_history if they don't exist (migration for existing databases)
+try {
+  db.exec(`ALTER TABLE location_history ADD COLUMN city TEXT`);
+} catch (e) { /* Column already exists */ }
+try {
+  db.exec(`ALTER TABLE location_history ADD COLUMN region TEXT`);
+} catch (e) { /* Column already exists */ }
+try {
+  db.exec(`ALTER TABLE location_history ADD COLUMN country TEXT`);
+} catch (e) { /* Column already exists */ }
+try {
+  db.exec(`ALTER TABLE location_history ADD COLUMN street TEXT`);
+} catch (e) { /* Column already exists */ }
+try {
+  db.exec(`ALTER TABLE location_history ADD COLUMN postal_code TEXT`);
+} catch (e) { /* Column already exists */ }
+try {
+  db.exec(`ALTER TABLE location_history ADD COLUMN formatted_address TEXT`);
+} catch (e) { /* Column already exists */ }
+try {
+  db.exec(`ALTER TABLE location_history ADD COLUMN label TEXT`);
+} catch (e) { /* Column already exists */ }
+try {
+  db.exec(`ALTER TABLE location_history ADD COLUMN recorded_at TEXT`);
+} catch (e) { /* Column already exists */ }
+try {
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_location_history_recorded ON location_history(recorded_at)`);
+} catch (e) { /* Index already exists */ }
+
 // Create saved_places table for starred/favorite locations
 db.exec(`
   CREATE TABLE IF NOT EXISTS saved_places (
@@ -2094,6 +2123,14 @@ interface LocationHistoryRow {
   speed: string | null;
   heading: string | null;
   source: string;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  street: string | null;
+  postal_code: string | null;
+  formatted_address: string | null;
+  label: string | null;
+  recorded_at: string | null;
   created_at: string;
 }
 
@@ -2462,7 +2499,15 @@ function mapLocationHistory(row: LocationHistoryRow): LocationHistory {
     altitude: row.altitude,
     speed: row.speed,
     heading: row.heading,
-    source: row.source as "gps" | "network" | "manual" | "overland",
+    source: row.source as "gps" | "network" | "manual" | "overland" | "companion",
+    city: row.city,
+    region: row.region,
+    country: row.country,
+    street: row.street,
+    postalCode: row.postal_code,
+    formattedAddress: row.formatted_address,
+    label: row.label,
+    recordedAt: row.recorded_at,
     createdAt: row.created_at,
   };
 }
@@ -4818,10 +4863,27 @@ export function createLocationHistory(data: InsertLocationHistory): LocationHist
     const source = data.source || "gps";
     
     db.prepare(`
-      INSERT INTO location_history (id, latitude, longitude, accuracy, altitude, speed, heading, source, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, data.latitude, data.longitude, data.accuracy || null, data.altitude || null, 
-           data.speed || null, data.heading || null, source, now);
+      INSERT INTO location_history (id, latitude, longitude, accuracy, altitude, speed, heading, source, city, region, country, street, postal_code, formatted_address, label, recorded_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, 
+      data.latitude, 
+      data.longitude, 
+      data.accuracy || null, 
+      data.altitude || null, 
+      data.speed || null, 
+      data.heading || null, 
+      source,
+      data.city || null,
+      data.region || null,
+      data.country || null,
+      data.street || null,
+      data.postalCode || null,
+      data.formattedAddress || null,
+      data.label || null,
+      data.recordedAt || null,
+      now
+    );
     
     return {
       id,
@@ -4831,7 +4893,15 @@ export function createLocationHistory(data: InsertLocationHistory): LocationHist
       altitude: data.altitude || null,
       speed: data.speed || null,
       heading: data.heading || null,
-      source: source as "gps" | "network" | "manual" | "overland",
+      source: source as "gps" | "network" | "manual" | "overland" | "companion",
+      city: data.city || null,
+      region: data.region || null,
+      country: data.country || null,
+      street: data.street || null,
+      postalCode: data.postalCode || null,
+      formattedAddress: data.formattedAddress || null,
+      label: data.label || null,
+      recordedAt: data.recordedAt || null,
       createdAt: now,
     };
   });
@@ -5604,6 +5674,7 @@ interface LocationSampleRow {
   speed: string | null;
   heading: string | null;
   battery_level: string | null;
+  activity: string | null;
   source: string | null;
   timestamp: string;
   created_at: string;
@@ -5635,6 +5706,7 @@ function mapLocationSample(row: LocationSampleRow): LocationSample {
     speed: row.speed,
     heading: row.heading,
     batteryLevel: row.battery_level,
+    activity: row.activity,
     source: row.source as "gps" | "network" | "fused" | "manual" | null,
     timestamp: row.timestamp,
     createdAt: row.created_at,
@@ -5671,12 +5743,18 @@ export function initLocationSamplesTable() {
       speed TEXT,
       heading TEXT,
       battery_level TEXT,
+      activity TEXT,
       source TEXT DEFAULT 'gps',
       timestamp TEXT NOT NULL,
       created_at TEXT NOT NULL
     )
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_location_samples_timestamp ON location_samples(timestamp)`);
+  
+  // Add activity column if it doesn't exist (migration for existing databases)
+  try {
+    db.exec(`ALTER TABLE location_samples ADD COLUMN activity TEXT`);
+  } catch (e) { /* Column already exists */ }
 }
 
 // Initialize location visits table
@@ -5708,8 +5786,8 @@ export function createLocationSamples(samples: Array<Omit<InsertLocationSample, 
     const now = new Date().toISOString();
     
     const stmt = db.prepare(`
-      INSERT INTO location_samples (id, latitude, longitude, accuracy, altitude, speed, heading, battery_level, source, timestamp, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO location_samples (id, latitude, longitude, accuracy, altitude, speed, heading, battery_level, activity, source, timestamp, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     for (const sample of samples) {
@@ -5723,6 +5801,7 @@ export function createLocationSamples(samples: Array<Omit<InsertLocationSample, 
         sample.speed ? String(sample.speed) : null,
         sample.heading ? String(sample.heading) : null,
         sample.batteryLevel ? String(sample.batteryLevel) : null,
+        sample.activity || null,
         sample.source || "gps",
         sample.timestamp,
         now
@@ -5737,6 +5816,7 @@ export function createLocationSamples(samples: Array<Omit<InsertLocationSample, 
         speed: sample.speed ? String(sample.speed) : null,
         heading: sample.heading ? String(sample.heading) : null,
         batteryLevel: sample.batteryLevel ? String(sample.batteryLevel) : null,
+        activity: sample.activity || null,
         source: sample.source || "gps",
         timestamp: sample.timestamp,
         createdAt: now,

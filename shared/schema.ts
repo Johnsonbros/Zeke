@@ -952,7 +952,7 @@ export type NotificationBatch = typeof notificationBatches.$inferSelect;
 // LOCATION INTELLIGENCE SYSTEM
 // ============================================
 
-// Location history table for GPS tracking
+// Location history table for GPS tracking with geocoding data from companion app
 export const locationHistory = sqliteTable("location_history", {
   id: text("id").primaryKey(),
   latitude: text("latitude").notNull(),
@@ -961,7 +961,16 @@ export const locationHistory = sqliteTable("location_history", {
   altitude: text("altitude"),
   speed: text("speed"),
   heading: text("heading"),
-  source: text("source", { enum: ["gps", "network", "manual", "overland"] }).notNull().default("gps"),
+  source: text("source", { enum: ["gps", "network", "manual", "overland", "companion"] }).notNull().default("gps"),
+  // Geocoding data from companion app
+  city: text("city"),
+  region: text("region"),
+  country: text("country"),
+  street: text("street"),
+  postalCode: text("postal_code"),
+  formattedAddress: text("formatted_address"),
+  label: text("label"), // User-defined label (e.g., "Home", "Work")
+  recordedAt: text("recorded_at"), // Device timestamp when location was captured
   createdAt: text("created_at").notNull(),
 });
 
@@ -972,6 +981,26 @@ export const insertLocationHistorySchema = createInsertSchema(locationHistory).o
 
 export type InsertLocationHistory = z.infer<typeof insertLocationHistorySchema>;
 export type LocationHistory = typeof locationHistory.$inferSelect;
+
+// Schema for companion app location history requests
+export const companionLocationHistorySchema = z.object({
+  latitude: z.union([z.string(), z.number()]),
+  longitude: z.union([z.string(), z.number()]),
+  altitude: z.union([z.string(), z.number()]).optional(),
+  accuracy: z.union([z.string(), z.number()]).optional(),
+  heading: z.union([z.string(), z.number()]).optional(),
+  speed: z.union([z.string(), z.number()]).optional(),
+  city: z.string().optional(),
+  region: z.string().optional(),
+  country: z.string().optional(),
+  street: z.string().optional(),
+  postalCode: z.string().optional(),
+  formattedAddress: z.string().optional(),
+  recordedAt: z.string().optional(),
+  label: z.string().optional(),
+});
+
+export type CompanionLocationHistory = z.infer<typeof companionLocationHistorySchema>;
 
 // Place categories for organization
 export const placeCategories = [
@@ -1143,8 +1172,9 @@ export const locationSamples = sqliteTable("location_samples", {
   speed: text("speed"), // m/s
   heading: text("heading"), // degrees
   batteryLevel: text("battery_level"), // 0-100
+  activity: text("activity"), // Activity type detected by device (walking, driving, etc.)
   source: text("source", { enum: ["gps", "network", "fused", "manual"] }).default("gps"),
-  timestamp: text("timestamp").notNull(), // ISO timestamp from device
+  timestamp: text("timestamp").notNull(), // ISO timestamp from device (recordedAt)
   createdAt: text("created_at").notNull(), // server receive time
 });
 
@@ -1156,7 +1186,7 @@ export const insertLocationSampleSchema = createInsertSchema(locationSamples).om
 export type InsertLocationSample = z.infer<typeof insertLocationSampleSchema>;
 export type LocationSample = typeof locationSamples.$inferSelect;
 
-// Batch upload schema for companion app
+// Batch upload schema for companion app (original format)
 export const locationSampleBatchSchema = z.object({
   samples: z.array(z.object({
     latitude: z.union([z.string(), z.number()]),
@@ -1166,12 +1196,29 @@ export const locationSampleBatchSchema = z.object({
     speed: z.union([z.string(), z.number()]).optional(),
     heading: z.union([z.string(), z.number()]).optional(),
     batteryLevel: z.union([z.string(), z.number()]).optional(),
+    activity: z.string().optional(),
     source: z.enum(["gps", "network", "fused", "manual"]).optional(),
     timestamp: z.string(),
   })),
 });
 
 export type LocationSampleBatch = z.infer<typeof locationSampleBatchSchema>;
+
+// New batch upload schema for companion app (with recordedAt format)
+export const companionLocationSampleBatchSchema = z.object({
+  samples: z.array(z.object({
+    latitude: z.union([z.string(), z.number()]),
+    longitude: z.union([z.string(), z.number()]),
+    altitude: z.union([z.string(), z.number()]).optional(),
+    accuracy: z.union([z.string(), z.number()]).optional(),
+    heading: z.union([z.string(), z.number()]).optional(),
+    speed: z.union([z.string(), z.number()]).optional(),
+    activity: z.string().optional(),
+    recordedAt: z.string(), // Device timestamp
+  })),
+});
+
+export type CompanionLocationSampleBatch = z.infer<typeof companionLocationSampleBatchSchema>;
 
 // Aggregated visit records (detected stays at locations)
 export const locationVisits = sqliteTable("location_visits", {
