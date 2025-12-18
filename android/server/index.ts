@@ -167,26 +167,38 @@ function serveLandingPage({
 }
 
 function configureExpoAndLanding(app: express.Application) {
-  const templatePath = path.resolve(
-    process.cwd(),
-    "server",
-    "templates",
-    "landing-page.html",
-  );
+  const isProduction = process.env.NODE_ENV === "production";
+  
+  const templatePaths = [
+    path.resolve(process.cwd(), "server", "templates", "landing-page.html"),
+    path.resolve(process.cwd(), "dist", "server", "templates", "landing-page.html"),
+  ];
+  
+  let templatePath = templatePaths[0];
+  for (const p of templatePaths) {
+    if (fs.existsSync(p)) {
+      templatePath = p;
+      break;
+    }
+  }
+  
   const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
   const appName = getAppName();
 
   log("Serving static Expo files with dynamic manifest routing");
+  log(`Environment: ${isProduction ? 'production' : 'development'}`);
 
-  const metroProxy = createProxyMiddleware({
-    target: 'http://localhost:8081',
-    changeOrigin: true,
-    ws: true,
-    logger: console,
-  });
+  const staticBuildPath = path.resolve(process.cwd(), "dist", "web");
+  const assetsPath = path.resolve(process.cwd(), "assets");
+
+  app.use("/assets", express.static(assetsPath));
+  
+  if (isProduction) {
+    app.use(express.static(staticBuildPath));
+  }
 
   app.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.path.startsWith("/api")) {
+    if (req.path.startsWith("/api") || req.path.startsWith("/ws")) {
       return next();
     }
 
@@ -209,10 +221,23 @@ function configureExpoAndLanding(app: express.Application) {
       });
     }
 
+    if (isProduction) {
+      const indexPath = path.resolve(staticBuildPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        return res.sendFile(indexPath);
+      }
+      return res.status(200).send(`<!DOCTYPE html><html><head><title>${appName}</title></head><body><h1>${appName}</h1><p>App is running</p></body></html>`);
+    }
+
+    const metroProxy = createProxyMiddleware({
+      target: 'http://localhost:8081',
+      changeOrigin: true,
+      ws: true,
+      logger: console,
+    });
     return metroProxy(req, res, next);
   });
 
-  app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
   log("Expo routing: Checking expo-platform header on / and /manifest");
@@ -352,7 +377,9 @@ function setupErrorHandler(app: express.Application) {
 
   setupErrorHandler(app);
 
-  const port = parseInt(process.env.PORT || "5000", 10);
+  const isProduction = process.env.NODE_ENV === "production";
+  const defaultPort = isProduction ? 8081 : 5000;
+  const port = parseInt(process.env.PORT || String(defaultPort), 10);
   server.listen(
     {
       port,

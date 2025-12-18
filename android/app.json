@@ -22,7 +22,15 @@
       "package": "com.zekeai.companion",
       "versionCode": 2,
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT"
+      ]
     },
     "web": {
       "output": "single",
@@ -46,7 +54,10 @@
         "react-native-ble-plx",
         {
           "isBackgroundEnabled": false,
-          "modes": ["peripheral", "central"],
+          "modes": [
+            "peripheral",
+            "central"
+          ],
           "bluetoothAlwaysPermission": "Allow ZEKE AI to use Bluetooth to connect to your Limitless pendant and Omi wearable"
         }
       ],
@@ -76,6 +87,12 @@
       "eas": {
         "projectId": "fd634d5b-ef00-4215-a63a-1c962f8f4015"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/fd634d5b-ef00-4215-a63a-1c962f8f4015"
     }
   }
 }

@@ -55,3 +55,6 @@ ensurePreviewReachable = "/status"
 [userenv.shared]
 EXPO_PUBLIC_ZEKE_BACKEND_URL = "https://zekeai.replit.app"
 
+[userenv.production]
+PORT = "8081"
+

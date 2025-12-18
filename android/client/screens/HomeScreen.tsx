@@ -219,38 +219,6 @@ export default function HomeScreen() {
     navigation.navigate('CommsTab');
   };
 
-  const handleRecordPress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (Platform.OS === 'web') {
-      const uploadAudio = window.confirm('Audio Recording\n\nZEKE supports two ways to capture audio:\n\n1. Connect an Omi or Limitless device for continuous recording\n\n2. Upload existing audio files for transcription\n\nClick OK to upload audio.');
-      if (uploadAudio) {
-        navigation.navigate('AudioUpload');
-      }
-    } else {
-      Alert.alert(
-        'Audio Recording',
-        'ZEKE supports two ways to capture audio:\n\n1. Connect an Omi or Limitless device for continuous recording\n\n2. Upload existing audio files for transcription',
-        [
-          { text: 'Upload Audio', onPress: () => navigation.navigate('AudioUpload') },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
-    }
-  };
-
-  const handleCommandPress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (Platform.OS === 'web') {
-      window.alert('Voice Commands\n\nComing soon! Voice commands will let you:\n\n• Add tasks and calendar events\n• Send messages hands-free\n• Search your memories\n• Control ZEKE settings\n\nStay tuned for updates!');
-    } else {
-      Alert.alert(
-        'Voice Commands',
-        'Coming soon! Voice commands will let you:\n\n• Add tasks and calendar events\n• Send messages hands-free\n• Search your memories\n• Control ZEKE settings\n\nStay tuned for updates!',
-        [{ text: 'Got it' }]
-      );
-    }
-  };
-
   const { data: connectionStatus } = useQuery({
     queryKey: ['zeke-connection-status'],
     queryFn: getHealthStatus,
@@ -368,18 +336,6 @@ export default function HomeScreen() {
             label="Message"
             gradientColors={['#8B5CF6', '#A855F7']}
             onPress={handleMessagePress}
-          />
-          <QuickActionButton
-            icon="mic"
-            label="Record"
-            gradientColors={['#EC4899', '#F472B6']}
-            onPress={handleRecordPress}
-          />
-          <QuickActionButton
-            icon="terminal"
-            label="Command"
-            gradientColors={['#10B981', '#34D399']}
-            onPress={handleCommandPress}
           />
         </View>
 

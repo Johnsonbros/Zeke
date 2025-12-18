@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import * as SplashScreen from "expo-splash-screen";
 import * as Notifications from "expo-notifications";
 
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -15,6 +16,8 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Colors } from "@/constants/theme";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { PairingScreen } from "@/screens/PairingScreen";
+
+SplashScreen.preventAutoHideAsync();
 
 const DarkTheme = {
   ...DefaultTheme,
@@ -33,12 +36,14 @@ const DarkTheme = {
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
 
+  useEffect(() => {
+    if (!isLoading) {
+      SplashScreen.hideAsync();
+    }
+  }, [isLoading]);
+
   if (isLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.dark.primary} />
-      </View>
-    );
+    return null;
   }
 
   if (!isAuthenticated) {
