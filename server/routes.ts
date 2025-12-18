@@ -1368,6 +1368,27 @@ export async function registerRoutes(
     }
   });
   
+  // Create a new conversation (for mobile app and general use)
+  app.post("/api/conversations", async (req, res) => {
+    try {
+      const { title } = req.body || {};
+      
+      // Detect source from headers or default to "mobile"
+      const deviceToken = req.headers['x-zeke-device-token'];
+      const source = deviceToken ? "mobile" : "web";
+      
+      const conversation = createConversation({ 
+        source: source as any,
+        title: title || "New Conversation"
+      });
+      
+      res.status(201).json(conversation);
+    } catch (error: any) {
+      console.error("Create conversation error:", error);
+      res.status(500).json({ message: "Failed to create conversation" });
+    }
+  });
+  
   // Get all conversations
   app.get("/api/conversations", async (_req, res) => {
     try {
