@@ -1,0 +1,35 @@
+Mobile HMAC Authentication Fix - Backend Update Complete
+The ZEKE backend has been updated to fix the 401 authentication errors on /api/tasks and /api/grocery endpoints. Here's what changed and what you need to verify:
+
+What Was Fixed (Backend Side)
+Root Cause: The backend was comparing your Unix timestamp in seconds against Date.now() which returns milliseconds, causing all requests to fail timestamp validation with "Request timestamp too old".
+
+Fix Applied: The backend now auto-detects timestamp format:
+
+Timestamps with 10 or fewer digits are treated as Unix seconds and converted to milliseconds
+Timestamps with 13 digits are treated as Unix milliseconds and used as-is
+Your Current Implementation (Verified Working)
+Your signing format is correct:
+
+Payload: timestamp.nonce.method.path.bodyHash
+Example: 1766082314..GET./api/tasks.e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+Headers being sent (correct):
+
+X-ZEKE-Timestamp: Unix seconds
+X-ZEKE-Nonce: empty string ""
+X-ZEKE-Signature: HMAC-SHA256 hex of payload
+X-ZEKE-Proxy-Id: your proxy identifier
+x-zeke-device-token: device token
+What You Should Do Next
+Test the endpoints again - Both /api/tasks and /api/grocery should now return 200 with valid HMAC signatures
+Verify your ZEKE_SHARED_SECRET - Make sure it matches exactly between your mobile proxy and the backend environment variable
+Check the security audit logs if you encounter issues:
+GET /api/mobile/security/logs
+This will show verified vs rejected requests and rejection reasons
+If you still see "Invalid signature" errors, the backend now logs debug info:
+Check the server logs for [MOBILE AUTH DEBUG] entries
+These show the payload format and partial signature comparison to help identify mismatches
+Important Notes
+Empty body hash should be: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 (SHA-256 of empty string)
+Timestamp tolerance is 5 minutes (300,000 ms)
+Nonce can be empty string - the backend handles this for backward compatibility

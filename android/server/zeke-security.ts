@@ -18,9 +18,9 @@ setInterval(() => {
 
 export interface SignedRequestHeaders {
   "X-Zeke-Proxy-Id": string;
-  "X-Zeke-Timestamp": string;
-  "X-Zeke-Nonce": string;
-  "X-Zeke-Signature": string;
+  "X-ZEKE-Timestamp": string;
+  "X-ZEKE-Nonce": string;
+  "X-ZEKE-Signature": string;
   "X-Zeke-Request-Id": string;
 }
 
@@ -39,18 +39,19 @@ export function signRequest(
   timestamp?: number,
   nonce?: string
 ): SignedRequestHeaders {
-  const ts = timestamp || Date.now();
+  // ZEKE backend expects timestamp in SECONDS for signature validation
+  const ts = timestamp || Math.floor(Date.now() / 1000);
   const n = nonce || generateNonce();
   const requestId = generateRequestId();
   
-  const payload = [
-    method.toUpperCase(),
-    path,
-    body || "",
-    ts.toString(),
-    n,
-    PROXY_ID,
-  ].join("|");
+  const bodyString = body || "";
+  const bodyHash = crypto.createHash("sha256").update(bodyString).digest("hex");
+  
+  // Strip query parameters - ZEKE backend uses req.path which excludes query string
+  const pathOnly = path.split('?')[0];
+  
+  // ZEKE backend payload format: timestamp.nonce.METHOD.path.bodyHash
+  const payload = `${ts}.${n}.${method.toUpperCase()}.${pathOnly}.${bodyHash}`;
   
   const signature = crypto
     .createHmac("sha256", SHARED_SECRET)
@@ -59,9 +60,9 @@ export function signRequest(
   
   return {
     "X-Zeke-Proxy-Id": PROXY_ID,
-    "X-Zeke-Timestamp": ts.toString(),
-    "X-Zeke-Nonce": n,
-    "X-Zeke-Signature": signature,
+    "X-ZEKE-Timestamp": ts.toString(),
+    "X-ZEKE-Nonce": n,
+    "X-ZEKE-Signature": signature,
     "X-Zeke-Request-Id": requestId,
   };
 }
@@ -148,8 +149,9 @@ export function getCommunicationLogs(limit: number = 100): CommunicationLogEntry
 }
 
 export function hashBody(body: string): string {
-  if (!body) return "";
-  return crypto.createHash("sha256").update(body).digest("hex").slice(0, 16);
+  // Return full SHA-256 hash as expected by ZEKE backend
+  const bodyString = body || "";
+  return crypto.createHash("sha256").update(bodyString).digest("hex");
 }
 
 export function isSecurityConfigured(): boolean {

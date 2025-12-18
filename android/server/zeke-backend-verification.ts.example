@@ -8,14 +8,6 @@
  * 1. Copy this code to your ZEKE backend server
  * 2. Set the ZEKE_SHARED_SECRET environment variable (same value on both servers)
  * 3. Add the middleware to your Express routes
- * 
- * SIGNATURE FORMAT: timestamp.nonce.METHOD.path.bodyHash
- * - timestamp: Unix timestamp (seconds or milliseconds)
- * - nonce: Random string for replay protection (can be empty string)
- * - METHOD: HTTP method uppercase (GET, POST, etc.)
- * - path: Request path including leading slash (e.g., /api/tasks)
- * - bodyHash: SHA-256 hash of request body (or hash of empty string for no body)
- * - Delimiter: . (dot)
  */
 
 import crypto from "crypto";
@@ -37,24 +29,6 @@ setInterval(() => {
   }
 }, 60 * 1000);
 
-function computeBodyHash(body: unknown): string {
-  const bodyStr = body && Object.keys(body as object).length > 0 
-    ? JSON.stringify(body) 
-    : '';
-  return crypto.createHash('sha256').update(bodyStr).digest('hex');
-}
-
-function safeCompare(a: string, b: string): boolean {
-  try {
-    const bufA = Buffer.from(a, 'hex');
-    const bufB = Buffer.from(b, 'hex');
-    if (bufA.length !== bufB.length) return false;
-    return crypto.timingSafeEqual(bufA, bufB);
-  } catch {
-    return false;
-  }
-}
-
 export function verifyZekeSignature(
   req: Request,
   res: Response,
@@ -66,49 +40,54 @@ export function verifyZekeSignature(
     return next();
   }
 
+  const proxyId = req.headers["x-zeke-proxy-id"] as string;
   const timestamp = req.headers["x-zeke-timestamp"] as string;
   const nonce = req.headers["x-zeke-nonce"] as string;
   const signature = req.headers["x-zeke-signature"] as string;
   const requestId = req.headers["x-zeke-request-id"] as string;
 
   // If no security headers, allow unsigned requests (for backwards compatibility)
-  if (!timestamp && !signature) {
+  if (!proxyId && !timestamp && !nonce && !signature) {
     console.log(`[ZEKE Security] Unsigned request to ${req.path}`);
     return next();
   }
 
-  // If some headers present, signature and timestamp must be present
-  if (!timestamp || !signature) {
+  // If some headers present, all must be present
+  if (!proxyId || !timestamp || !nonce || !signature) {
     console.warn(`[ZEKE Security] Missing security headers [${requestId}]`);
     res.status(401).json({ error: "Missing security headers" });
     return;
   }
 
-  // Handle both Unix seconds (10 digits) and Unix milliseconds (13 digits)
+  // Verify timestamp freshness
   const ts = parseInt(timestamp, 10);
-  const timestampMs = ts.toString().length <= 10 ? ts * 1000 : ts;
   const now = Date.now();
-  
-  if (isNaN(ts) || Math.abs(now - timestampMs) > TIMESTAMP_TOLERANCE_MS) {
+  if (isNaN(ts) || Math.abs(now - ts) > TIMESTAMP_TOLERANCE_MS) {
     console.warn(`[ZEKE Security] Timestamp expired or invalid [${requestId}]`);
     res.status(401).json({ error: "Timestamp expired or invalid" });
     return;
   }
 
-  // Check for replay attack (only if nonce provided)
-  const effectiveNonce = nonce || '';
-  if (effectiveNonce && usedNonces.has(effectiveNonce)) {
+  // Check for replay attack
+  if (usedNonces.has(nonce)) {
     console.warn(`[ZEKE Security] Replay attack detected [${requestId}]`);
     res.status(401).json({ error: "Nonce already used (replay attack detected)" });
     return;
   }
 
-  // Compute body hash
-  const bodyHash = computeBodyHash(req.body);
-
   // Reconstruct the signature payload
-  // Format: timestamp.nonce.METHOD.path.bodyHash
-  const payload = `${timestamp}.${effectiveNonce}.${req.method.toUpperCase()}.${req.path}.${bodyHash}`;
+  const bodyStr = typeof req.body === "string" 
+    ? req.body 
+    : JSON.stringify(req.body || "");
+
+  const payload = [
+    req.method.toUpperCase(),
+    req.path,
+    bodyStr || "",
+    timestamp,
+    nonce,
+    proxyId,
+  ].join("|");
 
   const expectedSignature = crypto
     .createHmac("sha256", SHARED_SECRET)
@@ -116,24 +95,26 @@ export function verifyZekeSignature(
     .digest("hex");
 
   // Use timing-safe comparison
-  const isValid = safeCompare(signature, expectedSignature);
+  let isValid = false;
+  try {
+    isValid = crypto.timingSafeEqual(
+      Buffer.from(signature, "hex"),
+      Buffer.from(expectedSignature, "hex")
+    );
+  } catch {
+    isValid = false;
+  }
 
   if (!isValid) {
     console.warn(`[ZEKE Security] Invalid signature [${requestId}]`);
-    console.log(`[ZEKE Security] Payload format: timestamp.nonce.METHOD.path.bodyHash`);
-    console.log(`[ZEKE Security] Payload used: ${payload}`);
-    console.log(`[ZEKE Security] Received: ${signature.substring(0, 16)}...`);
-    console.log(`[ZEKE Security] Expected: ${expectedSignature.substring(0, 16)}...`);
     res.status(401).json({ error: "Invalid signature" });
     return;
   }
 
-  // Mark nonce as used (only if nonce provided)
-  if (effectiveNonce) {
-    usedNonces.set(effectiveNonce, now);
-  }
+  // Mark nonce as used
+  usedNonces.set(nonce, now);
 
-  console.log(`[ZEKE Security] Verified request [${requestId}]`);
+  console.log(`[ZEKE Security] Verified request from ${proxyId} [${requestId}]`);
   next();
 }
 
@@ -147,10 +128,4 @@ export function verifyZekeSignature(
  * 
  * // Or apply to specific routes
  * app.get("/api/tasks", verifyZekeSignature, (req, res) => { ... });
- * 
- * SIGNATURE FORMAT SUMMARY:
- * - Payload: timestamp.nonce.METHOD.path.bodyHash
- * - Delimiter: . (dot)
- * - bodyHash: SHA-256 of JSON.stringify(body) or empty string for no body
- * - Empty body hash: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
  */

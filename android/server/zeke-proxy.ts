@@ -87,6 +87,7 @@ async function proxyToZeke(
     }
     
     console.log(`[ZEKE Proxy] ${method} ${url.href} [${requestId}]`);
+    console.log(`[ZEKE Proxy] Headers:`, JSON.stringify(fetchOptions.headers, null, 2));
     
     const response = await fetch(url.href, fetchOptions);
     const contentType = response.headers.get("content-type");
