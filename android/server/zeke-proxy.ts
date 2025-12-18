@@ -20,6 +20,7 @@ const FORWARD_HEADERS = [
   "x-session-id",
   "x-request-id",
   "user-agent",
+  "x-zeke-device-token",
 ];
 
 interface ProxyResult {

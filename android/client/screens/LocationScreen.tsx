@@ -2,9 +2,12 @@ import React, { useState, useCallback } from "react";
 import { View, ScrollView, StyleSheet, Pressable, ActivityIndicator, Alert, Platform, RefreshControl, Modal, TextInput, Switch } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
+import { useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
+import type { GeoStackParamList } from "@/navigation/GeoStackNavigator";
 
 import { ThemedText } from "@/components/ThemedText";
 import { GradientText } from "@/components/GradientText";
@@ -53,6 +56,7 @@ export default function LocationScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const { theme } = useTheme();
+  const navigation = useNavigation<NativeStackNavigationProp<GeoStackParamList>>();
   
   const [activeTab, setActiveTab] = useState<TabType>('current');
   const [locationHistory, setLocationHistory] = useState<LocationRecord[]>([]);
@@ -630,6 +634,22 @@ export default function LocationScreen() {
                   }}
                 >
                   {isTracking ? 'Stop' : 'Track'}
+                </ThemedText>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  navigation.navigate('Map');
+                }}
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  { backgroundColor: `${Colors.dark.secondary}20`, opacity: pressed ? 0.7 : 1 },
+                ]}
+              >
+                <Feather name="map" size={18} color={Colors.dark.secondary} />
+                <ThemedText type="small" style={{ marginLeft: Spacing.xs, color: Colors.dark.secondary }}>
+                  Map
                 </ThemedText>
               </Pressable>
             </View>
