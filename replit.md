@@ -83,6 +83,15 @@ Key technical implementations and features include:
   - Security logs endpoint at `GET /api/mobile/security/logs`
   - Protected routes: `/api/tasks/*`, `/api/grocery/*`, `/api/lists/*`, `/api/contacts/*`, `/api/chat/*`, `/api/dashboard`, `/api/memories/*`
   - Uses `ZEKE_SHARED_SECRET` environment variable (shared with mobile app)
+- **ZEKE Calendar Proxy Routes**: Proxy endpoints that forward calendar requests to the ZEKE backend for Android app support. When the local Google Calendar integration is unavailable (503/500), the client automatically falls back to these proxy routes. Endpoints:
+  - `GET /api/zeke/calendar/today` - Today's events
+  - `GET /api/zeke/calendar/upcoming` - Upcoming events
+  - `GET /api/zeke/calendar/events` - Events by date range
+  - `GET /api/zeke/calendar/calendars` - List of calendars
+  - `POST /api/zeke/calendar/events` - Create event
+  - `PATCH /api/zeke/calendar/events/:eventId` - Update event
+  - `DELETE /api/zeke/calendar/events/:eventId` - Delete event
+  - Uses `ZEKE_BACKEND_URL` env var (default: https://zekeai.replit.app)
 
 The Python multi-agent system (`python_agents/`) includes production-grade reliability features such as PII Redaction, a Health Endpoint, Request Tracing, Graceful Shutdown, and configurable environment variables for runtime control.
 
