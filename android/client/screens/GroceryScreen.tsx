@@ -21,8 +21,16 @@ import { VoiceInputButton } from "@/components/VoiceInputButton";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, Colors, BorderRadius } from "@/constants/theme";
-import { GroceryRepository, type GroceryItemData } from "@/lib/filesystem-repository";
-import { useSyncStatus } from "@/hooks/useLocalLists";
+import {
+  getGroceryItems,
+  addGroceryItem,
+  updateGroceryItem,
+  deleteGroceryItem,
+  toggleGroceryPurchased,
+  type ZekeGroceryItem,
+} from "@/lib/zeke-api-adapter";
+
+type GroceryItemData = ZekeGroceryItem;
 
 type FilterType = "all" | "unpurchased";
 
@@ -139,8 +147,6 @@ export default function GroceryScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
 
-  const { pendingChanges, isSyncing, syncNow } = useSyncStatus();
-
   const [groceryItems, setGroceryItems] = useState<GroceryItemData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefetching, setIsRefetching] = useState(false);
@@ -154,7 +160,7 @@ export default function GroceryScreen() {
 
   const loadItems = useCallback(async () => {
     try {
-      const items = await GroceryRepository.getItems();
+      const items = await getGroceryItems();
       setGroceryItems(items);
     } catch (err) {
       console.error("Error loading grocery items:", err);
@@ -187,7 +193,7 @@ export default function GroceryScreen() {
 
     setIsAddingItem(true);
     try {
-      await GroceryRepository.addItem(
+      await addGroceryItem(
         newItemName.trim(),
         newItemQuantity ? parseFloat(newItemQuantity) : undefined,
         newItemUnit.trim() || undefined,
@@ -206,16 +212,19 @@ export default function GroceryScreen() {
 
   const handleToggle = useCallback(async (id: string) => {
     try {
-      await GroceryRepository.togglePurchased(id);
-      await loadItems();
+      const item = groceryItems.find(i => i.id === id);
+      if (item) {
+        await toggleGroceryPurchased(id, !item.isPurchased);
+        await loadItems();
+      }
     } catch (err) {
       Alert.alert("Error", "Failed to update item. Please try again.");
     }
-  }, [loadItems]);
+  }, [loadItems, groceryItems]);
 
   const handleDelete = useCallback(async (id: string) => {
     try {
-      await GroceryRepository.deleteItem(id);
+      await deleteGroceryItem(id);
       await loadItems();
     } catch (err) {
       Alert.alert("Error", "Failed to delete item. Please try again.");
@@ -223,14 +232,14 @@ export default function GroceryScreen() {
   }, [loadItems]);
 
   const handleClearPurchased = async () => {
-    const purchasedCount = groceryItems.filter(i => i.isPurchased).length;
-    if (purchasedCount === 0) {
+    const purchasedItems = groceryItems.filter(i => i.isPurchased);
+    if (purchasedItems.length === 0) {
       Alert.alert("No Items", "There are no purchased items to clear.");
       return;
     }
     Alert.alert(
       "Clear Purchased Items",
-      `Remove ${purchasedCount} purchased item${purchasedCount > 1 ? 's' : ''}?`,
+      `Remove ${purchasedItems.length} purchased item${purchasedItems.length > 1 ? 's' : ''}?`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -238,7 +247,7 @@ export default function GroceryScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              await GroceryRepository.clearPurchased();
+              await Promise.all(purchasedItems.map(item => deleteGroceryItem(item.id)));
               await loadItems();
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             } catch (err) {
@@ -329,21 +338,7 @@ export default function GroceryScreen() {
             </Pressable>
           </View>
           <View style={styles.syncStatusRow}>
-            {pendingChanges > 0 ? (
-              <Pressable 
-                onPress={syncNow} 
-                disabled={isSyncing}
-                style={styles.syncButton}
-              >
-                <Feather 
-                  name={isSyncing ? "loader" : "cloud"} 
-                  size={14} 
-                  color={Colors.dark.warning} 
-                />
-              </Pressable>
-            ) : (
-              <Feather name="check-circle" size={14} color={Colors.dark.success} />
-            )}
+            <Feather name="cloud" size={14} color={Colors.dark.success} />
           </View>
         </View>
         <View style={styles.actionRow}>
@@ -386,7 +381,7 @@ export default function GroceryScreen() {
             description={
               filter === "unpurchased"
                 ? "All items have been purchased! Switch to 'All' to see your complete list."
-                : "Add items to your grocery list. Items are stored locally on your device."
+                : "Add items to your grocery list. Items sync with your ZEKE account."
             }
           />
         </View>

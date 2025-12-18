@@ -47,11 +47,8 @@ export function signRequest(
   const bodyString = body || "";
   const bodyHash = crypto.createHash("sha256").update(bodyString).digest("hex");
   
-  // Strip query parameters - ZEKE backend uses req.path which excludes query string
-  const pathOnly = path.split('?')[0];
-  
   // ZEKE backend payload format: timestamp.nonce.METHOD.path.bodyHash
-  const payload = `${ts}.${n}.${method.toUpperCase()}.${pathOnly}.${bodyHash}`;
+  const payload = `${ts}.${n}.${method.toUpperCase()}.${path}.${bodyHash}`;
   
   const signature = crypto
     .createHmac("sha256", SHARED_SECRET)
