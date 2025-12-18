@@ -14,13 +14,18 @@ import {
   addLocationToHistory,
   getLocationSettings,
   saveLocationSettings,
-  startLocationUpdates,
+  startLocationUpdatesWithZekeSync,
   stopLocationUpdates,
   checkLocationPermission,
   requestLocationPermission,
   isLocationServicesEnabled,
   generateLocationId,
   getRelativeTime,
+  syncCurrentLocationToZeke,
+  syncPendingLocationsToZeke,
+  getLocationSyncSettings,
+  saveLocationSyncSettings,
+  addPendingLocationSync,
 } from '@/lib/location';
 
 export interface UseLocationState {
@@ -73,7 +78,7 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
   const [settings, setSettings] = useState<LocationSettings | null>(null);
   const subscriptionRef = useRef<LocationSubscription | null>(null);
 
-  const updateLocation = useCallback(async (locationData: LocationData) => {
+  const updateLocation = useCallback(async (locationData: LocationData, syncToZeke: boolean = true) => {
     const geocoded = await reverseGeocode(locationData.latitude, locationData.longitude);
     
     const record: LocationRecord = {
@@ -88,6 +93,10 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
     
     if (settings?.saveHistoryEnabled) {
       await addLocationToHistory(record);
+    }
+
+    if (syncToZeke) {
+      addPendingLocationSync(locationData, geocoded).catch(console.error);
     }
 
     setState(prev => ({
@@ -157,7 +166,8 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
       const location = await getCurrentLocation(settings?.highAccuracyMode ?? true);
       
       if (location) {
-        await updateLocation(location);
+        await updateLocation(location, true);
+        syncPendingLocationsToZeke().catch(console.error);
       } else {
         setState(prev => ({
           ...prev,
@@ -202,8 +212,8 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
         return;
       }
 
-      const subscription = await startLocationUpdates(
-        updateLocation,
+      const subscription = await startLocationUpdatesWithZekeSync(
+        (location) => updateLocation(location, false),
         settings ?? undefined
       );
 
@@ -239,6 +249,8 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
       subscriptionRef.current = null;
     }
     
+    syncPendingLocationsToZeke().catch(console.error);
+    
     setState(prev => ({
       ...prev,
       isTracking: false,
@@ -271,6 +283,8 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
       const loadedSettings = await getLocationSettings();
       setSettings(loadedSettings);
 
+      syncPendingLocationsToZeke().catch(console.error);
+
       const lastLocation = await getLastLocation();
       if (lastLocation) {
         setState(prev => ({
@@ -289,6 +303,8 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
           const location = await getCurrentLocation(loadedSettings.highAccuracyMode);
           if (location) {
             const geocoded = await reverseGeocode(location.latitude, location.longitude);
+            await addPendingLocationSync(location, geocoded);
+            
             setState(prev => ({
               ...prev,
               location,
@@ -297,6 +313,8 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
               isLoading: false,
               permissionStatus: 'granted',
             }));
+            
+            syncPendingLocationsToZeke().catch(console.error);
           } else {
             setState(prev => ({ ...prev, isLoading: false }));
           }
@@ -314,6 +332,7 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
       if (subscriptionRef.current) {
         stopLocationUpdates(subscriptionRef.current);
       }
+      syncPendingLocationsToZeke().catch(console.error);
     };
   }, [autoStart, checkPermissionAndServices]);
 
@@ -335,6 +354,38 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
       }
     };
   }, [state.location]);
+
+  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  useEffect(() => {
+    let isMounted = true;
+    
+    if (syncIntervalRef.current) {
+      clearInterval(syncIntervalRef.current);
+      syncIntervalRef.current = null;
+    }
+
+    const startSyncInterval = async () => {
+      const syncSettings = await getLocationSyncSettings();
+      if (isMounted && syncSettings.syncEnabled && state.isTracking) {
+        syncIntervalRef.current = setInterval(() => {
+          syncPendingLocationsToZeke().catch(console.error);
+        }, syncSettings.syncIntervalMs);
+      }
+    };
+
+    if (state.isTracking) {
+      startSyncInterval();
+    }
+
+    return () => {
+      isMounted = false;
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+        syncIntervalRef.current = null;
+      }
+    };
+  }, [state.isTracking]);
 
   return {
     ...state,

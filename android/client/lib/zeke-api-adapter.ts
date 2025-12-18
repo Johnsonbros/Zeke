@@ -918,10 +918,17 @@ export async function addGroceryItem(
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     credentials: 'include',
-    body: JSON.stringify({ name, quantity, unit, category }),
+    body: JSON.stringify({ 
+      name, 
+      quantity: quantity !== undefined ? String(quantity) : "1", 
+      unit: unit || "", 
+      category: category || "General",
+      addedBy: "mobile-app"
+    }),
   });
   if (!res.ok) {
-    throw new Error(`Failed to add grocery item: ${res.statusText}`);
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to add grocery item: ${res.statusText}`);
   }
   return res.json();
 }
@@ -1778,4 +1785,267 @@ export async function deleteListItem(listId: string, itemId: string): Promise<vo
 
 export async function clearCheckedItems(listId: string): Promise<void> {
   await apiRequest('POST', `/api/lists/${listId}/clear-checked`, {});
+}
+
+export interface ZekeLocationUpdate {
+  latitude: number;
+  longitude: number;
+  altitude?: number | null;
+  accuracy?: number | null;
+  heading?: number | null;
+  speed?: number | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  street?: string | null;
+  postalCode?: string | null;
+  formattedAddress?: string | null;
+  recordedAt: string;
+  label?: string;
+}
+
+export interface ZekeLocationSample {
+  latitude: number;
+  longitude: number;
+  altitude?: number | null;
+  accuracy?: number | null;
+  heading?: number | null;
+  speed?: number | null;
+  activity?: string | null;
+  recordedAt: string;
+}
+
+export interface ZekeSavedPlace {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  formattedAddress?: string | null;
+  category?: string | null;
+  icon?: string | null;
+  isStarred?: boolean;
+  hasProximityAlert?: boolean;
+  proximityRadiusMeters?: number | null;
+  proximityAlertType?: string | null;
+  createdAt: string;
+}
+
+export async function syncLocationToZeke(location: ZekeLocationUpdate): Promise<{ success: boolean; id?: string }> {
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/location/update', baseUrl);
+  
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        ...getAuthHeaders() 
+      },
+      credentials: 'include',
+      body: JSON.stringify(location),
+      signal: createTimeoutSignal(10000),
+    });
+    
+    if (!res.ok) {
+      console.log('[ZEKE Location] Sync failed:', res.status);
+      return { success: false };
+    }
+    
+    const contentType = res.headers.get('content-type');
+    
+    if (contentType?.includes('application/json')) {
+      try {
+        const text = await res.text();
+        if (text && text.trim()) {
+          const data = JSON.parse(text);
+          console.log('[ZEKE Location] Location synced to Zeke backend');
+          return { success: true, id: data.id };
+        }
+      } catch {
+        // Ignore parse errors for empty responses
+      }
+    }
+    
+    console.log('[ZEKE Location] Location synced to Zeke backend');
+    return { success: true };
+  } catch (error) {
+    console.error('[ZEKE Location] Sync error:', error);
+    return { success: false };
+  }
+}
+
+export async function syncLocationBatchToZeke(samples: ZekeLocationSample[]): Promise<{ success: boolean; synced: number }> {
+  if (samples.length === 0) {
+    return { success: true, synced: 0 };
+  }
+  
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/location/batch', baseUrl);
+  
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        ...getAuthHeaders() 
+      },
+      credentials: 'include',
+      body: JSON.stringify({ samples }),
+      signal: createTimeoutSignal(15000),
+    });
+    
+    if (!res.ok) {
+      console.log('[ZEKE Location] Batch sync failed:', res.status);
+      return { success: false, synced: 0 };
+    }
+    
+    const contentType = res.headers.get('content-type');
+    
+    if (contentType?.includes('application/json')) {
+      try {
+        const text = await res.text();
+        if (text && text.trim()) {
+          const data = JSON.parse(text);
+          console.log('[ZEKE Location] Batch synced:', data.synced || samples.length, 'samples');
+          return { success: true, synced: data.synced || samples.length };
+        }
+      } catch {
+        // Ignore parse errors for empty responses
+      }
+    }
+    
+    console.log('[ZEKE Location] Batch synced:', samples.length, 'samples');
+    return { success: true, synced: samples.length };
+  } catch (error) {
+    console.error('[ZEKE Location] Batch sync error:', error);
+    return { success: false, synced: 0 };
+  }
+}
+
+export async function getZekeCurrentLocation(): Promise<ZekeLocationUpdate | null> {
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/location/current', baseUrl);
+  
+  try {
+    const res = await fetch(url, { 
+      credentials: 'include',
+      headers: getAuthHeaders(),
+      signal: createTimeoutSignal(5000)
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function getZekeLocationHistory(options?: { 
+  limit?: number; 
+  startDate?: string; 
+  endDate?: string 
+}): Promise<ZekeLocationUpdate[]> {
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/location/history', baseUrl);
+  
+  if (options?.limit) url.searchParams.set('limit', options.limit.toString());
+  if (options?.startDate) url.searchParams.set('startDate', options.startDate);
+  if (options?.endDate) url.searchParams.set('endDate', options.endDate);
+  
+  try {
+    const res = await fetch(url, { 
+      credentials: 'include',
+      headers: getAuthHeaders(),
+      signal: createTimeoutSignal(5000)
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.locations || data || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getZekeSavedPlaces(): Promise<ZekeSavedPlace[]> {
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/saved-places', baseUrl);
+  
+  try {
+    const res = await fetch(url, { 
+      credentials: 'include',
+      headers: getAuthHeaders(),
+      signal: createTimeoutSignal(5000)
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.places || data || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function createZekeSavedPlace(place: Omit<ZekeSavedPlace, 'id' | 'createdAt'>): Promise<ZekeSavedPlace | null> {
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/saved-places', baseUrl);
+  
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        ...getAuthHeaders() 
+      },
+      credentials: 'include',
+      body: JSON.stringify(place),
+      signal: createTimeoutSignal(10000),
+    });
+    
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function updateZekeSavedPlace(id: string, updates: Partial<ZekeSavedPlace>): Promise<ZekeSavedPlace | null> {
+  const baseUrl = getLocalApiUrl();
+  const url = new URL(`/api/zeke/saved-places/${id}`, baseUrl);
+  
+  try {
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 
+        'Content-Type': 'application/json',
+        ...getAuthHeaders() 
+      },
+      credentials: 'include',
+      body: JSON.stringify(updates),
+      signal: createTimeoutSignal(10000),
+    });
+    
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteZekeSavedPlace(id: string): Promise<boolean> {
+  const baseUrl = getLocalApiUrl();
+  const url = new URL(`/api/zeke/saved-places/${id}`, baseUrl);
+  
+  try {
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+      signal: createTimeoutSignal(10000),
+    });
+    
+    return res.ok;
+  } catch {
+    return false;
+  }
 }

@@ -1,10 +1,11 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { View, StyleSheet, Pressable, ActivityIndicator, Platform } from "react-native";
+import { View, StyleSheet, Pressable, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { Feather } from "@expo/vector-icons";
-import MapView, { Marker, PROVIDER_GOOGLE, Region, MapPressEvent } from "react-native-maps";
+import MapView, { Region, MapPressEvent } from "react-native-maps";
 import * as Haptics from "expo-haptics";
+import { ConfigurableMap, Marker } from "@/components/ConfigurableMap";
 
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -134,10 +135,9 @@ export default function MapScreen() {
 
   return (
     <View style={styles.container}>
-      <MapView
+      <ConfigurableMap
         ref={mapRef}
         style={styles.map}
-        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         initialRegion={location ? {
           latitude: location.latitude,
           longitude: location.longitude,
@@ -158,7 +158,7 @@ export default function MapScreen() {
             pinColor={Colors.dark.primary}
           />
         ) : null}
-      </MapView>
+      </ConfigurableMap>
 
       {isLoading ? (
         <View style={[styles.loadingOverlay, { top: headerHeight }]}>

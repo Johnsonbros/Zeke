@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { syncLocationToZeke, syncLocationBatchToZeke, type ZekeLocationUpdate, type ZekeLocationSample } from './zeke-api-adapter';
 
 export interface LocationData {
   latitude: number;
@@ -398,4 +399,162 @@ export async function startLocationUpdates(
 
 export function stopLocationUpdates(subscription: LocationSubscription): void {
   subscription.remove();
+}
+
+const PENDING_SYNC_KEY = '@zeke/pending_location_sync';
+const SYNC_SETTINGS_KEY = '@zeke/location_sync_settings';
+
+export interface LocationSyncSettings {
+  syncEnabled: boolean;
+  syncIntervalMs: number;
+  batchSize: number;
+  lastSyncAt: number | null;
+}
+
+const DEFAULT_SYNC_SETTINGS: LocationSyncSettings = {
+  syncEnabled: true,
+  syncIntervalMs: 60000,
+  batchSize: 20,
+  lastSyncAt: null,
+};
+
+export async function getLocationSyncSettings(): Promise<LocationSyncSettings> {
+  try {
+    const data = await AsyncStorage.getItem(SYNC_SETTINGS_KEY);
+    return data ? { ...DEFAULT_SYNC_SETTINGS, ...JSON.parse(data) } : DEFAULT_SYNC_SETTINGS;
+  } catch {
+    return DEFAULT_SYNC_SETTINGS;
+  }
+}
+
+export async function saveLocationSyncSettings(settings: Partial<LocationSyncSettings>): Promise<void> {
+  try {
+    const current = await getLocationSyncSettings();
+    await AsyncStorage.setItem(SYNC_SETTINGS_KEY, JSON.stringify({ ...current, ...settings }));
+  } catch (error) {
+    console.error('Error saving location sync settings:', error);
+  }
+}
+
+export async function addPendingLocationSync(location: LocationData, geocoded: GeocodedLocation | null): Promise<void> {
+  try {
+    const pending = await getPendingLocationSyncs();
+    const sample: ZekeLocationSample = {
+      latitude: location.latitude,
+      longitude: location.longitude,
+      altitude: location.altitude,
+      accuracy: location.accuracy,
+      heading: location.heading,
+      speed: location.speed,
+      recordedAt: new Date(location.timestamp).toISOString(),
+    };
+    pending.push(sample);
+    await AsyncStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(pending));
+  } catch (error) {
+    console.error('Error adding pending location sync:', error);
+  }
+}
+
+export async function getPendingLocationSyncs(): Promise<ZekeLocationSample[]> {
+  try {
+    const data = await AsyncStorage.getItem(PENDING_SYNC_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function clearPendingLocationSyncs(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(PENDING_SYNC_KEY);
+  } catch (error) {
+    console.error('Error clearing pending location syncs:', error);
+  }
+}
+
+export async function syncPendingLocationsToZeke(): Promise<{ success: boolean; synced: number }> {
+  try {
+    const syncSettings = await getLocationSyncSettings();
+    if (!syncSettings.syncEnabled) {
+      return { success: true, synced: 0 };
+    }
+
+    const pending = await getPendingLocationSyncs();
+    if (pending.length === 0) {
+      return { success: true, synced: 0 };
+    }
+
+    const batch = pending.slice(0, syncSettings.batchSize);
+    const result = await syncLocationBatchToZeke(batch);
+
+    if (result.success) {
+      const remaining = pending.slice(syncSettings.batchSize);
+      if (remaining.length > 0) {
+        await AsyncStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(remaining));
+      } else {
+        await clearPendingLocationSyncs();
+      }
+      await saveLocationSyncSettings({ lastSyncAt: Date.now() });
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Error syncing pending locations:', error);
+    return { success: false, synced: 0 };
+  }
+}
+
+export async function syncCurrentLocationToZeke(
+  location: LocationData,
+  geocoded: GeocodedLocation | null
+): Promise<{ success: boolean; id?: string }> {
+  try {
+    const update: ZekeLocationUpdate = {
+      latitude: location.latitude,
+      longitude: location.longitude,
+      altitude: location.altitude,
+      accuracy: location.accuracy,
+      heading: location.heading,
+      speed: location.speed,
+      city: geocoded?.city,
+      region: geocoded?.region,
+      country: geocoded?.country,
+      street: geocoded?.street,
+      postalCode: geocoded?.postalCode,
+      formattedAddress: geocoded?.formattedAddress,
+      recordedAt: new Date(location.timestamp).toISOString(),
+    };
+
+    return await syncLocationToZeke(update);
+  } catch (error) {
+    console.error('Error syncing current location to Zeke:', error);
+    return { success: false };
+  }
+}
+
+export async function startLocationUpdatesWithZekeSync(
+  callback: (location: LocationData) => void,
+  settings?: Partial<LocationSettings>
+): Promise<LocationSubscription | null> {
+  const syncSettings = await getLocationSyncSettings();
+
+  return startLocationUpdates(async (location) => {
+    callback(location);
+
+    if (syncSettings.syncEnabled) {
+      let geocoded: GeocodedLocation | null = null;
+      try {
+        geocoded = await reverseGeocode(location.latitude, location.longitude);
+        const result = await syncCurrentLocationToZeke(location, geocoded);
+        
+        if (!result.success) {
+          console.log('[ZEKE Location] Real-time sync returned failure, queueing for batch');
+          await addPendingLocationSync(location, geocoded);
+        }
+      } catch (error) {
+        console.error('[ZEKE Location] Real-time sync error, queueing for batch:', error);
+        await addPendingLocationSync(location, geocoded);
+      }
+    }
+  }, settings);
 }

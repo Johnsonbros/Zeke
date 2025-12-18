@@ -10,7 +10,15 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.zekeai.companion"
+      "bundleIdentifier": "com.zekeai.companion",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "ZEKE AI uses Bluetooth to connect to your Limitless pendant and Omi wearable for real-time audio transcription.",
+        "NSBluetoothPeripheralUsageDescription": "ZEKE AI uses Bluetooth to connect to your Limitless pendant and Omi wearable.",
+        "NSLocationWhenInUseUsageDescription": "ZEKE AI uses your location to save places you want to remember and provide location-based reminders.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "ZEKE AI uses your location in the background to provide location-based reminders when you arrive at saved places.",
+        "NSContactsUsageDescription": "ZEKE AI can access your contacts to help you remember important information about people in your life.",
+        "NSUserNotificationUsageDescription": "ZEKE AI sends notifications to remind you about important information, location-based alerts, and updates from your AI companion."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,9 +35,11 @@
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",
         "android.permission.BLUETOOTH_CONNECT",
-        "android.permission.BLUETOOTH",
-        "android.permission.BLUETOOTH_ADMIN",
-        "android.permission.BLUETOOTH_CONNECT"
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.READ_CONTACTS"
       ]
     },
     "web": {

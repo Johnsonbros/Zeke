@@ -101,7 +101,10 @@ async function saveLocationToZeke(): Promise<{ success: boolean; locationName?: 
 async function scheduleResetToIdle() {
   await new Promise(resolve => setTimeout(resolve, 4000));
   await setWidgetData({ status: 'idle' });
-  await requestWidgetUpdate({ widgetName: WIDGET_NAME });
+  await requestWidgetUpdate({
+    widgetName: WIDGET_NAME,
+    renderWidget: () => <ZekeLocationWidget status="idle" />,
+  });
 }
 
 const nameToWidget: Record<string, React.FC<any>> = {
