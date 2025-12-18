@@ -599,6 +599,27 @@ export default function CalendarPage() {
   const { data: calendars } = useQuery<CalendarInfo[]>({
     queryKey: ["/api/calendar/list"],
     staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      // Try local calendar list first
+      const res = await fetch("/api/calendar/list");
+      
+      // If local calendar fails, fall back to ZEKE backend proxy
+      if (!res.ok && (res.status === 503 || res.status === 500)) {
+        console.log("Local calendar unavailable, falling back to ZEKE backend for calendar list");
+        const zekeRes = await fetch("/api/zeke/calendar/calendars");
+        if (!zekeRes.ok) {
+          const zekeError = await zekeRes.json().catch(() => ({}));
+          throw new Error(zekeError.error || "Failed to fetch calendars from ZEKE backend");
+        }
+        return zekeRes.json();
+      }
+      
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to fetch calendars");
+      }
+      return res.json();
+    },
   });
 
   useEffect(() => {
@@ -660,7 +681,22 @@ export default function CalendarPage() {
       if (calendarIdsParam) {
         params.set('calendars', calendarIdsParam);
       }
+      
+      // Try local calendar first
       const res = await fetch(`/api/calendar/events?${params}`);
+      
+      // If local calendar fails (503 = service unavailable, or 500 = Google Calendar not connected)
+      // Fall back to ZEKE backend proxy
+      if (!res.ok && (res.status === 503 || res.status === 500)) {
+        console.log("Local calendar unavailable, falling back to ZEKE backend");
+        const zekeRes = await fetch(`/api/zeke/calendar/events?${params}`);
+        if (!zekeRes.ok) {
+          const zekeError = await zekeRes.json().catch(() => ({}));
+          throw new Error(zekeError.error || "Failed to fetch events from ZEKE backend");
+        }
+        return zekeRes.json();
+      }
+      
       if (!res.ok) {
         const error = await res.json();
         throw new Error(error.error || "Failed to fetch events");

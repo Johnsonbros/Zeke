@@ -4316,6 +4316,155 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== ZEKE CALENDAR PROXY API ====================
+  // These routes proxy calendar requests to the ZEKE backend for Android app support
+  // When local Google Calendar isn't connected, the client can fall back to these endpoints
+  
+  const ZEKE_BACKEND_URL = process.env.ZEKE_BACKEND_URL || "https://zekeai.replit.app";
+  
+  // Helper function to proxy requests to ZEKE backend
+  async function proxyToZekeBackend(path: string, options: RequestInit = {}) {
+    const url = `${ZEKE_BACKEND_URL}${path}`;
+    return fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+  }
+  
+  // Get today's events from ZEKE backend
+  app.get("/api/zeke/calendar/today", async (_req, res) => {
+    try {
+      const response = await proxyToZekeBackend("/api/calendar/today");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        return res.status(response.status).json(errorData);
+      }
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      console.error("ZEKE calendar today proxy error:", error);
+      res.status(502).json({ error: "Failed to fetch today's events from ZEKE backend" });
+    }
+  });
+  
+  // Get upcoming events from ZEKE backend
+  app.get("/api/zeke/calendar/upcoming", async (req, res) => {
+    try {
+      const days = req.query.days || "7";
+      const response = await proxyToZekeBackend(`/api/calendar/events?days=${days}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        return res.status(response.status).json(errorData);
+      }
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      console.error("ZEKE calendar upcoming proxy error:", error);
+      res.status(502).json({ error: "Failed to fetch upcoming events from ZEKE backend" });
+    }
+  });
+  
+  // Get events by date range from ZEKE backend
+  app.get("/api/zeke/calendar/events", async (req, res) => {
+    try {
+      const queryParams = new URLSearchParams();
+      if (req.query.start) queryParams.set('start', req.query.start as string);
+      if (req.query.end) queryParams.set('end', req.query.end as string);
+      if (req.query.days) queryParams.set('days', req.query.days as string);
+      if (req.query.calendars) queryParams.set('calendars', req.query.calendars as string);
+      
+      const response = await proxyToZekeBackend(`/api/calendar/events?${queryParams.toString()}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        return res.status(response.status).json(errorData);
+      }
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      console.error("ZEKE calendar events proxy error:", error);
+      res.status(502).json({ error: "Failed to fetch events from ZEKE backend" });
+    }
+  });
+  
+  // Get list of calendars from ZEKE backend
+  app.get("/api/zeke/calendar/calendars", async (_req, res) => {
+    try {
+      const response = await proxyToZekeBackend("/api/calendar/list");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        return res.status(response.status).json(errorData);
+      }
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      console.error("ZEKE calendar list proxy error:", error);
+      res.status(502).json({ error: "Failed to fetch calendars from ZEKE backend" });
+    }
+  });
+  
+  // Create event via ZEKE backend
+  app.post("/api/zeke/calendar/events", async (req, res) => {
+    try {
+      const response = await proxyToZekeBackend("/api/calendar/events", {
+        method: 'POST',
+        body: JSON.stringify(req.body),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        return res.status(response.status).json(errorData);
+      }
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      console.error("ZEKE calendar create proxy error:", error);
+      res.status(502).json({ error: "Failed to create event via ZEKE backend" });
+    }
+  });
+  
+  // Update event via ZEKE backend
+  app.patch("/api/zeke/calendar/events/:eventId", async (req, res) => {
+    try {
+      const { eventId } = req.params;
+      const calendarId = req.query.calendarId || 'primary';
+      const response = await proxyToZekeBackend(`/api/calendar/events/${eventId}?calendarId=${calendarId}`, {
+        method: 'PUT',
+        body: JSON.stringify(req.body),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        return res.status(response.status).json(errorData);
+      }
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      console.error("ZEKE calendar update proxy error:", error);
+      res.status(502).json({ error: "Failed to update event via ZEKE backend" });
+    }
+  });
+  
+  // Delete event via ZEKE backend
+  app.delete("/api/zeke/calendar/events/:eventId", async (req, res) => {
+    try {
+      const { eventId } = req.params;
+      const calendarId = req.query.calendarId || 'primary';
+      const response = await proxyToZekeBackend(`/api/calendar/events/${eventId}?calendarId=${calendarId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        return res.status(response.status).json(errorData);
+      }
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      console.error("ZEKE calendar delete proxy error:", error);
+      res.status(502).json({ error: "Failed to delete event via ZEKE backend" });
+    }
+  });
+
   // ============================================
   // INTERNAL API BRIDGE FOR PYTHON AGENTS
   // ============================================

@@ -1653,6 +1653,28 @@ export default function DashboardPage() {
 
   const { data: todayEvents, isLoading: calendarLoading } = useQuery<CalendarEvent[]>({
     queryKey: ["/api/calendar/today"],
+    queryFn: async () => {
+      // Try local calendar first
+      const res = await fetch("/api/calendar/today");
+      
+      // If local calendar fails (503 = service unavailable, or 500 = Google Calendar not connected)
+      // Fall back to ZEKE backend proxy
+      if (!res.ok && (res.status === 503 || res.status === 500)) {
+        console.log("Local calendar unavailable, falling back to ZEKE backend");
+        const zekeRes = await fetch("/api/zeke/calendar/today");
+        if (!zekeRes.ok) {
+          const zekeError = await zekeRes.json().catch(() => ({}));
+          throw new Error(zekeError.error || "Failed to fetch today's events from ZEKE backend");
+        }
+        return zekeRes.json();
+      }
+      
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to fetch today's events");
+      }
+      return res.json();
+    },
   });
 
   const { data: smsStats, isLoading: smsStatsLoading } = useQuery<SmsStats>({
