@@ -40,7 +40,6 @@ function computeBodyHash(body: unknown): string {
   const bodyStr = body && Object.keys(body as object).length > 0 
     ? JSON.stringify(body) 
     : '';
-  if (!bodyStr) return '';
   return crypto.createHash('sha256').update(bodyStr).digest('hex');
 }
 
@@ -53,7 +52,7 @@ function computeExpectedSignature(
   secret: string
 ): string {
   const payload = `${timestamp}.${nonce}.${method}.${path}.${bodyHash}`;
-  return crypto.createHmac('sha256', secret).update(payload).digest('base64');
+  return crypto.createHmac('sha256', secret).update(payload).digest('hex');
 }
 
 function safeCompare(a: string, b: string): boolean {

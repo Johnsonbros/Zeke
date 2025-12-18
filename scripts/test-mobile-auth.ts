@@ -1,8 +1,6 @@
 import crypto from 'crypto';
 
-const BASE_URL = process.env.REPL_SLUG 
-  ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
-  : 'http://localhost:5000';
+const BASE_URL = 'http://localhost:5000';
 
 const SHARED_SECRET = process.env.ZEKE_SHARED_SECRET || '';
 
