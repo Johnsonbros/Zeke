@@ -9118,6 +9118,18 @@ export function findEntitiesByLabel(searchLabel: string): Entity[] {
   });
 }
 
+// Query: Get entity by exact label match (returns first match)
+export function getEntityByLabel(label: string): Entity | undefined {
+  return wrapDbOperation("getEntityByLabel", () => {
+    const row = db.prepare(`
+      SELECT * FROM entities 
+      WHERE label = ? 
+      LIMIT 1
+    `).get(label) as EntityRow | undefined;
+    return row ? mapEntity(row) : undefined;
+  });
+}
+
 // Query: Get all entities
 export function getAllEntities(): Entity[] {
   return wrapDbOperation("getAllEntities", () => {
