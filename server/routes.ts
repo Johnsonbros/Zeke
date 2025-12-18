@@ -1437,6 +1437,111 @@ export async function registerRoutes(
     }
   });
   
+  // Get messages for a specific conversation (mobile app support)
+  app.get("/api/conversations/:id/messages", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const conversation = getConversation(id);
+      
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      
+      const messages = getMessagesByConversation(id);
+      res.json(messages);
+    } catch (error: any) {
+      console.error("Get conversation messages error:", error);
+      res.status(500).json({ message: "Failed to get messages" });
+    }
+  });
+  
+  // Send message to a conversation (mobile app support)
+  app.post("/api/conversations/:id/messages", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { content } = req.body || {};
+      
+      if (!content) {
+        return res.status(400).json({ message: "Message content is required" });
+      }
+      
+      const conversation = getConversation(id);
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      
+      // Detect source from headers
+      const deviceToken = req.headers['x-zeke-device-token'];
+      const source = deviceToken ? "mobile" : "web";
+      
+      // Store user message
+      const userMessage = createMessage({
+        conversationId: id,
+        role: "user",
+        content,
+        source: source as any,
+      });
+      
+      // Get user permissions
+      let userPermissions;
+      if (conversation.phoneNumber) {
+        userPermissions = getPermissionsForPhone(conversation.phoneNumber);
+      } else {
+        userPermissions = getAdminPermissions();
+      }
+      
+      // Get AI response
+      let aiResponse: string;
+      
+      try {
+        const isWebAdmin = source === 'web' && !conversation.phoneNumber;
+        const pythonResponse = await fetch('http://127.0.0.1:5001/api/agents/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: content,
+            conversation_id: id,
+            phone_number: conversation.phoneNumber || undefined,
+            metadata: {
+              source,
+              permissions: userPermissions,
+              is_admin: isWebAdmin || userPermissions.isAdmin,
+              trusted_single_user_deployment: true,
+            }
+          }),
+          signal: AbortSignal.timeout(30000),
+        });
+        
+        if (pythonResponse.ok) {
+          const result = await pythonResponse.json() as { response: string; trace_id?: string };
+          aiResponse = result.response;
+          console.log(`[Mobile Chat] trace_id=${result.trace_id}`);
+        } else {
+          throw new Error(`Python agent returned ${pythonResponse.status}`);
+        }
+      } catch (pythonError) {
+        console.warn('[Mobile Chat] FALLBACK_TO_LEGACY - Python agent unavailable');
+        aiResponse = await chat(id, content, false, conversation.phoneNumber || undefined);
+      }
+      
+      // Store assistant message
+      const assistantMessage = createMessage({
+        conversationId: id,
+        role: "assistant",
+        content: aiResponse,
+        source: source as any,
+      });
+      
+      res.status(201).json({
+        userMessage,
+        assistantMessage,
+      });
+    } catch (error: any) {
+      console.error("Send conversation message error:", error);
+      res.status(500).json({ message: error.message || "Failed to send message" });
+    }
+  });
+  
   // Twilio SMS webhook - sends reply via API for reliability
   app.post("/api/twilio/webhook", async (req, res) => {
     try {
