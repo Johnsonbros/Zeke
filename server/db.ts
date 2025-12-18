@@ -3129,6 +3129,66 @@ export function getConversationByPhoneNumber(phoneNumber: string): Conversation 
   });
 }
 
+// Unified conversation ID for master admin - all channels share this single conversation
+const UNIFIED_CONVERSATION_ID = "unified-master-admin-conversation";
+
+/**
+ * Get or create the unified conversation for the master admin user.
+ * This ensures all conversations (SMS, web, app, voice) share the same conversation history,
+ * making Zeke's memory consistent across all communication channels.
+ * 
+ * @param channel - The channel this message is coming from ('web', 'sms', 'voice', 'app')
+ * @returns The unified conversation for the master admin
+ */
+export function findOrCreateUnifiedConversation(channel: 'web' | 'sms' | 'voice' | 'app' = 'web'): Conversation {
+  return wrapDbOperation("findOrCreateUnifiedConversation", () => {
+    // Check if unified conversation already exists
+    const existing = db.prepare(`
+      SELECT * FROM conversations 
+      WHERE id = ?
+    `).get(UNIFIED_CONVERSATION_ID) as ConversationRow | undefined;
+    
+    if (existing) {
+      return mapConversation(existing);
+    }
+    
+    // Create the unified conversation for the first time
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      INSERT INTO conversations (id, title, phone_number, source, mode, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(UNIFIED_CONVERSATION_ID, "Zeke - Unified Conversation", MASTER_ADMIN_PHONE, "web", "chat", now, now);
+    
+    return { 
+      id: UNIFIED_CONVERSATION_ID, 
+      title: "Zeke - Unified Conversation", 
+      phoneNumber: MASTER_ADMIN_PHONE, 
+      source: "web" as "web" | "sms",
+      mode: "chat" as "chat" | "getting_to_know",
+      summary: null,
+      summarizedMessageCount: 0,
+      lastSummarizedAt: null,
+      createdAt: now, 
+      updatedAt: now 
+    };
+  });
+}
+
+/**
+ * Check if a phone number is the master admin for unified conversation routing
+ */
+export function isMasterAdminPhone(phoneNumber: string): boolean {
+  const normalized = phoneNumber.replace(/\D/g, "");
+  return normalized === MASTER_ADMIN_PHONE || normalized.endsWith(MASTER_ADMIN_PHONE);
+}
+
+/**
+ * Get the unified conversation ID constant for external use
+ */
+export function getUnifiedConversationId(): string {
+  return UNIFIED_CONVERSATION_ID;
+}
+
 // Helper to map database row to GroceryItem type
 function mapGroceryItem(row: GroceryItemRow): GroceryItem {
   return {

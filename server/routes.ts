@@ -12,6 +12,9 @@ import {
   createMessage,
   getMessagesByConversation,
   findOrCreateSmsConversation,
+  findOrCreateUnifiedConversation,
+  isMasterAdminPhone,
+  getUnifiedConversationId,
   getAllMemoryNotes,
   createMemoryNote,
   deleteMemoryNote,
@@ -1218,11 +1221,20 @@ export async function registerRoutes(
       let conversation;
       let isNewConversation = false;
       
+      // Check if this should use the unified conversation
+      // Web chat without a conversationId defaults to the unified admin conversation
+      const useUnifiedConversation = !conversationId && source === 'web';
+      
       if (conversationId) {
         conversation = getConversation(conversationId);
         if (!conversation) {
           return res.status(404).json({ message: "Conversation not found" });
         }
+      } else if (useUnifiedConversation) {
+        // Use the unified conversation for web chat (admin interface)
+        // This ensures all of Nate's conversations share the same history
+        conversation = findOrCreateUnifiedConversation('web');
+        isNewConversation = false; // Unified conversation persists
       } else {
         conversation = createConversation({ source });
         isNewConversation = true;
@@ -1369,14 +1381,24 @@ export async function registerRoutes(
   });
   
   // Create a new conversation (for mobile app and general use)
+  // By default, returns the unified conversation for admin/master admin
+  // This ensures all of Nate's conversations (web, app, SMS, voice) share the same history
   app.post("/api/conversations", async (req, res) => {
     try {
-      const { title } = req.body || {};
+      const { title, forceNew } = req.body || {};
       
       // Detect source from headers or default to "mobile"
       const deviceToken = req.headers['x-zeke-device-token'];
       const source = deviceToken ? "mobile" : "web";
       
+      // Use unified conversation unless explicitly requesting a new one
+      // Mobile app should use the unified conversation by default
+      if (!forceNew) {
+        const conversation = findOrCreateUnifiedConversation(source === 'mobile' ? 'app' : 'web');
+        return res.status(200).json(conversation);
+      }
+      
+      // Create a separate conversation if explicitly requested
       const conversation = createConversation({ 
         source: source as any,
         title: title || "New Conversation"
@@ -1386,6 +1408,19 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Create conversation error:", error);
       res.status(500).json({ message: "Failed to create conversation" });
+    }
+  });
+  
+  // Get the unified conversation for admin user
+  // This returns the single conversation that spans all channels
+  app.get("/api/conversations/unified", async (_req, res) => {
+    try {
+      const conversation = findOrCreateUnifiedConversation('web');
+      const messages = getMessagesByConversation(conversation.id);
+      res.json({ conversation, messages });
+    } catch (error: any) {
+      console.error("Get unified conversation error:", error);
+      res.status(500).json({ message: "Failed to get unified conversation" });
     }
   });
   
@@ -1600,8 +1635,11 @@ export async function registerRoutes(
       
       // Process message asynchronously
       try {
-        // Find or create SMS conversation using formatted phone number
-        const conversation = findOrCreateSmsConversation(fromNumber);
+        // Use unified conversation for master admin, otherwise use per-phone SMS conversations
+        // This ensures all of Nate's conversations (SMS, web, app) share the same history
+        const conversation = isMasterAdminPhone(fromNumber) 
+          ? findOrCreateUnifiedConversation('sms')
+          : findOrCreateSmsConversation(fromNumber);
         
         // ============================================
         // CHECK FOR FEEDBACK REACTIONS FIRST
@@ -2062,8 +2100,11 @@ export async function registerRoutes(
         return res.send(noInputTwiml);
       }
       
-      // Find or create conversation for this phone call (uses normalized phone number)
-      const conversation = findOrCreateSmsConversation(fromNumber);
+      // Use unified conversation for master admin, otherwise use per-phone conversations
+      // This ensures all of Nate's conversations (voice, SMS, web) share the same history
+      const conversation = isMasterAdminPhone(fromNumber)
+        ? findOrCreateUnifiedConversation('voice')
+        : findOrCreateSmsConversation(fromNumber);
       
       // Store user message
       createMessage({

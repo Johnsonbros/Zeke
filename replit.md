@@ -92,6 +92,12 @@ Key technical implementations and features include:
   - `PATCH /api/zeke/calendar/events/:eventId` - Update event
   - `DELETE /api/zeke/calendar/events/:eventId` - Delete event
   - Uses `ZEKE_BACKEND_URL` env var (default: https://zekeai.replit.app)
+- **Unified Conversation System**: All direct conversations with Nate (SMS, web chat, mobile app, voice) share a single coherent conversation thread via constant ID `unified-master-admin-conversation`. Features:
+  - Single conversation across all channels maintains consistent memory and personality
+  - Messages track source channel (web, sms, app, voice) for context display
+  - `findOrCreateUnifiedConversation(source)` function in `server/db.ts` handles creation/retrieval
+  - `/api/conversations/unified` endpoint returns unified conversation with messages
+  - Mobile auth middleware updated to only require HMAC for mobile app requests (browser bypass)
 
 The Python multi-agent system (`python_agents/`) includes production-grade reliability features such as PII Redaction, a Health Endpoint, Request Tracing, Graceful Shutdown, and configurable environment variables for runtime control.
 

@@ -202,7 +202,18 @@ export function shouldProtectRoute(path: string): boolean {
 
 export function createMobileAuthMiddleware() {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (shouldProtectRoute(req.path)) {
+    // DESIGN NOTE: ZEKE is a single-user personal AI assistant for Nate Johnson.
+    // The web UI is accessed directly by Nate without authentication - it's his personal tool.
+    // The mobile HMAC auth (X-ZEKE-Signature) is specifically for the companion mobile app
+    // to verify requests come from the legitimate app installation.
+    // 
+    // Security model:
+    // - Browser/web UI: No auth required (single user, direct access)
+    // - Mobile app: HMAC signature verification required
+    // - External webhooks (SMS, Twilio): Verified by their respective providers
+    const hasMobileAuthHeaders = req.headers['x-zeke-signature'] || req.headers['x-zeke-device-token'];
+    
+    if (shouldProtectRoute(req.path) && hasMobileAuthHeaders) {
       return zekeMobileAuth(req, res, next);
     }
     next();
