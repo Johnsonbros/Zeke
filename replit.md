@@ -98,6 +98,13 @@ Key technical implementations and features include:
   - `findOrCreateUnifiedConversation(source)` function in `server/db.ts` handles creation/retrieval
   - `/api/conversations/unified` endpoint returns unified conversation with messages
   - Mobile auth middleware updated to only require HMAC for mobile app requests (browser bypass)
+- **Companion App Location Ingestion**: Mobile app serves as source of truth for real-time location tracking with full geocoding support. Features:
+  - `POST /api/location-history` - Real-time single location updates with geocoding data (city, region, country, street, postalCode, formattedAddress, label, recordedAt)
+  - `POST /api/location-samples/batch` - Batch GPS samples with activity detection for offline queue flush
+  - Extended `location_history` table with geocoding fields for rich location context
+  - Extended `location_samples` table with activity field for device-detected motion (walking, driving, etc.)
+  - Companion app handles geocoding via device location services; backend stores and serves data for AI context
+  - Full CRUD at `/api/location/places` for saved places management
 
 The Python multi-agent system (`python_agents/`) includes production-grade reliability features such as PII Redaction, a Health Endpoint, Request Tracing, Graceful Shutdown, and configurable environment variables for runtime control.
 
