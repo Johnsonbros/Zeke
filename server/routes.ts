@@ -223,9 +223,17 @@ import {
   getJournalEntries,
   getJournalEntryById,
   getJournalEntryByDate,
+  registerPushToken,
+  disablePushToken,
+  getSyncState,
+  getTasksSince,
+  getRemindersSince,
+  getGroceryItemsSince,
+  getContactsSince,
+  getSavedPlacesSince,
 } from "./db";
 import type { TwilioMessageSource, UploadedFileType } from "@shared/schema";
-import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema, locationSampleBatchSchema, insertSavedPlaceSchema, companionLocationHistorySchema, companionLocationSampleBatchSchema } from "@shared/schema";
+import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema, locationSampleBatchSchema, insertSavedPlaceSchema, companionLocationHistorySchema, companionLocationSampleBatchSchema, registerPushTokenSchema, deltaQuerySchema } from "@shared/schema";
 import {
   logAiEvent,
   getRecentAiLogs,
@@ -2620,6 +2628,47 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to create grocery item" });
     }
   });
+
+  // Get grocery items delta for mobile sync (MUST be before /:id route)
+  app.get("/api/grocery/delta", (req, res) => {
+    try {
+      const parseResult = deltaQuerySchema.safeParse(req.query);
+      
+      if (!parseResult.success) {
+        return res.status(400).json(createMobileError(
+          "VALIDATION_FAILED",
+          "Invalid query parameters",
+          parseResult.error.flatten()
+        ));
+      }
+      
+      const { since, limit } = parseResult.data;
+      
+      if (!since) {
+        const syncState = getSyncState();
+        return res.json({
+          useDelta: false,
+          syncState,
+          message: "Provide ?since= for delta sync"
+        });
+      }
+      
+      const items = getGroceryItemsSince(since, limit);
+      
+      res.json({
+        count: items.length,
+        since,
+        serverTime: new Date().toISOString(),
+        items,
+      });
+    } catch (error: any) {
+      console.error("[Mobile] Grocery delta error:", error);
+      res.status(500).json(createMobileError(
+        "INTERNAL_ERROR",
+        error.message || "Failed to get grocery items delta"
+      ));
+    }
+  });
   
   // Update grocery item
   app.patch("/api/grocery/:id", async (req, res) => {
@@ -3236,6 +3285,47 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to create task" });
     }
   });
+
+  // Get tasks delta for mobile sync (MUST be before /:id route)
+  app.get("/api/tasks/delta", (req, res) => {
+    try {
+      const parseResult = deltaQuerySchema.safeParse(req.query);
+      
+      if (!parseResult.success) {
+        return res.status(400).json(createMobileError(
+          "VALIDATION_FAILED",
+          "Invalid query parameters",
+          parseResult.error.flatten()
+        ));
+      }
+      
+      const { since, limit } = parseResult.data;
+      
+      if (!since) {
+        const syncState = getSyncState();
+        return res.json({
+          useDelta: false,
+          syncState,
+          message: "Provide ?since= for delta sync"
+        });
+      }
+      
+      const tasks = getTasksSince(since, limit);
+      
+      res.json({
+        count: tasks.length,
+        since,
+        serverTime: new Date().toISOString(),
+        tasks,
+      });
+    } catch (error: any) {
+      console.error("[Mobile] Tasks delta error:", error);
+      res.status(500).json(createMobileError(
+        "INTERNAL_ERROR",
+        error.message || "Failed to get tasks delta"
+      ));
+    }
+  });
   
   // Get single task
   app.get("/api/tasks/:id", async (req, res) => {
@@ -3569,6 +3659,47 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to get contacts" });
     }
   });
+
+  // Get contacts delta for mobile sync (MUST be before /:id route)
+  app.get("/api/contacts/delta", (req, res) => {
+    try {
+      const parseResult = deltaQuerySchema.safeParse(req.query);
+      
+      if (!parseResult.success) {
+        return res.status(400).json(createMobileError(
+          "VALIDATION_FAILED",
+          "Invalid query parameters",
+          parseResult.error.flatten()
+        ));
+      }
+      
+      const { since, limit } = parseResult.data;
+      
+      if (!since) {
+        const syncState = getSyncState();
+        return res.json({
+          useDelta: false,
+          syncState,
+          message: "Provide ?since= for delta sync"
+        });
+      }
+      
+      const contacts = getContactsSince(since, limit);
+      
+      res.json({
+        count: contacts.length,
+        since,
+        serverTime: new Date().toISOString(),
+        contacts,
+      });
+    } catch (error: any) {
+      console.error("[Mobile] Contacts delta error:", error);
+      res.status(500).json(createMobileError(
+        "INTERNAL_ERROR",
+        error.message || "Failed to get contacts delta"
+      ));
+    }
+  });
   
   // Get single contact by ID
   app.get("/api/contacts/:id", async (req, res) => {
@@ -3810,6 +3941,47 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Get reminders error:", error);
       res.status(500).json({ message: "Failed to get reminders" });
+    }
+  });
+
+  // Get reminders delta for mobile sync (MUST be before /:id route)
+  app.get("/api/reminders/delta", (req, res) => {
+    try {
+      const parseResult = deltaQuerySchema.safeParse(req.query);
+      
+      if (!parseResult.success) {
+        return res.status(400).json(createMobileError(
+          "VALIDATION_FAILED",
+          "Invalid query parameters",
+          parseResult.error.flatten()
+        ));
+      }
+      
+      const { since, limit } = parseResult.data;
+      
+      if (!since) {
+        const syncState = getSyncState();
+        return res.json({
+          useDelta: false,
+          syncState,
+          message: "Provide ?since= for delta sync"
+        });
+      }
+      
+      const reminders = getRemindersSince(since, limit);
+      
+      res.json({
+        count: reminders.length,
+        since,
+        serverTime: new Date().toISOString(),
+        reminders,
+      });
+    } catch (error: any) {
+      console.error("[Mobile] Reminders delta error:", error);
+      res.status(500).json(createMobileError(
+        "INTERNAL_ERROR",
+        error.message || "Failed to get reminders delta"
+      ));
     }
   });
   
@@ -5150,6 +5322,47 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Saved place create error:", error);
       res.status(500).json({ error: error.message || "Failed to create saved place" });
+    }
+  });
+
+  // Get places delta for mobile sync (MUST be before /:id route)
+  app.get("/api/location/places/delta", (req, res) => {
+    try {
+      const parseResult = deltaQuerySchema.safeParse(req.query);
+      
+      if (!parseResult.success) {
+        return res.status(400).json(createMobileError(
+          "VALIDATION_FAILED",
+          "Invalid query parameters",
+          parseResult.error.flatten()
+        ));
+      }
+      
+      const { since, limit } = parseResult.data;
+      
+      if (!since) {
+        const syncState = getSyncState();
+        return res.json({
+          useDelta: false,
+          syncState,
+          message: "Provide ?since= for delta sync"
+        });
+      }
+      
+      const places = getSavedPlacesSince(since, limit);
+      
+      res.json({
+        count: places.length,
+        since,
+        serverTime: new Date().toISOString(),
+        places,
+      });
+    } catch (error: any) {
+      console.error("[Mobile] Places delta error:", error);
+      res.status(500).json(createMobileError(
+        "INTERNAL_ERROR",
+        error.message || "Failed to get places delta"
+      ));
     }
   });
 
@@ -10063,8 +10276,127 @@ export async function registerRoutes(
   // Start memory prune scheduler (weekly, Sunday 3 AM)
   startMemoryPruneScheduler("0 3 * * 0");
   console.log("[MemoryPrune] Prune scheduler started on app initialization");
+
+  // ============================================
+  // MOBILE APP INFRASTRUCTURE ENDPOINTS
+  // ============================================
+
+  // POST /api/mobile/push-tokens - Register/update push notification token
+  app.post("/api/mobile/push-tokens", (req, res) => {
+    try {
+      const parseResult = registerPushTokenSchema.safeParse(req.body);
+      
+      if (!parseResult.success) {
+        return res.status(400).json(createMobileError(
+          "VALIDATION_FAILED",
+          "Invalid push token registration request",
+          parseResult.error.flatten()
+        ));
+      }
+      
+      const token = registerPushToken(parseResult.data);
+      
+      res.status(200).json({
+        success: true,
+        token,
+      });
+    } catch (error: any) {
+      console.error("[Mobile] Push token registration error:", error);
+      res.status(500).json(createMobileError(
+        "INTERNAL_ERROR",
+        error.message || "Failed to register push token"
+      ));
+    }
+  });
+
+  // DELETE /api/mobile/push-tokens - Disable push token
+  app.delete("/api/mobile/push-tokens", (req, res) => {
+    try {
+      const { token } = req.body;
+      
+      if (!token) {
+        return res.status(400).json(createMobileError(
+          "MISSING_REQUIRED_FIELD",
+          "token is required"
+        ));
+      }
+      
+      disablePushToken(token);
+      
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      console.error("[Mobile] Push token disable error:", error);
+      res.status(500).json(createMobileError(
+        "INTERNAL_ERROR",
+        error.message || "Failed to disable push token"
+      ));
+    }
+  });
+
+  // GET /api/sync/state - Get sync state for delta queries
+  app.get("/api/sync/state", (_req, res) => {
+    try {
+      const syncState = getSyncState();
+      res.json(syncState);
+    } catch (error: any) {
+      console.error("[Mobile] Sync state error:", error);
+      res.status(500).json(createMobileError(
+        "INTERNAL_ERROR",
+        error.message || "Failed to get sync state"
+      ));
+    }
+  });
+
+  // GET /api/mobile/auth/health - Auth health diagnostic endpoint
+  app.get("/api/mobile/auth/health", (req, res) => {
+    const timestamp = req.headers["x-timestamp"] as string;
+    const signature = req.headers["x-signature"] as string;
+    const nonce = req.headers["x-nonce"] as string;
+    
+    const serverTime = new Date().toISOString();
+    const hasSecret = !!process.env.ZEKE_SHARED_SECRET;
+    
+    // Calculate clock skew if timestamp provided
+    let clockSkewMs: number | null = null;
+    if (timestamp) {
+      const clientTime = parseInt(timestamp);
+      if (!isNaN(clientTime)) {
+        clockSkewMs = Date.now() - clientTime;
+      }
+    }
+    
+    res.json({
+      serverTime,
+      sharedSecretConfigured: hasSecret,
+      headersReceived: {
+        hasTimestamp: !!timestamp,
+        hasSignature: !!signature,
+        hasNonce: !!nonce,
+      },
+      clockSkewMs,
+      clockSkewWithinTolerance: clockSkewMs !== null ? Math.abs(clockSkewMs) < 5 * 60 * 1000 : null,
+    });
+  });
+
+  console.log("[Mobile] Mobile infrastructure endpoints registered");
   
   return httpServer;
+}
+
+// Helper function to create standardized mobile error response
+function createMobileError(
+  code: string,
+  message: string,
+  details?: Record<string, unknown>
+): { error: { code: string; message: string; details?: Record<string, unknown>; requestId?: string } } {
+  return {
+    error: {
+      code,
+      message,
+      details,
+      requestId: `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    },
+  };
 }
 
 // Helper function to escape XML special characters

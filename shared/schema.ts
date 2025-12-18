@@ -3326,3 +3326,111 @@ export interface BatchJobStats {
   totalCostCents: number;
   averageProcessingTimeMs: number;
 }
+
+// ============================================
+// MOBILE APP PUSH NOTIFICATIONS
+// ============================================
+
+// Push token platforms
+export const pushTokenPlatforms = ["ios", "android", "expo"] as const;
+export type PushTokenPlatform = typeof pushTokenPlatforms[number];
+
+// Push tokens table - stores Expo push notification tokens
+export const pushTokens = sqliteTable("push_tokens", {
+  id: text("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  platform: text("platform", { enum: pushTokenPlatforms }).notNull(),
+  deviceId: text("device_id"), // Unique device identifier
+  deviceName: text("device_name"), // User-friendly device name
+  appVersion: text("app_version"), // App version for compatibility
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  lastUsedAt: text("last_used_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertPushTokenSchema = createInsertSchema(pushTokens).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPushToken = z.infer<typeof insertPushTokenSchema>;
+export type PushToken = typeof pushTokens.$inferSelect;
+
+// Push token registration request schema (from mobile app)
+export const registerPushTokenSchema = z.object({
+  token: z.string().min(1, "Push token is required"),
+  platform: z.enum(pushTokenPlatforms),
+  deviceId: z.string().optional(),
+  deviceName: z.string().optional(),
+  appVersion: z.string().optional(),
+});
+
+export type RegisterPushTokenRequest = z.infer<typeof registerPushTokenSchema>;
+
+// ============================================
+// MOBILE API STANDARDIZED ERROR RESPONSE
+// ============================================
+
+// Standard mobile error response structure
+export interface MobileApiError {
+  error: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+    requestId?: string;
+  };
+}
+
+// Mobile error codes
+export const mobileErrorCodes = {
+  // Authentication errors
+  AUTH_INVALID_SIGNATURE: "AUTH_INVALID_SIGNATURE",
+  AUTH_EXPIRED_TIMESTAMP: "AUTH_EXPIRED_TIMESTAMP",
+  AUTH_MISSING_HEADERS: "AUTH_MISSING_HEADERS",
+  AUTH_REPLAY_DETECTED: "AUTH_REPLAY_DETECTED",
+  
+  // Validation errors
+  VALIDATION_FAILED: "VALIDATION_FAILED",
+  INVALID_PAYLOAD: "INVALID_PAYLOAD",
+  MISSING_REQUIRED_FIELD: "MISSING_REQUIRED_FIELD",
+  
+  // Resource errors
+  NOT_FOUND: "NOT_FOUND",
+  CONFLICT: "CONFLICT",
+  ALREADY_EXISTS: "ALREADY_EXISTS",
+  
+  // Server errors
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
+  
+  // Rate limiting
+  RATE_LIMIT_EXCEEDED: "RATE_LIMIT_EXCEEDED",
+} as const;
+
+export type MobileErrorCode = typeof mobileErrorCodes[keyof typeof mobileErrorCodes];
+
+// ============================================
+// MOBILE SYNC STATE
+// ============================================
+
+// Sync state response - timestamps for delta sync
+export interface SyncStateResponse {
+  serverTime: string; // Current server time
+  resources: {
+    tasks: string | null; // Last modified timestamp
+    reminders: string | null;
+    groceryItems: string | null;
+    contacts: string | null;
+    savedPlaces: string | null;
+    customLists: string | null;
+    preferences: string | null;
+  };
+}
+
+// Delta query schema for ?since= parameter
+export const deltaQuerySchema = z.object({
+  since: z.string().datetime().optional(),
+  limit: z.coerce.number().min(1).max(500).optional().default(100),
+});

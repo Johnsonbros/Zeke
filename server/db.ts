@@ -1888,6 +1888,30 @@ db.exec(`
 
 console.log("AI usage logging system table initialized");
 
+// ============================================
+// MOBILE APP PUSH TOKENS TABLE
+// ============================================
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS push_tokens (
+    id TEXT PRIMARY KEY,
+    token TEXT NOT NULL UNIQUE,
+    platform TEXT NOT NULL,
+    device_id TEXT,
+    device_name TEXT,
+    app_version TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_used_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_push_tokens_token ON push_tokens(token);
+  CREATE INDEX IF NOT EXISTS idx_push_tokens_device ON push_tokens(device_id);
+  CREATE INDEX IF NOT EXISTS idx_push_tokens_enabled ON push_tokens(enabled);
+`);
+
+console.log("Push tokens table initialized");
+
 // Seed initial family members if table is empty
 try {
   const existingMembers = db.prepare(`SELECT COUNT(*) as count FROM family_members`).get() as { count: number };
@@ -13156,6 +13180,206 @@ export function getArtifactCountByJob(batchJobId: string): number {
       SELECT COUNT(*) as count FROM batch_artifacts WHERE batch_job_id = ?
     `).get(batchJobId) as { count: number };
     return result.count;
+  });
+}
+
+// ============================================
+// PUSH TOKENS CRUD OPERATIONS
+// ============================================
+
+import type { PushToken, InsertPushToken, RegisterPushTokenRequest, SyncStateResponse } from "@shared/schema";
+
+interface PushTokenRow {
+  id: string;
+  token: string;
+  platform: string;
+  device_id: string | null;
+  device_name: string | null;
+  app_version: string | null;
+  enabled: number;
+  last_used_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapPushTokenRow(row: PushTokenRow): PushToken {
+  return {
+    id: row.id,
+    token: row.token,
+    platform: row.platform as "ios" | "android" | "expo",
+    deviceId: row.device_id,
+    deviceName: row.device_name,
+    appVersion: row.app_version,
+    enabled: row.enabled === 1,
+    lastUsedAt: row.last_used_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function registerPushToken(data: RegisterPushTokenRequest): PushToken {
+  return wrapDbOperation("registerPushToken", () => {
+    const now = getCurrentTimestamp();
+    
+    // Check if token already exists
+    const existing = db.prepare(`SELECT * FROM push_tokens WHERE token = ?`).get(data.token) as PushTokenRow | undefined;
+    
+    if (existing) {
+      // Update existing token
+      db.prepare(`
+        UPDATE push_tokens 
+        SET platform = ?, device_id = ?, device_name = ?, app_version = ?, enabled = 1, last_used_at = ?, updated_at = ?
+        WHERE token = ?
+      `).run(
+        data.platform,
+        data.deviceId || null,
+        data.deviceName || null,
+        data.appVersion || null,
+        now,
+        now,
+        data.token
+      );
+      
+      const updated = db.prepare(`SELECT * FROM push_tokens WHERE token = ?`).get(data.token) as PushTokenRow;
+      return mapPushTokenRow(updated);
+    } else {
+      // Create new token
+      const id = uuidv4();
+      db.prepare(`
+        INSERT INTO push_tokens (id, token, platform, device_id, device_name, app_version, enabled, last_used_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+      `).run(
+        id,
+        data.token,
+        data.platform,
+        data.deviceId || null,
+        data.deviceName || null,
+        data.appVersion || null,
+        now,
+        now,
+        now
+      );
+      
+      return {
+        id,
+        token: data.token,
+        platform: data.platform,
+        deviceId: data.deviceId || null,
+        deviceName: data.deviceName || null,
+        appVersion: data.appVersion || null,
+        enabled: true,
+        lastUsedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+  });
+}
+
+export function getPushTokens(): PushToken[] {
+  return wrapDbOperation("getPushTokens", () => {
+    const rows = db.prepare(`SELECT * FROM push_tokens WHERE enabled = 1 ORDER BY last_used_at DESC`).all() as PushTokenRow[];
+    return rows.map(mapPushTokenRow);
+  });
+}
+
+export function getPushTokenByDevice(deviceId: string): PushToken | null {
+  return wrapDbOperation("getPushTokenByDevice", () => {
+    const row = db.prepare(`SELECT * FROM push_tokens WHERE device_id = ? AND enabled = 1`).get(deviceId) as PushTokenRow | undefined;
+    return row ? mapPushTokenRow(row) : null;
+  });
+}
+
+export function disablePushToken(token: string): void {
+  wrapDbOperation("disablePushToken", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`UPDATE push_tokens SET enabled = 0, updated_at = ? WHERE token = ?`).run(now, token);
+  });
+}
+
+export function deletePushToken(token: string): void {
+  wrapDbOperation("deletePushToken", () => {
+    db.prepare(`DELETE FROM push_tokens WHERE token = ?`).run(token);
+  });
+}
+
+// ============================================
+// SYNC STATE FOR MOBILE DELTA QUERIES
+// ============================================
+
+export function getSyncState(): SyncStateResponse {
+  return wrapDbOperation("getSyncState", () => {
+    // Get max updated_at for each resource type (reminders uses created_at as it lacks updated_at)
+    const tasksMax = db.prepare(`SELECT MAX(updated_at) as max_ts FROM tasks`).get() as { max_ts: string | null };
+    const remindersMax = db.prepare(`SELECT MAX(created_at) as max_ts FROM reminders`).get() as { max_ts: string | null };
+    const groceryMax = db.prepare(`SELECT MAX(updated_at) as max_ts FROM grocery_items`).get() as { max_ts: string | null };
+    const contactsMax = db.prepare(`SELECT MAX(updated_at) as max_ts FROM contacts`).get() as { max_ts: string | null };
+    const placesMax = db.prepare(`SELECT MAX(updated_at) as max_ts FROM saved_places`).get() as { max_ts: string | null };
+    const listsMax = db.prepare(`SELECT MAX(updated_at) as max_ts FROM custom_lists`).get() as { max_ts: string | null };
+    const prefsMax = db.prepare(`SELECT MAX(updated_at) as max_ts FROM preferences`).get() as { max_ts: string | null };
+    
+    return {
+      serverTime: getCurrentTimestamp(),
+      resources: {
+        tasks: tasksMax.max_ts,
+        reminders: remindersMax.max_ts,
+        groceryItems: groceryMax.max_ts,
+        contacts: contactsMax.max_ts,
+        savedPlaces: placesMax.max_ts,
+        customLists: listsMax.max_ts,
+        preferences: prefsMax.max_ts,
+      },
+    };
+  });
+}
+
+// Get tasks modified since a timestamp
+export function getTasksSince(since: string, limit: number = 100): Task[] {
+  return wrapDbOperation("getTasksSince", () => {
+    const rows = db.prepare(`
+      SELECT * FROM tasks WHERE updated_at > ? ORDER BY updated_at ASC LIMIT ?
+    `).all(since, limit) as TaskRow[];
+    return rows.map(mapTask);
+  });
+}
+
+// Get reminders modified since a timestamp (uses created_at as reminders table lacks updated_at)
+export function getRemindersSince(since: string, limit: number = 100): Reminder[] {
+  return wrapDbOperation("getRemindersSince", () => {
+    const rows = db.prepare(`
+      SELECT * FROM reminders WHERE created_at > ? ORDER BY created_at ASC LIMIT ?
+    `).all(since, limit) as ReminderRow[];
+    return rows.map(mapReminder);
+  });
+}
+
+// Get grocery items modified since a timestamp
+export function getGroceryItemsSince(since: string, limit: number = 100): GroceryItem[] {
+  return wrapDbOperation("getGroceryItemsSince", () => {
+    const rows = db.prepare(`
+      SELECT * FROM grocery_items WHERE updated_at > ? ORDER BY updated_at ASC LIMIT ?
+    `).all(since, limit) as GroceryItemRow[];
+    return rows.map(mapGroceryItem);
+  });
+}
+
+// Get contacts modified since a timestamp
+export function getContactsSince(since: string, limit: number = 100): Contact[] {
+  return wrapDbOperation("getContactsSince", () => {
+    const rows = db.prepare(`
+      SELECT * FROM contacts WHERE updated_at > ? ORDER BY updated_at ASC LIMIT ?
+    `).all(since, limit) as ContactRow[];
+    return rows.map(mapContact);
+  });
+}
+
+// Get saved places modified since a timestamp
+export function getSavedPlacesSince(since: string, limit: number = 100): SavedPlace[] {
+  return wrapDbOperation("getSavedPlacesSince", () => {
+    const rows = db.prepare(`
+      SELECT * FROM saved_places WHERE updated_at > ? ORDER BY updated_at ASC LIMIT ?
+    `).all(since, limit) as SavedPlaceRow[];
+    return rows.map(mapSavedPlace);
   });
 }
 
