@@ -1,8 +1,13 @@
 import twilio from 'twilio';
+import { jwt } from 'twilio';
+
+const { AccessToken } = jwt;
+const { VoiceGrant } = AccessToken;
 
 let connectionSettings: any;
 let cachedClient: ReturnType<typeof twilio> | null = null;
 let cachedPhoneNumber: string | null = null;
+let cachedAccountSid: string | null = null;
 
 async function getCredentials() {
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
@@ -51,6 +56,46 @@ export async function getTwilioFromPhoneNumber(): Promise<string> {
   const { phoneNumber } = await getCredentials();
   cachedPhoneNumber = phoneNumber;
   return phoneNumber;
+}
+
+export async function getTwilioAccountSid(): Promise<string> {
+  if (cachedAccountSid) return cachedAccountSid;
+  const { accountSid } = await getCredentials();
+  cachedAccountSid = accountSid;
+  return accountSid;
+}
+
+export interface VoiceAccessTokenResult {
+  token: string;
+  identity: string;
+  expiresIn: number;
+}
+
+export async function generateVoiceAccessToken(identity: string): Promise<VoiceAccessTokenResult> {
+  const { accountSid, apiKey, apiKeySecret } = await getCredentials();
+  
+  const accessToken = new AccessToken(
+    accountSid,
+    apiKey,
+    apiKeySecret,
+    {
+      identity,
+      ttl: 3600
+    }
+  );
+
+  const voiceGrant = new VoiceGrant({
+    outgoingApplicationSid: process.env.TWILIO_TWIML_APP_SID,
+    incomingAllow: true
+  });
+
+  accessToken.addGrant(voiceGrant);
+
+  return {
+    token: accessToken.toJwt(),
+    identity,
+    expiresIn: 3600
+  };
 }
 
 export interface SmsMessage {

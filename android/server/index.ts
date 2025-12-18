@@ -1,7 +1,10 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
+import { createProxyMiddleware } from "http-proxy-middleware";
 import { registerRoutes } from "./routes";
 import { setupWebSocketServer } from "./websocket";
+import { authMiddleware, getAuthStatus, getLockedIPs, unlockIP, clearAllLockouts } from "./auth-middleware";
+import { validateMasterSecret, registerDevice, listDevices, revokeAllDeviceTokens, isSecretConfigured } from "./device-auth";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -38,7 +41,7 @@ function setupCors(app: express.Application) {
         "Access-Control-Allow-Methods",
         "GET, POST, PUT, DELETE, OPTIONS, PATCH",
       );
-      res.header("Access-Control-Allow-Headers", "Content-Type, Accept");
+      res.header("Access-Control-Allow-Headers", "Content-Type, Accept, X-ZEKE-Secret, X-ZEKE-Device-Token, Authorization");
       res.header("Access-Control-Allow-Credentials", "true");
     }
 
@@ -175,21 +178,29 @@ function configureExpoAndLanding(app: express.Application) {
 
   log("Serving static Expo files with dynamic manifest routing");
 
+  const metroProxy = createProxyMiddleware({
+    target: 'http://localhost:8081',
+    changeOrigin: true,
+    ws: true,
+    logger: console,
+  });
+
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith("/api")) {
       return next();
     }
 
-    if (req.path !== "/" && req.path !== "/manifest") {
-      return next();
-    }
-
     const platform = req.header("expo-platform");
     if (platform && (platform === "ios" || platform === "android")) {
-      return serveExpoManifest(platform, res);
+      if (req.path === "/" || req.path === "/manifest") {
+        return serveExpoManifest(platform, res);
+      }
     }
 
-    if (req.path === "/") {
+    const userAgent = req.header("user-agent") || "";
+    const isExpoGo = userAgent.includes("Expo") || platform;
+    
+    if (isExpoGo && (req.path === "/" || req.path === "/manifest")) {
       return serveLandingPage({
         req,
         res,
@@ -198,7 +209,7 @@ function configureExpoAndLanding(app: express.Application) {
       });
     }
 
-    next();
+    return metroProxy(req, res, next);
   });
 
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
@@ -228,6 +239,110 @@ function setupErrorHandler(app: express.Application) {
   setupCors(app);
   setupBodyParsing(app);
   setupRequestLogging(app);
+
+  // Authentication middleware - protects all /api/* routes
+  app.use(authMiddleware);
+
+  // Health check endpoint (public)
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  // Security status endpoints (public - for monitoring)
+  app.get("/api/auth/status", (_req, res) => {
+    res.json({
+      ...getAuthStatus(),
+      secretConfigured: isSecretConfigured(),
+      pairedDevices: listDevices().length
+    });
+  });
+
+  app.get("/api/auth/locked", (_req, res) => {
+    res.json({ lockedIPs: getLockedIPs() });
+  });
+
+  app.post("/api/auth/unlock/:ip", (req, res) => {
+    const ip = req.params.ip;
+    const success = unlockIP(ip);
+    res.json({ success, ip });
+  });
+
+  // Clear all lockouts (for debugging/recovery)
+  app.post("/api/auth/clear-lockouts", (_req, res) => {
+    const count = clearAllLockouts();
+    res.json({ success: true, clearedCount: count });
+  });
+
+  // Device pairing endpoint (public - validates master secret)
+  app.post("/api/auth/pair", async (req, res) => {
+    const { secret, deviceName } = req.body;
+    
+    if (!secret || !deviceName) {
+      return res.status(400).json({ 
+        error: 'Missing required fields',
+        message: 'Both secret and deviceName are required'
+      });
+    }
+
+    if (!isSecretConfigured()) {
+      return res.status(503).json({ 
+        error: 'Service not configured',
+        message: 'Server security is not configured'
+      });
+    }
+
+    try {
+      if (!validateMasterSecret(secret)) {
+        return res.status(401).json({ 
+          error: 'Invalid secret',
+          message: 'The provided access key is incorrect'
+        });
+      }
+    } catch (e) {
+      return res.status(401).json({ 
+        error: 'Invalid secret',
+        message: 'The provided access key is incorrect'
+      });
+    }
+
+    const device = await registerDevice(deviceName);
+    
+    res.status(201).json({
+      success: true,
+      deviceId: device.deviceId,
+      deviceToken: device.token,
+      message: 'Device paired successfully'
+    });
+  });
+
+  // Verify device token (public - for auth check)
+  app.post("/api/auth/verify", (req, res) => {
+    const deviceToken = req.headers['x-zeke-device-token'] as string;
+    
+    if (!deviceToken) {
+      return res.status(401).json({ valid: false, error: 'No token provided' });
+    }
+
+    const { validateDeviceToken } = require('./device-auth');
+    const device = validateDeviceToken(deviceToken);
+    
+    if (device) {
+      return res.json({ valid: true, deviceId: device.deviceId, deviceName: device.deviceName });
+    }
+    
+    return res.status(401).json({ valid: false, error: 'Invalid token' });
+  });
+
+  // List paired devices (requires auth)
+  app.get("/api/auth/devices", (_req, res) => {
+    res.json({ devices: listDevices() });
+  });
+
+  // Revoke all device tokens (requires auth)
+  app.post("/api/auth/revoke-all", (_req, res) => {
+    const count = revokeAllDeviceTokens();
+    res.json({ success: true, revokedCount: count });
+  });
 
   configureExpoAndLanding(app);
 

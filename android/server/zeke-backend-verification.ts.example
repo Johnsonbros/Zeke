@@ -1,0 +1,131 @@
+/**
+ * ZEKE Backend Signature Verification Middleware
+ * 
+ * Add this code to your ZEKE backend (zekeai.replit.app) to verify
+ * signed requests from the mobile app proxy.
+ * 
+ * Installation:
+ * 1. Copy this code to your ZEKE backend server
+ * 2. Set the ZEKE_SHARED_SECRET environment variable (same value on both servers)
+ * 3. Add the middleware to your Express routes
+ */
+
+import crypto from "crypto";
+import type { Request, Response, NextFunction } from "express";
+
+const SHARED_SECRET = process.env.ZEKE_SHARED_SECRET || "";
+const TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000; // 5 minutes
+
+// Nonce cache to prevent replay attacks
+const usedNonces = new Map<string, number>();
+
+// Clean up old nonces every minute
+setInterval(() => {
+  const now = Date.now();
+  for (const [nonce, timestamp] of usedNonces.entries()) {
+    if (now - timestamp > TIMESTAMP_TOLERANCE_MS * 2) {
+      usedNonces.delete(nonce);
+    }
+  }
+}, 60 * 1000);
+
+export function verifyZekeSignature(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  // Skip verification if secret not configured
+  if (!SHARED_SECRET || SHARED_SECRET.length < 32) {
+    console.warn("[ZEKE Security] Shared secret not configured, skipping verification");
+    return next();
+  }
+
+  const proxyId = req.headers["x-zeke-proxy-id"] as string;
+  const timestamp = req.headers["x-zeke-timestamp"] as string;
+  const nonce = req.headers["x-zeke-nonce"] as string;
+  const signature = req.headers["x-zeke-signature"] as string;
+  const requestId = req.headers["x-zeke-request-id"] as string;
+
+  // If no security headers, allow unsigned requests (for backwards compatibility)
+  if (!proxyId && !timestamp && !nonce && !signature) {
+    console.log(`[ZEKE Security] Unsigned request to ${req.path}`);
+    return next();
+  }
+
+  // If some headers present, all must be present
+  if (!proxyId || !timestamp || !nonce || !signature) {
+    console.warn(`[ZEKE Security] Missing security headers [${requestId}]`);
+    res.status(401).json({ error: "Missing security headers" });
+    return;
+  }
+
+  // Verify timestamp freshness
+  const ts = parseInt(timestamp, 10);
+  const now = Date.now();
+  if (isNaN(ts) || Math.abs(now - ts) > TIMESTAMP_TOLERANCE_MS) {
+    console.warn(`[ZEKE Security] Timestamp expired or invalid [${requestId}]`);
+    res.status(401).json({ error: "Timestamp expired or invalid" });
+    return;
+  }
+
+  // Check for replay attack
+  if (usedNonces.has(nonce)) {
+    console.warn(`[ZEKE Security] Replay attack detected [${requestId}]`);
+    res.status(401).json({ error: "Nonce already used (replay attack detected)" });
+    return;
+  }
+
+  // Reconstruct the signature payload
+  const bodyStr = typeof req.body === "string" 
+    ? req.body 
+    : JSON.stringify(req.body || "");
+
+  const payload = [
+    req.method.toUpperCase(),
+    req.path,
+    bodyStr || "",
+    timestamp,
+    nonce,
+    proxyId,
+  ].join("|");
+
+  const expectedSignature = crypto
+    .createHmac("sha256", SHARED_SECRET)
+    .update(payload)
+    .digest("hex");
+
+  // Use timing-safe comparison
+  let isValid = false;
+  try {
+    isValid = crypto.timingSafeEqual(
+      Buffer.from(signature, "hex"),
+      Buffer.from(expectedSignature, "hex")
+    );
+  } catch {
+    isValid = false;
+  }
+
+  if (!isValid) {
+    console.warn(`[ZEKE Security] Invalid signature [${requestId}]`);
+    res.status(401).json({ error: "Invalid signature" });
+    return;
+  }
+
+  // Mark nonce as used
+  usedNonces.set(nonce, now);
+
+  console.log(`[ZEKE Security] Verified request from ${proxyId} [${requestId}]`);
+  next();
+}
+
+/**
+ * Usage example:
+ * 
+ * import { verifyZekeSignature } from "./zeke-backend-verification";
+ * 
+ * // Apply to all /api routes
+ * app.use("/api", verifyZekeSignature);
+ * 
+ * // Or apply to specific routes
+ * app.get("/api/tasks", verifyZekeSignature, (req, res) => { ... });
+ */

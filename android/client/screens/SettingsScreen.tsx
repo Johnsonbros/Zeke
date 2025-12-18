@@ -18,6 +18,7 @@ import { Spacing, Colors, BorderRadius, Gradients } from "@/constants/theme";
 import { clearAllData } from "@/lib/storage";
 import { getZekeDevices, ZekeDevice } from "@/lib/zeke-api-adapter";
 import { SettingsStackParamList } from "@/navigation/SettingsStackNavigator";
+import { useAuth } from "@/context/AuthContext";
 
 function mapZekeDeviceToDeviceInfo(zekeDevice: ZekeDevice): DeviceInfo {
   const deviceType = zekeDevice.type === "limitless" ? "limitless" : "omi";
@@ -58,6 +59,7 @@ export default function SettingsScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<SettingsStackParamList>>();
+  const { unpairDevice } = useAuth();
 
   const { data: zekeDevices = [], isLoading: isLoadingDevices } = useQuery({
     queryKey: ['/api/devices'],
@@ -96,6 +98,24 @@ export default function SettingsScreen() {
           onPress: async () => {
             await clearAllData();
             Alert.alert("Done", "All data has been cleared.");
+          },
+        },
+      ]
+    );
+  };
+
+  const handleUnpairDevice = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    Alert.alert(
+      "Unpair Device",
+      "This will disconnect this device from ZEKE. You will need to enter the pairing secret again to reconnect.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Unpair",
+          style: "destructive",
+          onPress: async () => {
+            await unpairDevice();
           },
         },
       ]
@@ -275,6 +295,14 @@ export default function SettingsScreen() {
 
       <SettingsSection title="DANGER ZONE">
         <View style={{ borderRadius: BorderRadius.md, overflow: "hidden" }}>
+          <SettingsRow
+            icon="log-out"
+            label="Unpair Device"
+            isDestructive
+            showChevron={false}
+            onPress={handleUnpairDevice}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <SettingsRow
             icon="trash-2"
             label="Clear All Data"

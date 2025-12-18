@@ -1,4 +1,4 @@
-import { getApiUrl, getLocalApiUrl, isZekeSyncMode, apiRequest } from "./query-client";
+import { getApiUrl, getLocalApiUrl, isZekeSyncMode, apiRequest, getAuthHeaders } from "./query-client";
 import type {
   Task,
   GroceryItem,
@@ -129,48 +129,124 @@ export interface DashboardSummary {
 }
 
 export async function getConversations(): Promise<ZekeConversation[]> {
-  const baseUrl = getApiUrl();
+  const baseUrl = getLocalApiUrl();
   const url = new URL('/api/conversations', baseUrl);
   
-  const res = await fetch(url, { credentials: 'include' });
-  if (!res.ok) {
-    if (res.status === 404) {
-      return [];
+  try {
+    const res = await fetch(url, { 
+      credentials: 'include', 
+      headers: getAuthHeaders(),
+      signal: createTimeoutSignal(10000)
+    });
+    if (!res.ok) {
+      if (res.status === 404) {
+        return [];
+      }
+      throw new Error(`Failed to fetch conversations: ${res.statusText}`);
     }
-    throw new Error(`Failed to fetch conversations: ${res.statusText}`);
+    return res.json();
+  } catch (error) {
+    console.error('[ZEKE Chat] Failed to fetch conversations:', error);
+    return [];
   }
-  return res.json();
 }
 
 export async function createConversation(title?: string): Promise<ZekeConversation> {
-  const res = await apiRequest('POST', '/api/conversations', { title: title || 'Chat with ZEKE' });
-  return res.json();
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/conversations', baseUrl);
+  
+  console.log('[ZEKE Chat] Creating conversation at:', url.toString());
+  
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      ...getAuthHeaders() 
+    },
+    credentials: 'include',
+    body: JSON.stringify({ title: title || 'Chat with ZEKE' }),
+    signal: createTimeoutSignal(15000)
+  });
+  
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => res.statusText);
+    console.error('[ZEKE Chat] Create conversation failed:', res.status, errorText);
+    throw new Error(`Failed to create conversation: ${res.status} ${errorText}`);
+  }
+  
+  const data = await res.json();
+  console.log('[ZEKE Chat] Conversation created:', data.id);
+  return data;
 }
 
 export async function getConversationMessages(conversationId: string): Promise<ZekeMessage[]> {
-  const baseUrl = getApiUrl();
+  const baseUrl = getLocalApiUrl();
   const url = new URL(`/api/conversations/${conversationId}/messages`, baseUrl);
   
-  const res = await fetch(url, { credentials: 'include' });
-  if (!res.ok) {
-    if (res.status === 404) {
-      return [];
+  try {
+    const res = await fetch(url, { 
+      credentials: 'include', 
+      headers: getAuthHeaders(),
+      signal: createTimeoutSignal(10000)
+    });
+    if (!res.ok) {
+      if (res.status === 404) {
+        return [];
+      }
+      throw new Error(`Failed to fetch messages: ${res.statusText}`);
     }
-    throw new Error(`Failed to fetch messages: ${res.statusText}`);
+    return res.json();
+  } catch (error) {
+    console.error('[ZEKE Chat] Failed to fetch messages:', error);
+    return [];
   }
-  return res.json();
 }
 
 export async function sendMessage(conversationId: string, content: string): Promise<{ userMessage: ZekeMessage; assistantMessage: ZekeMessage }> {
-  const res = await apiRequest('POST', `/api/conversations/${conversationId}/messages`, { content });
+  const baseUrl = getLocalApiUrl();
+  const url = new URL(`/api/conversations/${conversationId}/messages`, baseUrl);
+  
+  console.log('[ZEKE Chat] Sending message to:', url.toString());
+  
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      ...getAuthHeaders() 
+    },
+    credentials: 'include',
+    body: JSON.stringify({ content }),
+    signal: createTimeoutSignal(30000)
+  });
+  
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => res.statusText);
+    console.error('[ZEKE Chat] Send message failed:', res.status, errorText);
+    throw new Error(`Failed to send message: ${res.status} ${errorText}`);
+  }
+  
   return res.json();
 }
 
 export async function chatWithZeke(message: string, phone?: string): Promise<{ response: string; conversationId?: string }> {
-  const res = await apiRequest('POST', '/api/chat', { 
-    message,
-    phone: phone || 'mobile-app'
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/chat', baseUrl);
+  
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      ...getAuthHeaders() 
+    },
+    credentials: 'include',
+    body: JSON.stringify({ message, phone: phone || 'mobile-app' }),
+    signal: createTimeoutSignal(30000)
   });
+  
+  if (!res.ok) {
+    throw new Error(`Failed to chat: ${res.statusText}`);
+  }
+  
   return res.json();
 }
 
@@ -181,7 +257,7 @@ export async function getRecentMemories(limit: number = 10): Promise<ZekeMemory[
     const url = new URL('/api/omi/memories', baseUrl);
     url.searchParams.set('limit', limit.toString());
     
-    const res = await fetch(url, { credentials: 'include' });
+    const res = await fetch(url, { credentials: 'include', headers: getAuthHeaders() });
     if (!res.ok) {
       if (res.status === 404) {
         return [];
@@ -192,7 +268,7 @@ export async function getRecentMemories(limit: number = 10): Promise<ZekeMemory[
     return data.memories || data || [];
   } else {
     const url = new URL(`/api/memories?limit=${limit}`, baseUrl);
-    const res = await fetch(url, { credentials: 'include' });
+    const res = await fetch(url, { credentials: 'include', headers: getAuthHeaders() });
     if (!res.ok) {
       return [];
     }
@@ -217,39 +293,47 @@ export async function searchMemories(query: string): Promise<ZekeMemory[]> {
 }
 
 export async function getTasks(): Promise<ZekeTask[]> {
-  const baseUrl = getApiUrl();
-  const url = new URL('/api/tasks', baseUrl);
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/tasks', baseUrl);
   
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
+      console.log('[ZEKE Proxy] Tasks fetch failed:', res.status);
       return [];
     }
     const data = await res.json();
+    console.log('[ZEKE Proxy] Tasks fetched:', data.tasks?.length || 0);
     return data.tasks || data || [];
-  } catch {
+  } catch (error) {
+    console.error('[ZEKE Proxy] Tasks error:', error);
     return [];
   }
 }
 
 export async function getGroceryItems(): Promise<ZekeGroceryItem[]> {
-  const baseUrl = getApiUrl();
-  const url = new URL('/api/grocery', baseUrl);
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/grocery', baseUrl);
   
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
+      console.log('[ZEKE Proxy] Grocery fetch failed:', res.status);
       return [];
     }
     const data = await res.json();
+    console.log('[ZEKE Proxy] Grocery items fetched:', data.items?.length || 0);
     return data.items || data || [];
-  } catch {
+  } catch (error) {
+    console.error('[ZEKE Proxy] Grocery error:', error);
     return [];
   }
 }
@@ -270,6 +354,7 @@ export async function getReminders(): Promise<ZekeReminder[]> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
@@ -283,31 +368,36 @@ export async function getReminders(): Promise<ZekeReminder[]> {
 }
 
 export async function getContacts(): Promise<ZekeContact[]> {
-  const baseUrl = getApiUrl();
-  const url = new URL('/api/contacts', baseUrl);
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/contacts', baseUrl);
   
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
+      console.log('[ZEKE Proxy] Contacts fetch failed:', res.status);
       return [];
     }
     const data = await res.json();
+    console.log('[ZEKE Proxy] Contacts fetched:', data.contacts?.length || 0);
     return data.contacts || data || [];
-  } catch {
+  } catch (error) {
+    console.error('[ZEKE Proxy] Contacts error:', error);
     return [];
   }
 }
 
 export async function getContact(id: string): Promise<ZekeContact | null> {
-  const baseUrl = getApiUrl();
-  const url = new URL(`/api/contacts/${id}`, baseUrl);
+  const baseUrl = getLocalApiUrl();
+  const url = new URL(`/api/zeke/contacts/${id}`, baseUrl);
   
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
@@ -320,17 +410,88 @@ export async function getContact(id: string): Promise<ZekeContact | null> {
 }
 
 export async function createContact(data: Partial<ZekeContact>): Promise<ZekeContact> {
-  const res = await apiRequest('POST', '/api/contacts', data);
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/contacts', baseUrl);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to create contact: ${res.statusText}`);
+  }
   return res.json();
 }
 
 export async function updateContact(id: string, updates: Partial<ZekeContact>): Promise<ZekeContact> {
-  const res = await apiRequest('PATCH', `/api/contacts/${id}`, updates);
+  const baseUrl = getLocalApiUrl();
+  const url = new URL(`/api/zeke/contacts/${id}`, baseUrl);
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    credentials: 'include',
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to update contact: ${res.statusText}`);
+  }
   return res.json();
 }
 
 export async function deleteContact(id: string): Promise<void> {
-  await apiRequest('DELETE', `/api/contacts/${id}`);
+  const baseUrl = getLocalApiUrl();
+  const url = new URL(`/api/zeke/contacts/${id}`, baseUrl);
+  const res = await fetch(url, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to delete contact: ${res.statusText}`);
+  }
+}
+
+export interface ImportContactData {
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
+  email?: string;
+  organization?: string;
+  occupation?: string;
+  notes?: string;
+}
+
+export interface ImportContactsResult {
+  imported: number;
+  failed: number;
+  duplicates: number;
+  errors: string[];
+}
+
+export async function importContacts(contacts: ImportContactData[]): Promise<ImportContactsResult> {
+  const result: ImportContactsResult = {
+    imported: 0,
+    failed: 0,
+    duplicates: 0,
+    errors: [],
+  };
+  
+  for (const contact of contacts) {
+    try {
+      await createContact(contact);
+      result.imported++;
+    } catch (error: any) {
+      if (error.message?.includes('duplicate') || error.message?.includes('exists')) {
+        result.duplicates++;
+      } else {
+        result.failed++;
+        result.errors.push(`${contact.firstName || ''} ${contact.lastName || ''}: ${error.message}`);
+      }
+    }
+  }
+  
+  return result;
 }
 
 export async function getSmsConversations(): Promise<ZekeContactConversation[]> {
@@ -340,6 +501,7 @@ export async function getSmsConversations(): Promise<ZekeContactConversation[]> 
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
@@ -401,6 +563,7 @@ export async function getTwilioConversations(): Promise<TwilioSmsConversation[]>
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(10000)
     });
     if (!res.ok) {
@@ -424,6 +587,7 @@ export async function getTwilioConversation(phoneNumber: string): Promise<Twilio
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(10000)
     });
     if (!res.ok) {
@@ -447,6 +611,7 @@ export async function getTwilioCalls(): Promise<TwilioCallRecord[]> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(10000)
     });
     if (!res.ok) {
@@ -470,6 +635,7 @@ export async function getTwilioPhoneNumber(): Promise<string | null> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
@@ -493,6 +659,7 @@ export async function getHealthStatus(): Promise<{ status: string; connected: bo
     
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(5000)
     });
     
@@ -514,6 +681,7 @@ export async function getZekeDevices(): Promise<ZekeDevice[]> {
       
       const res = await fetch(url, { 
         credentials: 'include',
+        headers: getAuthHeaders(),
         signal: createTimeoutSignal(5000)
       });
       
@@ -550,6 +718,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     const url = new URL('/api/dashboard/summary', baseUrl);
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(5000)
     });
     
@@ -576,19 +745,25 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
 
 export async function getEventsForDateRange(startDate: Date, endDate: Date): Promise<ZekeEvent[]> {
   const baseUrl = getLocalApiUrl();
-  const url = new URL('/api/calendar/events', baseUrl);
-  url.searchParams.set('timeMin', startDate.toISOString());
-  url.searchParams.set('timeMax', endDate.toISOString());
   
   console.log('[Calendar] Fetching events for range:', startDate.toISOString(), 'to', endDate.toISOString());
   
   try {
+    const url = new URL('/api/calendar/events', baseUrl);
+    url.searchParams.set('timeMin', startDate.toISOString());
+    url.searchParams.set('timeMax', endDate.toISOString());
+    
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(10000)
     });
     console.log('[Calendar] Range response status:', res.status);
     if (!res.ok) {
+      if (res.status === 503) {
+        console.log('[Calendar] Local calendar not connected, trying ZEKE proxy');
+        return getEventsFromZekeProxy(startDate, endDate);
+      }
       console.log('[Calendar] Range response not OK, falling back to today events');
       return getTodayEvents();
     }
@@ -596,24 +771,55 @@ export async function getEventsForDateRange(startDate: Date, endDate: Date): Pro
     console.log('[Calendar] Fetched range events count:', Array.isArray(data) ? data.length : (data.events?.length ?? 0));
     return data.events || data || [];
   } catch (error) {
-    console.error('[Calendar] Range fetch error:', error);
+    console.error('[Calendar] Range fetch error, trying ZEKE proxy:', error);
+    return getEventsFromZekeProxy(startDate, endDate);
+  }
+}
+
+async function getEventsFromZekeProxy(startDate: Date, endDate: Date): Promise<ZekeEvent[]> {
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/calendar/events', baseUrl);
+  url.searchParams.set('timeMin', startDate.toISOString());
+  url.searchParams.set('timeMax', endDate.toISOString());
+  
+  try {
+    const res = await fetch(url, { 
+      credentials: 'include',
+      headers: getAuthHeaders(),
+      signal: createTimeoutSignal(10000)
+    });
+    if (!res.ok) {
+      return [];
+    }
+    const data = await res.json();
+    return data.events || data || [];
+  } catch (error) {
+    console.error('[Calendar] ZEKE proxy fetch error:', error);
     return [];
   }
 }
 
 export async function getTodayEvents(): Promise<ZekeEvent[]> {
   const baseUrl = getLocalApiUrl();
-  const url = new URL('/api/calendar/today', baseUrl);
   
-  console.log('[Calendar] Fetching events from:', url.toString());
+  console.log('[Calendar] Fetching today events');
   
   try {
+    const url = new URL('/api/calendar/today', baseUrl);
+    
+    console.log('[Calendar] Fetching events from:', url.toString());
+    
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(10000)
     });
     console.log('[Calendar] Response status:', res.status);
     if (!res.ok) {
+      if (res.status === 503) {
+        console.log('[Calendar] Local calendar not connected, trying ZEKE proxy');
+        return getTodayEventsFromZekeProxy();
+      }
       console.log('[Calendar] Response not OK');
       return [];
     }
@@ -621,19 +827,42 @@ export async function getTodayEvents(): Promise<ZekeEvent[]> {
     console.log('[Calendar] Fetched events count:', Array.isArray(data) ? data.length : (data.events?.length ?? 0));
     return data.events || data || [];
   } catch (error) {
-    console.error('[Calendar] Fetch error:', error);
+    console.error('[Calendar] Fetch error, trying ZEKE proxy:', error);
+    return getTodayEventsFromZekeProxy();
+  }
+}
+
+async function getTodayEventsFromZekeProxy(): Promise<ZekeEvent[]> {
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/calendar/today', baseUrl);
+  
+  try {
+    const res = await fetch(url, { 
+      credentials: 'include',
+      headers: getAuthHeaders(),
+      signal: createTimeoutSignal(10000)
+    });
+    if (!res.ok) {
+      return [];
+    }
+    const data = await res.json();
+    console.log('[Calendar] ZEKE proxy fetched events count:', Array.isArray(data) ? data.length : (data.events?.length ?? 0));
+    return data.events || data || [];
+  } catch (error) {
+    console.error('[Calendar] ZEKE proxy fetch error:', error);
     return [];
   }
 }
 
 export async function getPendingTasks(): Promise<ZekeTask[]> {
-  const baseUrl = getApiUrl();
-  const url = new URL('/api/tasks', baseUrl);
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/tasks', baseUrl);
   url.searchParams.set('status', 'pending');
   
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
@@ -652,7 +881,17 @@ export async function addGroceryItem(
   unit?: string,
   category?: string
 ): Promise<ZekeGroceryItem> {
-  const res = await apiRequest('POST', '/api/grocery', { name, quantity, unit, category });
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/grocery', baseUrl);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ name, quantity, unit, category }),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to add grocery item: ${res.statusText}`);
+  }
   return res.json();
 }
 
@@ -660,12 +899,31 @@ export async function updateGroceryItem(
   id: string,
   updates: Partial<ZekeGroceryItem>
 ): Promise<ZekeGroceryItem> {
-  const res = await apiRequest('PATCH', `/api/grocery/${id}`, updates);
+  const baseUrl = getLocalApiUrl();
+  const url = new URL(`/api/zeke/grocery/${id}`, baseUrl);
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    credentials: 'include',
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to update grocery item: ${res.statusText}`);
+  }
   return res.json();
 }
 
 export async function deleteGroceryItem(id: string): Promise<void> {
-  await apiRequest('DELETE', `/api/grocery/${id}`);
+  const baseUrl = getLocalApiUrl();
+  const url = new URL(`/api/zeke/grocery/${id}`, baseUrl);
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to delete grocery item: ${res.statusText}`);
+  }
 }
 
 export async function toggleGroceryPurchased(
@@ -676,20 +934,24 @@ export async function toggleGroceryPurchased(
 }
 
 export async function getAllTasks(): Promise<ZekeTask[]> {
-  const baseUrl = getApiUrl();
-  const url = new URL('/api/tasks', baseUrl);
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/tasks', baseUrl);
   
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
+      console.log('[ZEKE Proxy] getAllTasks failed:', res.status);
       return [];
     }
     const data = await res.json();
+    console.log('[ZEKE Proxy] getAllTasks fetched:', data.tasks?.length || 0);
     return data.tasks || data || [];
-  } catch {
+  } catch (error) {
+    console.error('[ZEKE Proxy] getAllTasks error:', error);
     return [];
   }
 }
@@ -699,7 +961,17 @@ export async function createTask(
   dueDate?: string,
   priority?: string
 ): Promise<ZekeTask> {
-  const res = await apiRequest('POST', '/api/tasks', { title, dueDate, priority });
+  const baseUrl = getLocalApiUrl();
+  const url = new URL('/api/zeke/tasks', baseUrl);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ title, dueDate, priority }),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to create task: ${res.statusText}`);
+  }
   return res.json();
 }
 
@@ -707,12 +979,31 @@ export async function updateTask(
   id: string,
   updates: Partial<ZekeTask>
 ): Promise<ZekeTask> {
-  const res = await apiRequest('PATCH', `/api/tasks/${id}`, updates);
+  const baseUrl = getLocalApiUrl();
+  const url = new URL(`/api/zeke/tasks/${id}`, baseUrl);
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    credentials: 'include',
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to update task: ${res.statusText}`);
+  }
   return res.json();
 }
 
 export async function deleteTask(id: string): Promise<void> {
-  await apiRequest('DELETE', `/api/tasks/${id}`);
+  const baseUrl = getLocalApiUrl();
+  const url = new URL(`/api/zeke/tasks/${id}`, baseUrl);
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to delete task: ${res.statusText}`);
+  }
 }
 
 export async function toggleTaskComplete(
@@ -735,7 +1026,7 @@ export async function createCalendarEvent(
   
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     credentials: 'include',
     body: JSON.stringify({ title, startTime, endTime, location, calendarId, description }),
   });
@@ -762,7 +1053,7 @@ export async function updateCalendarEvent(
   
   const res = await fetch(url, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     credentials: 'include',
     body: JSON.stringify(updates),
   });
@@ -781,6 +1072,7 @@ export async function getUpcomingEvents(limit: number = 10): Promise<ZekeEvent[]
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(5000)
     });
     if (!res.ok) {
@@ -802,6 +1094,7 @@ export async function deleteCalendarEvent(id: string, calendarId?: string): Prom
   
   const res = await fetch(url, {
     method: 'DELETE',
+    headers: getAuthHeaders(),
     credentials: 'include',
   });
   
@@ -817,6 +1110,7 @@ export async function getCalendarList(): Promise<ZekeCalendar[]> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(10000)
     });
     if (!res.ok) {
@@ -835,6 +1129,7 @@ export async function getZekeCalendar(): Promise<ZekeCalendar | null> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(10000)
     });
     if (!res.ok) {
@@ -991,7 +1286,7 @@ export async function syncLocationSamples(samples: LocationSample[]): Promise<{ 
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       credentials: 'include',
       body: JSON.stringify({ samples }),
       signal: createTimeoutSignal(10000),
@@ -1027,6 +1322,7 @@ export async function getLocationSamplesFromBackend(since?: string, limit?: numb
   try {
     const res = await fetch(url, {
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(10000),
     });
     
@@ -1053,7 +1349,7 @@ export async function syncStarredPlaces(places: StarredPlace[]): Promise<{ synce
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       credentials: 'include',
       body: JSON.stringify({ places }),
       signal: createTimeoutSignal(10000),
@@ -1082,6 +1378,7 @@ export async function getStarredPlacesFromBackend(): Promise<StarredPlace[]> {
   try {
     const res = await fetch(url, {
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(10000),
     });
     
@@ -1225,7 +1522,7 @@ export async function syncGeofencesToBackend(geofences: Geofence[]): Promise<{ s
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       credentials: 'include',
       body: JSON.stringify({ geofences }),
       signal: createTimeoutSignal(10000),
@@ -1254,6 +1551,7 @@ export async function getGeofencesFromBackend(): Promise<Geofence[]> {
   try {
     const res = await fetch(url, {
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(10000),
     });
     
@@ -1334,7 +1632,7 @@ export async function syncTriggerEventsToBackend(): Promise<{ synced: number }> 
     
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       credentials: 'include',
       body: JSON.stringify({ events: unsyncedEvents }),
       signal: createTimeoutSignal(10000),
@@ -1392,6 +1690,7 @@ export async function getLists(): Promise<ZekeList[]> {
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(5000)
     });
     if (!res.ok) return [];
@@ -1408,6 +1707,7 @@ export async function getListWithItems(id: string): Promise<ZekeListWithItems | 
   try {
     const res = await fetch(url, { 
       credentials: 'include',
+      headers: getAuthHeaders(),
       signal: createTimeoutSignal(5000)
     });
     if (!res.ok) return null;

@@ -201,3 +201,23 @@ export type LocationRecord = typeof locations.$inferSelect;
 
 export type InsertStarredPlace = z.infer<typeof insertStarredPlaceSchema>;
 export type StarredPlace = typeof starredPlaces.$inferSelect;
+
+export const deviceTokens = pgTable("device_tokens", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  token: text("token").notNull().unique(),
+  deviceId: varchar("device_id").notNull().unique(),
+  deviceName: text("device_name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastUsedAt: timestamp("last_used_at").defaultNow().notNull(),
+});
+
+export const insertDeviceTokenSchema = createInsertSchema(deviceTokens).omit({
+  id: true,
+  createdAt: true,
+  lastUsedAt: true,
+});
+
+export type InsertDeviceToken = z.infer<typeof insertDeviceTokenSchema>;
+export type DeviceToken = typeof deviceTokens.$inferSelect;

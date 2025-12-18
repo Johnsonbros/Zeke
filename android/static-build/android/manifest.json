@@ -1,16 +1,18 @@
 {
-  "id": "9e1516b8-c54c-4392-8483-b29cdcb6e297",
-  "createdAt": "2025-12-16T19:22:19.225Z",
+  "id": "cf116e29-d824-4676-8b63-5d1be8ba8abb",
+  "createdAt": "2025-12-18T02:31:19.982Z",
   "runtimeVersion": "exposdk:54.0.0",
   "launchAsset": {
-    "key": "bundle-1765912939225-828",
+    "key": "bundle-1766025079982-1089",
     "contentType": "application/javascript",
-    "url": "https://90d774c0-b4b4-45fb-946f-d806b2cb8b3b-00-33xxc4a4d8ay1.kirk.replit.dev/1765912939225-828/_expo/static/js/android/bundle.js"
+    "url": "https://90d774c0-b4b4-45fb-946f-d806b2cb8b3b-00-33xxc4a4d8ay1.kirk.replit.dev/1766025079982-1089/_expo/static/js/android/bundle.js"
   },
   "assets": [],
   "metadata": {},
   "extra": {
-    "eas": {},
+    "eas": {
+      "projectId": "fd634d5b-ef00-4215-a63a-1c962f8f4015"
+    },
     "expoClient": {
       "name": "ZEKE AI",
       "slug": "zeke-ai",
@@ -35,8 +37,14 @@
           "backgroundImageUrl": "https://90d774c0-b4b4-45fb-946f-d806b2cb8b3b-00-33xxc4a4d8ay1.kirk.replit.dev/assets/./assets/images/android-icon-background.png"
         },
         "package": "com.zekeai.companion",
+        "versionCode": 2,
         "edgeToEdgeEnabled": true,
-        "predictiveBackGestureEnabled": false
+        "predictiveBackGestureEnabled": false,
+        "permissions": [
+          "android.permission.BLUETOOTH",
+          "android.permission.BLUETOOTH_ADMIN",
+          "android.permission.BLUETOOTH_CONNECT"
+        ]
       },
       "web": {
         "output": "single",
@@ -55,10 +63,26 @@
             }
           }
         ],
-        "expo-web-browser"
+        "expo-web-browser",
+        [
+          "react-native-ble-plx",
+          {
+            "isBackgroundEnabled": false,
+            "modes": [
+              "peripheral",
+              "central"
+            ],
+            "bluetoothAlwaysPermission": "Allow ZEKE AI to use Bluetooth to connect to your Limitless pendant and Omi wearable"
+          }
+        ]
       ],
       "experiments": {
         "reactCompiler": true
+      },
+      "extra": {
+        "eas": {
+          "projectId": "fd634d5b-ef00-4215-a63a-1c962f8f4015"
+        }
       },
       "_internal": {
         "isDebug": false,
@@ -74,6 +98,10 @@
           "expo-web-browser": {
             "name": "expo-web-browser",
             "version": "15.0.9"
+          },
+          "react-native-ble-plx": {
+            "name": "react-native-ble-plx",
+            "version": "UNVERSIONED"
           }
         }
       },
@@ -100,6 +128,6 @@
       },
       "mainModuleName": "client/index"
     },
-    "scopeKey": "@anonymous/zeke-ai-c27ca3e1-9ace-44ec-83b7-52790073a2ad"
+    "scopeKey": "@anonymous/zeke-ai-e9ba701e-e406-4603-a345-cdd5b51f871d"
   }
 }

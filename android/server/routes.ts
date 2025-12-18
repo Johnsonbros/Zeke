@@ -5,6 +5,7 @@ import { insertDeviceSchema, insertMemorySchema, insertChatSessionSchema, insert
 import OpenAI from "openai";
 import multer from "multer";
 import { registerLocationRoutes } from "./location";
+import { registerZekeProxyRoutes } from "./zeke-proxy";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -875,6 +876,37 @@ Return at most ${Math.min(limit, 10)} results. Only include memories with releva
     }
   });
 
+  app.post("/api/twilio/voice/token", async (req, res) => {
+    try {
+      const { identity } = req.body;
+      
+      if (!identity) {
+        return res.status(400).json({ error: "Missing 'identity' field" });
+      }
+      
+      if (!process.env.TWILIO_TWIML_APP_SID) {
+        console.warn("[Twilio] TWILIO_TWIML_APP_SID not configured - VoIP calls will not work");
+        return res.status(503).json({ 
+          error: "VoIP not configured",
+          message: "TWILIO_TWIML_APP_SID environment variable is required for VoIP calls. Set this to your TwiML App SID from the Twilio Console."
+        });
+      }
+      
+      const { generateVoiceAccessToken } = await import("./twilio");
+      const tokenResult = await generateVoiceAccessToken(identity);
+      
+      res.json(tokenResult);
+    } catch (error: any) {
+      console.error("[Twilio] Error generating voice token:", error);
+      
+      if (error.message?.includes('Twilio not connected')) {
+        return res.status(503).json({ error: "Twilio not connected" });
+      }
+      
+      res.status(500).json({ error: "Failed to generate voice token" });
+    }
+  });
+
   // =========================================
   // Twilio Webhooks (for incoming calls/SMS)
   // =========================================
@@ -985,6 +1017,58 @@ Return at most ${Math.min(limit, 10)} results. Only include memories with releva
     } catch (error) {
       console.error("[Twilio] Error fetching phone number:", error);
       res.status(500).json({ error: "Failed to fetch phone number" });
+    }
+  });
+
+  app.post("/api/twilio/twiml/voice", async (req, res) => {
+    res.type('text/xml');
+    
+    try {
+      const twilioSignature = req.headers['x-twilio-signature'] as string;
+      const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+      
+      if (twilioSignature && process.env.TWILIO_AUTH_TOKEN) {
+        const twilio = await import("twilio");
+        const isValid = twilio.validateRequest(
+          process.env.TWILIO_AUTH_TOKEN,
+          twilioSignature,
+          url,
+          req.body
+        );
+        
+        if (!isValid) {
+          console.warn("[Twilio TwiML] Invalid request signature");
+          return res.status(403).send('<?xml version="1.0" encoding="UTF-8"?><Response><Say>Unauthorized request.</Say></Response>');
+        }
+      }
+      
+      const { To, From } = req.body;
+      
+      if (!To) {
+        console.warn("[Twilio TwiML] Missing 'To' parameter in VoIP request");
+        return res.send('<?xml version="1.0" encoding="UTF-8"?><Response><Say>Please provide a phone number to call.</Say></Response>');
+      }
+      
+      const sanitizedTo = To.replace(/[^\d+]/g, '');
+      if (!sanitizedTo || sanitizedTo.length < 10) {
+        console.warn("[Twilio TwiML] Invalid phone number:", To);
+        return res.send('<?xml version="1.0" encoding="UTF-8"?><Response><Say>Invalid phone number. Please try again.</Say></Response>');
+      }
+      
+      console.log("[Twilio TwiML] VoIP call request - To:", sanitizedTo, "From:", From);
+      
+      const { getTwilioFromPhoneNumber } = await import("./twilio");
+      const callerId = await getTwilioFromPhoneNumber();
+      
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial callerId="${callerId}">
+    <Number>${sanitizedTo}</Number>
+  </Dial>
+</Response>`);
+    } catch (error) {
+      console.error("[Twilio TwiML] Voice error:", error);
+      res.send('<?xml version="1.0" encoding="UTF-8"?><Response><Say>An error occurred. Please try again later.</Say></Response>');
     }
   });
 
@@ -1290,6 +1374,7 @@ Return at most ${Math.min(limit, 10)} results. Only include memories with releva
   }
 
   registerLocationRoutes(app);
+  registerZekeProxyRoutes(app);
 
   return httpServer;
 }

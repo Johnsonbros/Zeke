@@ -418,7 +418,7 @@ function ContactRow({ contact, onPress, onCall, onMessage }: ContactRowProps) {
   );
 }
 
-function EmptyState({ type }: { type: 'sms' | 'voice' | 'contacts' }) {
+function EmptyState({ type, onImport }: { type: 'sms' | 'voice' | 'contacts'; onImport?: () => void }) {
   const { theme } = useTheme();
   const iconName = type === 'sms' ? 'message-square' : type === 'voice' ? 'phone' : 'users';
   const title = type === 'sms' ? 'No SMS Conversations' : type === 'voice' ? 'No Voice Calls' : 'No Contacts';
@@ -426,7 +426,7 @@ function EmptyState({ type }: { type: 'sms' | 'voice' | 'contacts' }) {
     ? 'Your SMS conversations will appear here once you start messaging.'
     : type === 'voice' 
     ? 'Your call history will appear here once you make or receive calls.'
-    : 'Your contacts will appear here once you add them.';
+    : 'Import contacts from your device to get started.';
   
   return (
     <View style={styles.emptyState}>
@@ -441,6 +441,15 @@ function EmptyState({ type }: { type: 'sms' | 'voice' | 'contacts' }) {
       <ThemedText type="body" secondary style={{ textAlign: 'center' }}>
         {message}
       </ThemedText>
+      {type === 'contacts' && onImport ? (
+        <Pressable 
+          onPress={onImport}
+          style={({ pressed }) => [styles.importButton, { opacity: pressed ? 0.8 : 1, backgroundColor: Colors.dark.primary, borderRadius: BorderRadius.md, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.lg, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }]}
+        >
+          <Feather name="download" size={18} color="#FFFFFF" />
+          <ThemedText style={{ color: '#FFFFFF', fontWeight: '600' }}>Import from Device</ThemedText>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -570,7 +579,7 @@ export default function CommunicationsHubScreen() {
   const handleCallPress = (call: TwilioCallRecord) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const otherParty = call.from === twilioPhoneNumber ? call.to : call.from;
-    navigation.navigate("SmsCompose", { phoneNumber: otherParty });
+    navigation.navigate("VoIPCalling", { phoneNumber: otherParty });
   };
 
   const handleStartChat = () => {
@@ -586,7 +595,10 @@ export default function CommunicationsHubScreen() {
   const handleContactCall = (contact: ZekeContact) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (contact.phoneNumber) {
-      callMutation.mutate(contact.id.toString());
+      navigation.navigate("VoIPCalling", { 
+        phoneNumber: contact.phoneNumber,
+        contactName: `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || undefined
+      });
     }
   };
 
@@ -595,6 +607,11 @@ export default function CommunicationsHubScreen() {
     if (contact.phoneNumber) {
       navigation.navigate("SmsConversation", { phoneNumber: contact.phoneNumber });
     }
+  };
+
+  const handleImportContacts = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    navigation.navigate("ImportContacts");
   };
 
   const onRefresh = async () => {
@@ -685,16 +702,24 @@ export default function CommunicationsHubScreen() {
           return <LoadingState />;
         }
         if (sortedContacts.length === 0 && !contactSearchQuery) {
-          return <EmptyState type="contacts" />;
+          return <EmptyState type="contacts" onImport={handleImportContacts} />;
         }
         return (
           <View style={styles.contactsContainer}>
-            <View style={styles.searchContainer}>
-              <SearchBar
-                value={contactSearchQuery}
-                onChangeText={setContactSearchQuery}
-                placeholder="Search contacts..."
-              />
+            <View style={styles.contactsHeader}>
+              <View style={styles.searchContainerExpanded}>
+                <SearchBar
+                  value={contactSearchQuery}
+                  onChangeText={setContactSearchQuery}
+                  placeholder="Search contacts..."
+                />
+              </View>
+              <Pressable
+                onPress={handleImportContacts}
+                style={({ pressed }) => [styles.importIconButton, { opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Feather name="download" size={20} color={Colors.dark.primary} />
+              </Pressable>
             </View>
             {sortedContacts.length === 0 ? (
               <View style={styles.noResults}>
@@ -906,9 +931,43 @@ const styles = StyleSheet.create({
   contactsContainer: {
     flex: 1,
   },
+  contactsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+  },
+  searchContainerExpanded: {
+    flex: 1,
+  },
   searchContainer: {
     paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.md,
+  },
+  importIconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.dark.backgroundSecondary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  importButton: {
+    marginTop: Spacing.xl,
+  },
+  importButtonGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: BorderRadius.lg,
+  },
+  importButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   noResults: {
     flex: 1,

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { StyleSheet, Platform } from "react-native";
+import { StyleSheet, Platform, ActivityIndicator, View } from "react-native";
 import { NavigationContainer, DefaultTheme, NavigationContainerRef } from "@react-navigation/native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -13,6 +13,8 @@ import { queryClient } from "@/lib/query-client";
 import RootStackNavigator from "@/navigation/RootStackNavigator";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Colors } from "@/constants/theme";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { PairingScreen } from "@/screens/PairingScreen";
 
 const DarkTheme = {
   ...DefaultTheme,
@@ -28,7 +30,25 @@ const DarkTheme = {
   },
 };
 
-export default function App() {
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={Colors.dark.primary} />
+      </View>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <PairingScreen />;
+  }
+
+  return <>{children}</>;
+}
+
+function AppContent() {
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
   const notificationResponseListener = useRef<Notifications.Subscription | null>(null);
 
@@ -58,15 +78,25 @@ export default function App() {
   }, []);
 
   return (
+    <NavigationContainer ref={navigationRef} theme={DarkTheme}>
+      <AuthGate>
+        <RootStackNavigator />
+      </AuthGate>
+    </NavigationContainer>
+  );
+}
+
+export default function App() {
+  return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <SafeAreaProvider>
           <GestureHandlerRootView style={styles.root}>
             <KeyboardProvider>
-              <NavigationContainer ref={navigationRef} theme={DarkTheme}>
-                <RootStackNavigator />
-              </NavigationContainer>
-              <StatusBar style="light" />
+              <AuthProvider>
+                <AppContent />
+                <StatusBar style="light" />
+              </AuthProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
         </SafeAreaProvider>
@@ -78,6 +108,12 @@ export default function App() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: Colors.dark.backgroundRoot,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: Colors.dark.backgroundRoot,
   },
 });
