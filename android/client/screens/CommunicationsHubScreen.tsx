@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { View, FlatList, StyleSheet, Pressable, Platform, Alert, ActivityIndicator, RefreshControl, TextInput } from "react-native";
+import { View, FlatList, StyleSheet, Pressable, Platform, Alert, ActivityIndicator, RefreshControl, TextInput, Modal, KeyboardAvoidingView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -25,6 +25,7 @@ import {
   getTwilioPhoneNumber,
   getContacts,
   initiateCall,
+  sendSms,
   type TwilioSmsConversation,
   type TwilioCallRecord,
   type ZekeContact 
@@ -465,6 +466,8 @@ function LoadingState() {
   );
 }
 
+type ModalType = "none" | "sms" | "call";
+
 export default function CommunicationsHubScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
@@ -473,6 +476,9 @@ export default function CommunicationsHubScreen() {
   const navigation = useNavigation<CommunicationNavigationProp>();
   
   const [activeTab, setActiveTab] = useState<TabType>("sms");
+  const [modalType, setModalType] = useState<ModalType>("none");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [smsMessage, setSmsMessage] = useState("");
 
   const { data: twilioPhoneNumber } = useQuery({
     queryKey: ['twilio-phone-number'],
@@ -548,6 +554,59 @@ export default function CommunicationsHubScreen() {
       Alert.alert("Error", "Failed to initiate call. Please try again.");
     },
   });
+
+  const smsMutation = useMutation({
+    mutationFn: ({ to, message }: { to: string; message: string }) => sendSms(to, message),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['twilio-conversations'] });
+      setModalType("none");
+      setPhoneNumber("");
+      setSmsMessage("");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Success", "SMS sent successfully!");
+    },
+    onError: (error: Error) => {
+      Alert.alert("Error", error.message || "Failed to send SMS");
+    },
+  });
+
+  const newCallMutation = useMutation({
+    mutationFn: (to: string) => initiateCall(to),
+    onSuccess: () => {
+      setModalType("none");
+      setPhoneNumber("");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Success", "Call initiated successfully!");
+    },
+    onError: (error: Error) => {
+      Alert.alert("Error", error.message || "Failed to initiate call");
+    },
+  });
+
+  const handleFabPress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (activeTab === 'sms') {
+      setModalType("sms");
+    } else if (activeTab === 'voice') {
+      setModalType("call");
+    }
+  };
+
+  const handleSendSms = () => {
+    if (!phoneNumber.trim() || !smsMessage.trim()) {
+      Alert.alert("Error", "Please enter a phone number and message");
+      return;
+    }
+    smsMutation.mutate({ to: phoneNumber.trim(), message: smsMessage.trim() });
+  };
+
+  const handleMakeCall = () => {
+    if (!phoneNumber.trim()) {
+      Alert.alert("Error", "Please enter a phone number");
+      return;
+    }
+    newCallMutation.mutate(phoneNumber.trim());
+  };
 
   const handleTabPress = (tab: TabType) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -785,6 +844,104 @@ export default function CommunicationsHubScreen() {
           {renderContent()}
         </View>
       </View>
+
+      {(activeTab === 'sms' || activeTab === 'voice') ? (
+        <Pressable
+          onPress={handleFabPress}
+          style={({ pressed }) => [
+            styles.fab,
+            { bottom: tabBarHeight + Spacing.xl, opacity: pressed ? 0.8 : 1 },
+          ]}
+        >
+          <LinearGradient
+            colors={Gradients.primary}
+            style={styles.fabGradient}
+          >
+            <Feather
+              name={activeTab === 'sms' ? 'message-circle' : 'phone'}
+              size={24}
+              color="#FFFFFF"
+            />
+          </LinearGradient>
+        </Pressable>
+      ) : null}
+
+      <Modal
+        visible={modalType !== "none"}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalType("none")}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => setModalType("none")}
+          />
+          <View style={[styles.modalContent, { backgroundColor: theme.backgroundSecondary }]}>
+            <View style={styles.modalHeader}>
+              <ThemedText type="h3">
+                {modalType === "sms" ? "New Message" : "New Call"}
+              </ThemedText>
+              <Pressable onPress={() => setModalType("none")}>
+                <Feather name="x" size={24} color={theme.textSecondary} />
+              </Pressable>
+            </View>
+
+            <View style={styles.modalBody}>
+              <TextInput
+                style={[styles.modalInput, { backgroundColor: theme.backgroundDefault, color: theme.text }]}
+                placeholder="Phone number"
+                placeholderTextColor={theme.textSecondary}
+                value={phoneNumber}
+                onChangeText={setPhoneNumber}
+                keyboardType="phone-pad"
+                autoFocus
+              />
+
+              {modalType === "sms" ? (
+                <TextInput
+                  style={[styles.modalInput, styles.messageInput, { backgroundColor: theme.backgroundDefault, color: theme.text }]}
+                  placeholder="Type your message..."
+                  placeholderTextColor={theme.textSecondary}
+                  value={smsMessage}
+                  onChangeText={setSmsMessage}
+                  multiline
+                  numberOfLines={4}
+                />
+              ) : null}
+            </View>
+
+            <Pressable
+              onPress={modalType === "sms" ? handleSendSms : handleMakeCall}
+              style={({ pressed }) => [styles.modalButton, { opacity: pressed ? 0.8 : 1 }]}
+              disabled={smsMutation.isPending || newCallMutation.isPending}
+            >
+              <LinearGradient
+                colors={Gradients.primary}
+                style={styles.modalButtonGradient}
+              >
+                {smsMutation.isPending || newCallMutation.isPending ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <>
+                    <Feather
+                      name={modalType === "sms" ? "send" : "phone"}
+                      size={18}
+                      color="#FFFFFF"
+                    />
+                    <ThemedText style={{ color: "#FFFFFF", fontWeight: "600", marginLeft: Spacing.sm }}>
+                      {modalType === "sms" ? "Send Message" : "Call"}
+                    </ThemedText>
+                  </>
+                )}
+              </LinearGradient>
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </ThemedView>
   );
 }
@@ -973,5 +1130,68 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  fab: {
+    position: "absolute",
+    right: Spacing.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  fabGradient: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  modalContent: {
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    paddingBottom: Spacing.xl,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: Spacing.lg,
+  },
+  modalBody: {
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  modalInput: {
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    fontSize: 16,
+  },
+  messageInput: {
+    height: 100,
+    textAlignVertical: "top",
+  },
+  modalButton: {
+    borderRadius: BorderRadius.md,
+    overflow: "hidden",
+  },
+  modalButtonGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
   },
 });

@@ -49,6 +49,24 @@
           "modes": ["peripheral", "central"],
           "bluetoothAlwaysPermission": "Allow ZEKE AI to use Bluetooth to connect to your Limitless pendant and Omi wearable"
         }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "ZekeLocation",
+              "label": "ZEKE Save Location",
+              "minWidth": "110dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 2,
+              "targetCellHeight": 2,
+              "description": "Quickly save your current location to ZEKE AI",
+              "updatePeriodMillis": 0,
+              "widgetFeatures": "reconfigurable"
+            }
+          ]
+        }
       ]
     ],
     "experiments": {

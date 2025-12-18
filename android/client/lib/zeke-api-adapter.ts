@@ -174,12 +174,29 @@ export async function createConversation(title?: string): Promise<ZekeConversati
     throw new Error(`Failed to create conversation: ${res.status} ${errorText}`);
   }
   
+  const contentType = res.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    console.error('[ZEKE Chat] Non-JSON response received when creating conversation');
+    throw new Error('Server returned non-JSON response');
+  }
+  
   const data = await res.json();
+  
+  if (!data?.id || data.id === 'undefined' || data.id === 'null') {
+    console.error('[ZEKE Chat] Invalid conversation ID in response:', data);
+    throw new Error('Invalid conversation ID received from server');
+  }
+  
   console.log('[ZEKE Chat] Conversation created:', data.id);
   return data;
 }
 
 export async function getConversationMessages(conversationId: string): Promise<ZekeMessage[]> {
+  if (!conversationId || conversationId === 'undefined' || conversationId === 'null') {
+    console.error('[ZEKE Chat] Invalid conversation ID:', conversationId);
+    return [];
+  }
+  
   const baseUrl = getLocalApiUrl();
   const url = new URL(`/api/conversations/${conversationId}/messages`, baseUrl);
   
@@ -195,6 +212,11 @@ export async function getConversationMessages(conversationId: string): Promise<Z
       }
       throw new Error(`Failed to fetch messages: ${res.statusText}`);
     }
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.error('[ZEKE Chat] Non-JSON response received for messages');
+      return [];
+    }
     return res.json();
   } catch (error) {
     console.error('[ZEKE Chat] Failed to fetch messages:', error);
@@ -203,6 +225,10 @@ export async function getConversationMessages(conversationId: string): Promise<Z
 }
 
 export async function sendMessage(conversationId: string, content: string): Promise<{ userMessage: ZekeMessage; assistantMessage: ZekeMessage }> {
+  if (!conversationId || conversationId === 'undefined' || conversationId === 'null') {
+    throw new Error('Invalid conversation ID');
+  }
+  
   const baseUrl = getLocalApiUrl();
   const url = new URL(`/api/conversations/${conversationId}/messages`, baseUrl);
   
@@ -223,6 +249,11 @@ export async function sendMessage(conversationId: string, content: string): Prom
     const errorText = await res.text().catch(() => res.statusText);
     console.error('[ZEKE Chat] Send message failed:', res.status, errorText);
     throw new Error(`Failed to send message: ${res.status} ${errorText}`);
+  }
+  
+  const contentType = res.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Server returned non-JSON response');
   }
   
   return res.json();

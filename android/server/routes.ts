@@ -1243,6 +1243,65 @@ Return at most ${Math.min(limit, 10)} results. Only include memories with releva
   });
 
   // =========================================
+  // Widget Endpoints
+  // =========================================
+
+  app.post("/api/widget/save-location", async (req, res) => {
+    try {
+      const { latitude, longitude, locationName, timestamp } = req.body;
+      
+      if (latitude === undefined || longitude === undefined) {
+        return res.status(400).json({ error: "latitude and longitude are required" });
+      }
+
+      console.log(`[Widget] Saving location: ${locationName} (${latitude}, ${longitude})`);
+
+      const zekeBackendUrl = process.env.ZEKE_BACKEND_URL || 'https://zekeai.replit.app';
+      
+      try {
+        const response = await fetch(`${zekeBackendUrl}/api/widget/save-location`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            latitude,
+            longitude,
+            locationName,
+            timestamp,
+            source: 'android-widget',
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`[Widget] Location saved to ZEKE backend`);
+          return res.json({ success: true, ...data });
+        }
+      } catch (proxyError) {
+        console.log('[Widget] ZEKE backend not available, storing locally');
+      }
+
+      const { db } = await import("./db");
+      const { locations } = await import("@shared/schema");
+      
+      const [saved] = await db.insert(locations).values({
+        latitude: String(latitude),
+        longitude: String(longitude),
+        label: locationName || `Widget Location`,
+        formattedAddress: locationName,
+        isStarred: true,
+        recordedAt: new Date(timestamp || Date.now()),
+      }).returning();
+
+      res.json({ success: true, location: saved, source: 'local' });
+    } catch (error: any) {
+      console.error("[Widget] Error saving location:", error);
+      res.status(500).json({ error: "Failed to save location" });
+    }
+  });
+
+  // =========================================
   // Deepgram Configuration Status Endpoint (secure - no API key exposed)
   // =========================================
   

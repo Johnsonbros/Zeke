@@ -75,46 +75,57 @@ export default function ChatScreen() {
     initializeSession();
   }, []);
 
+  const isValidId = (id: string | null): boolean => {
+    return !!id && id !== 'undefined' && id !== 'null' && id.length > 5;
+  };
+
   const initializeSession = async () => {
     try {
       if (isZekeSyncMode()) {
         const storedConversationId = await AsyncStorage.getItem(ZEKE_CONVERSATION_KEY);
         
-        if (storedConversationId) {
+        if (isValidId(storedConversationId)) {
           try {
-            const messages = await getConversationMessages(storedConversationId);
-            if (messages) {
+            const messages = await getConversationMessages(storedConversationId!);
+            if (Array.isArray(messages)) {
               setSessionId(storedConversationId);
               setIsInitializing(false);
               return;
             }
           } catch {
-            // Conversation doesn't exist, create new one
+            await AsyncStorage.removeItem(ZEKE_CONVERSATION_KEY);
           }
+        } else if (storedConversationId) {
+          await AsyncStorage.removeItem(ZEKE_CONVERSATION_KEY);
         }
         
         const newConversation = await createConversation('Chat with ZEKE');
+        if (!newConversation?.id || !isValidId(newConversation.id)) {
+          throw new Error('Failed to create conversation - invalid ID received');
+        }
         await AsyncStorage.setItem(ZEKE_CONVERSATION_KEY, newConversation.id);
         setSessionId(newConversation.id);
       } else {
         const storedSessionId = await AsyncStorage.getItem(CHAT_SESSION_KEY);
         
-        if (storedSessionId) {
+        if (isValidId(storedSessionId)) {
           try {
             const url = new URL(`/api/chat/sessions/${storedSessionId}/messages`, getApiUrl());
             const res = await fetch(url.toString(), { credentials: 'include' });
             if (res.ok) {
               const contentType = res.headers.get('content-type');
               if (contentType && contentType.includes('application/json')) {
-                await res.json(); // Validate JSON can be parsed
+                await res.json();
                 setSessionId(storedSessionId);
                 setIsInitializing(false);
                 return;
               }
             }
           } catch (e) {
-            // Session doesn't exist or is invalid, create new one
+            await AsyncStorage.removeItem(CHAT_SESSION_KEY);
           }
+        } else if (storedSessionId) {
+          await AsyncStorage.removeItem(CHAT_SESSION_KEY);
         }
         
         try {
@@ -168,10 +179,10 @@ export default function ChatScreen() {
   const { data: messagesData, isLoading: isLoadingMessages, isFetching } = useQuery<ApiChatMessage[]>({
     queryKey: isZekeSyncMode() ? ['/api/conversations', sessionId, 'messages'] : ['/api/chat/sessions', sessionId, 'messages'],
     queryFn: async () => {
-      if (!sessionId) return [];
+      if (!isValidId(sessionId)) return [];
       
       if (isZekeSyncMode()) {
-        const messages = await getConversationMessages(sessionId);
+        const messages = await getConversationMessages(sessionId!);
         return messages.map(m => ({
           id: m.id,
           sessionId: m.conversationId,
@@ -190,7 +201,7 @@ export default function ChatScreen() {
         return res.json();
       }
     },
-    enabled: !!sessionId,
+    enabled: isValidId(sessionId),
   });
 
   const apiMessages: Message[] = (messagesData ?? []).map(mapApiMessageToMessage);
@@ -207,7 +218,7 @@ export default function ChatScreen() {
   };
 
   const handleSend = async () => {
-    if (!inputText.trim() || !sessionId) return;
+    if (!inputText.trim() || !isValidId(sessionId)) return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const messageContent = inputText.trim();
@@ -227,11 +238,11 @@ export default function ChatScreen() {
     
     try {
       if (isZekeSyncMode()) {
-        await sendZekeMessage(sessionId, messageContent);
+        await sendZekeMessage(sessionId!, messageContent);
         setOptimisticMessages([]);
         await queryClient.invalidateQueries({ queryKey: ['/api/conversations', sessionId, 'messages'] });
       } else {
-        const res = await apiRequest('POST', `/api/chat/sessions/${sessionId}/messages`, { content: messageContent });
+        const res = await apiRequest('POST', `/api/chat/sessions/${sessionId!}/messages`, { content: messageContent });
         await res.json();
         setOptimisticMessages([]);
         await queryClient.invalidateQueries({ queryKey: ['/api/chat/sessions', sessionId, 'messages'] });
