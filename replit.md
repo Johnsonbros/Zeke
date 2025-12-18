@@ -43,3 +43,43 @@ Key architectural and feature implementations include:
 - **OpenWeatherMap API**: Weather data.
 - **DuckDuckGo API**: Fallback web search.
 - **Omi API**: Accessing lifelogs from the Omi pendant.
+- **OpenStreetMap / Leaflet**: Default open-source map provider (free, no API key required).
+- **Google Maps API**: Optional paid map provider (requires `VITE_GOOGLE_MAPS_API_KEY`).
+
+## Frontend Map Abstraction
+
+The app includes a flexible map component system at `client/src/components/map/` that supports multiple map providers:
+
+- **Default Provider**: OpenStreetMap via Leaflet (free, open-source)
+- **Optional Provider**: Google Maps (requires API key and billing)
+
+### Configuration
+- `VITE_MAP_PROVIDER`: Set to `leaflet` (default) or `google`
+- `VITE_GOOGLE_MAPS_API_KEY`: Required only when using Google Maps provider
+
+### Components
+- `<Map />`: Universal map component that auto-selects provider
+- `<MapProvider>`: Context provider for configuration
+- `<LocationMap />`: Pre-built component for displaying location data with markers, circles, and trails
+- `<LeafletMap />`: Direct Leaflet implementation
+- `<GoogleMap />`: Direct Google Maps implementation
+
+### Usage
+```tsx
+import { Map, MapProvider, LocationMap } from '@/components/map';
+
+// Simple usage with defaults (OpenStreetMap)
+<Map center={{ lat: 42.1, lng: -70.9 }} zoom={13} markers={[...]} />
+
+// With location data
+<LocationMap 
+  locations={savedPlaces} 
+  currentLocation={currentPos}
+  showTrail={true}
+/>
+
+// Override provider
+<MapProvider provider="google" googleApiKey="...">
+  <Map ... />
+</MapProvider>
+```
