@@ -194,6 +194,69 @@ export function registerSecurityLogsEndpoint(app: any): void {
     };
     res.json({ summary, logs });
   });
+
+  // Diagnostic endpoint - helps mobile team debug signature mismatches
+  // POST /api/mobile/auth/diagnose with the same headers they'd use for a real request
+  // Returns what signature the backend would expect
+  app.post('/api/mobile/auth/diagnose', (req: Request, res: Response) => {
+    const secret = getSharedSecret();
+    if (!secret) {
+      res.status(500).json({ error: 'Shared secret not configured' });
+      return;
+    }
+
+    const timestamp = req.headers['x-zeke-timestamp'] as string | undefined;
+    const nonce = req.headers['x-zeke-nonce'] as string | undefined;
+    const signature = req.headers['x-zeke-signature'] as string | undefined;
+    const testPath = (req.body?.path as string) || '/api/tasks';
+    const testMethod = (req.body?.method as string) || 'GET';
+    const testBody = req.body?.body || '';
+
+    const effectiveNonce = nonce || '';
+    const bodyStr = typeof testBody === 'string' ? testBody : JSON.stringify(testBody);
+    const bodyHash = crypto.createHash('sha256').update(bodyStr).digest('hex');
+    const emptyBodyHash = crypto.createHash('sha256').update('').digest('hex');
+    
+    const payload = `${timestamp}.${effectiveNonce}.${testMethod}.${testPath}.${bodyHash}`;
+    const expectedSignature = secret 
+      ? crypto.createHmac('sha256', secret).update(payload).digest('hex')
+      : 'SECRET_NOT_CONFIGURED';
+
+    // Check if this route is even protected
+    const isProtected = shouldProtectRoute(testPath);
+
+    res.json({
+      diagnosis: {
+        routeProtected: isProtected,
+        note: isProtected 
+          ? 'This route requires HMAC authentication' 
+          : 'This route is NOT protected - no auth required!',
+      },
+      received: {
+        timestamp,
+        nonce: nonce || '(not provided, using empty string)',
+        signature: signature ? `${signature.substring(0, 16)}...` : null,
+        path: testPath,
+        method: testMethod,
+        bodyProvided: bodyStr.length > 0,
+      },
+      expected: {
+        payloadFormat: 'timestamp.nonce.method.path.bodyHash',
+        payloadUsed: payload,
+        bodyHash,
+        emptyBodyHash,
+        expectedSignaturePrefix: `${expectedSignature.substring(0, 16)}...`,
+      },
+      match: signature ? safeCompare(signature, expectedSignature) : false,
+      hints: [
+        'Ensure nonce in header matches nonce in signature payload',
+        'Ensure timestamp is Unix seconds (10 digits) or milliseconds (13 digits)',
+        'Ensure body hash is SHA-256 of exact body string (or empty string for no body)',
+        'Path must match exactly including leading slash (e.g., /api/tasks)',
+        'Method must be uppercase (GET, POST, etc.)',
+      ],
+    });
+  });
 }
 
 export const PROTECTED_ROUTE_PATTERNS = [
