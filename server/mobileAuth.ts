@@ -111,10 +111,9 @@ export function zekeMobileAuth(req: Request, res: Response, next: NextFunction):
     return;
   }
 
-  if (!nonce) {
-    createRejection('Missing X-ZEKE-Nonce header');
-    return;
-  }
+  // Nonce is optional - use empty string if not provided for backward compatibility
+  // Clients should use the same nonce value (or empty string) when computing signature
+  const effectiveNonce = nonce || '';
 
   const timestampNum = parseInt(timestamp, 10);
   if (isNaN(timestampNum)) {
@@ -136,7 +135,7 @@ export function zekeMobileAuth(req: Request, res: Response, next: NextFunction):
   const bodyHash = computeBodyHash(req.body);
   const expectedSignature = computeExpectedSignature(
     timestamp,
-    nonce,
+    effectiveNonce,
     req.method,
     req.path,
     bodyHash,
