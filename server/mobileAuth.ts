@@ -191,6 +191,7 @@ export const PROTECTED_ROUTE_PATTERNS = [
   '/api/chat',
   '/api/dashboard',
   '/api/memories',
+  '/api/conversations',
 ];
 
 export function shouldProtectRoute(path: string): boolean {
