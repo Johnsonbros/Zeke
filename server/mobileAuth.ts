@@ -121,14 +121,20 @@ export function zekeMobileAuth(req: Request, res: Response, next: NextFunction):
     return;
   }
 
-  const age = Date.now() - timestampNum;
+  // Handle both Unix seconds (10 digits) and Unix milliseconds (13 digits)
+  // Mobile apps typically send Unix seconds, while Date.now() returns milliseconds
+  const timestampMs = timestampNum.toString().length <= 10 
+    ? timestampNum * 1000  // Convert seconds to milliseconds
+    : timestampNum;        // Already in milliseconds
+
+  const age = Date.now() - timestampMs;
   if (age > TIMESTAMP_TOLERANCE_MS) {
-    createRejection('Request timestamp too old (replay protection)');
+    createRejection(`Request timestamp too old (replay protection). Age: ${age}ms, tolerance: ${TIMESTAMP_TOLERANCE_MS}ms`);
     return;
   }
 
   if (age < -TIMESTAMP_TOLERANCE_MS) {
-    createRejection('Request timestamp in the future');
+    createRejection(`Request timestamp in the future. Age: ${age}ms`);
     return;
   }
 
@@ -143,6 +149,13 @@ export function zekeMobileAuth(req: Request, res: Response, next: NextFunction):
   );
 
   if (!safeCompare(signature, expectedSignature)) {
+    // Log debug info for signature mismatch (without exposing secrets)
+    console.log(`[MOBILE AUTH DEBUG] Signature mismatch for ${req.method} ${req.path}`);
+    console.log(`[MOBILE AUTH DEBUG] Payload format: ${timestamp}.${effectiveNonce}.${req.method}.${req.path}.${bodyHash}`);
+    console.log(`[MOBILE AUTH DEBUG] Received signature: ${signature.substring(0, 16)}...`);
+    console.log(`[MOBILE AUTH DEBUG] Expected signature: ${expectedSignature.substring(0, 16)}...`);
+    console.log(`[MOBILE AUTH DEBUG] Body hash: ${bodyHash}`);
+    console.log(`[MOBILE AUTH DEBUG] Empty body expected hash: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`);
     createRejection('Invalid signature');
     return;
   }
