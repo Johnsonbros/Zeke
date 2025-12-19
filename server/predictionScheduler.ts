@@ -6,6 +6,11 @@
  * - Anomaly detection (hourly)
  * - Prediction generation (every 4 hours)
  * - Pattern accuracy validation (weekly)
+ * 
+ * BATCH-FIRST PRINCIPLE:
+ * - All deterministic work (stats, pattern matching, threshold checks) runs LOCALLY
+ * - Narrative generation and explanations are QUEUED TO BATCH for 50% cost savings
+ * - Only user-facing chat responses use realtime AI
  */
 
 import cron from "node-cron";
@@ -15,6 +20,7 @@ import { buildFusedContext, detectAnomalies } from "./dataFusion.js";
 import { db } from "./db";
 import { predictions } from "../shared/schema.js";
 import { eq } from "drizzle-orm";
+import { queueForBatch, shouldUseBatch } from "./config/batchFirst";
 
 /**
  * Pattern Discovery Job
@@ -57,7 +63,15 @@ export function scheduleAnomalyDetection() {
         const highSeverityAnomalies = anomalies.filter((a) => a.severity === "high");
         if (highSeverityAnomalies.length > 0) {
           logger.warn(`${highSeverityAnomalies.length} high-severity anomalies detected!`);
-          // TODO: Send notification to user about high-severity anomalies
+          
+          // BATCH-FIRST: Queue anomaly explanation to batch
+          if (shouldUseBatch("anomaly_explanation")) {
+            queueForBatch("anomaly_explanation", {
+              anomalies: highSeverityAnomalies,
+              timestamp: new Date().toISOString(),
+            }, 2);
+            logger.info("Queued anomaly explanations for batch processing");
+          }
         }
       } else {
         logger.info("No anomalies detected");
@@ -139,12 +153,24 @@ export function schedulePredictionGeneration() {
       if (predictions.length > 0) {
         logger.info(`Generated ${predictions.length} predictions:`);
         predictions.forEach((p) => logger.info(`  - ${p}`));
+        
+        // BATCH-FIRST: Queue narrative generation to batch instead of calling AI inline
+        if (shouldUseBatch("prediction_narrative")) {
+          queueForBatch("prediction_narrative", {
+            predictions,
+            contextSummary: {
+              taskLoad: context.taskLoad,
+              tasksCompletedToday: context.tasksCompletedToday,
+              urgentTaskCount: urgentTasks.length,
+              hasConflicts: context.hasConflicts,
+            },
+            timestamp: new Date().toISOString(),
+          }, 3);
+          logger.info("Queued prediction narratives for batch processing");
+        }
       } else {
         logger.info("No new predictions generated");
       }
-
-      // TODO: Create actual prediction records in database
-      // This would call the Foresight Strategist agent to generate detailed predictions
 
     } catch (error) {
       logger.error("Error in scheduled prediction generation:", error);

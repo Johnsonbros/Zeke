@@ -10306,6 +10306,48 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // BATCH-FIRST CONFIG API
+  // ============================================
+
+  // GET /api/admin/batch-first/config - Get batch-first configuration
+  app.get("/api/admin/batch-first/config", async (_req, res) => {
+    try {
+      const { getBatchFirstConfig } = await import("./config/batchFirst");
+      const config = getBatchFirstConfig();
+      res.json(config);
+    } catch (error: any) {
+      console.error("[BatchFirst] Error getting config:", error);
+      res.status(500).json({ error: error.message || "Failed to get batch-first config" });
+    }
+  });
+
+  // POST /api/admin/batch-first/config - Update batch-first configuration
+  app.post("/api/admin/batch-first/config", async (req, res) => {
+    try {
+      const { updateBatchFirstConfig, getBatchFirstConfig } = await import("./config/batchFirst");
+      updateBatchFirstConfig(req.body);
+      const config = getBatchFirstConfig();
+      res.json({ success: true, config });
+    } catch (error: any) {
+      console.error("[BatchFirst] Error updating config:", error);
+      res.status(500).json({ error: error.message || "Failed to update batch-first config" });
+    }
+  });
+
+  // GET /api/admin/batch-first/queue - Get pending batch queue stats
+  app.get("/api/admin/batch-first/queue", async (_req, res) => {
+    try {
+      const { getBatchQueueStats, getPendingBatchItems } = await import("./config/batchFirst");
+      const stats = getBatchQueueStats();
+      const items = getPendingBatchItems();
+      res.json({ stats, recentItems: items.slice(-10) });
+    } catch (error: any) {
+      console.error("[BatchFirst] Error getting queue:", error);
+      res.status(500).json({ error: error.message || "Failed to get batch queue" });
+    }
+  });
+
+  // ============================================
   // FEEDBACK TRAINER SCHEDULER API
   // ============================================
 
