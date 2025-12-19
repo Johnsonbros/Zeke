@@ -85,3 +85,18 @@ import { Map, MapProvider, LocationMap } from '@/components/map';
   <Map ... />
 </MapProvider>
 ```
+
+## GitHub Repository Sync
+
+This project has a two-way sync with GitHub:
+
+### Main Repository
+- **Remote**: `https://github.com/Johnsonbros/Zeke`
+- **Branch**: main
+- Changes committed in Replit sync to the GitHub repo and vice versa
+
+### Mobile App (android/ folder)
+- **Source Repository**: ZEKEapp GitHub repo
+- **Sync Destination**: `android/` folder in this project
+- Commits made to the ZEKEapp repo automatically sync to the `android/` folder
+- The Android/React Native mobile app shares the same PostgreSQL database as the main web app
