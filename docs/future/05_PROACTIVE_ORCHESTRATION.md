@@ -7,606 +7,790 @@ ZEKE doesn't wait for instructions - he anticipates needs, takes action, and man
 
 ---
 
-## The Spectrum of Proactivity
+## Current State (What ZEKE Has Now)
 
-### Level 1: Proactive Suggestions (Current)
+### Existing Components
+
+| Component | Location | What It Does |
+|-----------|----------|--------------|
+| `anticipationEngine.ts` | `server/jobs/` | Morning briefings with tasks, meetings, commitments, people to follow up |
+| `morningBriefingService.ts` | `server/` | Schedules and delivers morning briefings |
+| `notificationBatcher.ts` | `server/` | Groups notifications to reduce interruption |
+| `predictiveTaskScheduler.ts` | `server/` | Suggests optimal times for tasks based on patterns |
+| `predictionScheduler.ts` | `server/` | Generates predictions about future events |
+| `locationIntelligence.ts` | `server/` | Location-based proactive suggestions |
+| `nlAutomationExecutor.ts` | `server/` | Executes natural language automations |
+
+### Current Data Flow
+
 ```
-ZEKE: "You have a meeting at 3pm - want me to remind you?"
+┌─────────────────────────────────────────────────────────────┐
+│                   ANTICIPATION ENGINE                        │
+│                  (anticipationEngine.ts)                     │
+└─────────────────────────────────────────────────────────────┘
+                           │
+        ┌──────────────────┼──────────────────┐
+        ▼                  ▼                  ▼
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│ gatherBrief- │  │ extractUrg-  │  │ extractPeo-  │
+│ ingContext() │  │ entItems()   │  │ pleToFollow  │
+│              │  │              │  │ Up()         │
+└──────────────┘  └──────────────┘  └──────────────┘
+        │                  │                  │
+        ▼                  ▼                  ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    MorningBriefing                           │
+│  • summary (GPT-generated natural language)                  │
+│  • sections[] (tasks, meetings, commitments)                 │
+│  • urgentItems[] (overdue, high-priority)                    │
+│  • peopleToFollowUp[] (pending commitments)                  │
+└──────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+                  Delivered via SMS / Dashboard
 ```
 
-### Level 2: Proactive Notifications (Building)
-```
-ZEKE: "Heads up - traffic is bad, you should leave 15 min early 
-for your 3pm meeting."
-```
+### Current Capabilities (Code Examples)
 
-### Level 3: Proactive Actions with Confirmation (Goal)
-```
-ZEKE: "Your 3pm got moved to 2:30 by the organizer. I've already 
-adjusted your lunch reservation to 12:30 and notified the restaurant. 
-Good?"
-```
-
-### Level 4: Fully Autonomous (Future)
-```
-[No notification needed - ZEKE handles it]
-ZEKE: [Internal] Detected meeting change → adjusted dependent 
-events → verified no conflicts → updated all parties.
-```
-
----
-
-## Core Capabilities
-
-### 1. Anticipatory Scheduling
-
-ZEKE manages time proactively:
-- Reschedules conflicts automatically
-- Books buffer time around important events
-- Protects focus time from intrusions
-- Pre-empts scheduling problems
-
-### 2. Communication Management
-
-ZEKE handles routine communication:
-- Drafts responses to standard emails/messages
-- Sends reminders to others on Nate's behalf
-- Follows up on unanswered requests
-- Declines non-priority invitations
-
-### 3. Task Orchestration
-
-ZEKE moves tasks forward:
-- Breaks down tasks and schedules steps
-- Sends reminders at optimal times
-- Escalates blocked tasks
-- Completes simple tasks autonomously
-
-### 4. Problem Prevention
-
-ZEKE catches issues before they happen:
-- Deadline warnings with time buffers
-- Double-booking prevention
-- Commitment tracking and alerts
-- Resource availability checking
-
-### 5. Life Maintenance
-
-ZEKE handles recurring life admin:
-- Bill payment reminders
-- Subscription management
-- Appointment scheduling
-- Regular maintenance tracking
-
----
-
-## Trust & Approval Framework
-
-### Action Categories
-
+**Morning Briefing Generation (from `anticipationEngine.ts`):**
 ```typescript
-interface ActionCategory {
-  name: string;
-  trustLevel: 'autonomous' | 'confirm' | 'suggest';
-  examples: string[];
-}
-
-const categories: ActionCategory[] = [
-  {
-    name: 'Calendar Management',
-    trustLevel: 'autonomous',
-    examples: [
-      'Add reminders',
-      'Adjust internal events',
-      'Block focus time'
-    ]
-  },
-  {
-    name: 'Low-Stakes Communication',
-    trustLevel: 'confirm',
-    examples: [
-      'Send scheduling confirmations',
-      'Decline obviously low-priority invites',
-      'Follow up on pending items'
-    ]
-  },
-  {
-    name: 'Financial Actions',
-    trustLevel: 'suggest',
-    examples: [
-      'Bill payments',
-      'Subscriptions',
-      'Purchases'
-    ]
-  },
-  {
-    name: 'External Communication',
-    trustLevel: 'confirm',
-    examples: [
-      'Emails to others',
-      'Text messages',
-      'Social responses'
-    ]
-  },
-  {
-    name: 'High-Stakes Decisions',
-    trustLevel: 'suggest',
-    examples: [
-      'Canceling commitments',
-      'Scheduling important meetings',
-      'Anything involving money'
-    ]
-  }
-];
-```
-
-### Trust Elevation
-
-Over time, successful actions can elevate trust:
-
-```typescript
-async function evaluateForTrustElevation(
-  action: Action,
-  outcome: Outcome
-): Promise<void> {
-  // Track success rate per action type
-  const successRate = await getSuccessRate(action.type);
+export async function generateMorningBriefing(): Promise<MorningBriefing> {
+  const context = await gatherBriefingContext();
+  const sections = buildBriefingSections(context);
+  const urgentItems = extractUrgentItems(context);
+  const peopleToFollowUp = extractPeopleToFollowUp(context);
+  const summary = await generateNaturalBriefing(context, sections, urgentItems);
   
-  // If consistently successful, suggest trust elevation
-  if (successRate > 0.95 && action.count > 20) {
-    await suggestTrustElevation(action.type);
-    // "I've handled 24 scheduling confirmations with no issues.
-    //  Want me to do these automatically from now on?"
-  }
+  return {
+    id: `briefing-${Date.now()}`,
+    generatedAt: new Date().toISOString(),
+    summary,
+    sections,
+    urgentItems,
+    peopleToFollowUp,
+  };
 }
+```
+
+**Current Output Example:**
+```
+Good morning! Here's your briefing for today:
+
+You have 2 urgent items requiring attention.
+1 task is overdue.
+
+3 tasks due today.
+2 meetings scheduled.
+3 open commitments to track.
+
+Follow up: Sarah, Mike, Jennifer
 ```
 
 ---
 
-## Implementation Phases
+## What's Missing (The Gap)
 
-### Phase 1: Smart Notifications (Months 1-2)
+### 1. Action Execution
 
-**Goal:** ZEKE proactively alerts Nate to things that need attention.
+**Current:** ZEKE tells Nate what needs to happen.
 
-**Tasks:**
-1. Build event detection system
-2. Create notification prioritization
-3. Implement timing optimization (when to notify)
-4. Add context bundling (related notifications together)
-5. Build notification history and snoozing
+**Missing:** ZEKE actually DOES things on Nate's behalf.
 
-**Notifications include:**
-- Upcoming events needing preparation
-- Deadlines approaching
-- Follow-ups needed
-- Anomalies detected
-- Opportunities identified
+| Current Output | Missing Capability |
+|----------------|-------------------|
+| "You have a meeting conflict" | "I've already messaged Mike to reschedule to 3pm and accepted Sarah's invite" |
+| "Follow up with Tom about Q4 numbers" | "I sent Tom a follow-up email this morning" |
 
-**Deliverable:** Nate is never surprised by preventable issues.
+### 2. Trust Framework
 
-### Phase 2: Confirmable Actions (Months 2-3)
+**Current:** No concept of what ZEKE can do autonomously.
 
-**Goal:** ZEKE proposes actions for quick approval.
+**Missing:** Action categories with different approval levels.
 
-**Tasks:**
-1. Build action proposal system
-2. Create quick-approval UI (one-tap confirm)
-3. Implement action execution engine
-4. Add rollback capability
-5. Build action outcome tracking
+```
+AUTONOMOUS (no approval):
+  - Add calendar reminders
+  - Update task statuses
+  - Block focus time
 
-**Example actions:**
-- "Can I send this follow-up email?" [Approve] [Edit] [Skip]
-- "Want me to reschedule lunch to fit the new meeting?" [Yes] [No]
-- "Should I add travel time before your offsite?" [Yes] [No]
+CONFIRM (quick approval):
+  - Send scheduling confirmations
+  - Follow up on pending items
+  - Decline low-priority invites
 
-**Deliverable:** Nate approves actions with minimal friction.
+SUGGEST (full review):
+  - Cancel commitments
+  - Financial actions
+  - Important external communication
+```
 
-### Phase 3: Autonomous Operations (Months 3-4)
+### 3. Complex Orchestration
 
-**Goal:** ZEKE handles routine tasks without asking.
+**Current:** Single-step notifications.
 
-**Tasks:**
-1. Define autonomous action categories
-2. Build constraints and limits
-3. Implement silent execution with logging
-4. Create periodic summary reports
-5. Add emergency override capability
+**Missing:** Multi-step goal decomposition and execution.
 
-**Autonomous actions:**
-- Adding calendar reminders
-- Adjusting internal-only events
-- Sending pre-approved message templates
-- Updating task statuses
-- Logging routine data
+| Current | Missing Orchestration |
+|---------|----------------------|
+| "You have a trip next week" | "I'm handling your NYC trip: Booked flight (9am AA234), reserved hotel (Marriott Midtown), blocked calendar, created packing list, set airport departure reminder" |
 
-**Deliverable:** Routine work happens without Nate's involvement.
+### 4. Rollback & Recovery
 
-### Phase 4: Orchestration Intelligence (Months 4-6)
+**Current:** No action history.
 
-**Goal:** ZEKE coordinates complex multi-step operations.
+**Missing:** Ability to undo autonomous actions.
 
-**Tasks:**
-1. Build goal decomposition system
-2. Create multi-step action planning
-3. Implement dependency tracking
-4. Add failure handling and recovery
-5. Build progress reporting
+---
 
-**Example orchestrations:**
-- "Plan my trip to NYC" → flights, hotel, calendar blocks, packing list
-- "Prepare for board meeting" → docs, prep time, reminder, outfit
-- "Get my taxes ready" → gather docs, schedule appointment, reminders
+## Implementation Plan
 
-**Deliverable:** Complex tasks happen end-to-end with minimal input.
+### Phase 1: Action Execution Engine (New Capability)
+
+**Create `server/actionExecutor.ts`:**
+
+```typescript
+// NEW FILE: server/actionExecutor.ts
+
+import { sendSms } from "./twilioClient";
+import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from "./googleCalendar";
+import { createTask, updateTask } from "./db";
+
+export type ActionType = 
+  | 'calendar.create'
+  | 'calendar.update'
+  | 'calendar.delete'
+  | 'calendar.reminder'
+  | 'sms.send'
+  | 'email.send'
+  | 'task.create'
+  | 'task.update'
+  | 'task.reminder';
+
+export type TrustLevel = 'autonomous' | 'confirm' | 'suggest';
+
+export interface PlannedAction {
+  id: string;
+  type: ActionType;
+  description: string;
+  trustLevel: TrustLevel;
+  params: Record<string, any>;
+  
+  // Execution state
+  status: 'pending' | 'approved' | 'executing' | 'completed' | 'failed' | 'rolled_back';
+  approvedAt?: string;
+  executedAt?: string;
+  result?: any;
+  error?: string;
+  
+  // Rollback info
+  reversible: boolean;
+  rollbackParams?: Record<string, any>;
+}
+
+// Action handlers
+const actionHandlers: Record<ActionType, (params: any) => Promise<any>> = {
+  'calendar.create': async (params) => {
+    return await createCalendarEvent(params);
+  },
+  'calendar.update': async (params) => {
+    return await updateCalendarEvent(params.eventId, params.updates);
+  },
+  'calendar.delete': async (params) => {
+    return await deleteCalendarEvent(params.eventId);
+  },
+  'calendar.reminder': async (params) => {
+    // Add reminder to existing event
+    return await updateCalendarEvent(params.eventId, {
+      reminders: [...(params.existingReminders || []), params.reminder]
+    });
+  },
+  'sms.send': async (params) => {
+    return await sendSms(params.to, params.body);
+  },
+  'task.create': async (params) => {
+    return await createTask(params);
+  },
+  'task.update': async (params) => {
+    return await updateTask(params.taskId, params.updates);
+  },
+  // ... more handlers
+};
+
+// Trust level configuration
+const trustConfig: Record<ActionType, TrustLevel> = {
+  'calendar.reminder': 'autonomous',
+  'task.update': 'autonomous',
+  'calendar.create': 'confirm',
+  'calendar.update': 'confirm',
+  'sms.send': 'confirm',
+  'task.create': 'confirm',
+  'calendar.delete': 'suggest',
+};
+
+export async function executeAction(action: PlannedAction): Promise<PlannedAction> {
+  // Check trust level
+  if (action.trustLevel !== 'autonomous' && action.status !== 'approved') {
+    return { ...action, status: 'pending' };
+  }
+  
+  try {
+    action.status = 'executing';
+    const handler = actionHandlers[action.type];
+    
+    if (!handler) {
+      throw new Error(`Unknown action type: ${action.type}`);
+    }
+    
+    const result = await handler(action.params);
+    
+    // Log the action
+    await logAction(action, result);
+    
+    return {
+      ...action,
+      status: 'completed',
+      executedAt: new Date().toISOString(),
+      result
+    };
+  } catch (error: any) {
+    return {
+      ...action,
+      status: 'failed',
+      error: error.message
+    };
+  }
+}
+
+export async function rollbackAction(action: PlannedAction): Promise<boolean> {
+  if (!action.reversible || !action.rollbackParams) {
+    return false;
+  }
+  
+  try {
+    // Determine rollback action
+    const rollbackType = getRollbackType(action.type);
+    if (!rollbackType) return false;
+    
+    const handler = actionHandlers[rollbackType];
+    await handler(action.rollbackParams);
+    
+    action.status = 'rolled_back';
+    await logAction(action, { rolledBack: true });
+    
+    return true;
+  } catch (error) {
+    console.error(`Rollback failed for action ${action.id}:`, error);
+    return false;
+  }
+}
+
+function getRollbackType(actionType: ActionType): ActionType | null {
+  const rollbackMap: Partial<Record<ActionType, ActionType>> = {
+    'calendar.create': 'calendar.delete',
+    'calendar.update': 'calendar.update', // Use stored original values
+  };
+  return rollbackMap[actionType] || null;
+}
+```
+
+### Phase 2: Trust Framework (New Capability)
+
+**Create `server/trustManager.ts`:**
+
+```typescript
+// NEW FILE: server/trustManager.ts
+
+import { db } from "./db";
+
+export interface TrustSettings {
+  actionType: string;
+  trustLevel: 'autonomous' | 'confirm' | 'suggest';
+  successCount: number;
+  failureCount: number;
+  lastUpdated: string;
+}
+
+// Default trust levels (can be elevated over time)
+const defaultTrustLevels: Record<string, TrustLevel> = {
+  'calendar.reminder': 'autonomous',
+  'task.update_status': 'autonomous',
+  'focus_time.block': 'autonomous',
+  
+  'calendar.create_internal': 'confirm',
+  'sms.send_template': 'confirm',
+  'email.follow_up': 'confirm',
+  
+  'calendar.delete': 'suggest',
+  'sms.send_custom': 'suggest',
+  'external.communication': 'suggest',
+};
+
+export function getTrustLevel(actionType: string): TrustLevel {
+  // Check for custom trust setting
+  const custom = getCustomTrustSetting(actionType);
+  if (custom) return custom.trustLevel;
+  
+  // Fall back to default
+  return defaultTrustLevels[actionType] || 'suggest';
+}
+
+export async function recordActionOutcome(
+  actionType: string,
+  success: boolean
+): Promise<void> {
+  const setting = await getOrCreateTrustSetting(actionType);
+  
+  if (success) {
+    setting.successCount++;
+  } else {
+    setting.failureCount++;
+  }
+  
+  setting.lastUpdated = new Date().toISOString();
+  await saveTrustSetting(setting);
+  
+  // Check for trust elevation
+  await checkForTrustElevation(setting);
+}
+
+async function checkForTrustElevation(setting: TrustSettings): Promise<void> {
+  const successRate = setting.successCount / (setting.successCount + setting.failureCount);
+  const totalActions = setting.successCount + setting.failureCount;
+  
+  // Criteria for trust elevation
+  if (successRate > 0.95 && totalActions > 20) {
+    if (setting.trustLevel === 'confirm') {
+      // Suggest elevating to autonomous
+      await createTrustElevationSuggestion(setting.actionType);
+    }
+  }
+}
+
+async function createTrustElevationSuggestion(actionType: string): Promise<void> {
+  // Create a notification for Nate
+  const message = `I've handled ${actionType} successfully 20+ times with 95%+ accuracy. ` +
+                  `Want me to do these automatically from now on?`;
+  
+  await createSystemNotification({
+    type: 'trust_elevation',
+    title: 'Trust Elevation Suggestion',
+    message,
+    actionType,
+    actions: ['approve', 'decline']
+  });
+}
+```
+
+### Phase 3: Confirmable Actions UI
+
+**Add confirmation endpoint:**
+
+```typescript
+// Add to routes.ts
+
+// Get pending actions needing approval
+app.get("/api/actions/pending", async (req, res) => {
+  const pendingActions = await getPendingActions();
+  res.json(pendingActions);
+});
+
+// Approve an action
+app.post("/api/actions/:actionId/approve", async (req, res) => {
+  const { actionId } = req.params;
+  const action = await approveAction(actionId);
+  
+  // Execute immediately after approval
+  const result = await executeAction(action);
+  res.json(result);
+});
+
+// Decline an action
+app.post("/api/actions/:actionId/decline", async (req, res) => {
+  const { actionId } = req.params;
+  await declineAction(actionId);
+  res.json({ success: true });
+});
+
+// Rollback a completed action
+app.post("/api/actions/:actionId/rollback", async (req, res) => {
+  const { actionId } = req.params;
+  const action = await getAction(actionId);
+  const success = await rollbackAction(action);
+  res.json({ success });
+});
+```
+
+### Phase 4: Proactive Action Generation (Extend Existing)
+
+**Extend `anticipationEngine.ts`:**
+
+```typescript
+// Add to anticipationEngine.ts
+
+import { PlannedAction, getTrustLevel } from "../actionExecutor";
+
+interface ProactiveActions {
+  autonomous: PlannedAction[]; // Execute immediately
+  needsConfirmation: PlannedAction[]; // Present for quick approval
+  suggestions: PlannedAction[]; // Present for full review
+}
+
+async function generateProactiveActions(
+  context: BriefingContext
+): Promise<ProactiveActions> {
+  const actions: ProactiveActions = {
+    autonomous: [],
+    needsConfirmation: [],
+    suggestions: []
+  };
+  
+  // 1. Calendar conflict resolution
+  const conflicts = detectCalendarConflicts(context.todaysMeetings);
+  for (const conflict of conflicts) {
+    const resolution = await proposeConflictResolution(conflict);
+    categorizeAction(actions, resolution);
+  }
+  
+  // 2. Follow-up reminders
+  for (const person of context.peopleToFollowUp) {
+    const action = createFollowUpAction(person);
+    categorizeAction(actions, action);
+  }
+  
+  // 3. Overdue task handling
+  for (const task of context.overdueTasks) {
+    const action = createRescheduleAction(task);
+    categorizeAction(actions, action);
+  }
+  
+  // 4. Commitment follow-ups
+  for (const commitment of context.overdueCommitments) {
+    if (commitment.madeBy !== 'user') {
+      // Someone owes Nate - suggest follow-up
+      const action = createCommitmentFollowUpAction(commitment);
+      categorizeAction(actions, action);
+    }
+  }
+  
+  return actions;
+}
+
+function categorizeAction(
+  actions: ProactiveActions,
+  action: PlannedAction
+): void {
+  const trustLevel = getTrustLevel(action.type);
+  
+  switch (trustLevel) {
+    case 'autonomous':
+      actions.autonomous.push(action);
+      break;
+    case 'confirm':
+      actions.needsConfirmation.push(action);
+      break;
+    case 'suggest':
+      actions.suggestions.push(action);
+      break;
+  }
+}
+
+// Enhanced morning briefing with actions
+export async function generateMorningBriefingWithActions(): Promise<{
+  briefing: MorningBriefing;
+  actions: ProactiveActions;
+  executedActions: PlannedAction[];
+}> {
+  const context = await gatherBriefingContext();
+  const briefing = await generateMorningBriefing();
+  const actions = await generateProactiveActions(context);
+  
+  // Execute autonomous actions immediately
+  const executedActions: PlannedAction[] = [];
+  for (const action of actions.autonomous) {
+    const result = await executeAction(action);
+    executedActions.push(result);
+  }
+  
+  return { briefing, actions, executedActions };
+}
+```
+
+### Phase 5: Complex Orchestration (New Capability)
+
+**Create `server/orchestrationEngine.ts`:**
+
+```typescript
+// NEW FILE: server/orchestrationEngine.ts
+
+import OpenAI from "openai";
+import { PlannedAction, executeAction } from "./actionExecutor";
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+export interface Orchestration {
+  id: string;
+  goal: string;
+  status: 'planning' | 'executing' | 'paused' | 'completed' | 'failed';
+  steps: OrchestrationStep[];
+  currentStep: number;
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface OrchestrationStep {
+  id: string;
+  description: string;
+  actions: PlannedAction[];
+  dependsOn: string[]; // Step IDs
+  status: 'pending' | 'ready' | 'executing' | 'completed' | 'failed';
+}
+
+export async function createOrchestration(goal: string): Promise<Orchestration> {
+  // Use LLM to decompose goal into steps
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "system",
+        content: `You are a task planner. Break down goals into concrete, executable steps.
+        Each step should be a discrete action that can be verified.
+        Consider dependencies between steps.
+        Available action types: calendar.create, calendar.update, sms.send, task.create, task.update`
+      },
+      {
+        role: "user",
+        content: `Break down this goal into steps: "${goal}"
+        
+Respond in JSON:
+{
+  "steps": [
+    {
+      "id": "step_1",
+      "description": "What this step does",
+      "dependsOn": [],
+      "actions": [
+        {
+          "type": "action_type",
+          "description": "Human readable",
+          "params": { ... }
+        }
+      ]
+    }
+  ]
+}`
+      }
+    ],
+    max_tokens: 1500,
+    response_format: { type: "json_object" }
+  });
+  
+  const plan = JSON.parse(response.choices[0]?.message?.content || '{}');
+  
+  return {
+    id: `orch_${Date.now()}`,
+    goal,
+    status: 'planning',
+    steps: plan.steps.map(s => ({
+      ...s,
+      status: s.dependsOn.length === 0 ? 'ready' : 'pending'
+    })),
+    currentStep: 0,
+    createdAt: new Date().toISOString()
+  };
+}
+
+export async function executeOrchestration(
+  orchestration: Orchestration
+): Promise<Orchestration> {
+  orchestration.status = 'executing';
+  
+  // Execute steps in dependency order
+  for (const step of orchestration.steps) {
+    // Check dependencies
+    const dependenciesMet = step.dependsOn.every(depId => {
+      const depStep = orchestration.steps.find(s => s.id === depId);
+      return depStep?.status === 'completed';
+    });
+    
+    if (!dependenciesMet) continue;
+    
+    step.status = 'executing';
+    
+    try {
+      // Execute all actions in this step
+      for (const action of step.actions) {
+        await executeAction(action);
+      }
+      step.status = 'completed';
+    } catch (error) {
+      step.status = 'failed';
+      orchestration.status = 'failed';
+      break;
+    }
+    
+    orchestration.currentStep++;
+  }
+  
+  // Check if all steps completed
+  if (orchestration.steps.every(s => s.status === 'completed')) {
+    orchestration.status = 'completed';
+    orchestration.completedAt = new Date().toISOString();
+  }
+  
+  return orchestration;
+}
+```
 
 ---
 
 ## Concrete Examples
 
-### Example 1: Meeting Conflict Resolution
+### Before (Current)
 
 ```
-[ZEKE detects an incoming meeting request that conflicts]
+Morning Briefing:
+- 3 tasks due today
+- 2 meetings scheduled (conflict at 2pm)
+- 1 overdue commitment to Tom
 
-ZEKE: "Sarah just invited you to a product review at 2pm Thursday. 
-You have a 1:1 with Mike at that time.
-
-I can:
-A) Suggest Mike move to 3pm (he has availability)
-B) Decline Sarah's invite with a suggested alternative
-C) Accept and let you handle Mike
-
-Which works?"
-
-Nate: "A"
-
-ZEKE: "Done. I've messaged Mike proposing 3pm Thursday and 
-accepted Sarah's invite. Mike should confirm shortly."
+Follow up: Tom, Sarah
 ```
 
-### Example 2: Proactive Travel Adjustment
+### After (With Proactive Orchestration)
 
 ```
-[ZEKE monitoring Nate's travel day]
+Morning Briefing:
+- 3 tasks due today
+- 2 meetings scheduled
 
-ZEKE: "Update on your flight to Boston tomorrow:
-
-1. Weather looks fine, on-time departure expected
-2. I've set a reminder to leave for the airport at 1:30pm
-3. Your car is due for inspection - I've pushed that to next 
-   week since you'll be traveling
-4. Pre-check line typically 10 min at your terminal this time
-
-Anything you need me to do?"
-```
-
-### Example 3: Autonomous Follow-Up
-
-```
-[Three days after Nate requested something from a colleague]
-
-[ZEKE sends automatically]
-"Hey Tom, circling back on the Q4 numbers Nate asked about 
-on Monday. Any update on when those might be ready? Thanks!"
-
-[ZEKE logs to Nate later]
-"I followed up with Tom about those Q4 numbers. He hasn't 
-replied yet - want me to escalate or wait another day?"
-```
-
-### Example 4: Complex Orchestration
-
-```
-Nate: "I need to plan the team offsite next month"
-
-ZEKE: "I'll put together a plan. Let me ask a few questions:
-
-1. How many people? (I'm guessing ~8 based on your team)
-2. Duration? (Last one was 2 days)
-3. Location preference? (Last two were within 2 hours of office)
-4. Budget range?
-
-Once I have these, I'll come back with venue options, draft 
-agenda structure, and a timeline for getting things booked."
-
-[After Nate answers]
-
-ZEKE: "Great, here's the plan:
-
-TIMELINE:
-- This week: Venue research, date poll to team
-- Next week: Book venue, finalize dates
-- Week 3: Agenda planning, assign prep tasks
-- Week 4: Final logistics, send attendee info
-
-I'll start the venue research and date poll today. Want me to 
-send the date poll to the team now, or do you want to review 
-the options first?"
-```
-
-### Example 5: Daily Operations Report
-
-```
-[Each evening]
-
-ZEKE: "Today's operations summary:
-
-AUTONOMOUS ACTIONS (no approval needed):
-- Added reminders for 3 upcoming meetings
-- Blocked 2 hours focus time tomorrow morning
-- Updated 4 task statuses based on our conversation
+AUTONOMOUS ACTIONS (done):
+- Added reminders to your 3 meetings
+- Blocked 2 hours focus time this morning
+- Updated 4 task statuses from yesterday
 
 ACTIONS TAKEN (pre-approved):
-- Sent meeting confirmation to external partner
-- Declined 2 low-priority meeting invites
+- Resolved 2pm conflict: Moved Mike's 1:1 to 3pm (he confirmed)
+- Sent follow-up to Tom about Q4 numbers
 
 PENDING YOUR INPUT:
-- Response needed on budget question from finance
-- Rescheduling request for Friday 1:1
+- Sarah requested moving Friday's meeting - approve new time?
+- Should I decline the low-priority vendor call?
 
 FLAGGED FOR TOMORROW:
 - Quarterly report due in 5 days
 - Mom's birthday in 3 days - gift not yet ordered
+```
 
-Anything need attention tonight?"
+### Complex Orchestration Example
+
+```
+Nate: "Plan my trip to NYC next week"
+
+ZEKE: "I'll handle that. Here's my plan:
+
+STEP 1: Book flights
+- Searching for flights on your preferred airlines
+- Found AA234 departing 9am Monday, returning 6pm Thursday
+- Cost: $420 (within your typical budget)
+
+STEP 2: Reserve hotel  
+- Checking Marriott properties near your meeting location
+- Found Marriott Midtown, $280/night
+- Booking confirmation pending
+
+STEP 3: Calendar management
+- Blocking travel time Monday/Thursday
+- Moving conflicting meetings (will notify attendees)
+- Adding hotel and flight details to calendar
+
+STEP 4: Preparation
+- Created packing list based on weather forecast
+- Set reminder to leave for airport Sunday 6pm
+- Saved offline maps for Manhattan
+
+Approve this plan? [Approve All] [Review Details] [Cancel]"
 ```
 
 ---
 
-## Technical Architecture
+## Files to Modify/Create
 
-### Action Execution Engine
-
-```typescript
-interface PlannedAction {
-  id: string;
-  type: ActionType;
-  description: string;
-  
-  // Approval configuration
-  trustLevel: 'autonomous' | 'confirm' | 'suggest';
-  approved: boolean;
-  approvedAt?: Date;
-  
-  // Execution details
-  handler: string; // function to execute
-  params: Record<string, any>;
-  
-  // Constraints
-  constraints: ActionConstraints;
-  
-  // Status tracking
-  status: 'pending' | 'approved' | 'executing' | 'completed' | 'failed';
-  result?: ActionResult;
-  
-  // Rollback
-  reversible: boolean;
-  rollbackHandler?: string;
-}
-
-async function executeAction(action: PlannedAction): Promise<ActionResult> {
-  // 1. Verify still valid
-  if (!(await validateActionStillValid(action))) {
-    return { success: false, reason: 'conditions_changed' };
-  }
-  
-  // 2. Check constraints
-  if (!(await checkConstraints(action.constraints))) {
-    return { success: false, reason: 'constraints_violated' };
-  }
-  
-  // 3. Execute
-  try {
-    const result = await handlers[action.handler](action.params);
-    await logActionResult(action, result);
-    return { success: true, result };
-  } catch (error) {
-    await logActionError(action, error);
-    if (action.reversible) {
-      await attemptRollback(action);
-    }
-    return { success: false, error };
-  }
-}
-```
-
-### Action Handlers
-
-```typescript
-const actionHandlers = {
-  // Calendar actions
-  'calendar.create_event': async (params) => { ... },
-  'calendar.update_event': async (params) => { ... },
-  'calendar.delete_event': async (params) => { ... },
-  'calendar.add_reminder': async (params) => { ... },
-  
-  // Communication actions
-  'email.send': async (params) => { ... },
-  'sms.send': async (params) => { ... },
-  'email.draft': async (params) => { ... },
-  
-  // Task actions
-  'task.create': async (params) => { ... },
-  'task.update_status': async (params) => { ... },
-  'task.set_reminder': async (params) => { ... },
-  
-  // Notification actions
-  'notify.user': async (params) => { ... },
-  'notify.external': async (params) => { ... },
-};
-```
-
-### Orchestration Planning
-
-```typescript
-interface Orchestration {
-  id: string;
-  goal: string;
-  
-  steps: OrchestrationStep[];
-  currentStep: number;
-  
-  status: 'planning' | 'executing' | 'blocked' | 'completed';
-  
-  dependencies: Record<string, boolean>;
-  timeline: Date[];
-}
-
-interface OrchestrationStep {
-  id: string;
-  description: string;
-  
-  actions: PlannedAction[];
-  
-  dependsOn: string[]; // other step IDs
-  blockedBy?: string; // what's blocking
-  
-  status: 'pending' | 'ready' | 'in_progress' | 'completed';
-}
-
-async function createOrchestration(
-  goal: string,
-  context: OrchestratorContext
-): Promise<Orchestration> {
-  // 1. Decompose goal into steps
-  const steps = await decomposeGoal(goal, context);
-  
-  // 2. Identify dependencies
-  const withDeps = await identifyDependencies(steps);
-  
-  // 3. Create timeline
-  const scheduled = await scheduleSteps(withDeps, context.constraints);
-  
-  // 4. Generate required actions
-  const withActions = await generateActions(scheduled);
-  
-  return {
-    id: generateId(),
-    goal,
-    steps: withActions,
-    currentStep: 0,
-    status: 'executing',
-    dependencies: {},
-    timeline: extractTimeline(withActions)
-  };
-}
-```
-
-### Database Schema
-
-```sql
--- Planned and executed actions
-CREATE TABLE actions (
-  id TEXT PRIMARY KEY,
-  action_type TEXT NOT NULL,
-  description TEXT NOT NULL,
-  
-  trust_level TEXT NOT NULL, -- autonomous, confirm, suggest
-  approved BOOLEAN DEFAULT FALSE,
-  approved_at TIMESTAMP,
-  
-  handler TEXT NOT NULL,
-  params JSON NOT NULL,
-  constraints JSON,
-  
-  status TEXT NOT NULL, -- pending, approved, executing, completed, failed
-  result JSON,
-  error TEXT,
-  
-  reversible BOOLEAN DEFAULT FALSE,
-  reversed BOOLEAN DEFAULT FALSE,
-  
-  created_at TIMESTAMP NOT NULL,
-  executed_at TIMESTAMP,
-  
-  orchestration_id TEXT REFERENCES orchestrations(id)
-);
-
--- Complex multi-step operations
-CREATE TABLE orchestrations (
-  id TEXT PRIMARY KEY,
-  goal TEXT NOT NULL,
-  
-  status TEXT NOT NULL, -- planning, executing, blocked, completed
-  current_step INTEGER DEFAULT 0,
-  
-  created_at TIMESTAMP NOT NULL,
-  completed_at TIMESTAMP,
-  
-  context JSON
-);
-
-CREATE TABLE orchestration_steps (
-  id TEXT PRIMARY KEY,
-  orchestration_id TEXT REFERENCES orchestrations(id),
-  step_order INTEGER NOT NULL,
-  
-  description TEXT NOT NULL,
-  depends_on JSON, -- step IDs
-  
-  status TEXT NOT NULL, -- pending, ready, in_progress, completed
-  blocked_by TEXT,
-  
-  started_at TIMESTAMP,
-  completed_at TIMESTAMP
-);
-
--- Trust settings per action type
-CREATE TABLE trust_settings (
-  action_type TEXT PRIMARY KEY,
-  trust_level TEXT NOT NULL, -- autonomous, confirm, suggest
-  
-  success_count INTEGER DEFAULT 0,
-  failure_count INTEGER DEFAULT 0,
-  
-  last_updated TIMESTAMP
-);
-
--- Daily operations log
-CREATE TABLE operations_log (
-  id TEXT PRIMARY KEY,
-  date DATE NOT NULL,
-  
-  autonomous_actions JSON,
-  confirmed_actions JSON,
-  suggested_actions JSON,
-  pending_items JSON,
-  
-  generated_at TIMESTAMP
-);
-```
+| File | Action | Changes |
+|------|--------|---------|
+| `server/actionExecutor.ts` | Create | Action execution engine with handlers |
+| `server/trustManager.ts` | Create | Trust level management and elevation |
+| `server/orchestrationEngine.ts` | Create | Complex multi-step orchestration |
+| `server/jobs/anticipationEngine.ts` | Modify | Add `generateProactiveActions()` |
+| `server/routes.ts` | Modify | Add action approval/rollback endpoints |
+| `shared/schema.ts` | Modify | Add `actions`, `orchestrations` tables |
 
 ---
 
-## Dependencies
+## Database Schema Additions
 
-- **Required:** World Model (for context and prediction)
-- **Required:** Calendar integration (already exists)
-- **Required:** SMS/Email integration (already exists)
-- **Recommended:** Emotional Continuity (for appropriate timing)
+```typescript
+// Add to shared/schema.ts
 
-## Challenges
+export const actions = sqliteTable("actions", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  description: text("description").notNull(),
+  trustLevel: text("trust_level").notNull(),
+  params: text("params").notNull(), // JSON
+  
+  status: text("status").notNull().default("pending"),
+  approvedAt: text("approved_at"),
+  executedAt: text("executed_at"),
+  result: text("result"), // JSON
+  error: text("error"),
+  
+  reversible: integer("reversible", { mode: "boolean" }).default(false),
+  rollbackParams: text("rollback_params"), // JSON
+  
+  orchestrationId: text("orchestration_id"),
+  createdAt: text("created_at").notNull(),
+});
 
-1. **Trust:** User must trust ZEKE to act autonomously
-2. **Errors:** Autonomous mistakes are costly
-3. **Boundaries:** Know what's in scope vs. out of scope
-4. **Communication:** Keep user informed without overwhelming
-5. **Reversibility:** Must be able to undo autonomous actions
+export const trustSettings = sqliteTable("trust_settings", {
+  actionType: text("action_type").primaryKey(),
+  trustLevel: text("trust_level").notNull(),
+  successCount: integer("success_count").default(0),
+  failureCount: integer("failure_count").default(0),
+  lastUpdated: text("last_updated"),
+});
+
+export const orchestrations = sqliteTable("orchestrations", {
+  id: text("id").primaryKey(),
+  goal: text("goal").notNull(),
+  status: text("status").notNull(),
+  steps: text("steps").notNull(), // JSON
+  currentStep: integer("current_step").default(0),
+  createdAt: text("created_at").notNull(),
+  completedAt: text("completed_at"),
+});
+```
+
+---
 
 ## Success Metrics
 
-- Percentage of autonomous actions that don't need reversal
-- User satisfaction with proactive suggestions
-- Time saved on routine tasks (user estimate)
-- Reduction in missed deadlines/commitments
-- Successful orchestration completion rate
+| Metric | How to Measure |
+|--------|----------------|
+| Autonomous action accuracy | % of autonomous actions that don't need rollback |
+| Confirmation approval rate | % of confirm-level actions that get approved |
+| Time saved | User estimate of time saved per week |
+| Trust elevation | Number of action types elevated over time |
+| Orchestration success | % of complex orchestrations completed successfully |
 
 ---
 
 ## Summary
 
-Proactive Life Orchestration is what transforms ZEKE from "assistant you talk to" into "assistant who works for you." It's the culmination of the other capabilities - world model provides context, emotional continuity ensures good timing, memory synthesis enables prediction, and multi-modal understanding expands what can be acted upon.
+The current system provides excellent proactive notifications through the anticipation engine. The enhancement path is:
 
-**Priority:** HIGH - This is the ultimate value proposition of a personal AI assistant.
+1. **Add action execution** - Actually DO things, not just suggest them
+2. **Build trust framework** - Categorize actions by approval level
+3. **Enable rollback** - Undo autonomous actions when needed
+4. **Support complex orchestration** - Handle multi-step goals end-to-end
+
+This transforms ZEKE from "assistant who tells you things" to "assistant who handles things for you."

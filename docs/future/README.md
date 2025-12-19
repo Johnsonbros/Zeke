@@ -2,6 +2,8 @@
 
 This folder contains detailed project plans for transforming ZEKE into a true AI companion and digital twin. Each plan is designed to be implementable within approximately 1 year as AI capabilities mature.
 
+**Important:** Each document now includes a detailed analysis of what ZEKE already has in place and the specific code paths to enhance existing capabilities.
+
 ---
 
 ## The Five Pillars
@@ -24,30 +26,47 @@ ZEKE develops genuine relationship dynamics - noticing moods, remembering shared
 
 ---
 
-### 3. [Memory Synthesis](./03_MEMORY_SYNTHESIS.md)
+### 3. [Memory Synthesis](./03_MEMORY_SYNTHESIS.md) *(Updated with current state)*
 **Discovering Patterns and Generating Insights**
 
-ZEKE doesn't just retrieve memories - he synthesizes understanding to discover patterns, correlations, and trends in Nate's life. This enables self-understanding and life optimization.
+| Current State | Enhancement |
+|--------------|-------------|
+| `patternRecognition.ts` - detects patterns within domains | Cross-domain correlation engine |
+| `insightsGenerator.ts` - generates alerts | Causal hypothesis + narrative insights |
+| `patternDetection.ts` - finds recurring topics | Self-understanding query interface |
+| `anticipationEngine.ts` - morning briefings | Proactive life insights delivery |
 
-**Key Deliverable:** ZEKE explains "why" patterns exist, not just "what" happened.
+**Key Files to Modify:** `patternRecognition.ts`, `insightsGenerator.ts`, `anticipationEngine.ts`
+**New Files:** `selfUnderstanding.ts`, `correlationEngine.ts`
 
 ---
 
-### 4. [Multi-Modal Understanding](./04_MULTIMODAL_UNDERSTANDING.md)
+### 4. [Multi-Modal Understanding](./04_MULTIMODAL_UNDERSTANDING.md) *(Updated with current state)*
 **Seeing, Hearing, and Understanding Nate's World**
 
-ZEKE processes images, voice, documents, and screens to understand Nate's physical and digital environment. From menu analysis to meeting transcription to document review.
+| Current State | Enhancement |
+|--------------|-------------|
+| `fileProcessor.ts` - GPT-4o vision, PDF extraction | Smart document analysis, context-aware images |
+| `transcriber.ts` - Whisper transcription | Meeting summarization with action items |
+| `omi.ts` - pendant lifelog ingestion | Structured meeting extraction |
 
-**Key Deliverable:** ZEKE handles any media type with intelligent understanding.
+**Key Files to Modify:** `services/fileProcessor.ts`
+**New Files:** `services/meetingProcessor.ts`
 
 ---
 
-### 5. [Proactive Life Orchestration](./05_PROACTIVE_ORCHESTRATION.md)
+### 5. [Proactive Life Orchestration](./05_PROACTIVE_ORCHESTRATION.md) *(Updated with current state)*
 **Acting Autonomously on Nate's Behalf**
 
-ZEKE anticipates needs, takes action, and manages aspects of Nate's life without being asked. From scheduling to communication to complex multi-step operations.
+| Current State | Enhancement |
+|--------------|-------------|
+| `anticipationEngine.ts` - morning briefings | Proactive action generation |
+| `notificationBatcher.ts` - groups notifications | Action execution engine |
+| `predictiveTaskScheduler.ts` - optimal task times | Trust framework with approval levels |
+| `nlAutomationExecutor.ts` - runs automations | Complex multi-step orchestration |
 
-**Key Deliverable:** Routine work happens without Nate's involvement.
+**Key Files to Modify:** `jobs/anticipationEngine.ts`, `routes.ts`
+**New Files:** `actionExecutor.ts`, `trustManager.ts`, `orchestrationEngine.ts`
 
 ---
 
@@ -79,49 +98,93 @@ ZEKE anticipates needs, takes action, and manages aspects of Nate's life without
                     └─────────────────────┘
 ```
 
-**Build order suggestion:**
-1. World Model (foundation - everything else builds on it)
-2. Multi-Modal + Memory Synthesis (can be built in parallel)
-3. Emotional Continuity (benefits from above)
-4. Proactive Orchestration (requires all others to be most effective)
+---
+
+## Current vs. Future Comparison
+
+| Capability | What ZEKE Has Now | What Enhancement Adds |
+|------------|-------------------|----------------------|
+| **Pattern Detection** | Finds patterns within single domains (tasks, calendar, location) | Cross-domain correlations ("exercise → productivity") |
+| **Insights** | Generates alerts ("3 overdue tasks") | Generates wisdom ("Here's why you're stressed in March") |
+| **Image Processing** | Describes images, extracts text | Connects to preferences ("Avoid the burger - spicy mayo") |
+| **Document Handling** | Extracts PDF text | Analyzes contracts, flags concerns, compares documents |
+| **Audio Processing** | Transcribes audio | Summarizes meetings with action items and decisions |
+| **Morning Briefing** | Tells you what needs attention | Does things autonomously, asks approval for others |
+| **Automations** | Executes when triggered | Proactively proposes and executes actions |
 
 ---
 
-## Implementation Timeline
+## Implementation Priority
 
-| Quarter | Focus | Deliverable |
-|---------|-------|-------------|
-| Q1 | World Model foundation | Life graph populated and queryable |
-| Q1-Q2 | Multi-Modal basics | Image/document processing working |
-| Q2 | Memory Synthesis | Pattern detection operational |
-| Q2-Q3 | Emotional Continuity | Mood awareness and adaptation |
-| Q3-Q4 | Proactive Orchestration | Autonomous action system |
-| Q4 | Integration | All systems working together |
+Based on existing foundations and value delivered:
+
+### Phase 1 (Months 1-3): Memory Synthesis Enhancement
+- Cross-domain correlation engine (extends `patternRecognition.ts`)
+- Self-understanding queries (new capability)
+- Proactive insight delivery (extends `anticipationEngine.ts`)
+
+### Phase 2 (Months 2-4): Multi-Modal Intelligence
+- Smart document analysis (extends `fileProcessor.ts`)
+- Meeting summarization (new `meetingProcessor.ts`)
+- Context-aware image responses
+
+### Phase 3 (Months 3-5): Proactive Orchestration
+- Action execution engine (new)
+- Trust framework (new)
+- Complex orchestration (new)
+
+### Phase 4 (Months 4-6): Foundation Layers
+- Persistent World Model
+- Emotional Continuity
 
 ---
 
-## The Vision
+## Quick Reference: Files by Enhancement
 
-When all five pillars are complete, ZEKE becomes:
+### Memory Synthesis
+```
+server/
+├── patternRecognition.ts    (modify - add correlation engine)
+├── insightsGenerator.ts     (modify - add correlation insights)
+├── selfUnderstanding.ts     (create - new query interface)
+├── jobs/
+│   └── anticipationEngine.ts (modify - add life insights)
+```
 
-- **Aware:** Understands Nate's world in real-time
-- **Insightful:** Discovers patterns Nate hasn't noticed
-- **Empathetic:** Responds with emotional intelligence
-- **Perceptive:** Processes any type of input naturally
-- **Proactive:** Acts on Nate's behalf autonomously
+### Multi-Modal
+```
+server/
+├── services/
+│   ├── fileProcessor.ts     (modify - smart document analysis)
+│   └── meetingProcessor.ts  (create - meeting summarization)
+├── voice/
+│   └── transcriber.ts       (existing - continue to use)
+```
 
-This is not just an assistant. This is a true AI companion who knows Nate better than anyone, helps him understand himself, and manages his life with care.
+### Proactive Orchestration
+```
+server/
+├── actionExecutor.ts        (create - action execution)
+├── trustManager.ts          (create - trust framework)
+├── orchestrationEngine.ts   (create - multi-step goals)
+├── jobs/
+│   └── anticipationEngine.ts (modify - proactive actions)
+├── routes.ts                (modify - approval endpoints)
+```
 
 ---
 
 ## Getting Started
 
-Each document contains:
-- Detailed vision and goals
-- Concrete implementation phases
-- Technical architecture
-- Example interactions
-- Database schemas
-- Success metrics
+1. **Read the current state** sections in each document to understand what exists
+2. **Pick one enhancement** that provides immediate value
+3. **Follow the code examples** - they show exact functions and types to create
+4. **Test incrementally** - each enhancement is designed to work independently
 
-Pick a pillar and start with Phase 1. These are designed to deliver value incrementally - you don't need to finish everything to see benefits.
+Each document contains:
+- Current state analysis with file locations
+- Gap analysis (what's missing)
+- Concrete code examples
+- Database schema additions
+- API endpoint additions
+- Success metrics

@@ -7,418 +7,489 @@ ZEKE doesn't just retrieve memories - he synthesizes understanding across all of
 
 ---
 
-## The Difference
+## Current State (What ZEKE Has Now)
 
-### Current State: Memory Retrieval
+### Existing Components
+
+| Component | Location | What It Does |
+|-----------|----------|--------------|
+| `patternRecognition.ts` | `server/` | Analyzes tasks, calendar, location, grocery, conversations for temporal and behavioral patterns |
+| `patternDetection.ts` | `server/jobs/` | Detects recurring topics, missed commitments, relationship patterns |
+| `insightsGenerator.ts` | `server/` | Generates insights about task health, memory hygiene, calendar conflicts, cross-domain connections |
+| `anticipationEngine.ts` | `server/jobs/` | Morning briefings with urgent items and people to follow up |
+
+### Current Data Flow
+
 ```
-Nate: "When did I last talk to Mom?"
-ZEKE: "You called her on December 5th."
+┌─────────────────────────────────────────────────────────────┐
+│                     DATA SOURCES                             │
+├──────────┬──────────┬──────────┬──────────┬────────────────┤
+│  Tasks   │ Calendar │ Location │ Grocery  │ Omi Memories   │
+└────┬─────┴────┬─────┴────┬─────┴────┬─────┴───────┬────────┘
+     │          │          │          │             │
+     ▼          ▼          ▼          ▼             ▼
+┌─────────────────────────────────────────────────────────────┐
+│              patternRecognition.ts                          │
+│  • analyzeTaskPatterns() - peak hours, day preferences      │
+│  • analyzeCalendarPatterns() - meeting times, durations     │
+│  • analyzeLocationPatterns() - routine locations            │
+│  • analyzeGroceryPatterns() - frequent purchases            │
+│  • analyzeConversationPatterns() - conversation timing      │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│              patterns table (SQLite)                        │
+│  type, name, description, patternDefinition, strength       │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│              insightsGenerator.ts                           │
+│  • detectTaskInsights() - overdue, clusters, trends         │
+│  • detectMemoryInsights() - low confidence, stale           │
+│  • detectCalendarInsights() - busy days, conflicts          │
+│  • detectCrossDomainInsights() - entity connections         │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### With Memory Synthesis: Pattern Discovery
+### Current Capabilities
+
+**Pattern Recognition:**
+```typescript
+// From patternRecognition.ts
+{
+  type: "temporal",
+  name: "Peak Productivity Hours",
+  description: "Tasks are most frequently completed during hours: 9, 10, 14",
+  strength: "0.73",
+  dataSource: "tasks"
+}
 ```
-Nate: "When did I last talk to Mom?"
-ZEKE: "December 5th - about two weeks ago. That's a bit longer than 
-your usual pattern of calling every 10 days. Interestingly, you tend 
-to call more often during stressful work periods, maybe as a 
-comfort thing. Want me to remind you to call this weekend?"
+
+**Insight Generation:**
+```typescript
+// From insightsGenerator.ts
+{
+  type: "task_overdue",
+  title: "Overdue: Review quarterly report",
+  content: "Task is 3 days overdue",
+  priority: "high",
+  suggestedAction: "Review and reschedule or complete this task"
+}
 ```
 
 ---
 
-## Core Capabilities
+## What's Missing (The Gap)
 
-### 1. Pattern Detection
+### 1. Cross-Domain Correlation
 
-Discover recurring patterns across:
-- **Behavioral:** What does Nate do regularly? When do habits break?
-- **Emotional:** What triggers good/bad moods? What helps?
-- **Social:** Who does Nate reach out to when? Why?
-- **Productivity:** When is Nate most effective? What blocks him?
-- **Health:** Sleep, exercise, energy patterns and correlations
+**Current:** Each analyzer works within its own domain (tasks find task patterns, calendar finds calendar patterns).
 
-### 2. Correlation Discovery
+**Missing:** Connecting patterns ACROSS domains to find causation.
 
-Find non-obvious connections:
-- "You tend to sleep worse after evening screen time"
-- "Your productivity spikes on days you exercise in the morning"
-- "You're more likely to cancel plans when work stress is high"
-- "You eat out more when you're stressed"
+| Current Output | Missing Correlation |
+|----------------|---------------------|
+| "You exercise on Tuesday mornings" | "On days you exercise before 9am, your task completion rate is 40% higher" |
+| "You sleep 7.2 hours on average" | "When you skip exercise, your sleep drops by 45 minutes on average" |
+| "You grocery shop on Sundays" | "You eat out more during high-stress work weeks" |
 
-### 3. Trend Analysis
+### 2. Causal Hypothesis Generation
 
-Track changes over time:
-- "You've been exercising more consistently this quarter vs last"
-- "Your relationship with Sarah has strengthened - you talk twice as often"
-- "You're spending less on dining out compared to 6 months ago"
-- "Your mood seems generally better this month"
+**Current:** Detects WHAT patterns exist.
 
-### 4. Insight Generation
+**Missing:** Explains WHY patterns exist and tests hypotheses.
 
-Proactively share discoveries:
-- "I noticed something interesting..."
-- "Here's a pattern I've been tracking..."
-- "Want to hear what I've learned about your [productivity/sleep/etc]?"
+```
+Current: "You tend to cancel plans on Wednesdays"
+Missing: "Hypothesis: Wednesday cancellations correlate with high meeting 
+         density on Tuesdays (evidence: 8/10 cancellations followed 4+ 
+         meeting days)"
+```
 
-### 5. Self-Understanding Tools
+### 3. Life Insights vs. Alerts
 
-Help Nate reflect:
-- "What does ZEKE know about my relationship with [person]?"
-- "What are my patterns around [topic]?"
-- "What have I been thinking about lately?"
-- "How have I changed in the last year?"
+**Current:** Generates actionable alerts ("You have 3 overdue tasks").
+
+**Missing:** Generates wisdom ("You've been more stressed lately - here's what the data shows and what helped last time").
+
+### 4. Self-Understanding Interface
+
+**Current:** No way to ask "What do you know about X?"
+
+**Missing:** Natural language queries about life patterns with narrative answers.
 
 ---
 
-## Implementation Phases
+## Implementation Plan
 
-### Phase 1: Pattern Detection Engine (Months 1-2)
+### Phase 1: Correlation Engine (Build on Existing)
 
-**Goal:** Automatically detect patterns in Nate's data.
+**Extend `patternRecognition.ts`:**
 
-**Tasks:**
-1. Build pattern detection algorithms for different data types
-2. Create pattern storage and confidence scoring
-3. Implement basic pattern queries
-4. Build pattern notification system (share discoveries appropriately)
-5. Create pattern dashboards for visualization
+```typescript
+// NEW: Add to patternRecognition.ts
 
-**Patterns to detect:**
-- Time-based routines (daily, weekly, monthly, seasonal)
-- Event correlations (X tends to happen after Y)
-- Trend lines (increasing/decreasing over time)
-- Anomalies (breaks from normal patterns)
+interface CrossDomainCorrelation {
+  domainA: string;
+  domainB: string;
+  patternA: string;
+  patternB: string;
+  correlationStrength: number; // -1 to 1
+  direction: 'positive' | 'negative';
+  sampleSize: number;
+  hypothesis: string;
+  evidence: string[];
+}
 
-**Deliverable:** ZEKE notices patterns without being asked.
+export async function findCrossDomainCorrelations(): Promise<CrossDomainCorrelation[]> {
+  const correlations: CrossDomainCorrelation[] = [];
+  
+  // Get time-series data from multiple domains
+  const exerciseData = await getExerciseTimeSeries(90); // days
+  const sleepData = await getSleepTimeSeries(90);
+  const productivityData = await getProductivityTimeSeries(90);
+  const moodData = await getMoodTimeSeries(90);
+  
+  // Calculate correlations between pairs
+  const pairs = [
+    { a: exerciseData, b: productivityData, nameA: 'exercise', nameB: 'productivity' },
+    { a: exerciseData, b: sleepData, nameA: 'exercise', nameB: 'sleep' },
+    { a: sleepData, b: moodData, nameA: 'sleep', nameB: 'mood' },
+    // ... more pairs
+  ];
+  
+  for (const pair of pairs) {
+    const correlation = calculateCorrelation(pair.a, pair.b);
+    if (Math.abs(correlation) > 0.3) { // Meaningful correlation threshold
+      correlations.push({
+        domainA: pair.nameA,
+        domainB: pair.nameB,
+        correlationStrength: correlation,
+        direction: correlation > 0 ? 'positive' : 'negative',
+        sampleSize: Math.min(pair.a.length, pair.b.length),
+        hypothesis: generateHypothesis(pair.nameA, pair.nameB, correlation),
+        evidence: gatherEvidence(pair.a, pair.b, correlation)
+      });
+    }
+  }
+  
+  return correlations;
+}
+```
 
-### Phase 2: Correlation Discovery (Months 2-3)
+**Add to database schema (`shared/schema.ts`):**
 
-**Goal:** Find meaningful connections between different life areas.
+```typescript
+export const correlations = sqliteTable("correlations", {
+  id: text("id").primaryKey(),
+  domainA: text("domain_a").notNull(),
+  domainB: text("domain_b").notNull(),
+  correlationStrength: real("correlation_strength").notNull(),
+  direction: text("direction").notNull(),
+  hypothesis: text("hypothesis"),
+  evidence: text("evidence"), // JSON array
+  sampleSize: integer("sample_size"),
+  discoveredAt: text("discovered_at").notNull(),
+  lastConfirmedAt: text("last_confirmed_at"),
+  isActive: integer("is_active", { mode: "boolean" }).default(true),
+});
+```
 
-**Tasks:**
-1. Build multi-domain correlation analysis
-2. Create causal hypothesis generation
-3. Implement significance testing (avoid spurious correlations)
-4. Build "insight cards" summarizing discoveries
-5. Create "why" analysis for patterns
+### Phase 2: Insight Synthesis (Extend Existing)
 
-**Example correlations:**
-- Sleep quality ↔ next-day mood
-- Exercise ↔ productivity
-- Social contact ↔ reported happiness
-- Work stress ↔ eating habits
+**Extend `insightsGenerator.ts`:**
 
-**Deliverable:** ZEKE explains *why* patterns exist.
+```typescript
+// NEW: Add to insightsGenerator.ts
 
-### Phase 3: Insight Delivery (Months 3-4)
+export function detectCorrelationInsights(): DetectorResult {
+  const insights: InsertInsight[] = [];
+  
+  // Get correlations with high confidence
+  const correlations = getActiveCorrelations();
+  
+  for (const corr of correlations) {
+    if (corr.correlationStrength > 0.5 && corr.sampleSize > 20) {
+      const sourceId = `correlation:${corr.domainA}:${corr.domainB}`;
+      
+      if (insightExistsForSource("correlation_discovery", sourceId)) continue;
+      
+      insights.push({
+        type: "correlation_discovery",
+        category: "life_pattern",
+        title: generateCorrelationTitle(corr),
+        content: generateCorrelationExplanation(corr),
+        priority: corr.correlationStrength > 0.7 ? "high" : "medium",
+        confidence: String(corr.correlationStrength),
+        suggestedAction: generateCorrelationAction(corr),
+        sourceEntityId: sourceId,
+      });
+    }
+  }
+  
+  return { insights, skipped: 0 };
+}
 
-**Goal:** Share insights at the right time in the right way.
+function generateCorrelationExplanation(corr: CrossDomainCorrelation): string {
+  const direction = corr.direction === 'positive' ? 'increases with' : 'decreases when';
+  return `I've noticed your ${corr.domainB} ${direction} ${corr.domainA}. ` +
+         `Based on ${corr.sampleSize} data points: ${corr.hypothesis}. ` +
+         `Evidence: ${corr.evidence.slice(0, 2).join('; ')}`;
+}
+```
 
-**Tasks:**
-1. Build insight timing system (when to share)
-2. Create insight relevance scoring
-3. Implement natural insertion into conversation
-4. Build weekly/monthly synthesis reports
-5. Create "insight memory" (don't repeat old insights)
+### Phase 3: Self-Understanding API (New Capability)
 
-**Delivery modes:**
-- Spontaneous: "By the way, I noticed..."
-- Contextual: "This is relevant because..."
-- Requested: "Tell me about my patterns with..."
-- Scheduled: Weekly insight digest
+**Create `server/selfUnderstanding.ts`:**
 
-**Deliverable:** Insights feel helpful, not intrusive.
+```typescript
+// NEW FILE: server/selfUnderstanding.ts
 
-### Phase 4: Self-Understanding Interface (Months 4-6)
+import OpenAI from "openai";
+import { getActivePatterns, getActiveCorrelations } from "./db";
+import { getRecentMemories } from "./omi";
+import { getAllContacts } from "./db";
 
-**Goal:** Nate can explore and understand his own patterns.
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-**Tasks:**
-1. Build "ask about myself" query interface
-2. Create pattern visualization dashboard
-3. Implement comparative analysis ("me now vs 6 months ago")
-4. Build life timeline with pattern overlays
-5. Create "ZEKE's observations" summary page
+export interface SelfUnderstandingQuery {
+  question: string;
+  context?: string;
+}
 
-**Deliverable:** Nate gains self-knowledge through ZEKE.
+export interface SelfUnderstandingResponse {
+  answer: string;
+  supportingData: any[];
+  confidence: number;
+  relatedPatterns: string[];
+}
+
+export async function answerSelfUnderstandingQuery(
+  query: SelfUnderstandingQuery
+): Promise<SelfUnderstandingResponse> {
+  // Gather all relevant data
+  const [patterns, correlations, memories, contacts] = await Promise.all([
+    getActivePatterns(),
+    getActiveCorrelations(),
+    getRecentMemories(168), // Last week
+    getAllContacts(),
+  ]);
+  
+  // Detect query type
+  const queryType = classifyQuery(query.question);
+  
+  // Build context based on query type
+  let relevantData;
+  switch (queryType) {
+    case 'relationship':
+      relevantData = gatherRelationshipData(query.question, memories, contacts);
+      break;
+    case 'pattern':
+      relevantData = gatherPatternData(query.question, patterns, correlations);
+      break;
+    case 'trend':
+      relevantData = gatherTrendData(query.question, patterns, memories);
+      break;
+    default:
+      relevantData = { patterns, correlations, memories: memories.slice(0, 20) };
+  }
+  
+  // Generate narrative answer using LLM
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "system",
+        content: `You are ZEKE, helping Nate understand himself through his data.
+        Answer questions about his patterns, relationships, and life trends.
+        Be specific with data. Use numbers when available. Be warm but factual.`
+      },
+      {
+        role: "user",
+        content: `Question: ${query.question}
+        
+Available data:
+${JSON.stringify(relevantData, null, 2)}
+
+Generate a thoughtful, data-backed response.`
+      }
+    ],
+    temperature: 0.7,
+    max_tokens: 800,
+  });
+  
+  return {
+    answer: response.choices[0]?.message?.content || "I don't have enough data yet.",
+    supportingData: relevantData,
+    confidence: calculateConfidence(relevantData),
+    relatedPatterns: extractRelatedPatterns(patterns, query.question),
+  };
+}
+
+// Example queries this enables:
+// "What do you know about my relationship with Jake?"
+// "What are my patterns around exercise?"
+// "How have I changed in the last 6 months?"
+// "What affects my productivity the most?"
+// "When am I happiest?"
+```
+
+**Add API route (`server/routes.ts`):**
+
+```typescript
+// Add to routes.ts
+
+app.post("/api/self-understanding", async (req, res) => {
+  try {
+    const { question, context } = req.body;
+    const response = await answerSelfUnderstandingQuery({ question, context });
+    res.json(response);
+  } catch (error) {
+    console.error("Self-understanding query failed:", error);
+    res.status(500).json({ error: "Failed to process query" });
+  }
+});
+```
+
+### Phase 4: Proactive Insight Delivery (Extend Existing)
+
+**Extend `anticipationEngine.ts`:**
+
+```typescript
+// Add to anticipationEngine.ts
+
+interface LifeInsight {
+  type: 'correlation' | 'trend' | 'anomaly' | 'milestone';
+  title: string;
+  narrative: string;
+  actionable: boolean;
+  suggestedAction?: string;
+}
+
+async function generateLifeInsights(): Promise<LifeInsight[]> {
+  const insights: LifeInsight[] = [];
+  
+  // Check for new correlations worth sharing
+  const newCorrelations = await getUnsharedCorrelations();
+  for (const corr of newCorrelations) {
+    if (shouldShareCorrelation(corr)) {
+      insights.push({
+        type: 'correlation',
+        title: `Pattern discovered: ${corr.domainA} affects ${corr.domainB}`,
+        narrative: generateCorrelationNarrative(corr),
+        actionable: true,
+        suggestedAction: generateCorrelationAction(corr)
+      });
+    }
+  }
+  
+  // Check for significant trends
+  const trends = await detectSignificantTrends();
+  for (const trend of trends) {
+    insights.push({
+      type: 'trend',
+      title: `${trend.direction} trend in ${trend.domain}`,
+      narrative: trend.explanation,
+      actionable: trend.isActionable,
+      suggestedAction: trend.suggestedAction
+    });
+  }
+  
+  return insights;
+}
+
+// Integrate into morning briefing
+export async function generateMorningBriefing(): Promise<MorningBriefing> {
+  // ... existing code ...
+  
+  // NEW: Add life insights
+  const lifeInsights = await generateLifeInsights();
+  
+  return {
+    // ... existing fields ...
+    lifeInsights, // NEW
+  };
+}
+```
 
 ---
 
 ## Concrete Examples
 
-### Example 1: Spontaneous Insight
+### Before (Current)
 
 ```
-[After a productive week]
-ZEKE: "Hey, interesting pattern: you've had 3 really productive days 
-this week, and they all had something in common - you exercised 
-before 9am. On days you exercise later or skip, your focus rating 
-drops by about 30%. Might be worth keeping the morning routine."
+Nate: "When did I last talk to Mom?"
+ZEKE: "You called her on December 5th."
 ```
 
-### Example 2: Contextual Insight
+### After (With Memory Synthesis)
 
 ```
-Nate: "Why am I so tired today?"
-ZEKE: "Looking at the data: you went to bed at 1:30am (2 hours 
-later than your average), had screen time until 1:15am (you usually 
-stop 30 min before bed), and didn't exercise yesterday. Any one of 
-those correlates with lower next-day energy for you. All three 
-together? That's your tiredness explained."
+Nate: "When did I last talk to Mom?"
+ZEKE: "December 5th - about two weeks ago. That's a bit longer than 
+your usual pattern of calling every 10 days. Interestingly, you tend 
+to call more often during stressful work periods, maybe as a comfort 
+thing. Want me to remind you to call this weekend?"
 ```
 
-### Example 3: Life Understanding Query
+### Before (Current)
 
 ```
-Nate: "What do you know about my friendship with Jake?"
-ZEKE: "You've known Jake for about 3 years. You text regularly - 
-about every 4-5 days on average. You tend to hang out in person 
-once every 2-3 weeks, usually for dinner or drinks. Your mood 
-in conversations with him is consistently positive - he's one of 
-the people you seem most relaxed with. You've mentioned him in 
-12 memories, mostly around shared experiences and advice he's given. 
-Want more detail on any of that?"
+Morning Briefing:
+- 3 tasks due today
+- 2 meetings scheduled
+- 1 overdue commitment
 ```
 
-### Example 4: Trend Report
+### After (With Memory Synthesis)
 
 ```
-[Monthly synthesis]
-ZEKE: "Quick look at December so far:
-
-Sleep: Averaging 6.8 hours (down from 7.2 in November)
-Exercise: 8 sessions (on track to beat last month's 10)
-Social: More family contact, less friend contact than usual
-Work: Stress mentions up 40%, likely holiday deadline related
-Mood: Slightly lower than your baseline, correlates with sleep
-
-The main lever I'd suggest: prioritizing sleep. When you get 7+ 
-hours, your next-day mood rating is 35% higher on average.
-
-Want to dig into any of these?"
-```
-
-### Example 5: Year in Review
-
-```
-Nate: "How have I changed this year?"
-ZEKE: "Big picture on 2024:
-
-Growth: You took on 3 major new responsibilities at work and 
-handled them well. Your confidence in professional conversations 
-has visibly increased.
-
-Relationships: You got closer to Sarah and Jake, more distant 
-from the college friend group. Family contact stayed consistent.
-
-Health: Exercise is up 20% vs last year. Sleep is slightly down. 
-You've mentioned feeling more energetic overall.
-
-Challenges: March and August were tough months - work stress 
-peaked both times. You handled them better in August, suggesting 
-you're building resilience.
-
-Goals: You hit 4 of 6 new year goals, missed the reading goal 
-and the savings goal.
-
-If I had to summarize: 2024 was a year of professional growth 
-and relationship deepening, with some health trade-offs. 
-Sound accurate?"
+Morning Briefing:
+...
+INSIGHT: I noticed something this week - your productivity has been 
+40% higher on days you exercised before 9am. You haven't exercised 
+yet today, but you have a light morning. Might be worth a quick 
+workout before your 10am meeting.
 ```
 
 ---
 
-## Technical Architecture
+## Files to Modify/Create
 
-### Pattern Detection System
-
-```typescript
-interface Pattern {
-  id: string;
-  type: PatternType; // routine, correlation, trend, anomaly
-  
-  description: string; // human-readable summary
-  data: PatternData; // underlying evidence
-  
-  confidence: number; // 0-1
-  significance: number; // how meaningful is this?
-  
-  discovered: Date;
-  lastConfirmed: Date;
-  occurrences: number;
-  
-  insightGenerated: boolean;
-  insightDelivered: boolean;
-}
-
-type PatternType = 
-  | 'routine'      // Regular behavior at specific times
-  | 'correlation'  // X tends to happen with Y
-  | 'trend'        // Increasing/decreasing over time
-  | 'anomaly'      // Deviation from normal
-  | 'cycle'        // Recurring but not time-fixed
-  | 'trigger';     // X causes Y
-```
-
-### Correlation Engine
-
-```typescript
-async function findCorrelations(
-  timeWindow: DateRange,
-  domains: string[] = ['all']
-): Promise<Correlation[]> {
-  // 1. Gather time-series data from all domains
-  const data = await gatherDomainData(timeWindow, domains);
-  
-  // 2. Normalize and align time series
-  const aligned = alignTimeSeries(data);
-  
-  // 3. Calculate correlations between all pairs
-  const rawCorrelations = calculateAllCorrelations(aligned);
-  
-  // 4. Filter for significance
-  const significant = filterBySignificance(rawCorrelations, 0.05);
-  
-  // 5. Filter for minimum correlation strength
-  const meaningful = filterByStrength(significant, 0.3);
-  
-  // 6. Generate human explanations
-  const explained = await generateExplanations(meaningful);
-  
-  return explained;
-}
-```
-
-### Insight Delivery System
-
-```typescript
-async function shouldDeliverInsight(
-  insight: Insight,
-  context: ConversationContext
-): Promise<DeliveryDecision> {
-  // Don't repeat recent insights
-  if (await wasRecentlyDelivered(insight)) {
-    return { deliver: false, reason: 'too_recent' };
-  }
-  
-  // Check if contextually relevant
-  const relevance = await checkRelevance(insight, context);
-  if (relevance < 0.5) {
-    return { deliver: false, reason: 'not_relevant_now' };
-  }
-  
-  // Check emotional appropriateness
-  const mood = await getCurrentMood();
-  if (mood.isNegative && !insight.isPositive) {
-    return { deliver: false, reason: 'bad_timing' };
-  }
-  
-  // Check insight quota (don't overwhelm)
-  const recentInsights = await getRecentInsightCount();
-  if (recentInsights > 2) {
-    return { deliver: false, reason: 'too_many_today' };
-  }
-  
-  return { 
-    deliver: true, 
-    style: determineDeliveryStyle(context, insight)
-  };
-}
-```
-
-### Database Schema
-
-```sql
--- Detected patterns
-CREATE TABLE patterns (
-  id TEXT PRIMARY KEY,
-  pattern_type TEXT NOT NULL,
-  description TEXT NOT NULL,
-  data JSON NOT NULL,
-  
-  confidence REAL NOT NULL,
-  significance REAL NOT NULL,
-  
-  discovered_at TIMESTAMP NOT NULL,
-  last_confirmed TIMESTAMP,
-  occurrences INTEGER DEFAULT 1,
-  
-  active BOOLEAN DEFAULT TRUE
-);
-
--- Correlations discovered
-CREATE TABLE correlations (
-  id TEXT PRIMARY KEY,
-  domain_a TEXT NOT NULL,
-  domain_b TEXT NOT NULL,
-  correlation_strength REAL NOT NULL,
-  direction TEXT, -- positive, negative
-  
-  hypothesis TEXT, -- why might this exist?
-  confidence REAL,
-  
-  discovered_at TIMESTAMP,
-  sample_size INTEGER
-);
-
--- Insights generated and delivery tracking
-CREATE TABLE insights (
-  id TEXT PRIMARY KEY,
-  source_pattern_id TEXT REFERENCES patterns(id),
-  
-  content TEXT NOT NULL,
-  insight_type TEXT, -- observation, suggestion, correlation
-  
-  created_at TIMESTAMP,
-  delivered_at TIMESTAMP,
-  delivery_context TEXT,
-  
-  reception TEXT, -- positive, neutral, negative, unknown
-  
-  expires_at TIMESTAMP -- some insights become stale
-);
-
--- Life metrics for trend tracking
-CREATE TABLE life_metrics (
-  id TEXT PRIMARY KEY,
-  metric_name TEXT NOT NULL,
-  metric_value REAL NOT NULL,
-  recorded_at TIMESTAMP NOT NULL,
-  
-  source TEXT, -- where did this data come from?
-  confidence REAL
-);
-```
+| File | Action | Changes |
+|------|--------|---------|
+| `shared/schema.ts` | Modify | Add `correlations` table |
+| `server/patternRecognition.ts` | Modify | Add `findCrossDomainCorrelations()` |
+| `server/insightsGenerator.ts` | Modify | Add `detectCorrelationInsights()` |
+| `server/selfUnderstanding.ts` | Create | New file for self-understanding queries |
+| `server/routes.ts` | Modify | Add `/api/self-understanding` endpoint |
+| `server/jobs/anticipationEngine.ts` | Modify | Add `generateLifeInsights()` |
+| `server/db.ts` | Modify | Add correlation CRUD functions |
 
 ---
-
-## Dependencies
-
-- **Existing:** Memory system, conversation history, entity extraction
-- **Recommended:** World Model (provides structure for patterns)
-- **Recommended:** Emotional Continuity (mood data for correlations)
-- **External:** None required
-
-## Challenges
-
-1. **Spurious Correlations:** Must avoid "ice cream causes drowning" patterns
-2. **Privacy:** Some patterns might be uncomfortable to surface
-3. **Timing:** Insights must come at appropriate moments
-4. **Accuracy:** Wrong insights damage trust
-5. **Actionability:** Insights should help, not just observe
 
 ## Success Metrics
 
-- User engages with insights (asks follow-ups)
-- User mentions self-understanding gained from ZEKE
-- Patterns influence actual behavior change
-- User explicitly requests pattern analysis
-- Accuracy of predictions based on patterns
+| Metric | How to Measure |
+|--------|----------------|
+| Correlation accuracy | Manual review of discovered correlations |
+| Insight engagement | User asks follow-up questions after insights |
+| Self-understanding usage | Queries to `/api/self-understanding` endpoint |
+| Narrative quality | User feedback on insight explanations |
+| Pattern accuracy | Track pattern predictions vs. actual outcomes |
 
 ---
 
 ## Summary
 
-Memory Synthesis transforms ZEKE's memory from a filing cabinet into a wisdom engine. Instead of just answering "what happened," ZEKE can answer "why does this keep happening," "what should I do differently," and "how have I changed." This is one of the most powerful ways an AI assistant can provide value - helping someone understand themselves.
+The current system is a solid foundation with pattern detection across multiple domains. The enhancement path is:
 
-**Priority:** HIGH - This differentiates ZEKE from every other assistant.
+1. **Connect the dots** - Add cross-domain correlation engine
+2. **Explain the why** - Generate causal hypotheses with evidence
+3. **Enable self-discovery** - Build query interface for life understanding
+4. **Proactively share wisdom** - Integrate insights into daily briefings
+
+This transforms ZEKE from a pattern detector into a wisdom engine.

@@ -7,212 +7,583 @@ ZEKE processes multiple types of input - images, voice, documents, screens, and 
 
 ---
 
-## Capabilities
+## Current State (What ZEKE Has Now)
 
-### 1. Vision Understanding
+### Existing Components
 
-ZEKE can see and understand:
-- **Photos shared:** "What's in this picture?" → Detailed analysis
-- **Screenshots:** "What am I looking at?" → Screen content understanding
-- **Documents:** Images of receipts, menus, whiteboards, handwriting
-- **Environment:** (Future) Live camera feeds from home/office
+| Component | Location | What It Does |
+|-----------|----------|--------------|
+| `fileProcessor.ts` | `server/services/` | GPT-4o vision for images, PDF text extraction, MMS image analysis |
+| `transcriber.ts` | `server/voice/` | Whisper API transcription for audio chunks |
+| `omi.ts` | `server/` | Omi pendant lifelog ingestion and processing |
+| `omiListener.ts` | `server/voice/` | Real-time Omi websocket connection |
 
-### 2. Voice Intelligence
+### Current Data Flow
 
-ZEKE understands spoken context:
-- **Omi Pendant:** Already integrated - captures conversations and context
-- **Voice Notes:** Nate sends voice messages instead of typing
-- **Real-time Voice:** Live conversation with ZEKE via phone/device
-- **Ambient Understanding:** (Future) Hears and understands environment
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      IMAGE PROCESSING                        │
+└─────────────────────────────────────────────────────────────┘
 
-### 3. Document Processing
+MMS/Upload → fileProcessor.ts → GPT-4o Vision
+                    │
+                    ▼
+            analyzeImage() / analyzeImageFromUrl()
+                    │
+                    ▼
+            ┌───────────────────────────────────────┐
+            │ ImageAnalysisResult:                  │
+            │  • description                        │
+            │  • extractedText (OCR)                │
+            │  • objects[]                          │
+            │  • tags[]                             │
+            │  • personAnalysis (if people present) │
+            │    - peopleCount                      │
+            │    - peopleDescriptions[]             │
+            │    - setting, occasion                │
+            │    - suggestedMemory                  │
+            └───────────────────────────────────────┘
 
-ZEKE reads and extracts meaning from:
-- **PDFs:** Contracts, reports, articles
-- **Screenshots:** App interfaces, web pages
-- **Handwriting:** Notes, lists, sketches
-- **Receipts:** Automatic expense categorization
+┌─────────────────────────────────────────────────────────────┐
+│                      PDF PROCESSING                          │
+└─────────────────────────────────────────────────────────────┘
 
-### 4. Screen Context
+PDF Upload → extractPdfText() → pdf-parse library
+                    │
+                    ▼
+            ┌───────────────────────────────────────┐
+            │ PdfExtractionResult:                  │
+            │  • text (full extracted text)         │
+            │  • pageCount                          │
+            │  • info (title, author, subject)      │
+            └───────────────────────────────────────┘
 
-ZEKE understands what Nate is working on:
-- **Shared Screenshots:** "Help me with what I'm looking at"
-- **Browser Content:** Articles, forms, research
-- **App Interfaces:** Help navigating complex software
+┌─────────────────────────────────────────────────────────────┐
+│                      VOICE PROCESSING                        │
+└─────────────────────────────────────────────────────────────┘
 
-### 5. Contextual Audio
+Audio → WhisperTranscriber → OpenAI Whisper API
+                    │
+                    ▼
+            ┌───────────────────────────────────────┐
+            │ TranscriptionResult:                  │
+            │  • text                               │
+            │  • startMs, endMs, durationMs         │
+            │  • confidence (optional)              │
+            └───────────────────────────────────────┘
+```
 
-ZEKE hears and interprets:
-- **Meeting Transcripts:** Summarize what was discussed
-- **Phone Calls:** Capture key points and action items
-- **Background:** (Future) Ambient context from environment
+### Current Capabilities (Code Examples)
+
+**Image Analysis (from `fileProcessor.ts`):**
+```typescript
+// Currently handles:
+export async function analyzeImageFromUrl(
+  imageUrl: string,
+  context?: { senderName?: string; senderPhone?: string; messageText?: string }
+): Promise<ImageAnalysisResult & { personAnalysis?: PersonPhotoAnalysisResult }>
+
+// Returns:
+{
+  description: "A restaurant menu with Italian dishes...",
+  extractedText: "Spaghetti Carbonara $18...",
+  objects: ["menu", "table", "wine glass"],
+  tags: ["restaurant", "dining", "italian"],
+  personAnalysis: {
+    hasPeople: true,
+    peopleCount: 2,
+    peopleDescriptions: [...],
+    setting: "Italian restaurant",
+    occasion: "dinner date"
+  }
+}
+```
+
+**PDF Extraction (from `fileProcessor.ts`):**
+```typescript
+export async function extractPdfText(fileId: string): Promise<PdfExtractionResult>
+
+// Returns:
+{
+  text: "Contract Agreement between...",
+  pageCount: 12,
+  info: { title: "Service Agreement", author: "Legal Dept" }
+}
+```
+
+**Audio Transcription (from `transcriber.ts`):**
+```typescript
+export class WhisperTranscriber implements Transcriber {
+  async transcribeChunk(chunk: AudioChunk): Promise<TranscriptionResult | null>
+}
+
+// Returns:
+{
+  text: "Hey, I wanted to talk about the project deadline...",
+  startMs: 0,
+  endMs: 45000,
+  durationMs: 45000
+}
+```
 
 ---
 
-## Implementation Phases
+## What's Missing (The Gap)
 
-### Phase 1: Enhanced Vision (Months 1-2)
+### 1. Smart Document Analysis
 
-**Goal:** ZEKE expertly processes any image Nate shares.
+**Current:** Extracts text from PDFs.
 
-**Tasks:**
-1. Upgrade image processing with GPT-4o vision capabilities
-2. Build document extraction pipeline (OCR + understanding)
-3. Create receipt/expense parsing
-4. Implement screenshot analysis for help requests
-5. Add photo memory integration (remember images shared)
+**Missing:** Analyzes documents semantically, identifies key terms, compares documents, flags concerns.
 
-**Use cases:**
-- "What's on this menu?" → Dietary analysis and recommendations
-- "Can you read this receipt?" → Amount, vendor, category extracted
-- "What is this?" → Object identification with context
-- "Help me with this form" → Screenshot guidance
+| Current Output | Missing Capability |
+|----------------|-------------------|
+| `text: "Contract Agreement..."` | "This is a 12-month service contract. Key terms: $2,500/month, 60-day cancellation. Concerns: Broad liability clause in section 8.2" |
 
-**Deliverable:** ZEKE handles any image with intelligent understanding.
+### 2. Context-Aware Image Understanding
 
-### Phase 2: Voice Enhancement (Months 2-3)
+**Current:** Describes what's in an image.
 
-**Goal:** ZEKE processes voice naturally and completely.
+**Missing:** Connects image content to Nate's preferences, history, and context.
 
-**Tasks:**
-1. Add voice message transcription (already have via Omi)
-2. Build voice note memory system
-3. Implement real-time voice conversation mode
-4. Create meeting summary from audio
-5. Add speaker identification in multi-person audio
+| Current Output | Missing Capability |
+|----------------|-------------------|
+| `description: "Restaurant menu with Italian dishes"` | "Based on your preferences: Try the salmon (you love fish). Avoid the burger (has chipotle aioli you don't like)." |
 
-**Use cases:**
-- Send voice notes instead of typing
-- "Summarize that meeting" from audio file
-- Real-time conversation for complex tasks
-- "Who said what" in meetings
+### 3. Meeting Summarization
 
-**Deliverable:** Voice is a first-class input modality.
+**Current:** Transcribes audio.
 
-### Phase 3: Document Intelligence (Months 3-4)
+**Missing:** Structures meeting content with action items, decisions, speaker attribution.
 
-**Goal:** ZEKE reads and understands complex documents.
+| Current Output | Missing Capability |
+|----------------|-------------------|
+| `text: "Hey, I wanted to talk about..."` | `{ summary, decisions: [...], actionItems: [...], speakers: [...], openQuestions: [...] }` |
 
-**Tasks:**
-1. PDF parsing and analysis
-2. Multi-page document understanding
-3. Table and chart extraction
-4. Comparison between documents
-5. Action item extraction from documents
+### 4. Real-Time Awareness
 
-**Use cases:**
-- "Summarize this contract" → Key terms, obligations, concerns
-- "Compare these two proposals" → Side-by-side analysis
-- "What does this report say about X?" → Targeted extraction
-- "Any red flags in this document?" → Risk identification
+**Current:** Processes media when explicitly sent.
 
-**Deliverable:** ZEKE is a document analyst.
+**Missing:** Browser extension, screen sharing, ambient awareness.
 
-### Phase 4: Real-Time Awareness (Months 4-6)
+---
 
-**Goal:** ZEKE has continuous awareness of Nate's digital context.
+## Implementation Plan
 
-**Tasks:**
-1. Browser extension for context sharing
-2. Mobile screen sharing integration
-3. Smart ambient listening (opt-in, privacy-first)
-4. Cross-device context synchronization
-5. Real-time assistance mode
+### Phase 1: Smart Document Analysis (Extend Existing)
 
-**Use cases:**
-- ZEKE sees what Nate is reading and offers relevant context
-- Automatic meeting transcription and action items
-- "What was that number I was just looking at?"
-- Proactive help when ZEKE notices struggle
+**Extend `fileProcessor.ts`:**
 
-**Deliverable:** ZEKE is aware of Nate's environment in real-time.
+```typescript
+// NEW: Add to fileProcessor.ts
+
+export interface DocumentAnalysisResult {
+  documentType: 'contract' | 'invoice' | 'report' | 'article' | 'form' | 'other';
+  summary: string;
+  keyPoints: string[];
+  concerns: string[];
+  actionItems: string[];
+  metadata: {
+    parties?: string[];
+    dates?: string[];
+    amounts?: string[];
+    deadlines?: string[];
+  };
+  comparisonNotes?: string; // If comparing to another document
+}
+
+export async function analyzeDocument(
+  fileId: string,
+  context?: { purpose?: string; compareToFileId?: string }
+): Promise<DocumentAnalysisResult> {
+  const file = getUploadedFile(fileId);
+  if (!file) throw new Error(`File not found: ${fileId}`);
+  
+  // Get text content (use existing extraction)
+  const textContent = file.extractedText || (await extractPdfText(fileId)).text;
+  
+  // If comparing, get other document too
+  let comparisonText = '';
+  if (context?.compareToFileId) {
+    const compareFile = getUploadedFile(context.compareToFileId);
+    comparisonText = compareFile?.extractedText || '';
+  }
+  
+  const client = getOpenAIClient();
+  const response = await client.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "system",
+        content: `You are a document analyst. Analyze this document and extract:
+        1. Document type (contract, invoice, report, article, form, other)
+        2. Concise summary (2-3 sentences)
+        3. Key points (important facts, terms, or information)
+        4. Concerns (anything unusual, risky, or requiring attention)
+        5. Action items (what the reader needs to do)
+        6. Metadata (parties involved, dates, amounts, deadlines)
+        ${comparisonText ? '7. Compare to the second document provided' : ''}
+        
+        Be specific and actionable. Flag anything a non-lawyer should have reviewed.`
+      },
+      {
+        role: "user",
+        content: `Analyze this document${context?.purpose ? ` (purpose: ${context.purpose})` : ''}:
+
+DOCUMENT:
+${textContent.substring(0, 15000)}
+${comparisonText ? `\n\nCOMPARE TO:\n${comparisonText.substring(0, 10000)}` : ''}
+
+Respond in JSON format.`
+      }
+    ],
+    max_tokens: 2000,
+    response_format: { type: "json_object" }
+  });
+  
+  return JSON.parse(response.choices[0]?.message?.content || '{}');
+}
+```
+
+**Add API route:**
+
+```typescript
+// Add to routes.ts
+
+app.post("/api/files/:fileId/analyze", async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    const { purpose, compareToFileId } = req.body;
+    const analysis = await analyzeDocument(fileId, { purpose, compareToFileId });
+    res.json(analysis);
+  } catch (error) {
+    res.status(500).json({ error: "Document analysis failed" });
+  }
+});
+```
+
+### Phase 2: Context-Aware Image Understanding (Extend Existing)
+
+**Extend `fileProcessor.ts`:**
+
+```typescript
+// NEW: Add to fileProcessor.ts
+
+import { searchMemories } from "./semanticMemory";
+import { getFoodPreferences } from "./db";
+
+export interface ContextualImageAnalysis extends ImageAnalysisResult {
+  personalizedInsights?: {
+    recommendations: string[];
+    warnings: string[];
+    memories: string[]; // Related memories
+  };
+}
+
+export async function analyzeImageWithContext(
+  imageUrl: string,
+  context?: { 
+    senderName?: string; 
+    messageText?: string;
+    includePreferences?: boolean;
+  }
+): Promise<ContextualImageAnalysis> {
+  // Get base analysis (existing function)
+  const baseAnalysis = await analyzeImageFromUrl(imageUrl, context);
+  
+  // If it's a menu or food-related, add preference context
+  if (baseAnalysis.tags?.some(t => ['menu', 'food', 'restaurant', 'dining'].includes(t))) {
+    const preferences = await getFoodPreferences();
+    const personalizedInsights = await generateFoodInsights(baseAnalysis, preferences);
+    return { ...baseAnalysis, personalizedInsights };
+  }
+  
+  // If people are detected, check for known contacts
+  if (baseAnalysis.personAnalysis?.hasPeople) {
+    const relatedMemories = await searchMemories(
+      baseAnalysis.description,
+      { limit: 3 }
+    );
+    return {
+      ...baseAnalysis,
+      personalizedInsights: {
+        recommendations: [],
+        warnings: [],
+        memories: relatedMemories.map(m => m.content)
+      }
+    };
+  }
+  
+  return baseAnalysis;
+}
+
+async function generateFoodInsights(
+  analysis: ImageAnalysisResult,
+  preferences: FoodPreference[]
+): Promise<ContextualImageAnalysis['personalizedInsights']> {
+  const likes = preferences.filter(p => p.preference === 'like').map(p => p.item);
+  const dislikes = preferences.filter(p => p.preference === 'dislike').map(p => p.item);
+  const allergies = preferences.filter(p => p.preference === 'allergy').map(p => p.item);
+  
+  const client = getOpenAIClient();
+  const response = await client.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: `Given a menu/food image analysis and user preferences, provide:
+        1. Recommendations (items they'd likely enjoy)
+        2. Warnings (items to avoid based on dislikes/allergies)
+        Be specific about which menu items match preferences.`
+      },
+      {
+        role: "user",
+        content: `Image analysis: ${JSON.stringify(analysis)}
+        
+User preferences:
+- Likes: ${likes.join(', ') || 'none specified'}
+- Dislikes: ${dislikes.join(', ') || 'none specified'}
+- Allergies: ${allergies.join(', ') || 'none specified'}
+
+Respond in JSON: { recommendations: [...], warnings: [...] }`
+      }
+    ],
+    max_tokens: 500
+  });
+  
+  const result = JSON.parse(response.choices[0]?.message?.content || '{}');
+  return { ...result, memories: [] };
+}
+```
+
+### Phase 3: Meeting Summarization (Extend Existing)
+
+**Create `server/services/meetingProcessor.ts`:**
+
+```typescript
+// NEW FILE: server/services/meetingProcessor.ts
+
+import OpenAI from "openai";
+import { WhisperTranscriber } from "../voice/transcriber";
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+export interface MeetingSummary {
+  title: string;
+  duration: number; // seconds
+  participants: string[];
+  summary: string;
+  keyDecisions: string[];
+  actionItems: Array<{
+    task: string;
+    assignee?: string;
+    deadline?: string;
+  }>;
+  openQuestions: string[];
+  followUps: string[];
+  transcript?: string;
+}
+
+export async function processMeetingAudio(
+  audioBuffer: Buffer,
+  context?: { title?: string; expectedParticipants?: string[] }
+): Promise<MeetingSummary> {
+  // 1. Transcribe audio
+  const transcriber = new WhisperTranscriber();
+  const chunk = {
+    startMs: 0,
+    endMs: audioBuffer.length * 8, // Rough estimate
+    data: audioBuffer
+  };
+  const transcription = await transcriber.transcribeChunk(chunk);
+  
+  if (!transcription?.text) {
+    throw new Error("Failed to transcribe audio");
+  }
+  
+  // 2. Analyze transcript for meeting structure
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "system",
+        content: `You are a meeting analyst. Extract structured information from this meeting transcript:
+        1. Identify distinct speakers (label as Speaker 1, Speaker 2, etc. or use names if mentioned)
+        2. Summarize the main discussion points
+        3. List any decisions that were made
+        4. Extract action items with assignees and deadlines if mentioned
+        5. Note any open questions that weren't resolved
+        6. Suggest follow-ups`
+      },
+      {
+        role: "user",
+        content: `Meeting transcript${context?.title ? ` (${context.title})` : ''}:
+${transcription.text}
+
+${context?.expectedParticipants ? `Expected participants: ${context.expectedParticipants.join(', ')}` : ''}
+
+Respond in JSON format with: title, participants[], summary, keyDecisions[], actionItems[{task, assignee?, deadline?}], openQuestions[], followUps[]`
+      }
+    ],
+    max_tokens: 2000,
+    response_format: { type: "json_object" }
+  });
+  
+  const analysis = JSON.parse(response.choices[0]?.message?.content || '{}');
+  
+  return {
+    ...analysis,
+    duration: transcription.durationMs / 1000,
+    transcript: transcription.text
+  };
+}
+
+export async function processMeetingFromUrl(
+  audioUrl: string,
+  context?: { title?: string; expectedParticipants?: string[] }
+): Promise<MeetingSummary> {
+  // Download audio
+  const response = await fetch(audioUrl);
+  const audioBuffer = Buffer.from(await response.arrayBuffer());
+  
+  return processMeetingAudio(audioBuffer, context);
+}
+```
+
+**Add API routes:**
+
+```typescript
+// Add to routes.ts
+
+app.post("/api/meetings/analyze", upload.single('audio'), async (req, res) => {
+  try {
+    const { title, participants } = req.body;
+    const audioBuffer = req.file?.buffer;
+    
+    if (!audioBuffer) {
+      return res.status(400).json({ error: "Audio file required" });
+    }
+    
+    const summary = await processMeetingAudio(audioBuffer, {
+      title,
+      expectedParticipants: participants ? JSON.parse(participants) : undefined
+    });
+    
+    res.json(summary);
+  } catch (error) {
+    res.status(500).json({ error: "Meeting analysis failed" });
+  }
+});
+```
+
+### Phase 4: Integration with Memory System
+
+**Connect multi-modal processing to memory:**
+
+```typescript
+// Add to fileProcessor.ts
+
+import { createMemory } from "../db";
+
+export async function processAndRememberImage(
+  fileId: string,
+  context?: { source: string; }
+): Promise<void> {
+  const analysis = await analyzeImage(fileId);
+  
+  // Create memory from image if significant
+  if (analysis.personAnalysis?.suggestedMemory) {
+    await createMemory({
+      content: analysis.personAnalysis.suggestedMemory,
+      category: "visual",
+      source: context?.source || "image_upload",
+      metadata: JSON.stringify({
+        fileId,
+        hasImage: true,
+        people: analysis.personAnalysis.peopleDescriptions,
+        setting: analysis.personAnalysis.setting
+      })
+    });
+  }
+}
+
+export async function processAndRememberMeeting(
+  audioBuffer: Buffer,
+  context?: { title?: string; source?: string }
+): Promise<MeetingSummary> {
+  const summary = await processMeetingAudio(audioBuffer, context);
+  
+  // Create memory from meeting
+  await createMemory({
+    content: `Meeting: ${summary.title}\n\nSummary: ${summary.summary}\n\nDecisions: ${summary.keyDecisions.join('; ')}\n\nAction items: ${summary.actionItems.map(a => a.task).join('; ')}`,
+    category: "meeting",
+    source: context?.source || "audio_upload",
+    metadata: JSON.stringify({
+      participants: summary.participants,
+      actionItems: summary.actionItems,
+      duration: summary.duration
+    })
+  });
+  
+  // Create tasks from action items
+  for (const item of summary.actionItems) {
+    if (item.assignee === 'Nate' || !item.assignee) {
+      await createTask({
+        title: item.task,
+        category: "meeting_action",
+        dueDate: item.deadline,
+        source: `Meeting: ${summary.title}`
+      });
+    }
+  }
+  
+  return summary;
+}
+```
 
 ---
 
 ## Concrete Examples
 
-### Example 1: Menu Analysis
+### Before (Current)
 
 ```
-[Nate shares a photo of a restaurant menu]
-ZEKE: "Nice menu! Based on your preferences:
+[Nate sends a menu photo via MMS]
+ZEKE: "This is a menu from an Italian restaurant. I can see 
+pasta dishes, wine list, and appetizers. The lighting suggests 
+an evening setting."
+```
+
+### After (With Context-Aware Understanding)
+
+```
+[Nate sends a menu photo via MMS]
+ZEKE: "Nice Italian place! Based on your preferences:
 
 RECOMMENDED:
 - Grilled salmon with herbs (you love fish, lighter option)
 - Truffle risotto (you've liked risotto before)
 
 AVOID:
-- The burger has that chipotle aioli you don't like
-- Shrimp dishes (you mentioned mild shellfish sensitivity)
+- The burger has chipotle aioli (you don't like spicy mayo)
+- Shrimp dishes (your mild shellfish sensitivity)
 
-The pasta portions here look generous based on the prices - 
-might want to share or take home. Want me to check reviews 
-for this place?"
+The pasta portions look generous - might want to share or 
+take home. Want me to check reviews for this place?"
 ```
 
-### Example 2: Receipt Processing
+### Before (Current - PDF)
 
 ```
-[Nate shares a photo of a receipt]
-ZEKE: "Got it:
-
-Amazon - December 15, 2024
-Total: $127.43
-
-Items:
-- USB-C Hub ($34.99)
-- Wireless Mouse ($29.99)  
-- Desk Lamp ($62.45)
-
-Category: Home Office
-Running total this month for Home Office: $312.77
-
-Want me to add this to your expense tracking?"
+[Nate uploads a contract]
+ZEKE: "I extracted the text from your 12-page PDF. 
+Title: Service Agreement. Author: Legal Dept."
 ```
 
-### Example 3: Screenshot Help
+### After (With Smart Document Analysis)
 
 ```
-[Nate shares a screenshot of a confusing software interface]
-ZEKE: "Ah, you're in the advanced settings of that scheduling app. 
-The option you probably want is 'Recurring Events' in the left 
-sidebar - I can see it's hidden under the calendar icon. 
-
-Click that, then you'll see a 'Create Series' button at the top 
-right. That's where you can set up the weekly meeting you 
-mentioned. Want me to walk you through the settings once you're there?"
-```
-
-### Example 4: Meeting Summary
-
-```
-[Nate shares audio from a meeting]
-ZEKE: "Here's the meeting summary:
-
-DURATION: 47 minutes
-PARTICIPANTS: You, Sarah, Mike, Jennifer
-
-KEY DECISIONS:
-1. Launch date pushed to Jan 15 (from Jan 8)
-2. Budget approved for additional contractor
-3. Weekly check-ins moving to Thursdays
-
-YOUR ACTION ITEMS:
-- Send revised timeline to stakeholders (by Friday)
-- Interview contractor candidates (next week)
-- Prepare demo for board meeting
-
-OPEN QUESTIONS:
-- Who owns the QA process?
-- Need clarity on marketing timeline
-
-Want me to add the action items to your task list?"
-```
-
-### Example 5: Document Analysis
-
-```
-[Nate shares a PDF contract]
+[Nate uploads a contract]
 ZEKE: "I've reviewed the contract. Here's what matters:
 
 SUMMARY: 12-month service agreement with TechCorp
@@ -223,232 +594,49 @@ KEY TERMS:
 - Auto-renews unless cancelled 30 days before end
 
 CONCERNS:
-- Section 8.2 has a broad liability clause you might want legal 
-  to review
-- The data ownership clause (5.4) says they retain rights to 
-  aggregate data
+- Section 8.2 has a broad liability clause
+- Data ownership clause (5.4) says they retain aggregate data rights
 - Late payment penalty is steep (15% + collection fees)
 
-COMPARED TO INDUSTRY STANDARD:
-- Price is about 10% above average for similar services
-- Terms are fairly standard except for the data clause
+ACTION ITEMS:
+- Review section 8.2 with legal
+- Negotiate data ownership terms
+- Add calendar reminder for cancellation window
 
-Want me to highlight the specific sections of concern?"
+Want me to highlight the specific sections?"
 ```
 
 ---
 
-## Technical Architecture
+## Files to Modify/Create
 
-### Multi-Modal Processing Pipeline
-
-```typescript
-interface MultiModalInput {
-  type: 'image' | 'audio' | 'document' | 'screenshot' | 'video';
-  content: Buffer | string; // Raw content or URL
-  mimeType: string;
-  metadata: {
-    source: string;
-    timestamp: Date;
-    context?: string; // User's accompanying message
-  };
-}
-
-async function processMultiModalInput(
-  input: MultiModalInput
-): Promise<ProcessedContent> {
-  switch (input.type) {
-    case 'image':
-      return await processImage(input);
-    case 'audio':
-      return await processAudio(input);
-    case 'document':
-      return await processDocument(input);
-    case 'screenshot':
-      return await processScreenshot(input);
-    case 'video':
-      return await processVideo(input);
-  }
-}
-```
-
-### Image Processing
-
-```typescript
-async function processImage(input: MultiModalInput): Promise<ProcessedContent> {
-  // 1. Classify image type
-  const imageType = await classifyImage(input.content);
-  // receipt, document, menu, photo, screenshot, etc.
-  
-  // 2. Apply specialized processing
-  switch (imageType) {
-    case 'receipt':
-      return await extractReceiptData(input.content);
-    case 'document':
-      return await ocrAndParse(input.content);
-    case 'menu':
-      return await parseMenuWithPreferences(input.content);
-    case 'photo':
-      return await describeAndContextualize(input.content);
-    case 'screenshot':
-      return await analyzeScreenContent(input.content);
-  }
-  
-  // 3. Store in memory if significant
-  if (await shouldRemember(processed)) {
-    await createImageMemory(input, processed);
-  }
-  
-  return processed;
-}
-```
-
-### Audio Processing
-
-```typescript
-async function processAudio(input: MultiModalInput): Promise<ProcessedContent> {
-  // 1. Transcribe
-  const transcript = await transcribeAudio(input.content);
-  
-  // 2. Identify speakers if multiple
-  const speakers = await diarizeSpeakers(input.content, transcript);
-  
-  // 3. Extract structure
-  const structured = {
-    transcript: transcript,
-    speakers: speakers,
-    summary: await summarize(transcript),
-    actionItems: await extractActions(transcript),
-    decisions: await extractDecisions(transcript),
-    questions: await extractOpenQuestions(transcript)
-  };
-  
-  // 4. Store as memory
-  await createConversationMemory(structured);
-  
-  return structured;
-}
-```
-
-### Document Processing
-
-```typescript
-async function processDocument(input: MultiModalInput): Promise<ProcessedContent> {
-  // 1. Extract text (OCR if image, parse if PDF)
-  const text = await extractText(input.content, input.mimeType);
-  
-  // 2. Identify document type
-  const docType = await classifyDocument(text);
-  // contract, invoice, report, article, form, etc.
-  
-  // 3. Apply specialized analysis
-  const analysis = await analyzeDocument(text, docType);
-  
-  // 4. Generate summary and key points
-  const summary = {
-    type: docType,
-    summary: analysis.summary,
-    keyPoints: analysis.keyPoints,
-    concerns: analysis.concerns,
-    actionItems: analysis.actionItems,
-    metadata: extractMetadata(text, docType)
-  };
-  
-  return summary;
-}
-```
-
-### Database Schema
-
-```sql
--- Multi-modal content storage
-CREATE TABLE media_content (
-  id TEXT PRIMARY KEY,
-  content_type TEXT NOT NULL, -- image, audio, document, screenshot
-  original_filename TEXT,
-  
-  file_path TEXT, -- stored location
-  file_hash TEXT, -- for deduplication
-  
-  processed_at TIMESTAMP,
-  processing_result JSON, -- extracted data
-  
-  memory_id TEXT REFERENCES memories(id), -- linked memory
-  
-  created_at TIMESTAMP NOT NULL
-);
-
--- Image-specific metadata
-CREATE TABLE image_analysis (
-  id TEXT PRIMARY KEY,
-  media_id TEXT REFERENCES media_content(id),
-  
-  image_type TEXT, -- receipt, menu, document, photo, etc.
-  description TEXT,
-  extracted_text TEXT,
-  objects_detected JSON,
-  
-  special_data JSON -- receipt amounts, menu items, etc.
-);
-
--- Audio-specific metadata
-CREATE TABLE audio_analysis (
-  id TEXT PRIMARY KEY,
-  media_id TEXT REFERENCES media_content(id),
-  
-  duration_seconds INTEGER,
-  transcript TEXT,
-  speakers JSON, -- speaker identification
-  
-  summary TEXT,
-  action_items JSON,
-  decisions JSON
-);
-
--- Document analysis cache
-CREATE TABLE document_analysis (
-  id TEXT PRIMARY KEY,
-  media_id TEXT REFERENCES media_content(id),
-  
-  document_type TEXT,
-  page_count INTEGER,
-  
-  summary TEXT,
-  key_points JSON,
-  concerns JSON,
-  extracted_data JSON
-);
-```
+| File | Action | Changes |
+|------|--------|---------|
+| `server/services/fileProcessor.ts` | Modify | Add `analyzeDocument()`, `analyzeImageWithContext()` |
+| `server/services/meetingProcessor.ts` | Create | New file for meeting summarization |
+| `server/routes.ts` | Modify | Add document analysis and meeting endpoints |
+| `shared/schema.ts` | Modify | Add meeting summary types if storing |
 
 ---
-
-## Dependencies
-
-- **Existing:** Image processing (MMS), Omi voice integration
-- **APIs:** OpenAI GPT-4o (vision + audio), Whisper (transcription)
-- **Optional:** Google Document AI for complex PDFs
-- **Infrastructure:** File storage for media content
-
-## Challenges
-
-1. **Privacy:** Processing images/audio of private content
-2. **Cost:** Vision and audio APIs are expensive
-3. **Latency:** Processing must feel fast
-4. **Accuracy:** OCR and transcription errors compound
-5. **Storage:** Media files are large
 
 ## Success Metrics
 
-- Image understanding accuracy (spot checks)
-- Transcription accuracy (vs manual review)
-- Document summary usefulness (user feedback)
-- Usage rate of multi-modal features
-- Time saved on document review
+| Metric | How to Measure |
+|--------|----------------|
+| Document analysis accuracy | Manual review of key terms extracted |
+| Menu recommendation relevance | User follows suggestions |
+| Meeting action item capture | Items match what user recalls |
+| Processing speed | Time from upload to analysis complete |
 
 ---
 
 ## Summary
 
-Multi-Modal Understanding lets ZEKE perceive Nate's world the way a human assistant would - seeing documents, hearing conversations, understanding screens. This is essential for ZEKE to help with the full range of tasks in Nate's life, not just text-based ones.
+The current system has strong foundations for image analysis, PDF extraction, and audio transcription. The enhancement path is:
 
-**Priority:** HIGH - Modern AI assistants must be multi-modal to be truly useful.
+1. **Add intelligence to documents** - Go beyond text extraction to semantic analysis
+2. **Personalize image understanding** - Connect to preferences and memories
+3. **Structure audio content** - Transform transcripts into actionable meeting summaries
+4. **Remember what's processed** - Auto-create memories and tasks from media
+
+This transforms ZEKE from a media processor into a contextual understanding engine.
