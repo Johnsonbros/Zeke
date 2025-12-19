@@ -26,6 +26,8 @@ Key architectural and feature implementations include:
 - **Input/Output**: SMS/MMS integration with GPT-4o Vision for image processing, voice pipeline for Omi Pendant lifelogs, and Smart Notification Batching.
 - **Learning & Feedback**: Feedback Learning Loop system for user corrections, implicit feedback detection, and a nightly trainer to cluster feedback into style profiles.
 - **Efficiency & Resilience**: Overnight Batch Factory using OpenAI Batch API, AI Usage Logging System for API call tracking and anomaly alerting, Circuit Breaker, and Retry with Jittered Backoff.
+- **Batch-First Architecture**: All non-realtime AI work uses OpenAI Batch API for 50% cost savings. Three-lane processing: realtime (<2s for chat), nearline (minutes for context), batch (hours for narratives/insights). Orchestrator manages nightly (3am) and midday (12pm) batch windows.
+- **Self-Model V2**: Correlation discovery with verified evidence linking, measurable metrics (Coverage, Stability, Calibration), and AI-generated narrative explanations via batch processing.
 - **User Interface**: Structured Chat Cards for rich interactive responses, Mobile UI Enhancements (swipe gestures, Quick Menu), and Delta Sync System for efficient mobile app synchronization.
 - **Security & Authentication**: HMAC Authentication for the mobile app with replay protection and timing-safe comparisons.
 - **Unified Conversation System**: All direct communications with Nate (SMS, web, mobile, voice) share a single coherent conversation thread.
