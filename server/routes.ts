@@ -10229,6 +10229,83 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // BATCH JOB ORCHESTRATOR API
+  // ============================================
+
+  // GET /api/admin/orchestrator/status - Get orchestrator status
+  app.get("/api/admin/orchestrator/status", async (_req, res) => {
+    try {
+      const { getOrchestratorStatus } = await import("./services/batchJobOrchestrator");
+      const status = getOrchestratorStatus();
+      res.json(status);
+    } catch (error: any) {
+      console.error("[Orchestrator] Error getting status:", error);
+      res.status(500).json({ error: error.message || "Failed to get orchestrator status" });
+    }
+  });
+
+  // GET /api/admin/orchestrator/templates - Get all job templates
+  app.get("/api/admin/orchestrator/templates", async (_req, res) => {
+    try {
+      const { getJobTemplates } = await import("./services/batchJobOrchestrator");
+      const templates = getJobTemplates();
+      res.json({ templates });
+    } catch (error: any) {
+      console.error("[Orchestrator] Error getting templates:", error);
+      res.status(500).json({ error: error.message || "Failed to get templates" });
+    }
+  });
+
+  // GET /api/admin/orchestrator/cost - Get cost summary
+  app.get("/api/admin/orchestrator/cost", async (_req, res) => {
+    try {
+      const { getCostSummary } = await import("./services/batchJobOrchestrator");
+      const cost = getCostSummary();
+      res.json(cost);
+    } catch (error: any) {
+      console.error("[Orchestrator] Error getting cost:", error);
+      res.status(500).json({ error: error.message || "Failed to get cost summary" });
+    }
+  });
+
+  // POST /api/admin/orchestrator/trigger/:window - Manually trigger a batch window
+  app.post("/api/admin/orchestrator/trigger/:window", async (req, res) => {
+    try {
+      const { triggerBatchWindow } = await import("./services/batchJobOrchestrator");
+      const window = req.params.window as "nightly" | "midday" | "on_demand";
+      
+      if (!["nightly", "midday", "on_demand"].includes(window)) {
+        return res.status(400).json({ error: "Invalid window. Use: nightly, midday, or on_demand" });
+      }
+      
+      console.log(`[Orchestrator] Manual trigger for ${window} window`);
+      const result = await triggerBatchWindow(window);
+      
+      res.json({
+        success: true,
+        window,
+        ...result,
+      });
+    } catch (error: any) {
+      console.error("[Orchestrator] Error triggering window:", error);
+      res.status(500).json({ error: error.message || "Failed to trigger batch window" });
+    }
+  });
+
+  // POST /api/admin/orchestrator/config - Update orchestrator config
+  app.post("/api/admin/orchestrator/config", async (req, res) => {
+    try {
+      const { updateConfig, getOrchestratorStatus } = await import("./services/batchJobOrchestrator");
+      updateConfig(req.body);
+      const status = getOrchestratorStatus();
+      res.json({ success: true, config: status.config });
+    } catch (error: any) {
+      console.error("[Orchestrator] Error updating config:", error);
+      res.status(500).json({ error: error.message || "Failed to update config" });
+    }
+  });
+
+  // ============================================
   // FEEDBACK TRAINER SCHEDULER API
   // ============================================
 

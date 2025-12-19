@@ -136,6 +136,11 @@ app.use((req, res, next) => {
   startNightlyEnrichmentScheduler({ enabled: true });
   log("Nightly enrichment batch scheduler initialized", "startup");
   
+  // Initialize batch job orchestrator (nightly at 3 AM, midday at 12 PM)
+  const { startOrchestrator } = await import("./services/batchJobOrchestrator");
+  startOrchestrator();
+  log("Batch job orchestrator initialized (nightly 3am, midday 12pm)", "startup");
+  
   // Initialize and auto-start voice pipeline if API keys are configured
   if (isVoicePipelineAvailable()) {
     const voiceInitialized = initializeVoicePipeline();

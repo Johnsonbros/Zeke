@@ -3332,7 +3332,17 @@ export interface AiCostAnomaly {
 // ============================================
 
 // Batch job types
-export const batchJobTypes = ["NIGHTLY_ENRICHMENT", "FEEDBACK_REHAB", "KG_REBUILD", "EVAL_GENERATION"] as const;
+export const batchJobTypes = [
+  "NIGHTLY_ENRICHMENT",
+  "FEEDBACK_REHAB", 
+  "KG_REBUILD",
+  "EVAL_GENERATION",
+  "CORRELATION_NARRATIVE",
+  "CALIBRATION_REVIEW",
+  "SYSTEM_HEALTH_REPORT",
+  "PATTERN_NARRATIVE",
+  "MIDDAY_INCREMENTAL",
+] as const;
 export type BatchJobType = typeof batchJobTypes[number];
 
 // Batch job statuses
@@ -3340,8 +3350,31 @@ export const batchJobStatuses = ["QUEUED", "SUBMITTED", "COMPLETED", "FAILED", "
 export type BatchJobStatus = typeof batchJobStatuses[number];
 
 // Batch artifact types
-export const batchArtifactTypes = ["MEMORY_SUMMARY", "KG_EDGES", "FEEDBACK_FIX", "EVAL_TESTCASE"] as const;
+export const batchArtifactTypes = [
+  "MEMORY_SUMMARY",
+  "KG_EDGES", 
+  "FEEDBACK_FIX",
+  "EVAL_TESTCASE",
+  "CORRELATION_INSIGHT",
+  "CALIBRATION_INSIGHT",
+  "HEALTH_REPORT",
+  "PATTERN_INSIGHT",
+] as const;
 export type BatchArtifactType = typeof batchArtifactTypes[number];
+
+// Batch window types for scheduling
+export type BatchWindow = "nightly" | "midday" | "on_demand";
+
+// Batch job template for orchestrator
+export interface BatchJobTemplate {
+  type: BatchJobType;
+  window: BatchWindow;
+  priority: number;
+  artifactTypes: BatchArtifactType[];
+  requiresAI: boolean;
+  estimatedTokensPerItem: number;
+  description: string;
+}
 
 // Batch jobs table - tracks OpenAI Batch API submissions
 export const batchJobs = sqliteTable("batch_jobs", {
