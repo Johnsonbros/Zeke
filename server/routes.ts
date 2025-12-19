@@ -10379,6 +10379,37 @@ export async function registerRoutes(
   });
 
   console.log("[Mobile] Mobile infrastructure endpoints registered");
+
+  // ============================================
+  // ZEKE IDEAL EVALUATION ENDPOINTS
+  // ============================================
+
+  // Import the evaluator
+  const { evaluateIdeal, getEvaluationSummary } = await import("./eval/idealEvaluator");
+
+  // GET /api/eval - Run full ZEKE Ideal evaluation
+  app.get("/api/eval", (_req, res) => {
+    try {
+      const evaluation = evaluateIdeal();
+      res.json(evaluation);
+    } catch (error: any) {
+      console.error("[Eval] Evaluation error:", error);
+      res.status(500).json({ error: error.message || "Evaluation failed" });
+    }
+  });
+
+  // GET /api/eval/summary - Get quick evaluation summary
+  app.get("/api/eval/summary", (_req, res) => {
+    try {
+      const summary = getEvaluationSummary();
+      res.json(summary);
+    } catch (error: any) {
+      console.error("[Eval] Summary error:", error);
+      res.status(500).json({ error: error.message || "Summary failed" });
+    }
+  });
+
+  console.log("[Eval] ZEKE Ideal evaluation endpoints registered");
   
   return httpServer;
 }

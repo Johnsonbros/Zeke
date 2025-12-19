@@ -28,6 +28,7 @@ import KnowledgeGraphPage from "@/pages/knowledge-graph";
 import IntegrationsPage from "@/pages/integrations";
 import FilesPage from "@/pages/files";
 import JournalPage from "@/pages/journal";
+import EvalPage from "@/pages/eval";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 
@@ -53,6 +54,7 @@ function Router() {
       <Route path="/integrations" component={IntegrationsPage} />
       <Route path="/files" component={FilesPage} />
       <Route path="/journal" component={JournalPage} />
+      <Route path="/eval" component={EvalPage} />
       <Route component={NotFound} />
     </Switch>
   );

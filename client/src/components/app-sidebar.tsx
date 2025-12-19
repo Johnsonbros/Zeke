@@ -48,6 +48,7 @@ import {
   Network,
   FileText,
   BookOpen,
+  Target,
 } from "lucide-react";
 import type { Conversation } from "@shared/schema";
 import { format } from "date-fns";
@@ -159,6 +160,12 @@ const mainNavItems = [
     icon: Settings,
     href: "/integrations",
     description: "Webhooks, API keys & services",
+  },
+  {
+    title: "Ideal Eval",
+    icon: Target,
+    href: "/eval",
+    description: "Score against the three pillars",
   },
 ];
 
