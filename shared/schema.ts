@@ -2530,6 +2530,146 @@ export interface PredictionWithDetails extends Prediction {
 }
 
 // ============================================
+// ZEKE ONTOLOGY PRIMITIVES (per ZEKE_ONTOLOGY.md)
+// ============================================
+
+// Resolution states for contradictions
+export const contradictionResolutions = ["unexplained", "explained", "pattern_updated", "exception"] as const;
+export type ContradictionResolution = typeof contradictionResolutions[number];
+
+// Contradictions table - when observed behavior doesn't match stated preference or established pattern
+export const contradictions = sqliteTable("contradictions", {
+  id: text("id").primaryKey(),
+  observation: text("observation").notNull(), // What was observed
+  expected: text("expected").notNull(), // What was expected based on pattern/value
+  patternId: text("pattern_id"), // Associated pattern if any
+  memoryId: text("memory_id"), // Associated memory if any
+  
+  // Analysis
+  possibleReasons: text("possible_reasons"), // JSON array of ZEKE's hypotheses
+  resolution: text("resolution", { enum: contradictionResolutions }).default("unexplained"),
+  userExplanation: text("user_explanation"), // If Nate explained why
+  
+  // Impact tracking
+  impactLevel: text("impact_level", { enum: ["low", "medium", "high"] }).default("medium"),
+  ledToPatternUpdate: integer("led_to_pattern_update", { mode: "boolean" }).default(false),
+  ledToValueUpdate: integer("led_to_value_update", { mode: "boolean" }).default(false),
+  
+  createdAt: text("created_at").notNull(),
+  resolvedAt: text("resolved_at"),
+});
+
+export const insertContradictionSchema = createInsertSchema(contradictions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertContradiction = z.infer<typeof insertContradictionSchema>;
+export type Contradiction = typeof contradictions.$inferSelect;
+
+// Values table - what Nate prioritizes, revealed through choices and trade-offs
+export const values = sqliteTable("values", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(), // The value (e.g., "family time", "career growth")
+  stated: integer("stated", { mode: "boolean" }).default(false), // Explicitly stated
+  inferred: integer("inferred", { mode: "boolean" }).default(false), // Inferred from behavior
+  priority: integer("priority").default(5), // 1-10 relative importance
+  
+  // Evidence
+  evidenceFor: text("evidence_for"), // JSON array of choices supporting this value
+  evidenceAgainst: text("evidence_against"), // JSON array of choices contradicting this value
+  conflicts: text("conflicts"), // JSON array of other value IDs this competes with
+  
+  // Tracking
+  observationCount: integer("observation_count").default(0),
+  lastObservedAt: text("last_observed_at"),
+  
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertValueSchema = createInsertSchema(values).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertValue = z.infer<typeof insertValueSchema>;
+export type Value = typeof values.$inferSelect;
+
+// Stressor types
+export const stressorTypes = ["person", "situation", "task", "environment", "time_pressure"] as const;
+export type StressorType = typeof stressorTypes[number];
+
+// Stressor frequency
+export const stressorFrequencies = ["rare", "occasional", "frequent", "chronic"] as const;
+export type StressorFrequency = typeof stressorFrequencies[number];
+
+// Stressors table - situations that drain energy or trigger negative states
+export const stressors = sqliteTable("stressors", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  type: text("type", { enum: stressorTypes }).notNull(),
+  
+  // Details
+  triggers: text("triggers"), // JSON array of what activates this stressor
+  symptoms: text("symptoms"), // JSON array of observable effects
+  copingStrategies: text("coping_strategies"), // JSON array of what helps
+  
+  // Metrics
+  severity: integer("severity").default(5), // 1-10 impact level
+  frequency: text("frequency", { enum: stressorFrequencies }).default("occasional"),
+  
+  // Tracking
+  lastTriggeredAt: text("last_triggered_at"),
+  triggerCount: integer("trigger_count").default(0),
+  
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertStressorSchema = createInsertSchema(stressors).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertStressor = z.infer<typeof insertStressorSchema>;
+export type Stressor = typeof stressors.$inferSelect;
+
+// Energy model table - Nate's available capacity across time dimensions
+export const energyModel = sqliteTable("energy_model", {
+  id: text("id").primaryKey(),
+  
+  // Time patterns
+  timeOfDayPattern: text("time_of_day_pattern"), // JSON: hour ranges to energy level 1-10
+  dayOfWeekPattern: text("day_of_week_pattern"), // JSON: day to energy level 1-10
+  
+  // Factors
+  drains: text("drains"), // JSON array of what depletes energy
+  restores: text("restores"), // JSON array of what replenishes energy
+  
+  // Current state
+  currentLevel: integer("current_level"), // Estimated current energy 1-10
+  lastUpdatedAt: text("last_updated_at"),
+  
+  // Seasonal patterns
+  seasonalPatterns: text("seasonal_patterns"), // JSON for longer-term fluctuations
+  
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertEnergyModelSchema = createInsertSchema(energyModel).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertEnergyModel = z.infer<typeof insertEnergyModelSchema>;
+export type EnergyModel = typeof energyModel.$inferSelect;
+
+// ============================================
 // OMI WEBHOOK INTEGRATION SYSTEM
 // ============================================
 

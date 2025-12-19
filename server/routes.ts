@@ -10410,6 +10410,123 @@ export async function registerRoutes(
   });
 
   console.log("[Eval] ZEKE Ideal evaluation endpoints registered");
+
+  // ============================================
+  // CONTRADICTION TRACKING ENDPOINTS
+  // ============================================
+
+  const contradictionTracker = await import("./services/contradictionTracker");
+
+  // GET /api/contradictions - Get all contradictions
+  app.get("/api/contradictions", async (req, res) => {
+    try {
+      const resolution = req.query.resolution as string | undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+      
+      const result = await contradictionTracker.getContradictions({
+        resolution: resolution as any,
+        limit,
+      });
+      
+      res.json({ contradictions: result });
+    } catch (error: any) {
+      console.error("[Contradictions] Error fetching:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/contradictions/stats - Get contradiction statistics
+  app.get("/api/contradictions/stats", async (_req, res) => {
+    try {
+      const stats = await contradictionTracker.getContradictionStats();
+      res.json(stats);
+    } catch (error: any) {
+      console.error("[Contradictions] Stats error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/contradictions/unresolved - Get unresolved contradictions
+  app.get("/api/contradictions/unresolved", async (_req, res) => {
+    try {
+      const unresolved = await contradictionTracker.getUnresolvedContradictions();
+      res.json({ contradictions: unresolved });
+    } catch (error: any) {
+      console.error("[Contradictions] Unresolved error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/contradictions - Record a new contradiction
+  app.post("/api/contradictions", async (req, res) => {
+    try {
+      const { observation, expected, patternId, memoryId, possibleReasons } = req.body;
+      
+      if (!observation || !expected) {
+        return res.status(400).json({ error: "observation and expected are required" });
+      }
+      
+      const contradiction = await contradictionTracker.recordContradiction({
+        observation,
+        expected,
+        patternId,
+        memoryId,
+        possibleReasons,
+      });
+      
+      res.status(201).json(contradiction);
+    } catch (error: any) {
+      console.error("[Contradictions] Record error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PATCH /api/contradictions/:id/resolve - Resolve a contradiction
+  app.patch("/api/contradictions/:id/resolve", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { resolution, userExplanation, ledToPatternUpdate, ledToValueUpdate } = req.body;
+      
+      if (!resolution) {
+        return res.status(400).json({ error: "resolution is required" });
+      }
+      
+      const updated = await contradictionTracker.resolveContradiction(
+        id,
+        resolution,
+        userExplanation,
+        { ledToPatternUpdate, ledToValueUpdate }
+      );
+      
+      if (!updated) {
+        return res.status(404).json({ error: "Contradiction not found" });
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("[Contradictions] Resolve error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/contradictions/:id - Get a single contradiction
+  app.get("/api/contradictions/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const contradiction = await contradictionTracker.getContradiction(id);
+      
+      if (!contradiction) {
+        return res.status(404).json({ error: "Contradiction not found" });
+      }
+      
+      res.json(contradiction);
+    } catch (error: any) {
+      console.error("[Contradictions] Get error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  console.log("[Contradictions] Contradiction tracking endpoints registered");
   
   return httpServer;
 }
