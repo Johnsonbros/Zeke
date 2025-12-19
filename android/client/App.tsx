@@ -77,7 +77,7 @@ function AppContent() {
 
     return () => {
       if (notificationResponseListener.current) {
-        Notifications.removeNotificationSubscription(notificationResponseListener.current);
+        notificationResponseListener.current.remove();
       }
     };
   }, []);

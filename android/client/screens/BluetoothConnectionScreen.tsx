@@ -320,7 +320,7 @@ export default function BluetoothConnectionScreen() {
       {!isScanning && nearbyDevices.length === 0 ? (
         <View style={styles.instructionsSection}>
           <ThemedText type="h4" style={styles.sectionTitle}>
-            Pairing Instructions
+            Quick Start
           </ThemedText>
           <View style={styles.instructionsList}>
             <View style={styles.instructionItem}>
@@ -328,7 +328,7 @@ export default function BluetoothConnectionScreen() {
                 <ThemedText type="small">1</ThemedText>
               </View>
               <ThemedText type="body" style={styles.instructionText}>
-                Make sure your Omi DevKit 2 or Limitless Pendant is charged and powered on
+                Make sure your device is charged and shows a solid blue light
               </ThemedText>
             </View>
             <View style={styles.instructionItem}>
@@ -336,7 +336,7 @@ export default function BluetoothConnectionScreen() {
                 <ThemedText type="small">2</ThemedText>
               </View>
               <ThemedText type="body" style={styles.instructionText}>
-                Enable Bluetooth on your phone and keep the device nearby
+                Forget any previous pairing from your phone's Bluetooth settings
               </ThemedText>
             </View>
             <View style={styles.instructionItem}>
@@ -348,6 +348,29 @@ export default function BluetoothConnectionScreen() {
               </ThemedText>
             </View>
           </View>
+
+          <Pressable
+            onPress={() => navigation.navigate("LimitlessSetup" as never)}
+            style={({ pressed }) => [
+              styles.setupGuideButton,
+              { backgroundColor: theme.backgroundSecondary, opacity: pressed ? 0.8 : 1 },
+            ]}
+          >
+            <View style={styles.setupGuideContent}>
+              <View style={[styles.setupGuideIcon, { backgroundColor: Colors.dark.secondary }]}>
+                <Feather name="disc" size={20} color="#FFFFFF" />
+              </View>
+              <View style={styles.setupGuideText}>
+                <ThemedText type="body" style={{ fontWeight: "600" }}>
+                  Limitless Pendant Setup
+                </ThemedText>
+                <ThemedText type="small" secondary>
+                  Factory reset instructions and troubleshooting
+                </ThemedText>
+              </View>
+              <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+            </View>
+          </Pressable>
         </View>
       ) : null}
     </ScrollView>
@@ -468,5 +491,25 @@ const styles = StyleSheet.create({
   instructionText: {
     flex: 1,
     paddingTop: 2,
+  },
+  setupGuideButton: {
+    marginTop: Spacing.xl,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.md,
+  },
+  setupGuideContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  setupGuideIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: Spacing.md,
+  },
+  setupGuideText: {
+    flex: 1,
   },
 });

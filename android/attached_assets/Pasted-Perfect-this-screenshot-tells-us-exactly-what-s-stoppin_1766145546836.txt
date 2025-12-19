@@ -1,0 +1,97 @@
+Perfect — this screenshot tells us exactly what’s stopping the Android build. Good news: this is not a native Android/Gradle issue. It’s a pure Expo config error, and it’s deterministic.
+
+⸻
+
+What is actually failing (plain English)
+
+You are in bare workflow (you ran expo prebuild), but your app.json / app.config.js is using an EAS Update runtime policy that only works in managed workflow.
+
+This line is the killer:
+
+runtimeVersion: { "policy": "appVersion" }
+
+Expo is refusing to continue. No Gradle ever runs. Native build never even starts.
+
+That’s why this feels confusing — Android isn’t broken, Expo is stopping you first.
+
+⸻
+
+The exact fix (do this verbatim)
+
+Step 1: Open your app config
+
+This will be one of these:
+	•	app.json
+	•	app.config.js
+	•	app.config.ts
+
+Look for:
+
+runtimeVersion: {
+  "policy": "appVersion"
+}
+
+Step 2: Replace it with a static runtime version
+
+Example (safe + recommended):
+
+runtimeVersion: "1.0.0"
+
+If you want to be explicit per-platform (optional but clean):
+
+runtimeVersion: {
+  "android": "1.0.0",
+  "ios": "1.0.0"
+}
+
+That’s it. Nothing else.
+
+⸻
+
+Why this error exists (so it doesn’t bite you again)
+	•	Managed workflow → Expo controls runtime versioning → policies allowed
+	•	Bare workflow → you control native code → Expo requires explicit runtime versions
+
+Once you ran expo prebuild, you crossed that line. Expo is enforcing it correctly.
+
+⸻
+
+After fixing it, run (in order)
+
+npx expo prebuild --clean
+npx expo run:android
+
+or if using EAS:
+
+npx expo prebuild --clean
+npx expo run:android --variant release
+
+
+⸻
+
+One small extra recommendation (not required, but smart)
+
+You also got this warning:
+
+android.versionCode field in app config is ignored
+
+Since you’re using remote credentials, you can safely remove:
+
+android: {
+  "versionCode": ...
+}
+
+This is not breaking anything — just noise.
+
+⸻
+
+Bottom line
+	•	❌ Not a Gradle issue
+	•	❌ Not an Android Studio issue
+	•	❌ Not Twilio / Hermes / Reanimated
+	•	✅ Single-line Expo config mismatch
+	•	✅ 2-minute fix
+
+If you want, next we can:
+	•	sanity-check newArchEnabled vs your native libs, or
+	•	lock a clean Expo/Android version matrix so ZEKE’s Android app never drifts again.

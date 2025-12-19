@@ -19,7 +19,6 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 
 import { ThemedText } from "@/components/ThemedText";
 import { EmptyState } from "@/components/EmptyState";
-import { VoiceInputButton } from "@/components/VoiceInputButton";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, Colors, BorderRadius } from "@/constants/theme";
@@ -32,7 +31,6 @@ import {
   deleteCalendarEvent,
   getCalendarList,
   getZekeCalendar,
-  chatWithZeke,
   type ZekeEvent,
   type ZekeCalendar,
 } from "@/lib/zeke-api-adapter";
@@ -408,7 +406,6 @@ export default function CalendarScreen() {
   const [selectedCalendarId, setSelectedCalendarId] = useState<string>("primary");
   const [filterCalendarId, setFilterCalendarId] = useState<string | null>(null);
   const [showCalendarFilter, setShowCalendarFilter] = useState(false);
-  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
 
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
   const monthDates = useMemo(() => getMonthDates(selectedDate), [selectedDate]);
@@ -608,28 +605,6 @@ export default function CalendarScreen() {
     [deleteMutation]
   );
 
-  const handleVoiceRecordingComplete = async (
-    audioUri: string,
-    durationSeconds: number
-  ) => {
-    setIsProcessingVoice(true);
-    try {
-      await chatWithZeke(
-        "I just recorded a voice message to add an event to my calendar. Please help me create the event I mentioned.",
-        "mobile-app"
-      );
-      await refetch();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error) {
-      Alert.alert(
-        "Voice Input",
-        "Voice input was recorded. To add events via voice, please use the Chat feature and say something like 'Add a meeting at 2pm tomorrow'."
-      );
-    } finally {
-      setIsProcessingVoice(false);
-    }
-  };
-
   function formatTimeForInput(dateString: string): string {
     const date = new Date(dateString);
     const hours = date.getHours();
@@ -702,43 +677,36 @@ export default function CalendarScreen() {
         </View>
         <ViewToggle currentView={viewType} onViewChange={setViewType} theme={theme} />
         <View style={styles.actionRow}>
-          <Pressable
-            onPress={openAddModal}
-            style={[styles.addButton, { backgroundColor: Colors.dark.primary }]}
-          >
-            <Feather name="plus" size={20} color="#fff" />
-            <ThemedText style={styles.addButtonText}>Add Event</ThemedText>
-          </Pressable>
-          <View style={styles.voiceContainer}>
-            {isProcessingVoice ? (
-              <ActivityIndicator color={Colors.dark.primary} />
-            ) : (
-              <VoiceInputButton
-                onRecordingComplete={handleVoiceRecordingComplete}
-                disabled={isProcessingVoice}
-              />
-            )}
+          <View style={styles.actionRowLeft}>
+            <Pressable
+              onPress={openAddModal}
+              style={[styles.addButton, { backgroundColor: Colors.dark.primary }]}
+            >
+              <Feather name="plus" size={20} color="#fff" />
+              <ThemedText style={styles.addButtonText}>Add Event</ThemedText>
+            </Pressable>
+            {calendars.length > 0 ? (
+              <Pressable
+                onPress={() => setShowCalendarFilter(!showCalendarFilter)}
+                style={[styles.filterToggle, { backgroundColor: theme.backgroundSecondary }]}
+              >
+                <Feather name="filter" size={16} color={theme.textSecondary} />
+                <ThemedText style={[styles.filterToggleText, { color: theme.textSecondary }]} numberOfLines={1}>
+                  {filterCalendarId ? calendars.find(c => c.id === filterCalendarId)?.name || 'Filter' : 'All Calendars'}
+                </ThemedText>
+                <Feather name={showCalendarFilter ? "chevron-up" : "chevron-down"} size={16} color={theme.textSecondary} />
+              </Pressable>
+            ) : null}
           </View>
         </View>
 
-        {calendars.length > 0 ? (
-          <View>
-            <Pressable
-              onPress={() => setShowCalendarFilter(!showCalendarFilter)}
-              style={[styles.filterToggle, { backgroundColor: theme.backgroundSecondary }]}
+        {calendars.length > 0 && showCalendarFilter ? (
+          <View style={styles.calendarFilterContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.calendarFilters}
             >
-              <Feather name="filter" size={16} color={theme.textSecondary} />
-              <ThemedText style={[styles.filterToggleText, { color: theme.textSecondary }]}>
-                {filterCalendarId ? calendars.find(c => c.id === filterCalendarId)?.name || 'Filter' : 'All Calendars'}
-              </ThemedText>
-              <Feather name={showCalendarFilter ? "chevron-up" : "chevron-down"} size={16} color={theme.textSecondary} />
-            </Pressable>
-            {showCalendarFilter ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.calendarFilters}
-              >
                 <Pressable
                   onPress={() => { setFilterCalendarId(null); setShowCalendarFilter(false); }}
                   style={[
@@ -781,9 +749,8 @@ export default function CalendarScreen() {
                       {getCalendarDisplayName(cal.name)}
                     </ThemedText>
                   </Pressable>
-                ))}
-              </ScrollView>
-            ) : null}
+              ))}
+            </ScrollView>
           </View>
         ) : null}
       </View>
@@ -1446,7 +1413,14 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+  },
+  actionRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: Spacing.md,
+    flexShrink: 1,
+    flex: 1,
   },
   addButton: {
     flexDirection: "row",
@@ -1460,9 +1434,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
     fontSize: 14,
-  },
-  voiceContainer: {
-    marginLeft: "auto",
   },
   loadingContainer: {
     flex: 1,
@@ -1582,6 +1553,9 @@ const styles = StyleSheet.create({
   inputRow: {
     flexDirection: "row",
   },
+  calendarFilterContainer: {
+    marginTop: Spacing.sm,
+  },
   calendarFilters: {
     paddingVertical: Spacing.xs,
     gap: Spacing.sm,
@@ -1592,6 +1566,7 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
+    flexShrink: 1,
     borderRadius: BorderRadius.md,
     alignSelf: "flex-start",
   },

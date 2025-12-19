@@ -7,6 +7,7 @@ import AnalyticsScreen from "@/screens/AnalyticsScreen";
 import BluetoothConnectionScreen from "@/screens/BluetoothConnectionScreen";
 import LiveCaptureScreen from "@/screens/LiveCaptureScreen";
 import DeviceFeaturesScreen from "@/screens/DeviceFeaturesScreen";
+import LimitlessSetupScreen from "@/screens/LimitlessSetupScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 
 export type SettingsStackParamList = {
@@ -17,6 +18,7 @@ export type SettingsStackParamList = {
   BluetoothConnection: undefined;
   LiveCapture: undefined;
   DeviceFeatures: undefined;
+  LimitlessSetup: undefined;
 };
 
 const Stack = createNativeStackNavigator<SettingsStackParamList>();
@@ -73,6 +75,13 @@ export default function SettingsStackNavigator() {
         component={DeviceFeaturesScreen}
         options={{
           headerTitle: "Device Features",
+        }}
+      />
+      <Stack.Screen
+        name="LimitlessSetup"
+        component={LimitlessSetupScreen}
+        options={{
+          headerTitle: "Limitless Setup",
         }}
       />
     </Stack.Navigator>

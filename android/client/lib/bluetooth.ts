@@ -30,20 +30,40 @@ type Characteristic = {
 // Determine if we're in mock mode (Expo Go or web)
 const isMockEnvironment = (): boolean => {
   if (Platform.OS === "web") return true;
-  if (Constants.appOwnership === "expo") return true;
+  try {
+    if (Constants.appOwnership === "expo") return true;
+  } catch (e) {
+    // Constants.appOwnership may not be available in all contexts
+  }
   return false;
 };
 
 // Real BleManager from react-native-ble-plx (for native builds)
+// We delay the import to avoid crashes during static initialization
 let RealBleManager: any = null;
-try {
-  if (!isMockEnvironment()) {
-    RealBleManager = require("react-native-ble-plx").BleManager;
-    console.log("BLE: Using real react-native-ble-plx BleManager for native build");
+let bleImportAttempted = false;
+
+const tryImportBleManager = (): any => {
+  if (bleImportAttempted) return RealBleManager;
+  bleImportAttempted = true;
+  
+  if (isMockEnvironment()) {
+    console.log("BLE: Mock environment detected, skipping BLE import");
+    return null;
   }
-} catch (e) {
-  console.log("BLE: react-native-ble-plx not available, using mock mode");
-}
+  
+  try {
+    const blePlx = require("react-native-ble-plx");
+    if (blePlx && blePlx.BleManager) {
+      RealBleManager = blePlx.BleManager;
+      console.log("BLE: Using real react-native-ble-plx BleManager for native build");
+    }
+  } catch (e) {
+    console.log("BLE: react-native-ble-plx not available, using mock mode", e);
+  }
+  
+  return RealBleManager;
+};
 
 // Mock BleManager stub for Expo Go - real implementation requires native build
 class MockBleManager {
@@ -80,9 +100,14 @@ class MockBleManager {
 
 // Factory function to create appropriate BleManager
 function createBleManager(): MockBleManager {
-  if (RealBleManager && !isMockEnvironment()) {
+  const BleManagerClass = tryImportBleManager();
+  if (BleManagerClass && !isMockEnvironment()) {
     console.log("BLE: Creating real BleManager instance");
-    return new RealBleManager();
+    try {
+      return new BleManagerClass();
+    } catch (e) {
+      console.error("BLE: Failed to create real BleManager, falling back to mock", e);
+    }
   }
   console.log("BLE: Creating mock BleManager instance (Expo Go mode)");
   return new MockBleManager();
@@ -90,6 +115,7 @@ function createBleManager(): MockBleManager {
 
 // Export whether we're using real BLE (for UI display)
 export const isRealBleAvailable = (): boolean => {
+  tryImportBleManager();
   return RealBleManager !== null && !isMockEnvironment();
 };
 
@@ -955,6 +981,20 @@ class BluetoothService {
 
   public clearBuffer(): void {
     this.rawDataBuffer = [];
+  }
+
+  public onAudioData(callback: (data: Uint8Array) => void): () => void {
+    return this.onAudioChunk((chunk: AudioChunk) => {
+      callback(chunk.data);
+    });
+  }
+
+  public async startStreamingAudio(): Promise<boolean> {
+    return this.startAudioStream();
+  }
+
+  public stopStreamingAudio(): void {
+    this.stopAudioStream();
   }
 }
 
