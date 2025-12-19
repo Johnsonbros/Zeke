@@ -10653,6 +10653,311 @@ export async function registerRoutes(
   });
 
   console.log("[SelfUnderstanding] Self-understanding query endpoints registered");
+
+  // ============================================================
+  // SELF-MODEL V2 ENDPOINTS (Signals, Findings, Expectations)
+  // Implements improved architecture with measurable metrics
+  // ============================================================
+
+  const signalsService = await import("./services/signals");
+  const findingsService = await import("./services/findings");
+  const expectationsService = await import("./services/expectations");
+  const correlationV2 = await import("./services/correlationEngineV2");
+  const selfModelEvaluator = await import("./services/selfModelEvaluator");
+  const selfUnderstandingV2 = await import("./services/selfUnderstandingV2");
+
+  // === SIGNALS ENDPOINTS ===
+
+  // POST /api/v2/signals - Record a signal
+  app.post("/api/v2/signals", async (req, res) => {
+    try {
+      const { domain, type, ts, valueNum, valueText, meta, sourceId } = req.body;
+      
+      if (!domain || !type || !ts) {
+        return res.status(400).json({ error: "domain, type, and ts are required" });
+      }
+      
+      const signal = signalsService.recordSignal({
+        domain,
+        type,
+        ts,
+        valueNum,
+        valueText,
+        meta,
+        sourceId,
+      });
+      
+      res.status(201).json(signal);
+    } catch (error: any) {
+      console.error("[Signals] Record error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/v2/signals/batch - Record multiple signals
+  app.post("/api/v2/signals/batch", async (req, res) => {
+    try {
+      const { signals } = req.body;
+      
+      if (!Array.isArray(signals) || signals.length === 0) {
+        return res.status(400).json({ error: "signals array is required" });
+      }
+      
+      const recorded = signalsService.recordSignals(signals);
+      res.status(201).json({ recorded: recorded.length });
+    } catch (error: any) {
+      console.error("[Signals] Batch error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/v2/signals - Query signals
+  app.get("/api/v2/signals", async (req, res) => {
+    try {
+      const { domain, type, since, until, limit } = req.query;
+      
+      const signals = signalsService.querySignals({
+        domain: domain as any,
+        type: type as any,
+        since: since as string,
+        until: until as string,
+        limit: limit ? parseInt(limit as string) : undefined,
+      });
+      
+      res.json({ signals });
+    } catch (error: any) {
+      console.error("[Signals] Query error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/v2/signals/daily - Get daily aggregates
+  app.get("/api/v2/signals/daily", async (req, res) => {
+    try {
+      const since = req.query.since as string;
+      const aggregates = signalsService.computeDailyAggregates(since);
+      res.json({ aggregates });
+    } catch (error: any) {
+      console.error("[Signals] Daily error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // === FINDINGS ENDPOINTS ===
+
+  // GET /api/v2/findings - Get findings
+  app.get("/api/v2/findings", async (req, res) => {
+    try {
+      const { kind, subject, status, minStrength, limit } = req.query;
+      
+      const findings = findingsService.getFindings({
+        kind: kind as any,
+        subject: subject as string,
+        status: status as any,
+        minStrength: minStrength ? parseFloat(minStrength as string) : undefined,
+        limit: limit ? parseInt(limit as string) : undefined,
+      });
+      
+      res.json({ findings });
+    } catch (error: any) {
+      console.error("[Findings] Query error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/v2/findings/counts - Get finding counts
+  app.get("/api/v2/findings/counts", async (_req, res) => {
+    try {
+      const counts = findingsService.getFindingCounts();
+      res.json(counts);
+    } catch (error: any) {
+      console.error("[Findings] Counts error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/v2/findings/:id/resolve - Resolve a finding
+  app.post("/api/v2/findings/:id/resolve", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      
+      const success = findingsService.resolveFinding(id, reason);
+      res.json({ success });
+    } catch (error: any) {
+      console.error("[Findings] Resolve error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/v2/findings/mark-stale - Mark old findings as stale
+  app.post("/api/v2/findings/mark-stale", async (req, res) => {
+    try {
+      const days = req.body.days || 14;
+      const count = findingsService.markStaleFindingsOlderThan(days);
+      res.json({ markedStale: count });
+    } catch (error: any) {
+      console.error("[Findings] Mark stale error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // === EXPECTATIONS ENDPOINTS ===
+
+  // POST /api/v2/expectations - Create an expectation
+  app.post("/api/v2/expectations", async (req, res) => {
+    try {
+      const { subject, expected, because, context, dueBy } = req.body;
+      
+      if (!subject || !expected || !because || !dueBy) {
+        return res.status(400).json({ error: "subject, expected, because, and dueBy are required" });
+      }
+      
+      const expectation = expectationsService.createExpectation({
+        subject,
+        expected,
+        because,
+        context,
+        dueBy,
+      });
+      
+      res.status(201).json(expectation);
+    } catch (error: any) {
+      console.error("[Expectations] Create error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/v2/expectations/:id/evaluate - Evaluate an expectation
+  app.post("/api/v2/expectations/:id/evaluate", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { observedValue, signalIds } = req.body;
+      
+      if (observedValue === undefined) {
+        return res.status(400).json({ error: "observedValue is required" });
+      }
+      
+      const result = expectationsService.evaluateExpectation(id, observedValue, signalIds || []);
+      res.json(result);
+    } catch (error: any) {
+      console.error("[Expectations] Evaluate error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/v2/expectations/pending - Get pending expectations
+  app.get("/api/v2/expectations/pending", async (req, res) => {
+    try {
+      const subject = req.query.subject as string | undefined;
+      const pending = expectationsService.getPendingExpectations(subject as any);
+      res.json({ expectations: pending });
+    } catch (error: any) {
+      console.error("[Expectations] Pending error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/v2/expectations/calibration - Get calibration score
+  app.get("/api/v2/expectations/calibration", async (_req, res) => {
+    try {
+      const calibration = expectationsService.getCalibrationScore();
+      res.json(calibration);
+    } catch (error: any) {
+      console.error("[Expectations] Calibration error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // === CORRELATION V2 ENDPOINTS ===
+
+  // POST /api/v2/correlations/discover - Run correlation discovery
+  app.post("/api/v2/correlations/discover", async (_req, res) => {
+    try {
+      const results = correlationV2.runCorrelationDiscovery();
+      res.json({ 
+        discovered: results.length,
+        correlations: results,
+      });
+    } catch (error: any) {
+      console.error("[CorrelationsV2] Discover error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/v2/correlations/summary - Get correlation summary
+  app.get("/api/v2/correlations/summary", async (_req, res) => {
+    try {
+      const summary = correlationV2.getCorrelationSummary();
+      res.json(summary);
+    } catch (error: any) {
+      console.error("[CorrelationsV2] Summary error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // === SELF-MODEL HEALTH ENDPOINTS ===
+
+  // GET /api/v2/model/health - Get full self-model health
+  app.get("/api/v2/model/health", async (req, res) => {
+    try {
+      const days = req.query.days ? parseInt(req.query.days as string) : 30;
+      const health = selfModelEvaluator.evaluateSelfModel(days);
+      res.json(health);
+    } catch (error: any) {
+      console.error("[SelfModel] Health error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/v2/model/summary - Get quick summary
+  app.get("/api/v2/model/summary", async (_req, res) => {
+    try {
+      const summary = selfModelEvaluator.getSelfModelQuickSummary();
+      res.json(summary);
+    } catch (error: any) {
+      console.error("[SelfModel] Summary error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // === SELF-UNDERSTANDING V2 ENDPOINTS ===
+
+  // POST /api/v2/understand - Ask with citations
+  app.post("/api/v2/understand", async (req, res) => {
+    try {
+      const { question, subject, timeRangeDays } = req.body;
+      
+      if (!question) {
+        return res.status(400).json({ error: "question is required" });
+      }
+      
+      const answer = await selfUnderstandingV2.answerWithCitations({
+        question,
+        subject,
+        timeRangeDays,
+      });
+      
+      res.json(answer);
+    } catch (error: any) {
+      console.error("[UnderstandV2] Ask error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/v2/understand/quick - Get quick insights (no AI call)
+  app.get("/api/v2/understand/quick", async (req, res) => {
+    try {
+      const subject = req.query.subject as string | undefined;
+      const insights = selfUnderstandingV2.getQuickInsights(subject);
+      res.json(insights);
+    } catch (error: any) {
+      console.error("[UnderstandV2] Quick error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  console.log("[SelfModelV2] V2 endpoints registered (signals, findings, expectations, correlations, model health, understanding)");
   
   return httpServer;
 }

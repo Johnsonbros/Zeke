@@ -1,0 +1,366 @@
+Yep. Here’s how to make this feature real (and not a vibes-only “engine”), with code patterns you can drop into ZEKE today.
+
+The big upgrade
+
+Right now your writeup describes a pipeline. The improvement is: turn it into three concrete modules with hard interfaces:
+	1.	Signals (normalized events + derived metrics)
+	2.	Findings (correlations + contradictions with deterministic IDs)
+	3.	Answers (retrieval + citation + synthesis + follow-ups)
+
+If those boundaries are crisp, your system becomes simpler, testable, and “un-bloatable”.
+
+⸻
+
+1) Data model that won’t rot
+
+You need two tables beyond your domain tables: a universal event log and a findings store.
+
+A. signals table (unified event stream)
+
+Even if you already have domain-specific tables, add a thin normalized stream so cross-domain jobs don’t have to know every schema.
+
+SQL (Postgres-ish):
+
+create table if not exists signals (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  domain text not null,              -- 'journal' | 'tasks' | 'location' | ...
+  type text not null,                -- 'mood' | 'energy' | 'task_completed' | ...
+  ts timestamptz not null,
+  value_num double precision,        -- optional numeric value
+  value_text text,                   -- optional text payload
+  meta jsonb not null default '{}'::jsonb, -- extra structured context
+  source_id text,                    -- pointer to domain row id
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_signals_user_ts on signals(user_id, ts desc);
+create index if not exists idx_signals_domain_type_ts on signals(domain, type, ts desc);
+
+Why this matters: your correlation engine queries one table. Domain tables stay rich, but cross-domain computations stay cheap and consistent.
+
+B. findings table (correlations + contradictions)
+
+Store both correlations and contradictions in one “finding” model so they’re comparable, rankable, and explainable.
+
+create table if not exists findings (
+  id text primary key,               -- deterministic id (hash)
+  user_id uuid not null,
+  kind text not null,                -- 'correlation' | 'contradiction'
+  subject text not null,             -- 'energy' | 'mood' | ...
+  predicate text not null,           -- 'drops_after' | 'improves_in' | 'expected_vs_observed'
+  object text not null,              -- 'high_task_volume' | 'location:xyz' | ...
+  window jsonb not null,             -- { lagDays: 2 } etc
+  stats jsonb not null,              -- { r:0.42, p:0.03, n:120 } or { expected:..., observed:... }
+  evidence jsonb not null,           -- citations: signal ids / source pointers
+  strength double precision not null default 0,
+  status text not null default 'active', -- 'active' | 'resolved' | 'stale'
+  first_seen timestamptz not null,
+  last_seen timestamptz not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_findings_user_kind on findings(user_id, kind);
+create index if not exists idx_findings_user_subject on findings(user_id, subject);
+create index if not exists idx_findings_strength on findings(user_id, strength desc);
+
+
+⸻
+
+2) Deterministic IDs done correctly
+
+Deterministic ID = stable identity across time for “the same idea”.
+
+A. Canonicalize the finding key
+
+In TypeScript:
+
+import crypto from "crypto";
+
+type FindingKey = {
+  kind: "correlation" | "contradiction";
+  subject: string;
+  predicate: string;
+  object: string;
+  window: Record<string, any>;
+};
+
+function stableStringify(obj: any): string {
+  if (obj === null || typeof obj !== "object") return JSON.stringify(obj);
+  if (Array.isArray(obj)) return `[${obj.map(stableStringify).join(",")}]`;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map(k => JSON.stringify(k)+":"+stableStringify(obj[k])).join(",")}}`;
+}
+
+export function makeFindingId(userId: string, key: FindingKey) {
+  const canonical = stableStringify({ userId, ...key });
+  return crypto.createHash("sha256").update(canonical).digest("hex").slice(0, 32);
+}
+
+Rule: the ID must NOT include variable stats (like r/p/n). Only include the semantic identity.
+
+⸻
+
+3) Correlation Engine that’s not “AI magic”
+
+Start with simple, cheap, defensible stats. Keep it deterministic. Let the LLM explain the results later, not “discover” them.
+
+A. Example: “energy drops 2 days after high task volume”
+
+You need derived daily aggregates.
+
+type Daily = { day: string; tasks: number; energy?: number };
+
+function dayKey(d: Date) {
+  return d.toISOString().slice(0,10);
+}
+
+export function computeDailyAgg(signals: Array<{ts: Date; type: string; value_num?: number}>) {
+  const byDay = new Map<string, Daily>();
+
+  for (const s of signals) {
+    const key = dayKey(s.ts);
+    if (!byDay.has(key)) byDay.set(key, { day: key, tasks: 0 });
+    const row = byDay.get(key)!;
+
+    if (s.type === "task_completed") row.tasks += 1;
+    if (s.type === "energy" && typeof s.value_num === "number") {
+      // average if multiple entries
+      row.energy = row.energy === undefined ? s.value_num : (row.energy + s.value_num) / 2;
+    }
+  }
+
+  return Array.from(byDay.values()).sort((a,b) => a.day.localeCompare(b.day));
+}
+
+B. Lagged correlation (Pearson r)
+
+function pearson(x: number[], y: number[]) {
+  const n = Math.min(x.length, y.length);
+  if (n < 10) return { r: 0, n }; // guardrail
+  const mx = x.reduce((a,b)=>a+b,0)/n;
+  const my = y.reduce((a,b)=>a+b,0)/n;
+  let num=0, dx=0, dy=0;
+  for (let i=0;i<n;i++){
+    const vx = x[i]-mx;
+    const vy = y[i]-my;
+    num += vx*vy;
+    dx += vx*vx;
+    dy += vy*vy;
+  }
+  const r = num / Math.sqrt(dx*dy || 1);
+  return { r, n };
+}
+
+export function lagCorrelation(daily: Daily[], lagDays: number) {
+  const xs: number[] = [];
+  const ys: number[] = [];
+
+  for (let i=0;i<daily.length;i++){
+    const j = i + lagDays;
+    if (j >= daily.length) break;
+
+    const a = daily[i];
+    const b = daily[j];
+    if (a.tasks !== undefined && b.energy !== undefined) {
+      xs.push(a.tasks);
+      ys.push(b.energy);
+    }
+  }
+  return pearson(xs, ys);
+}
+
+C. Convert that into a “finding”
+
+import { makeFindingId } from "./findingId";
+
+export function buildEnergyAfterTasksFinding(userId: string, r: number, n: number, lagDays: number, evidenceIds: string[]) {
+  const key = {
+    kind: "correlation" as const,
+    subject: "energy",
+    predicate: "changes_after",
+    object: "high_task_volume",
+    window: { lagDays }
+  };
+
+  const id = makeFindingId(userId, key);
+
+  const strength = Math.abs(r) * Math.log10(Math.max(n, 10)); // simple strength heuristic
+
+  return {
+    id,
+    userId,
+    kind: "correlation",
+    subject: "energy",
+    predicate: "changes_after",
+    object: "high_task_volume",
+    window: { lagDays },
+    stats: { r, n, direction: r < 0 ? "down" : "up" },
+    evidence: { signalIds: evidenceIds.slice(0, 50) },
+    strength,
+    status: "active",
+  };
+}
+
+Advice: keep strength boring and predictable. You can evolve it later.
+
+⸻
+
+4) Contradiction Tracker: make it measurable
+
+A contradiction is: prediction + observation + context.
+
+A. Create a tiny “expectation” contract
+
+When ZEKE makes a claim that implies a prediction, store it.
+
+type Expectation = {
+  id: string;          // uuid
+  userId: string;
+  subject: "energy" | "mood";
+  expected: { value: number; comparator: ">=" | "<=" | "≈"; windowHours: number };
+  because: { findingId?: string; rationale?: string };
+  createdAt: Date;
+  dueBy: Date;
+  context: Record<string, any>;
+};
+
+B. When observation comes in, evaluate expectation
+
+function compare(obs: number, exp: Expectation["expected"]) {
+  if (exp.comparator === ">=") return obs >= exp.value;
+  if (exp.comparator === "<=") return obs <= exp.value;
+  // ≈
+  return Math.abs(obs - exp.value) <= 0.5;
+}
+
+export function contradictionFromExpectation(userId: string, exp: Expectation, observedValue: number, evidenceIds: string[]) {
+  const key = {
+    kind: "contradiction" as const,
+    subject: exp.subject,
+    predicate: "expected_vs_observed",
+    object: "energy_after_sleep", // example; derive from exp.context
+    window: { windowHours: exp.expected.windowHours }
+  };
+
+  const id = makeFindingId(userId, key);
+
+  return {
+    id,
+    userId,
+    kind: "contradiction",
+    subject: exp.subject,
+    predicate: "expected_vs_observed",
+    object: key.object,
+    window: key.window,
+    stats: {
+      expected: exp.expected,
+      observed: observedValue,
+      matched: compare(observedValue, exp.expected),
+      expectationId: exp.id
+    },
+    evidence: { signalIds: evidenceIds.slice(0, 50), expectationId: exp.id },
+    strength: 1.0, // contradictions are “important by default”
+    status: "active"
+  };
+}
+
+Key improvement: contradictions aren’t philosophical— they’re computed.
+
+⸻
+
+5) “Self-understanding query” with citations (no hallucination)
+
+The LLM should never freewheel. You hand it:
+	•	top correlations
+	•	top contradictions
+	•	the exact evidence pointers (signal IDs, source ids)
+	•	a strict answer template
+
+A. Retrieval function (deterministic)
+
+export async function getUnderstandingPacket(db: any, userId: string, subject: string) {
+  const findings = await db.findings.findMany({
+    where: { userId, subject, status: "active" },
+    orderBy: [{ strength: "desc" }],
+    limit: 12
+  });
+
+  // optionally pull supporting signals for citations
+  const signalIds = findings.flatMap((f: any) => (f.evidence?.signalIds ?? [])).slice(0, 200);
+  const signals = signalIds.length
+    ? await db.signals.findMany({ where: { userId, id: { in: signalIds } } })
+    : [];
+
+  return { findings, signals };
+}
+
+B. Prompt shape that forces truthfulness
+
+You can do this with your model wrapper:
+	•	“You must cite signal IDs for each claim”
+	•	“If evidence is weak, say so”
+	•	“List unresolved contradictions explicitly”
+
+⸻
+
+6) The evaluation system (simple, ruthless, useful)
+
+Don’t overcomplicate “pillars.” Make evaluation about measurable health.
+
+Track these three scores:
+	1.	Coverage: how many days have usable signals for each domain
+	2.	Stability: how many findings persist across weeks (same ID keeps reappearing)
+	3.	Calibration: how often expectations match observations (contradictions resolved vs piling up)
+
+Example eval job
+
+export async function evalSelfModel(db: any, userId: string) {
+  const last30 = await db.signals.findMany({ where: { userId }, /* ts > now-30d */ });
+
+  const daysWithEnergy = new Set(last30.filter((s:any)=>s.type==="energy").map((s:any)=>s.ts.toISOString().slice(0,10))).size;
+  const daysWithTasks = new Set(last30.filter((s:any)=>s.type==="task_completed").map((s:any)=>s.ts.toISOString().slice(0,10))).size;
+
+  const findings = await db.findings.findMany({ where: { userId, status: "active" } });
+  const contradictions = findings.filter((f:any)=>f.kind==="contradiction").length;
+  const correlations = findings.filter((f:any)=>f.kind==="correlation").length;
+
+  const coverage = (daysWithEnergy + daysWithTasks) / 60; // 0..1-ish
+  const stability = Math.min(1, correlations / 10);       // placeholder heuristic
+  const calibration = Math.max(0, 1 - contradictions / 20);
+
+  return { coverage, stability, calibration };
+}
+
+
+⸻
+
+7) Scheduling + idempotency (aka: “don’t spam findings”)
+
+Your jobs should be safe to run repeatedly.
+
+Pattern:
+	•	compute candidate finding
+	•	upsert by deterministic ID
+	•	update last_seen, strength, stats, evidence
+	•	if not seen for N days => mark stale
+
+That’s how you avoid bloat.
+
+⸻
+
+One brutally practical improvement
+
+Add “minimum evidence gates” so ZEKE doesn’t generate junk:
+	•	correlation requires n >= 20
+	•	|r| must exceed a threshold, e.g. >= 0.25
+	•	contradictions require an explicit expectation record (no vibes)
+
+This alone will make the system feel 10x smarter overnight.
+
+⸻
+
+One question (only because it changes the exact code you’ll paste)
+
+Is ZEKE using Postgres + Drizzle right now, or SQLite (local) + sync for these tables?
