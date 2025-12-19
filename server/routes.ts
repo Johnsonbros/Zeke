@@ -10597,6 +10597,62 @@ export async function registerRoutes(
   });
 
   console.log("[Correlations] Correlation engine endpoints registered");
+
+  // ============================================================
+  // SELF-UNDERSTANDING QUERY ENDPOINTS
+  // Per ZEKE_IDEAL.md Pillar 1: Help Nate understand himself
+  // ============================================================
+
+  const selfUnderstandingService = await import("./services/selfUnderstandingService");
+
+  // POST /api/self-understanding/ask - Ask a self-understanding question
+  app.post("/api/self-understanding/ask", async (req, res) => {
+    try {
+      const { question, domains, timeRange } = req.body;
+      
+      if (!question) {
+        return res.status(400).json({ error: "Question is required" });
+      }
+      
+      console.log(`[SelfUnderstanding] Processing question: "${question}"`);
+      
+      const answer = await selfUnderstandingService.answerSelfUnderstandingQuestion({
+        question,
+        domains,
+        timeRange,
+      });
+      
+      res.json(answer);
+    } catch (error: any) {
+      console.error("[SelfUnderstanding] Ask error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/self-understanding/domains - Get available domains
+  app.get("/api/self-understanding/domains", (_req, res) => {
+    try {
+      const domains = selfUnderstandingService.getAvailableDomains();
+      res.json({ domains });
+    } catch (error: any) {
+      console.error("[SelfUnderstanding] Domains error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/self-understanding/domain/:domain - Get insight for a specific domain
+  app.get("/api/self-understanding/domain/:domain", async (req, res) => {
+    try {
+      const { domain } = req.params;
+      const insight = await selfUnderstandingService.getDomainInsight(domain);
+      res.json(insight);
+    } catch (error: any) {
+      console.error("[SelfUnderstanding] Domain insight error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  console.log("[SelfUnderstanding] Self-understanding query endpoints registered");
   
   return httpServer;
 }
