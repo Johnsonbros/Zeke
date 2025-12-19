@@ -10527,6 +10527,76 @@ export async function registerRoutes(
   });
 
   console.log("[Contradictions] Contradiction tracking endpoints registered");
+
+  // ============================================================
+  // CORRELATION ENGINE ENDPOINTS
+  // Cross-domain pattern discovery per ZEKE_IDEAL.md Pillar 1
+  // ============================================================
+
+  const correlationEngine = await import("./services/correlationEngine");
+
+  // POST /api/correlations/analyze - Run correlation analysis
+  app.post("/api/correlations/analyze", async (req, res) => {
+    try {
+      const days = req.body.days ? parseInt(req.body.days) : 30;
+      const correlations = await correlationEngine.runCorrelationAnalysis(days);
+      res.json({ 
+        correlations,
+        analyzedDays: days,
+        foundCount: correlations.length,
+      });
+    } catch (error: any) {
+      console.error("[Correlations] Analysis error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/correlations - Get discovered correlations
+  app.get("/api/correlations", async (req, res) => {
+    try {
+      const domain = req.query.domain as string | undefined;
+      const minStrength = req.query.minStrength ? parseFloat(req.query.minStrength as string) : undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+      
+      const correlations = await correlationEngine.getCorrelations({
+        domain: domain as any,
+        minStrength,
+        limit,
+      });
+      
+      res.json({ correlations });
+    } catch (error: any) {
+      console.error("[Correlations] Get error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/correlations/stats - Get correlation statistics
+  app.get("/api/correlations/stats", async (_req, res) => {
+    try {
+      const stats = await correlationEngine.getCorrelationStats();
+      res.json(stats);
+    } catch (error: any) {
+      console.error("[Correlations] Stats error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PATCH /api/correlations/:id/validate - Validate a correlation with feedback
+  app.patch("/api/correlations/:id/validate", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { isValid, feedback } = req.body;
+      
+      await correlationEngine.validateCorrelation(id, isValid, feedback);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[Correlations] Validate error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  console.log("[Correlations] Correlation engine endpoints registered");
   
   return httpServer;
 }
