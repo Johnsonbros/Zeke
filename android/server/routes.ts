@@ -555,6 +555,124 @@ Return at most ${Math.min(limit, 10)} results. Only include memories with releva
     }
   });
 
+  // Streaming chat endpoint using Server-Sent Events
+  app.post("/api/chat/sessions/:id/messages/stream", async (req, res) => {
+    let aborted = false;
+    let streamController: AbortController | null = null;
+
+    // Handle client disconnection
+    req.on("close", () => {
+      aborted = true;
+      if (streamController) {
+        streamController.abort();
+      }
+      console.log("[Chat Stream] Client disconnected, aborting stream");
+    });
+
+    try {
+      const session = await storage.getChatSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      const parsed = insertChatMessageSchema.safeParse({
+        sessionId: req.params.id,
+        role: "user",
+        content: req.body.content
+      });
+      
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid message data", details: parsed.error.errors });
+      }
+
+      // Save user message
+      const userMessage = await storage.createMessage(parsed.data);
+
+      // Set up SSE headers
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
+      // Check if already aborted before continuing
+      if (aborted || res.writableEnded) {
+        return;
+      }
+
+      // Send user message event
+      res.write(`data: ${JSON.stringify({ type: "user_message", message: userMessage })}\n\n`);
+
+      const previousMessages = await storage.getMessagesBySession(req.params.id);
+      
+      const recentMemories = await storage.getMemories({ limit: 10 });
+      const memoryContext = recentMemories.length > 0 
+        ? `\n\nRecent memories from the user's wearable devices:\n${recentMemories.map(m => 
+            `- ${m.title} (${m.createdAt}): ${m.summary || m.transcript.substring(0, 200)}...`
+          ).join('\n')}`
+        : '';
+
+      const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+        { role: "system", content: ZEKE_SYSTEM_PROMPT + memoryContext },
+        ...previousMessages.map(m => ({
+          role: m.role as "user" | "assistant",
+          content: m.content
+        })),
+        { role: "user", content: req.body.content }
+      ];
+
+      // Create abort controller for the OpenAI stream
+      streamController = new AbortController();
+
+      // Create streaming completion with abort signal
+      const stream = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages,
+        max_completion_tokens: 1000,
+        stream: true
+      }, { signal: streamController.signal });
+
+      let fullContent = "";
+
+      // Stream chunks to client
+      for await (const chunk of stream) {
+        // Check for abort before processing each chunk
+        if (aborted || res.writableEnded) {
+          console.log("[Chat Stream] Stopping stream due to client disconnect");
+          break;
+        }
+
+        const content = chunk.choices[0]?.delta?.content || "";
+        if (content) {
+          fullContent += content;
+          res.write(`data: ${JSON.stringify({ type: "chunk", content })}\n\n`);
+        }
+      }
+
+      // Only save assistant message if stream completed successfully
+      if (!aborted && !res.writableEnded && fullContent) {
+        const assistantMessage = await storage.createMessage({
+          sessionId: req.params.id,
+          role: "assistant",
+          content: fullContent
+        });
+
+        // Send completion event
+        res.write(`data: ${JSON.stringify({ type: "done", message: assistantMessage })}\n\n`);
+      }
+
+      if (!res.writableEnded) {
+        res.end();
+      }
+
+    } catch (error) {
+      console.error("Error in streaming message:", error);
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify({ type: "error", error: "Failed to generate response" })}\n\n`);
+        res.end();
+      }
+    }
+  });
+
   app.delete("/api/chat/sessions/:id", async (req, res) => {
     try {
       const deleted = await storage.deleteChatSession(req.params.id);

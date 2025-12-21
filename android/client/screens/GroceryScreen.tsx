@@ -24,7 +24,6 @@ import { Spacing, Colors, BorderRadius } from "@/constants/theme";
 import {
   getGroceryItems,
   addGroceryItem,
-  updateGroceryItem,
   deleteGroceryItem,
   toggleGroceryPurchased,
   type ZekeGroceryItem,
@@ -70,7 +69,12 @@ interface GroceryItemRowProps {
   theme: any;
 }
 
-function GroceryItemRow({ item, onToggle, onDelete, theme }: GroceryItemRowProps) {
+function GroceryItemRow({
+  item,
+  onToggle,
+  onDelete,
+  theme,
+}: GroceryItemRowProps) {
   const handleToggle = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onToggle(item.id);
@@ -88,7 +92,7 @@ function GroceryItemRow({ item, onToggle, onDelete, theme }: GroceryItemRowProps
           style: "destructive",
           onPress: () => onDelete(item.id),
         },
-      ]
+      ],
     );
   };
 
@@ -106,11 +110,21 @@ function GroceryItemRow({ item, onToggle, onDelete, theme }: GroceryItemRowProps
     >
       <View style={styles.checkbox}>
         {item.isPurchased ? (
-          <View style={[styles.checkboxChecked, { backgroundColor: Colors.dark.success }]}>
+          <View
+            style={[
+              styles.checkboxChecked,
+              { backgroundColor: Colors.dark.success },
+            ]}
+          >
             <Feather name="check" size={14} color="#fff" />
           </View>
         ) : (
-          <View style={[styles.checkboxUnchecked, { borderColor: theme.textSecondary }]} />
+          <View
+            style={[
+              styles.checkboxUnchecked,
+              { borderColor: theme.textSecondary },
+            ]}
+          />
         )}
       </View>
       <View style={styles.itemContent}>
@@ -131,7 +145,12 @@ function GroceryItemRow({ item, onToggle, onDelete, theme }: GroceryItemRowProps
         ) : null}
       </View>
       {item.category ? (
-        <View style={[styles.categoryBadge, { backgroundColor: `${categoryColor}20` }]}>
+        <View
+          style={[
+            styles.categoryBadge,
+            { backgroundColor: `${categoryColor}20` },
+          ]}
+        >
           <ThemedText style={[styles.categoryText, { color: categoryColor }]}>
             {item.category}
           </ThemedText>
@@ -142,7 +161,7 @@ function GroceryItemRow({ item, onToggle, onDelete, theme }: GroceryItemRowProps
 }
 
 export default function GroceryScreen() {
-  const insets = useSafeAreaInsets();
+  useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
@@ -197,49 +216,55 @@ export default function GroceryScreen() {
         newItemName.trim(),
         newItemQuantity ? parseFloat(newItemQuantity) : undefined,
         newItemUnit.trim() || undefined,
-        newItemCategory.trim() || undefined
+        newItemCategory.trim() || undefined,
       );
       await loadItems();
       setIsAddModalVisible(false);
       resetForm();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (err) {
+    } catch {
       Alert.alert("Error", "Failed to add item. Please try again.");
     } finally {
       setIsAddingItem(false);
     }
   };
 
-  const handleToggle = useCallback(async (id: string) => {
-    try {
-      const item = groceryItems.find(i => i.id === id);
-      if (item) {
-        await toggleGroceryPurchased(id, !item.isPurchased);
-        await loadItems();
+  const handleToggle = useCallback(
+    async (id: string) => {
+      try {
+        const item = groceryItems.find((i) => i.id === id);
+        if (item) {
+          await toggleGroceryPurchased(id, !item.isPurchased);
+          await loadItems();
+        }
+      } catch {
+        Alert.alert("Error", "Failed to update item. Please try again.");
       }
-    } catch (err) {
-      Alert.alert("Error", "Failed to update item. Please try again.");
-    }
-  }, [loadItems, groceryItems]);
+    },
+    [loadItems, groceryItems],
+  );
 
-  const handleDelete = useCallback(async (id: string) => {
-    try {
-      await deleteGroceryItem(id);
-      await loadItems();
-    } catch (err) {
-      Alert.alert("Error", "Failed to delete item. Please try again.");
-    }
-  }, [loadItems]);
+  const handleDelete = useCallback(
+    async (id: string) => {
+      try {
+        await deleteGroceryItem(id);
+        await loadItems();
+      } catch {
+        Alert.alert("Error", "Failed to delete item. Please try again.");
+      }
+    },
+    [loadItems],
+  );
 
   const handleClearPurchased = async () => {
-    const purchasedItems = groceryItems.filter(i => i.isPurchased);
+    const purchasedItems = groceryItems.filter((i) => i.isPurchased);
     if (purchasedItems.length === 0) {
       Alert.alert("No Items", "There are no purchased items to clear.");
       return;
     }
     Alert.alert(
       "Clear Purchased Items",
-      `Remove ${purchasedItems.length} purchased item${purchasedItems.length > 1 ? 's' : ''}?`,
+      `Remove ${purchasedItems.length} purchased item${purchasedItems.length > 1 ? "s" : ""}?`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -247,22 +272,32 @@ export default function GroceryScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              await Promise.all(purchasedItems.map(item => deleteGroceryItem(item.id)));
+              await Promise.all(
+                purchasedItems.map((item) => deleteGroceryItem(item.id)),
+              );
               await loadItems();
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            } catch (err) {
-              Alert.alert("Error", "Failed to clear purchased items. Please try again.");
+              Haptics.notificationAsync(
+                Haptics.NotificationFeedbackType.Success,
+              );
+            } catch {
+              Alert.alert(
+                "Error",
+                "Failed to clear purchased items. Please try again.",
+              );
             }
           },
         },
-      ]
+      ],
     );
   };
 
-  const handleVoiceRecordingComplete = async (audioUri: string, durationSeconds: number) => {
+  const handleVoiceRecordingComplete = async (
+    audioUri: string,
+    durationSeconds: number,
+  ) => {
     Alert.alert(
       "Voice Input",
-      "Voice input recorded. Use the Chat feature and say something like 'Add eggs and milk to my grocery list' to add items via voice."
+      "Voice input recorded. Use the Chat feature and say something like 'Add eggs and milk to my grocery list' to add items via voice.",
     );
   };
 
@@ -284,10 +319,12 @@ export default function GroceryScreen() {
       groups[category].push(item);
     });
 
-    return CATEGORY_ORDER.filter((cat) => groups[cat]?.length > 0).map((category) => ({
-      title: category,
-      data: groups[category],
-    }));
+    return CATEGORY_ORDER.filter((cat) => groups[cat]?.length > 0).map(
+      (category) => ({
+        title: category,
+        data: groups[category],
+      }),
+    );
   }, [filteredItems]);
 
   return (
@@ -307,7 +344,10 @@ export default function GroceryScreen() {
               style={[
                 styles.filterButton,
                 filter === "all" && styles.filterButtonActive,
-                { borderColor: filter === "all" ? Colors.dark.primary : theme.border },
+                {
+                  borderColor:
+                    filter === "all" ? Colors.dark.primary : theme.border,
+                },
               ]}
             >
               <ThemedText
@@ -324,7 +364,12 @@ export default function GroceryScreen() {
               style={[
                 styles.filterButton,
                 filter === "unpurchased" && styles.filterButtonActive,
-                { borderColor: filter === "unpurchased" ? Colors.dark.primary : theme.border },
+                {
+                  borderColor:
+                    filter === "unpurchased"
+                      ? Colors.dark.primary
+                      : theme.border,
+                },
               ]}
             >
               <ThemedText
@@ -398,7 +443,12 @@ export default function GroceryScreen() {
             />
           )}
           renderSectionHeader={({ section }) => (
-            <View style={[styles.sectionHeader, { backgroundColor: theme.backgroundRoot }]}>
+            <View
+              style={[
+                styles.sectionHeader,
+                { backgroundColor: theme.backgroundRoot },
+              ]}
+            >
               <View
                 style={[
                   styles.sectionDot,
@@ -421,7 +471,9 @@ export default function GroceryScreen() {
           onRefresh={refetch}
           refreshing={isRefetching}
           ItemSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
-          SectionSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
+          SectionSeparatorComponent={() => (
+            <View style={{ height: Spacing.md }} />
+          )}
         />
       )}
 
@@ -431,17 +483,28 @@ export default function GroceryScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setIsAddModalVisible(false)}
       >
-        <View style={[styles.modalContainer, { backgroundColor: theme.backgroundRoot }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+        <View
+          style={[
+            styles.modalContainer,
+            { backgroundColor: theme.backgroundRoot },
+          ]}
+        >
+          <View
+            style={[styles.modalHeader, { borderBottomColor: theme.border }]}
+          >
             <Pressable onPress={() => setIsAddModalVisible(false)}>
-              <ThemedText style={{ color: Colors.dark.primary }}>Cancel</ThemedText>
+              <ThemedText style={{ color: Colors.dark.primary }}>
+                Cancel
+              </ThemedText>
             </Pressable>
             <ThemedText type="h4">Add Item</ThemedText>
             <Pressable onPress={handleAddItem} disabled={isAddingItem}>
               {isAddingItem ? (
                 <ActivityIndicator size="small" color={Colors.dark.primary} />
               ) : (
-                <ThemedText style={{ color: Colors.dark.primary, fontWeight: "600" }}>
+                <ThemedText
+                  style={{ color: Colors.dark.primary, fontWeight: "600" }}
+                >
                   Add
                 </ThemedText>
               )}

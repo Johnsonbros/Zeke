@@ -11,13 +11,16 @@ type Device = {
   writeCharacteristicWithResponseForService: (
     serviceUUID: string,
     charUUID: string,
-    base64Data: string
+    base64Data: string,
   ) => Promise<any>;
   discoverAllServicesAndCharacteristics: () => Promise<void>;
   monitorCharacteristicForService: (
     serviceUUID: string,
     charUUID: string,
-    callback: (error: Error | null, characteristic: Characteristic | null) => void
+    callback: (
+      error: Error | null,
+      characteristic: Characteristic | null,
+    ) => void,
   ) => void;
   cancelConnection: () => Promise<void>;
 };
@@ -32,7 +35,7 @@ const isMockEnvironment = (): boolean => {
   if (Platform.OS === "web") return true;
   try {
     if (Constants.appOwnership === "expo") return true;
-  } catch (e) {
+  } catch {
     // Constants.appOwnership may not be available in all contexts
   }
   return false;
@@ -46,22 +49,25 @@ let bleImportAttempted = false;
 const tryImportBleManager = (): any => {
   if (bleImportAttempted) return RealBleManager;
   bleImportAttempted = true;
-  
+
   if (isMockEnvironment()) {
     console.log("BLE: Mock environment detected, skipping BLE import");
     return null;
   }
-  
+
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const blePlx = require("react-native-ble-plx");
     if (blePlx && blePlx.BleManager) {
       RealBleManager = blePlx.BleManager;
-      console.log("BLE: Using real react-native-ble-plx BleManager for native build");
+      console.log(
+        "BLE: Using real react-native-ble-plx BleManager for native build",
+      );
     }
   } catch (e) {
     console.log("BLE: react-native-ble-plx not available, using mock mode", e);
   }
-  
+
   return RealBleManager;
 };
 
@@ -73,25 +79,37 @@ class MockBleManager {
     return Promise.resolve("PoweredOn");
   }
 
-  onStateChange(callback: (state: string) => void, emitCurrentState: boolean): { remove: () => void } {
+  onStateChange(
+    callback: (state: string) => void,
+    emitCurrentState: boolean,
+  ): { remove: () => void } {
     this.stateChangeCallback = callback;
     if (emitCurrentState) {
       setTimeout(() => callback("PoweredOn"), 100);
     }
-    return { remove: () => { this.stateChangeCallback = null; } };
+    return {
+      remove: () => {
+        this.stateChangeCallback = null;
+      },
+    };
   }
 
   startDeviceScan(
     _serviceUUIDs: string[] | null,
     _options: any,
-    _callback: (error: any, device: Device | null) => void
+    _callback: (error: any, device: Device | null) => void,
   ): void {
-    console.log("BLE scanning not available in Expo Go - use native build for real BLE");
+    console.log(
+      "BLE scanning not available in Expo Go - use native build for real BLE",
+    );
   }
 
   stopDeviceScan(): void {}
 
-  connectToDevice(_deviceId: string, _options?: { autoConnect?: boolean }): Promise<Device> {
+  connectToDevice(
+    _deviceId: string,
+    _options?: { autoConnect?: boolean },
+  ): Promise<Device> {
     return Promise.reject(new Error("BLE not available in Expo Go"));
   }
 
@@ -106,7 +124,10 @@ function createBleManager(): MockBleManager {
     try {
       return new BleManagerClass();
     } catch (e) {
-      console.error("BLE: Failed to create real BleManager, falling back to mock", e);
+      console.error(
+        "BLE: Failed to create real BleManager, falling back to mock",
+        e,
+      );
     }
   }
   console.log("BLE: Creating mock BleManager instance (Expo Go mode)");
@@ -147,7 +168,11 @@ export interface BLEDevice {
   batteryLevel?: number;
 }
 
-export type ConnectionState = "disconnected" | "connecting" | "connected" | "disconnecting";
+export type ConnectionState =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "disconnecting";
 export type AudioStreamState = "idle" | "starting" | "streaming" | "stopping";
 
 export interface AudioChunk {
@@ -162,14 +187,29 @@ export interface OpusFrame {
 }
 
 export type DeviceDiscoveredCallback = (device: BLEDevice) => void;
-export type ConnectionStateChangeCallback = (state: ConnectionState, device: BLEDevice | null) => void;
+export type ConnectionStateChangeCallback = (
+  state: ConnectionState,
+  device: BLEDevice | null,
+) => void;
 export type AudioStreamCallback = (chunk: AudioChunk) => void;
 export type AudioStreamStateChangeCallback = (state: AudioStreamState) => void;
 export type OpusFrameCallback = (frame: OpusFrame) => void;
 
 const MOCK_DEVICES: BLEDevice[] = [
-  { id: "omi-devkit-001", name: "Omi DevKit 2", type: "omi", signalStrength: -45, batteryLevel: 85 },
-  { id: "limitless-pendant-001", name: "Limitless Pendant", type: "limitless", signalStrength: -62, batteryLevel: 72 },
+  {
+    id: "omi-devkit-001",
+    name: "Omi DevKit 2",
+    type: "omi",
+    signalStrength: -45,
+    batteryLevel: 85,
+  },
+  {
+    id: "limitless-pendant-001",
+    name: "Limitless Pendant",
+    type: "limitless",
+    signalStrength: -62,
+    batteryLevel: 72,
+  },
 ];
 
 const VALID_OPUS_TOC_BYTES = [0xb8, 0x78, 0xf8, 0xb0, 0x70, 0xf0];
@@ -203,7 +243,11 @@ class LimitlessProtocol {
     return [result, pos];
   }
 
-  private encodeField(fieldNum: number, wireType: number, value: number[]): number[] {
+  private encodeField(
+    fieldNum: number,
+    wireType: number,
+    value: number[],
+  ): number[] {
     const tag = (fieldNum << 3) | wireType;
     return [...this.encodeVarint(tag), ...value];
   }
@@ -245,7 +289,10 @@ class LimitlessProtocol {
 
   encodeSetCurrentTime(timestampMs: number): Uint8Array {
     const timeMsg = this.encodeInt64Field(1, timestampMs);
-    const cmd = [...this.encodeMessage(6, timeMsg), ...this.encodeRequestData()];
+    const cmd = [
+      ...this.encodeMessage(6, timeMsg),
+      ...this.encodeRequestData(),
+    ];
     return new Uint8Array(this.encodeBleWrapper(cmd));
   }
 
@@ -268,7 +315,10 @@ class LimitlessProtocol {
     return new Uint8Array(this.encodeBleWrapper(cmd));
   }
 
-  encodeDownloadFlashPages(batchMode: boolean = true, realTime: boolean = false): Uint8Array {
+  encodeDownloadFlashPages(
+    batchMode: boolean = true,
+    realTime: boolean = false,
+  ): Uint8Array {
     const msg: number[] = [];
     msg.push(...this.encodeField(1, 0, [batchMode ? 0x01 : 0x00]));
     msg.push(...this.encodeField(2, 0, [realTime ? 0x01 : 0x00]));
@@ -280,7 +330,10 @@ class LimitlessProtocol {
     return VALID_OPUS_TOC_BYTES.includes(byte);
   }
 
-  extractOpusFrames(data: number[]): { frames: number[][]; remainingStartPos: number } {
+  extractOpusFrames(data: number[]): {
+    frames: number[][];
+    remainingStartPos: number;
+  } {
     const frames: number[][] = [];
     let pos = 0;
     let lastCompleteFrameEnd = 0;
@@ -382,8 +435,10 @@ class BluetoothService {
           ]);
 
           return (
-            granted["android.permission.BLUETOOTH_SCAN"] === PermissionsAndroid.RESULTS.GRANTED &&
-            granted["android.permission.BLUETOOTH_CONNECT"] === PermissionsAndroid.RESULTS.GRANTED
+            granted["android.permission.BLUETOOTH_SCAN"] ===
+              PermissionsAndroid.RESULTS.GRANTED &&
+            granted["android.permission.BLUETOOTH_CONNECT"] ===
+              PermissionsAndroid.RESULTS.GRANTED
           );
         } catch (err) {
           console.error("Bluetooth permission error:", err);
@@ -392,7 +447,7 @@ class BluetoothService {
       } else {
         try {
           const granted = await PermissionsAndroid.request(
-            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
           );
           return granted === PermissionsAndroid.RESULTS.GRANTED;
         } catch (err) {
@@ -415,17 +470,37 @@ class BluetoothService {
   }
 
   // Get BLE status for UI display
-  public getBleStatus(): { mode: "real" | "mock"; platform: string; reason: string } {
+  public getBleStatus(): {
+    mode: "real" | "mock";
+    platform: string;
+    reason: string;
+  } {
     if (Platform.OS === "web") {
-      return { mode: "mock", platform: "web", reason: "BLE not available on web" };
+      return {
+        mode: "mock",
+        platform: "web",
+        reason: "BLE not available on web",
+      };
     }
     if (Constants.appOwnership === "expo") {
-      return { mode: "mock", platform: "expo-go", reason: "Use native APK for real BLE" };
+      return {
+        mode: "mock",
+        platform: "expo-go",
+        reason: "Use native APK for real BLE",
+      };
     }
     if (isRealBleAvailable()) {
-      return { mode: "real", platform: Platform.OS, reason: "Native BLE enabled" };
+      return {
+        mode: "real",
+        platform: Platform.OS,
+        reason: "Native BLE enabled",
+      };
     }
-    return { mode: "mock", platform: Platform.OS, reason: "BLE library not loaded" };
+    return {
+      mode: "mock",
+      platform: Platform.OS,
+      reason: "BLE library not loaded",
+    };
   }
 
   private async loadConnectedDevice(): Promise<void> {
@@ -459,12 +534,14 @@ class BluetoothService {
 
   private notifyConnectionStateChange(): void {
     this.connectionStateCallbacks.forEach((callback) =>
-      callback(this.connectionState, this.connectedDevice)
+      callback(this.connectionState, this.connectedDevice),
     );
   }
 
   private notifyAudioStreamStateChange(): void {
-    this.audioStreamStateCallbacks.forEach((callback) => callback(this.audioStreamState));
+    this.audioStreamStateCallbacks.forEach((callback) =>
+      callback(this.audioStreamState),
+    );
   }
 
   private notifyAudioChunk(chunk: AudioChunk): void {
@@ -486,7 +563,7 @@ class BluetoothService {
 
     for (let i = 0; i < samples; i++) {
       const sampleValue = Math.floor(
-        amplitude * Math.sin(this.mockSinePhase) + (Math.random() - 0.5) * 100
+        amplitude * Math.sin(this.mockSinePhase) + (Math.random() - 0.5) * 100,
       );
       const clampedValue = Math.max(-32768, Math.min(32767, sampleValue));
       dataView.setInt16(i * bytesPerSample, clampedValue, true);
@@ -540,7 +617,8 @@ class BluetoothService {
   private processOpusFrames(): void {
     if (this.rawDataBuffer.length === 0) return;
 
-    const { frames, remainingStartPos } = this.limitlessProtocol.extractOpusFrames(this.rawDataBuffer);
+    const { frames, remainingStartPos } =
+      this.limitlessProtocol.extractOpusFrames(this.rawDataBuffer);
 
     if (remainingStartPos > 0) {
       this.rawDataBuffer = this.rawDataBuffer.slice(remainingStartPos);
@@ -558,7 +636,9 @@ class BluetoothService {
 
   private async initializeLimitlessDevice(): Promise<boolean> {
     if (this.isMockMode) {
-      console.log("Limitless: Mock initialization (native build required for real BLE)");
+      console.log(
+        "Limitless: Mock initialization (native build required for real BLE)",
+      );
       this.isInitialized = true;
       return true;
     }
@@ -568,7 +648,9 @@ class BluetoothService {
 
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      const timeSyncCmd = this.limitlessProtocol.encodeSetCurrentTime(Date.now());
+      const timeSyncCmd = this.limitlessProtocol.encodeSetCurrentTime(
+        Date.now(),
+      );
       console.log("Limitless: Sending time sync command...");
       const timeSyncSuccess = await this.writeBleCommand(timeSyncCmd);
       if (!timeSyncSuccess) {
@@ -624,37 +706,51 @@ class BluetoothService {
   public onDeviceDiscovered(callback: DeviceDiscoveredCallback): () => void {
     this.deviceDiscoveryCallbacks.push(callback);
     return () => {
-      this.deviceDiscoveryCallbacks = this.deviceDiscoveryCallbacks.filter((cb) => cb !== callback);
+      this.deviceDiscoveryCallbacks = this.deviceDiscoveryCallbacks.filter(
+        (cb) => cb !== callback,
+      );
     };
   }
 
-  public onConnectionStateChange(callback: ConnectionStateChangeCallback): () => void {
+  public onConnectionStateChange(
+    callback: ConnectionStateChangeCallback,
+  ): () => void {
     this.connectionStateCallbacks.push(callback);
     callback(this.connectionState, this.connectedDevice);
     return () => {
-      this.connectionStateCallbacks = this.connectionStateCallbacks.filter((cb) => cb !== callback);
+      this.connectionStateCallbacks = this.connectionStateCallbacks.filter(
+        (cb) => cb !== callback,
+      );
     };
   }
 
   public onAudioChunk(callback: AudioStreamCallback): () => void {
     this.audioChunkCallbacks.push(callback);
     return () => {
-      this.audioChunkCallbacks = this.audioChunkCallbacks.filter((cb) => cb !== callback);
+      this.audioChunkCallbacks = this.audioChunkCallbacks.filter(
+        (cb) => cb !== callback,
+      );
     };
   }
 
   public onOpusFrame(callback: OpusFrameCallback): () => void {
     this.opusFrameCallbacks.push(callback);
     return () => {
-      this.opusFrameCallbacks = this.opusFrameCallbacks.filter((cb) => cb !== callback);
+      this.opusFrameCallbacks = this.opusFrameCallbacks.filter(
+        (cb) => cb !== callback,
+      );
     };
   }
 
-  public onAudioStreamStateChange(callback: AudioStreamStateChangeCallback): () => void {
+  public onAudioStreamStateChange(
+    callback: AudioStreamStateChangeCallback,
+  ): () => void {
     this.audioStreamStateCallbacks.push(callback);
     callback(this.audioStreamState);
     return () => {
-      this.audioStreamStateCallbacks = this.audioStreamStateCallbacks.filter((cb) => cb !== callback);
+      this.audioStreamStateCallbacks = this.audioStreamStateCallbacks.filter(
+        (cb) => cb !== callback,
+      );
     };
   }
 
@@ -683,7 +779,9 @@ class BluetoothService {
       });
     }
 
-    console.warn("Real BLE audio streaming not implemented - native build required");
+    console.warn(
+      "Real BLE audio streaming not implemented - native build required",
+    );
     return new Promise((resolve) => {
       setTimeout(() => {
         this.audioStreamState = "streaming";
@@ -695,7 +793,10 @@ class BluetoothService {
   }
 
   public stopAudioStream(): void {
-    if (this.audioStreamState === "idle" || this.audioStreamState === "stopping") {
+    if (
+      this.audioStreamState === "idle" ||
+      this.audioStreamState === "stopping"
+    ) {
       return;
     }
 
@@ -721,7 +822,7 @@ class BluetoothService {
       await this.connectedBleDevice.writeCharacteristicWithResponseForService(
         LIMITLESS_SERVICE_UUID,
         LIMITLESS_TX_CHAR_UUID,
-        base64Data
+        base64Data,
       );
       console.log("BLE write successful:", data.length, "bytes");
       return true;
@@ -775,7 +876,9 @@ class BluetoothService {
           }
 
           if (device && device.name) {
-            const deviceType: DeviceType = device.serviceUUIDs?.includes(LIMITLESS_SERVICE_UUID)
+            const deviceType: DeviceType = device.serviceUUIDs?.includes(
+              LIMITLESS_SERVICE_UUID,
+            )
               ? "limitless"
               : "omi";
 
@@ -786,14 +889,16 @@ class BluetoothService {
               signalStrength: device.rssi || -100,
             };
 
-            const exists = this.discoveredDevices.find((d) => d.id === bleDevice.id);
+            const exists = this.discoveredDevices.find(
+              (d) => d.id === bleDevice.id,
+            );
             if (!exists) {
               this.discoveredDevices.push(bleDevice);
               this.notifyDeviceDiscovered(bleDevice);
               console.log("Discovered device:", bleDevice.name, bleDevice.type);
             }
           }
-        }
+        },
       );
 
       this.scanTimeout = setTimeout(() => {
@@ -808,14 +913,20 @@ class BluetoothService {
   private simulateScan(): void {
     setTimeout(() => {
       if (!this.isScanning) return;
-      const device1 = { ...MOCK_DEVICES[0], signalStrength: -45 + Math.floor(Math.random() * 10) };
+      const device1 = {
+        ...MOCK_DEVICES[0],
+        signalStrength: -45 + Math.floor(Math.random() * 10),
+      };
       this.discoveredDevices.push(device1);
       this.notifyDeviceDiscovered(device1);
     }, 1500);
 
     setTimeout(() => {
       if (!this.isScanning) return;
-      const device2 = { ...MOCK_DEVICES[1], signalStrength: -62 + Math.floor(Math.random() * 10) };
+      const device2 = {
+        ...MOCK_DEVICES[1],
+        signalStrength: -62 + Math.floor(Math.random() * 10),
+      };
       this.discoveredDevices.push(device2);
       this.notifyDeviceDiscovered(device2);
     }, 3000);
@@ -881,7 +992,9 @@ class BluetoothService {
 
     try {
       console.log("Connecting to device:", device.name, device.id);
-      const bleDevice = await this.bleManager.connectToDevice(device.id, { autoConnect: false });
+      const bleDevice = await this.bleManager.connectToDevice(device.id, {
+        autoConnect: false,
+      });
       this.connectedBleDevice = bleDevice;
 
       console.log("Discovering services and characteristics...");
@@ -934,7 +1047,7 @@ class BluetoothService {
             console.log("Received Limitless data:", dataArray.length, "bytes");
             this.handleLimitlessNotification(dataArray);
           }
-        }
+        },
       );
       console.log("Limitless RX notifications enabled");
     } catch (error) {

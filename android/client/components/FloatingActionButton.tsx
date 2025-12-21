@@ -9,7 +9,7 @@ import Animated, {
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 
-import { Gradients, Shadows, Spacing } from "@/constants/theme";
+import { Gradients, Shadows } from "@/constants/theme";
 
 interface FloatingActionButtonProps {
   onPress: () => void;
@@ -18,7 +18,10 @@ interface FloatingActionButtonProps {
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-export function FloatingActionButton({ onPress, bottom }: FloatingActionButtonProps) {
+export function FloatingActionButton({
+  onPress,
+  bottom,
+}: FloatingActionButtonProps) {
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({

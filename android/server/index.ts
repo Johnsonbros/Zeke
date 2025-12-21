@@ -300,9 +300,18 @@ function setupErrorHandler(app: express.Application) {
 
   // Device pairing endpoint (public - validates master secret)
   app.post("/api/auth/pair", async (req, res) => {
+    const clientIP = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+    console.log(`[Auth:Pair] >>> Request received from ${clientIP}`);
+    console.log(`[Auth:Pair] Headers: ${JSON.stringify({
+      'content-type': req.headers['content-type'],
+      'user-agent': req.headers['user-agent']?.substring(0, 50)
+    })}`);
+    
     const { secret, deviceName } = req.body;
+    console.log(`[Auth:Pair] Body: deviceName="${deviceName}", secret="${secret ? '***provided***' : 'MISSING'}"`);
     
     if (!secret || !deviceName) {
+      console.log(`[Auth:Pair] <<< 400: Missing required fields`);
       return res.status(400).json({ 
         error: 'Missing required fields',
         message: 'Both secret and deviceName are required'
@@ -310,6 +319,7 @@ function setupErrorHandler(app: express.Application) {
     }
 
     if (!isSecretConfigured()) {
+      console.log(`[Auth:Pair] <<< 503: Service not configured`);
       return res.status(503).json({ 
         error: 'Service not configured',
         message: 'Server security is not configured'
@@ -318,12 +328,14 @@ function setupErrorHandler(app: express.Application) {
 
     try {
       if (!validateMasterSecret(secret)) {
+        console.log(`[Auth:Pair] <<< 401: Invalid secret`);
         return res.status(401).json({ 
           error: 'Invalid secret',
           message: 'The provided access key is incorrect'
         });
       }
     } catch (e) {
+      console.log(`[Auth:Pair] <<< 401: Secret validation error - ${e}`);
       return res.status(401).json({ 
         error: 'Invalid secret',
         message: 'The provided access key is incorrect'
@@ -331,6 +343,7 @@ function setupErrorHandler(app: express.Application) {
     }
 
     const device = await registerDevice(deviceName);
+    console.log(`[Auth:Pair] <<< 201: Device paired successfully (id: ${device.deviceId})`);
     
     res.status(201).json({
       success: true,
@@ -341,10 +354,16 @@ function setupErrorHandler(app: express.Application) {
   });
 
   // Verify device token (public - for auth check)
-  app.post("/api/auth/verify", (req, res) => {
+  // Supports both GET (from client) and POST (legacy)
+  const verifyHandler = (req: Request, res: Response) => {
+    const clientIP = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+    console.log(`[Auth:Verify] >>> Request received from ${clientIP} (${req.method})`);
+    
     const deviceToken = req.headers['x-zeke-device-token'] as string;
+    console.log(`[Auth:Verify] Token: ${deviceToken ? `${deviceToken.substring(0, 10)}...` : 'MISSING'}`);
     
     if (!deviceToken) {
+      console.log(`[Auth:Verify] <<< 401: No token provided`);
       return res.status(401).json({ valid: false, error: 'No token provided' });
     }
 
@@ -352,11 +371,15 @@ function setupErrorHandler(app: express.Application) {
     const device = validateDeviceToken(deviceToken);
     
     if (device) {
+      console.log(`[Auth:Verify] <<< 200: Valid token for device ${device.deviceId}`);
       return res.json({ valid: true, deviceId: device.deviceId, deviceName: device.deviceName });
     }
     
+    console.log(`[Auth:Verify] <<< 401: Invalid token`);
     return res.status(401).json({ valid: false, error: 'Invalid token' });
-  });
+  };
+  app.get("/api/auth/verify", verifyHandler);
+  app.post("/api/auth/verify", verifyHandler);
 
   // List paired devices (requires auth)
   app.get("/api/auth/devices", (_req, res) => {

@@ -30,7 +30,10 @@ export interface LimitlessLEDState {
   recoveryAction?: string;
 }
 
-export const LIMITLESS_LED_INDICATORS: Record<LimitlessLEDColor, LimitlessLEDState> = {
+export const LIMITLESS_LED_INDICATORS: Record<
+  LimitlessLEDColor,
+  LimitlessLEDState
+> = {
   [LimitlessLEDColor.WHITE]: {
     color: LimitlessLEDColor.WHITE,
     status: "Recording",
@@ -97,7 +100,8 @@ export const LIMITLESS_LED_INDICATORS: Record<LimitlessLEDColor, LimitlessLEDSta
   [LimitlessLEDColor.RED_SOLID]: {
     color: LimitlessLEDColor.RED_SOLID,
     status: "Recovery Mode",
-    description: "Device is in recovery mode. Hold down the button until the red LED goes away.",
+    description:
+      "Device is in recovery mode. Hold down the button until the red LED goes away.",
     isRecording: false,
     isCharging: false,
     isFullyCharged: false,
@@ -107,7 +111,8 @@ export const LIMITLESS_LED_INDICATORS: Record<LimitlessLEDColor, LimitlessLEDSta
   [LimitlessLEDColor.RED_BREATHING]: {
     color: LimitlessLEDColor.RED_BREATHING,
     status: "Microphone Error",
-    description: "Issue initializing the microphones. Try restarting the device.",
+    description:
+      "Issue initializing the microphones. Try restarting the device.",
     isRecording: false,
     isCharging: false,
     isFullyCharged: false,
@@ -117,12 +122,14 @@ export const LIMITLESS_LED_INDICATORS: Record<LimitlessLEDColor, LimitlessLEDSta
   [LimitlessLEDColor.RED_BLINKING_3]: {
     color: LimitlessLEDColor.RED_BLINKING_3,
     status: "Time Sync Error",
-    description: "Device time needs to be synced to continue recording. May occur during device reset or long button press.",
+    description:
+      "Device time needs to be synced to continue recording. May occur during device reset or long button press.",
     isRecording: false,
     isCharging: false,
     isFullyCharged: false,
     isError: true,
-    recoveryAction: "Open Limitless app to reconnect and sync time. Try restarting recording.",
+    recoveryAction:
+      "Open Limitless app to reconnect and sync time. Try restarting recording.",
   },
   [LimitlessLEDColor.RED_BLINKING_10]: {
     color: LimitlessLEDColor.RED_BLINKING_10,
@@ -132,17 +139,20 @@ export const LIMITLESS_LED_INDICATORS: Record<LimitlessLEDColor, LimitlessLEDSta
     isCharging: false,
     isFullyCharged: false,
     isError: true,
-    recoveryAction: "Reopen Limitless app to reconnect and sync. Wait for device to fully catch up before restarting recording.",
+    recoveryAction:
+      "Reopen Limitless app to reconnect and sync. Wait for device to fully catch up before restarting recording.",
   },
   [LimitlessLEDColor.RED_BLINKING_4]: {
     color: LimitlessLEDColor.RED_BLINKING_4,
     status: "Temperature Out of Range",
-    description: "Device temperature is out of range. Avoid direct skin contact if device feels hot.",
+    description:
+      "Device temperature is out of range. Avoid direct skin contact if device feels hot.",
     isRecording: false,
     isCharging: false,
     isFullyCharged: false,
     isError: true,
-    recoveryAction: "Allow device to cool down. Contact support if issue persists.",
+    recoveryAction:
+      "Allow device to cool down. Contact support if issue persists.",
   },
   [LimitlessLEDColor.RED_VERY_RAPID]: {
     color: LimitlessLEDColor.RED_VERY_RAPID,
@@ -152,15 +162,21 @@ export const LIMITLESS_LED_INDICATORS: Record<LimitlessLEDColor, LimitlessLEDSta
     isCharging: false,
     isFullyCharged: false,
     isError: true,
-    recoveryAction: "Hold button until LED turns red (recovery mode), then hold again until LED turns off. Contact support if persists.",
+    recoveryAction:
+      "Hold button until LED turns red (recovery mode), then hold again until LED turns off. Contact support if persists.",
   },
 };
 
 /**
  * Get LED indicator information by color
  */
-export function getLimitlessLEDInfo(color: LimitlessLEDColor): LimitlessLEDState {
-  return LIMITLESS_LED_INDICATORS[color] || LIMITLESS_LED_INDICATORS[LimitlessLEDColor.WHITE];
+export function getLimitlessLEDInfo(
+  color: LimitlessLEDColor,
+): LimitlessLEDState {
+  return (
+    LIMITLESS_LED_INDICATORS[color] ||
+    LIMITLESS_LED_INDICATORS[LimitlessLEDColor.WHITE]
+  );
 }
 
 /**

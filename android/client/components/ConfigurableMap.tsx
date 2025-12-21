@@ -7,8 +7,10 @@ import MapView, {
   Region,
   MapViewProps,
   UrlTile,
-  MarkerProps,
+  MapMarkerProps,
 } from "react-native-maps";
+
+export type MarkerProps = MapMarkerProps;
 
 const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -16,7 +18,8 @@ const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
 export const useMapProvider = () => {
   const hasGoogleMapsKey = Boolean(GOOGLE_MAPS_API_KEY);
-  const provider = hasGoogleMapsKey && Platform.OS === "android" ? "google" : "osm";
+  const provider =
+    hasGoogleMapsKey && Platform.OS === "android" ? "google" : "osm";
   return { provider, hasGoogleMapsKey };
 };
 
@@ -31,7 +34,11 @@ export const ConfigurableMap = forwardRef<MapView, ConfigurableMapProps>(
     const { hasGoogleMapsKey } = useMapProvider();
 
     const getProvider = () => {
-      if (forceProvider === "google" && hasGoogleMapsKey && Platform.OS === "android") {
+      if (
+        forceProvider === "google" &&
+        hasGoogleMapsKey &&
+        Platform.OS === "android"
+      ) {
         return PROVIDER_GOOGLE;
       }
       if (forceProvider === "osm") {
@@ -80,13 +87,12 @@ export const ConfigurableMap = forwardRef<MapView, ConfigurableMapProps>(
         {children}
       </MapView>
     );
-  }
+  },
 );
 
 ConfigurableMap.displayName = "ConfigurableMap";
 
 export { Marker, Region };
-export type { MarkerProps };
 
 const styles = StyleSheet.create({
   map: {

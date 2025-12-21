@@ -1,10 +1,13 @@
-import { bluetoothService, type AudioChunk, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS } from "./bluetooth";
+import { bluetoothService, type AudioChunk } from "./bluetooth";
 import { getApiUrl } from "./query-client";
 
 export type TranscriptionCallback = (text: string, isFinal: boolean) => void;
 
 export interface AudioStreamer {
-  start(deviceId: string, onTranscription: TranscriptionCallback): Promise<void>;
+  start(
+    deviceId: string,
+    onTranscription: TranscriptionCallback,
+  ): Promise<void>;
   stop(): Promise<string>;
   isStreaming(): boolean;
 }
@@ -16,62 +19,7 @@ interface ServerMessage {
   message?: string;
 }
 
-const BITS_PER_SAMPLE = 16;
 const SEND_INTERVAL_MS = 5000;
-
-function createWavHeader(dataLength: number): Uint8Array {
-  const header = new ArrayBuffer(44);
-  const view = new DataView(header);
-
-  const sampleRate = AUDIO_SAMPLE_RATE;
-  const numChannels = AUDIO_CHANNELS;
-  const bitsPerSample = BITS_PER_SAMPLE;
-  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-  const blockAlign = numChannels * (bitsPerSample / 8);
-
-  const writeString = (offset: number, str: string) => {
-    for (let i = 0; i < str.length; i++) {
-      view.setUint8(offset + i, str.charCodeAt(i));
-    }
-  };
-
-  writeString(0, "RIFF");
-  view.setUint32(4, 36 + dataLength, true);
-  writeString(8, "WAVE");
-  writeString(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bitsPerSample, true);
-  writeString(36, "data");
-  view.setUint32(40, dataLength, true);
-
-  return new Uint8Array(header);
-}
-
-function pcmToWav(pcmChunks: Uint8Array[]): Uint8Array {
-  const totalLength = pcmChunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  
-  if (totalLength === 0) {
-    return new Uint8Array(0);
-  }
-
-  const header = createWavHeader(totalLength);
-  const wav = new Uint8Array(header.length + totalLength);
-  
-  wav.set(header, 0);
-  
-  let offset = header.length;
-  for (const chunk of pcmChunks) {
-    wav.set(chunk, offset);
-    offset += chunk.length;
-  }
-
-  return wav;
-}
 
 function uint8ArrayToBase64(bytes: Uint8Array): string {
   if (typeof Buffer !== "undefined") {
@@ -103,7 +51,10 @@ class AudioStreamerImpl implements AudioStreamer {
   private deviceId: string = "";
   private resolveStop: ((value: string) => void) | null = null;
 
-  public async start(deviceId: string, onTranscription: TranscriptionCallback): Promise<void> {
+  public async start(
+    deviceId: string,
+    onTranscription: TranscriptionCallback,
+  ): Promise<void> {
     if (this.streaming) {
       console.warn("AudioStreamer already streaming");
       return;
@@ -122,15 +73,19 @@ class AudioStreamerImpl implements AudioStreamer {
 
       this.ws.onopen = () => {
         console.log("WebSocket connected");
-        
-        this.ws?.send(JSON.stringify({
-          type: "START",
-          deviceId: this.deviceId,
-        }));
 
-        this.unsubscribeAudioChunk = bluetoothService.onAudioChunk((chunk: AudioChunk) => {
-          this.audioChunkBuffer.push(chunk.data);
-        });
+        this.ws?.send(
+          JSON.stringify({
+            type: "START",
+            deviceId: this.deviceId,
+          }),
+        );
+
+        this.unsubscribeAudioChunk = bluetoothService.onAudioChunk(
+          (chunk: AudioChunk) => {
+            this.audioChunkBuffer.push(chunk.data);
+          },
+        );
 
         this.sendInterval = setInterval(() => {
           this.sendBufferedAudio();
@@ -196,7 +151,10 @@ class AudioStreamerImpl implements AudioStreamer {
       return;
     }
 
-    const totalLength = this.audioChunkBuffer.reduce((sum, chunk) => sum + chunk.length, 0);
+    const totalLength = this.audioChunkBuffer.reduce(
+      (sum, chunk) => sum + chunk.length,
+      0,
+    );
     if (totalLength === 0) {
       this.audioChunkBuffer = [];
       return;
@@ -213,10 +171,12 @@ class AudioStreamerImpl implements AudioStreamer {
     const base64Data = uint8ArrayToBase64(pcmData);
 
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({
-        type: "AUDIO_CHUNK",
-        data: base64Data,
-      }));
+      this.ws.send(
+        JSON.stringify({
+          type: "AUDIO_CHUNK",
+          data: base64Data,
+        }),
+      );
     }
   }
 
@@ -224,7 +184,8 @@ class AudioStreamerImpl implements AudioStreamer {
     switch (message.type) {
       case "TRANSCRIPTION":
         if (message.text) {
-          this.fullTranscript += (this.fullTranscript ? " " : "") + message.text;
+          this.fullTranscript +=
+            (this.fullTranscript ? " " : "") + message.text;
           this.transcriptionCallback?.(message.text, message.isFinal || false);
         }
 
@@ -256,7 +217,10 @@ class AudioStreamerImpl implements AudioStreamer {
     }
 
     if (this.ws) {
-      if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+      if (
+        this.ws.readyState === WebSocket.OPEN ||
+        this.ws.readyState === WebSocket.CONNECTING
+      ) {
         this.ws.close();
       }
       this.ws = null;

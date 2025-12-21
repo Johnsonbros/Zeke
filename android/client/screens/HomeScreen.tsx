@@ -1,5 +1,13 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, ScrollView, StyleSheet, RefreshControl, Pressable, ActivityIndicator, Alert, Platform } from "react-native";
+import {
+  View,
+  ScrollView,
+  StyleSheet,
+  RefreshControl,
+  Pressable,
+  ActivityIndicator,
+  Platform,
+} from "react-native";
 import * as Battery from "expo-battery";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -8,7 +16,10 @@ import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigation, CompositeNavigationProp } from "@react-navigation/native";
+import {
+  useNavigation,
+  CompositeNavigationProp,
+} from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { HomeStackParamList } from "@/navigation/HomeStackNavigator";
@@ -22,9 +33,9 @@ import { PulsingDot } from "@/components/PulsingDot";
 import { useTheme } from "@/hooks/useTheme";
 import { useLocation } from "@/hooks/useLocation";
 import { Spacing, Colors, BorderRadius, Gradients } from "@/constants/theme";
-import { queryClient, getApiUrl, isZekeSyncMode } from "@/lib/query-client";
-import { 
-  getHealthStatus, 
+import { queryClient, isZekeSyncMode } from "@/lib/query-client";
+import {
+  getHealthStatus,
   getDashboardSummary,
   getTodayEvents,
   getPendingTasks,
@@ -63,8 +74,8 @@ function mapApiDeviceToDeviceInfo(device: ApiDevice): DeviceInfo {
     return `${Math.floor(diffHours / 24)} days ago`;
   };
 
-  const deviceType: "omi" | "limitless" = 
-    (device.type === "omi" || device.type === "limitless") ? device.type : "omi";
+  const deviceType: "omi" | "limitless" =
+    device.type === "omi" || device.type === "limitless" ? device.type : "omi";
 
   return {
     id: device.id,
@@ -78,7 +89,7 @@ function mapApiDeviceToDeviceInfo(device: ApiDevice): DeviceInfo {
 }
 
 type HomeScreenNavigationProp = CompositeNavigationProp<
-  NativeStackNavigationProp<HomeStackParamList, 'Home'>,
+  NativeStackNavigationProp<HomeStackParamList, "Home">,
   CompositeNavigationProp<
     BottomTabNavigationProp<MainTabParamList>,
     NativeStackNavigationProp<RootStackParamList>
@@ -94,10 +105,16 @@ function getGreeting(): string {
 
 function formatEventTime(startTime: string, endTime?: string): string {
   const start = new Date(startTime);
-  const timeStr = start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const timeStr = start.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
   if (endTime) {
     const end = new Date(endTime);
-    const endTimeStr = end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const endTimeStr = end.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    });
     return `${timeStr} - ${endTimeStr}`;
   }
   return timeStr;
@@ -110,7 +127,12 @@ interface QuickActionButtonProps {
   onPress: () => void;
 }
 
-function QuickActionButton({ icon, label, gradientColors, onPress }: QuickActionButtonProps) {
+function QuickActionButton({
+  icon,
+  label,
+  gradientColors,
+  onPress,
+}: QuickActionButtonProps) {
   const handlePress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onPress();
@@ -119,7 +141,13 @@ function QuickActionButton({ icon, label, gradientColors, onPress }: QuickAction
   return (
     <Pressable
       onPress={handlePress}
-      style={({ pressed }) => [styles.quickActionButton, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+      style={({ pressed }) => [
+        styles.quickActionButton,
+        {
+          opacity: pressed ? 0.8 : 1,
+          transform: [{ scale: pressed ? 0.98 : 1 }],
+        },
+      ]}
     >
       <LinearGradient
         colors={gradientColors}
@@ -130,7 +158,9 @@ function QuickActionButton({ icon, label, gradientColors, onPress }: QuickAction
         <View style={styles.quickActionIconContainer}>
           <Feather name={icon} size={24} color="#FFFFFF" />
         </View>
-        <ThemedText type="small" style={styles.quickActionLabel}>{label}</ThemedText>
+        <ThemedText type="small" style={styles.quickActionLabel}>
+          {label}
+        </ThemedText>
       </LinearGradient>
     </Pressable>
   );
@@ -150,19 +180,19 @@ export default function HomeScreen() {
     lastUpdated,
     isLoading: isLocationLoading,
     permissionStatus,
-    requestPermission,
-    refreshLocation,
   } = useLocation();
 
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
-  const [batteryState, setBatteryState] = useState<Battery.BatteryState | null>(null);
+  const [batteryState, setBatteryState] = useState<Battery.BatteryState | null>(
+    null,
+  );
 
   useEffect(() => {
     let batteryLevelSubscription: { remove: () => void } | null = null;
     let batteryStateSubscription: { remove: () => void } | null = null;
 
     const loadBatteryInfo = async () => {
-      if (Platform.OS === 'web') {
+      if (Platform.OS === "web") {
         setBatteryLevel(null);
         setBatteryState(null);
         return;
@@ -173,14 +203,18 @@ export default function HomeScreen() {
         setBatteryLevel(level);
         setBatteryState(state);
 
-        batteryLevelSubscription = Battery.addBatteryLevelListener(({ batteryLevel: lvl }) => {
-          setBatteryLevel(lvl);
-        });
-        batteryStateSubscription = Battery.addBatteryStateListener(({ batteryState: st }) => {
-          setBatteryState(st);
-        });
-      } catch (error) {
-        console.log('Battery monitoring not available');
+        batteryLevelSubscription = Battery.addBatteryLevelListener(
+          ({ batteryLevel: lvl }) => {
+            setBatteryLevel(lvl);
+          },
+        );
+        batteryStateSubscription = Battery.addBatteryStateListener(
+          ({ batteryState: st }) => {
+            setBatteryState(st);
+          },
+        );
+      } catch {
+        console.log("Battery monitoring not available");
       }
     };
 
@@ -200,27 +234,28 @@ export default function HomeScreen() {
   };
 
   const getBatteryIcon = (): keyof typeof Feather.glyphMap => {
-    if (batteryState === Battery.BatteryState.CHARGING) return "battery-charging";
+    if (batteryState === Battery.BatteryState.CHARGING)
+      return "battery-charging";
     return "battery";
   };
 
   const handleUploadPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    navigation.navigate('AudioUpload');
+    navigation.navigate("AudioUpload");
   };
 
   const handleCallPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate('CommsTab');
+    navigation.navigate("CommsTab");
   };
 
   const handleMessagePress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate('CommsTab');
+    navigation.navigate("CommsTab");
   };
 
   const { data: connectionStatus } = useQuery({
-    queryKey: ['zeke-connection-status'],
+    queryKey: ["zeke-connection-status"],
     queryFn: getHealthStatus,
     enabled: isSyncMode,
     staleTime: 30000,
@@ -228,62 +263,72 @@ export default function HomeScreen() {
   });
 
   const { data: dashboardSummary } = useQuery<DashboardSummary>({
-    queryKey: ['zeke-dashboard-summary'],
+    queryKey: ["zeke-dashboard-summary"],
     queryFn: getDashboardSummary,
     enabled: isSyncMode,
     staleTime: 60000,
   });
 
   const { data: todayEvents = [] } = useQuery<ZekeEvent[]>({
-    queryKey: ['zeke-today-events'],
+    queryKey: ["zeke-today-events"],
     queryFn: getTodayEvents,
     enabled: isSyncMode,
     staleTime: 60000,
   });
 
   const { data: pendingTasks = [] } = useQuery<ZekeTask[]>({
-    queryKey: ['zeke-pending-tasks'],
+    queryKey: ["zeke-pending-tasks"],
     queryFn: getPendingTasks,
     enabled: isSyncMode,
     staleTime: 60000,
   });
 
   const { data: groceryItems = [] } = useQuery<ZekeGroceryItem[]>({
-    queryKey: ['zeke-grocery-items'],
+    queryKey: ["zeke-grocery-items"],
     queryFn: getGroceryItems,
     enabled: isSyncMode,
     staleTime: 60000,
   });
 
-  const { data: activities = [], isLoading: isLoadingActivities } = useQuery<ActivityItem[]>({
-    queryKey: ['zeke-recent-activities'],
+  const { data: activities = [], isLoading: isLoadingActivities } = useQuery<
+    ActivityItem[]
+  >({
+    queryKey: ["zeke-recent-activities"],
     queryFn: () => getRecentActivities(8),
     staleTime: 30000,
     refetchInterval: 60000,
   });
 
-  const { data: devicesData, isLoading: isLoadingDevices } = useQuery<ApiDevice[]>({
-    queryKey: ['/api/devices'],
+  const { data: devicesData, isLoading: isLoadingDevices } = useQuery<
+    ApiDevice[]
+  >({
+    queryKey: ["/api/devices"],
     enabled: !isSyncMode,
   });
 
-  const devices: DeviceInfo[] = (devicesData ?? []).map(mapApiDeviceToDeviceInfo);
-  const isLiveTranscribing = devices.some(d => d.isConnected && d.isRecording);
+  const devices: DeviceInfo[] = (devicesData ?? []).map(
+    mapApiDeviceToDeviceInfo,
+  );
+  const isLiveTranscribing = devices.some(
+    (d) => d.isConnected && d.isRecording,
+  );
   const isRefreshing = isLoadingDevices;
 
   const onRefresh = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await queryClient.invalidateQueries({ queryKey: ['zeke-recent-activities'] });
+    await queryClient.invalidateQueries({
+      queryKey: ["zeke-recent-activities"],
+    });
     if (isSyncMode) {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['zeke-connection-status'] }),
-        queryClient.invalidateQueries({ queryKey: ['zeke-dashboard-summary'] }),
-        queryClient.invalidateQueries({ queryKey: ['zeke-today-events'] }),
-        queryClient.invalidateQueries({ queryKey: ['zeke-pending-tasks'] }),
-        queryClient.invalidateQueries({ queryKey: ['zeke-grocery-items'] }),
+        queryClient.invalidateQueries({ queryKey: ["zeke-connection-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["zeke-dashboard-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["zeke-today-events"] }),
+        queryClient.invalidateQueries({ queryKey: ["zeke-pending-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["zeke-grocery-items"] }),
       ]);
     } else {
-      await queryClient.invalidateQueries({ queryKey: ['/api/devices'] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
     }
   }, [isSyncMode]);
 
@@ -291,7 +336,9 @@ export default function HomeScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const unpurchasedGroceryItems = groceryItems.filter(item => !item.isPurchased);
+  const unpurchasedGroceryItems = groceryItems.filter(
+    (item) => !item.isPurchased,
+  );
 
   return (
     <ScrollView
@@ -314,7 +361,10 @@ export default function HomeScreen() {
       <View style={styles.headerSection}>
         <View style={styles.greetingSection}>
           <GradientText type="h2" colors={Gradients.primary}>
-            {getGreeting()}{isSyncMode && dashboardSummary?.userName ? `, ${dashboardSummary.userName}` : ''}
+            {getGreeting()}
+            {isSyncMode && dashboardSummary?.userName
+              ? `, ${dashboardSummary.userName}`
+              : ""}
           </GradientText>
           <ThemedText type="body" secondary style={{ marginTop: Spacing.xs }}>
             ZEKE Command Center
@@ -328,72 +378,111 @@ export default function HomeScreen() {
           <QuickActionButton
             icon="phone"
             label="Call"
-            gradientColors={['#6366F1', '#8B5CF6']}
+            gradientColors={["#6366F1", "#8B5CF6"]}
             onPress={handleCallPress}
           />
           <QuickActionButton
             icon="message-circle"
             label="Message"
-            gradientColors={['#8B5CF6', '#A855F7']}
+            gradientColors={["#8B5CF6", "#A855F7"]}
             onPress={handleMessagePress}
           />
         </View>
 
-        <Pressable 
-          style={[styles.monitoringCard, { backgroundColor: theme.backgroundDefault }]}
+        <Pressable
+          style={[
+            styles.monitoringCard,
+            { backgroundColor: theme.backgroundDefault },
+          ]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            navigation.navigate('Location');
+            navigation.navigate("Location");
           }}
         >
           <View style={styles.monitoringHeader}>
             <View style={styles.monitoringTitleRow}>
               <Feather name="map-pin" size={18} color={Colors.dark.primary} />
-              <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>Location Tracking</ThemedText>
+              <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>
+                Location Tracking
+              </ThemedText>
             </View>
             <View style={styles.statusIndicator}>
               {isLocationLoading ? (
                 <ActivityIndicator size="small" color={Colors.dark.primary} />
-              ) : permissionStatus === 'granted' && location ? (
+              ) : permissionStatus === "granted" && location ? (
                 <>
                   <PulsingDot color={Colors.dark.success} size={8} />
-                  <ThemedText type="caption" style={{ marginLeft: Spacing.xs, color: Colors.dark.success }}>Active</ThemedText>
+                  <ThemedText
+                    type="caption"
+                    style={{
+                      marginLeft: Spacing.xs,
+                      color: Colors.dark.success,
+                    }}
+                  >
+                    Active
+                  </ThemedText>
                 </>
-              ) : permissionStatus === 'denied' ? (
-                <ThemedText type="caption" style={{ color: Colors.dark.error }}>Denied</ThemedText>
+              ) : permissionStatus === "denied" ? (
+                <ThemedText type="caption" style={{ color: Colors.dark.error }}>
+                  Denied
+                </ThemedText>
               ) : (
-                <ThemedText type="caption" style={{ color: Colors.dark.warning }}>Tap to Enable</ThemedText>
+                <ThemedText
+                  type="caption"
+                  style={{ color: Colors.dark.warning }}
+                >
+                  Tap to Enable
+                </ThemedText>
               )}
             </View>
           </View>
           <View style={styles.locationInfo}>
-            {permissionStatus === 'granted' && geocoded ? (
+            {permissionStatus === "granted" && geocoded ? (
               <>
                 <ThemedText type="body">{geocoded.formattedAddress}</ThemedText>
-                <ThemedText type="caption" secondary style={{ marginTop: Spacing.xs }}>
-                  Last updated: {lastUpdated || 'Just now'}
+                <ThemedText
+                  type="caption"
+                  secondary
+                  style={{ marginTop: Spacing.xs }}
+                >
+                  Last updated: {lastUpdated || "Just now"}
                 </ThemedText>
               </>
-            ) : permissionStatus === 'granted' && location ? (
+            ) : permissionStatus === "granted" && location ? (
               <>
                 <ThemedText type="body">
-                  {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
+                  {location.latitude.toFixed(4)},{" "}
+                  {location.longitude.toFixed(4)}
                 </ThemedText>
-                <ThemedText type="caption" secondary style={{ marginTop: Spacing.xs }}>
-                  Last updated: {lastUpdated || 'Just now'}
+                <ThemedText
+                  type="caption"
+                  secondary
+                  style={{ marginTop: Spacing.xs }}
+                >
+                  Last updated: {lastUpdated || "Just now"}
                 </ThemedText>
               </>
-            ) : permissionStatus === 'denied' ? (
+            ) : permissionStatus === "denied" ? (
               <>
                 <ThemedText type="body">Location access denied</ThemedText>
-                <ThemedText type="caption" secondary style={{ marginTop: Spacing.xs }}>
-                  {Platform.OS !== 'web' ? 'Tap to open settings' : 'Enable location in browser'}
+                <ThemedText
+                  type="caption"
+                  secondary
+                  style={{ marginTop: Spacing.xs }}
+                >
+                  {Platform.OS !== "web"
+                    ? "Tap to open settings"
+                    : "Enable location in browser"}
                 </ThemedText>
               </>
             ) : (
               <>
                 <ThemedText type="body">Enable location access</ThemedText>
-                <ThemedText type="caption" secondary style={{ marginTop: Spacing.xs }}>
+                <ThemedText
+                  type="caption"
+                  secondary
+                  style={{ marginTop: Spacing.xs }}
+                >
                   Tap to allow ZEKE to track your location
                 </ThemedText>
               </>
@@ -401,89 +490,148 @@ export default function HomeScreen() {
           </View>
         </Pressable>
 
-        <View style={[styles.monitoringCard, { backgroundColor: theme.backgroundDefault }]}>
+        <View
+          style={[
+            styles.monitoringCard,
+            { backgroundColor: theme.backgroundDefault },
+          ]}
+        >
           <View style={styles.monitoringHeader}>
             <View style={styles.monitoringTitleRow}>
               <Feather name="activity" size={18} color={Colors.dark.accent} />
-              <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>Activity Timeline</ThemedText>
+              <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>
+                Activity Timeline
+              </ThemedText>
             </View>
           </View>
           {isLoadingActivities ? (
             <View style={styles.activityLoadingContainer}>
               <ActivityIndicator size="small" color={Colors.dark.primary} />
-              <ThemedText type="caption" secondary style={{ marginTop: Spacing.sm }}>
+              <ThemedText
+                type="caption"
+                secondary
+                style={{ marginTop: Spacing.sm }}
+              >
                 Loading activities...
               </ThemedText>
             </View>
           ) : activities.length === 0 ? (
             <View style={styles.activityEmptyContainer}>
               <Feather name="inbox" size={24} color={theme.textSecondary} />
-              <ThemedText type="small" secondary style={{ marginTop: Spacing.sm, textAlign: 'center' }}>
+              <ThemedText
+                type="small"
+                secondary
+                style={{ marginTop: Spacing.sm, textAlign: "center" }}
+              >
                 No recent activity
               </ThemedText>
-              <ThemedText type="caption" secondary style={{ marginTop: Spacing.xs, textAlign: 'center' }}>
+              <ThemedText
+                type="caption"
+                secondary
+                style={{ marginTop: Spacing.xs, textAlign: "center" }}
+              >
                 Actions like messages, recordings, and tasks will appear here
               </ThemedText>
             </View>
           ) : (
             activities.map((activity, index) => (
-              <View 
-                key={activity.id} 
+              <View
+                key={activity.id}
                 style={[
-                  styles.activityItem, 
-                  index === activities.length - 1 ? { marginBottom: 0 } : null
+                  styles.activityItem,
+                  index === activities.length - 1 ? { marginBottom: 0 } : null,
                 ]}
               >
-                <View style={[styles.activityIconContainer, { backgroundColor: `${Colors.dark.primary}20` }]}>
-                  <Feather name={activity.icon} size={14} color={Colors.dark.primary} />
+                <View
+                  style={[
+                    styles.activityIconContainer,
+                    { backgroundColor: `${Colors.dark.primary}20` },
+                  ]}
+                >
+                  <Feather
+                    name={activity.icon}
+                    size={14}
+                    color={Colors.dark.primary}
+                  />
                 </View>
                 <View style={styles.activityContent}>
-                  <ThemedText type="small" numberOfLines={1}>{activity.action}</ThemedText>
-                  <ThemedText type="caption" secondary>{activity.timestamp}</ThemedText>
+                  <ThemedText type="small" numberOfLines={1}>
+                    {activity.action}
+                  </ThemedText>
+                  <ThemedText type="caption" secondary>
+                    {activity.timestamp}
+                  </ThemedText>
                 </View>
               </View>
             ))
           )}
         </View>
 
-        {Platform.OS !== 'web' && batteryLevel !== null ? (
-          <View style={[styles.monitoringCard, { backgroundColor: theme.backgroundDefault }]}>
+        {Platform.OS !== "web" && batteryLevel !== null ? (
+          <View
+            style={[
+              styles.monitoringCard,
+              { backgroundColor: theme.backgroundDefault },
+            ]}
+          >
             <View style={styles.monitoringHeader}>
               <View style={styles.monitoringTitleRow}>
-                <Feather name={getBatteryIcon()} size={18} color={getBatteryColor()} />
-                <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>Device Battery</ThemedText>
+                <Feather
+                  name={getBatteryIcon()}
+                  size={18}
+                  color={getBatteryColor()}
+                />
+                <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>
+                  Device Battery
+                </ThemedText>
               </View>
               <View style={styles.statusIndicator}>
-                <View style={[styles.batteryLevelIndicator, { backgroundColor: `${getBatteryColor()}20` }]}>
-                  <View 
+                <View
+                  style={[
+                    styles.batteryLevelIndicator,
+                    { backgroundColor: `${getBatteryColor()}20` },
+                  ]}
+                >
+                  <View
                     style={[
-                      styles.batteryLevelFill, 
-                      { 
+                      styles.batteryLevelFill,
+                      {
                         backgroundColor: getBatteryColor(),
                         width: `${Math.round(batteryLevel * 100)}%`,
-                      }
-                    ]} 
+                      },
+                    ]}
                   />
                 </View>
-                <ThemedText type="body" style={{ marginLeft: Spacing.sm, color: getBatteryColor(), fontWeight: '600' }}>
+                <ThemedText
+                  type="body"
+                  style={{
+                    marginLeft: Spacing.sm,
+                    color: getBatteryColor(),
+                    fontWeight: "600",
+                  }}
+                >
                   {Math.round(batteryLevel * 100)}%
                 </ThemedText>
               </View>
             </View>
             <View style={styles.locationInfo}>
               <ThemedText type="body">
-                {batteryState === Battery.BatteryState.CHARGING 
-                  ? 'Charging' 
-                  : batteryState === Battery.BatteryState.FULL 
-                    ? 'Fully Charged' 
-                    : 'On Battery'}
+                {batteryState === Battery.BatteryState.CHARGING
+                  ? "Charging"
+                  : batteryState === Battery.BatteryState.FULL
+                    ? "Fully Charged"
+                    : "On Battery"}
               </ThemedText>
-              <ThemedText type="caption" secondary style={{ marginTop: Spacing.xs }}>
-                {batteryLevel < 0.2 
-                  ? 'Low battery - consider charging soon' 
-                  : batteryLevel >= 0.8 
-                    ? 'Battery is healthy' 
-                    : 'Battery level is moderate'}
+              <ThemedText
+                type="caption"
+                secondary
+                style={{ marginTop: Spacing.xs }}
+              >
+                {batteryLevel < 0.2
+                  ? "Low battery - consider charging soon"
+                  : batteryLevel >= 0.8
+                    ? "Battery is healthy"
+                    : "Battery level is moderate"}
               </ThemedText>
             </View>
           </View>
@@ -492,46 +640,118 @@ export default function HomeScreen() {
         {isSyncMode ? (
           <>
             <View style={styles.statsGrid}>
-              <View style={[styles.statCard, { backgroundColor: theme.backgroundDefault }]}>
-                <View style={[styles.statIconContainer, { backgroundColor: 'rgba(99, 102, 241, 0.2)' }]}>
-                  <Feather name="calendar" size={20} color={Colors.dark.primary} />
+              <View
+                style={[
+                  styles.statCard,
+                  { backgroundColor: theme.backgroundDefault },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.statIconContainer,
+                    { backgroundColor: "rgba(99, 102, 241, 0.2)" },
+                  ]}
+                >
+                  <Feather
+                    name="calendar"
+                    size={20}
+                    color={Colors.dark.primary}
+                  />
                 </View>
                 <ThemedText type="h3">{todayEvents.length}</ThemedText>
-                <ThemedText type="caption" secondary>Events</ThemedText>
+                <ThemedText type="caption" secondary>
+                  Events
+                </ThemedText>
               </View>
-              <View style={[styles.statCard, { backgroundColor: theme.backgroundDefault }]}>
-                <View style={[styles.statIconContainer, { backgroundColor: 'rgba(168, 85, 247, 0.2)' }]}>
-                  <Feather name="check-square" size={20} color={Colors.dark.accent} />
+              <View
+                style={[
+                  styles.statCard,
+                  { backgroundColor: theme.backgroundDefault },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.statIconContainer,
+                    { backgroundColor: "rgba(168, 85, 247, 0.2)" },
+                  ]}
+                >
+                  <Feather
+                    name="check-square"
+                    size={20}
+                    color={Colors.dark.accent}
+                  />
                 </View>
                 <ThemedText type="h3">{pendingTasks.length}</ThemedText>
-                <ThemedText type="caption" secondary>Tasks</ThemedText>
+                <ThemedText type="caption" secondary>
+                  Tasks
+                </ThemedText>
               </View>
-              <View style={[styles.statCard, { backgroundColor: theme.backgroundDefault }]}>
-                <View style={[styles.statIconContainer, { backgroundColor: 'rgba(236, 72, 153, 0.2)' }]}>
+              <View
+                style={[
+                  styles.statCard,
+                  { backgroundColor: theme.backgroundDefault },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.statIconContainer,
+                    { backgroundColor: "rgba(236, 72, 153, 0.2)" },
+                  ]}
+                >
                   <Feather name="shopping-cart" size={20} color="#EC4899" />
                 </View>
-                <ThemedText type="h3">{unpurchasedGroceryItems.length}</ThemedText>
-                <ThemedText type="caption" secondary>Groceries</ThemedText>
+                <ThemedText type="h3">
+                  {unpurchasedGroceryItems.length}
+                </ThemedText>
+                <ThemedText type="caption" secondary>
+                  Groceries
+                </ThemedText>
               </View>
-              <View style={[styles.statCard, { backgroundColor: theme.backgroundDefault }]}>
-                <View style={[styles.statIconContainer, { backgroundColor: 'rgba(34, 197, 94, 0.2)' }]}>
+              <View
+                style={[
+                  styles.statCard,
+                  { backgroundColor: theme.backgroundDefault },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.statIconContainer,
+                    { backgroundColor: "rgba(34, 197, 94, 0.2)" },
+                  ]}
+                >
                   <Feather name="wifi" size={20} color="#22C55E" />
                 </View>
-                <ThemedText type="h3">{connectionStatus?.status === 'ok' ? 'Online' : 'Offline'}</ThemedText>
-                <ThemedText type="caption" secondary>Status</ThemedText>
+                <ThemedText type="h3">
+                  {connectionStatus?.status === "ok" ? "Online" : "Offline"}
+                </ThemedText>
+                <ThemedText type="caption" secondary>
+                  Status
+                </ThemedText>
               </View>
             </View>
 
             {todayEvents.length > 0 && (
-              <View style={[styles.dashboardCard, { backgroundColor: theme.backgroundDefault }]}>
+              <View
+                style={[
+                  styles.dashboardCard,
+                  { backgroundColor: theme.backgroundDefault },
+                ]}
+              >
                 <View style={styles.sectionHeader}>
-                  <ThemedText type="h4">Today's Schedule</ThemedText>
+                  <ThemedText type="h4">Today&apos;s Schedule</ThemedText>
                 </View>
                 {todayEvents.slice(0, 3).map((event, index) => (
                   <View key={event.id || index} style={styles.eventItem}>
-                    <View style={[styles.eventDot, { backgroundColor: Colors.dark.primary }]} />
+                    <View
+                      style={[
+                        styles.eventDot,
+                        { backgroundColor: Colors.dark.primary },
+                      ]}
+                    />
                     <View style={{ flex: 1 }}>
-                      <ThemedText type="body" numberOfLines={1}>{event.title}</ThemedText>
+                      <ThemedText type="body" numberOfLines={1}>
+                        {event.title}
+                      </ThemedText>
                       <ThemedText type="caption" secondary>
                         {formatEventTime(event.startTime, event.endTime)}
                       </ThemedText>
@@ -542,18 +762,35 @@ export default function HomeScreen() {
             )}
 
             {pendingTasks.length > 0 && (
-              <View style={[styles.dashboardCard, { backgroundColor: theme.backgroundDefault }]}>
+              <View
+                style={[
+                  styles.dashboardCard,
+                  { backgroundColor: theme.backgroundDefault },
+                ]}
+              >
                 <View style={styles.sectionHeader}>
                   <ThemedText type="h4">Pending Tasks</ThemedText>
                 </View>
                 {pendingTasks.slice(0, 3).map((task, index) => (
                   <View key={task.id || index} style={styles.taskItem}>
-                    <View style={[
-                      styles.priorityIndicator,
-                      { backgroundColor: task.priority === 'high' ? Colors.dark.error : 
-                        task.priority === 'medium' ? Colors.dark.warning : Colors.dark.success }
-                    ]} />
-                    <ThemedText type="body" numberOfLines={1} style={{ flex: 1 }}>
+                    <View
+                      style={[
+                        styles.priorityIndicator,
+                        {
+                          backgroundColor:
+                            task.priority === "high"
+                              ? Colors.dark.error
+                              : task.priority === "medium"
+                                ? Colors.dark.warning
+                                : Colors.dark.success,
+                        },
+                      ]}
+                    />
+                    <ThemedText
+                      type="body"
+                      numberOfLines={1}
+                      style={{ flex: 1 }}
+                    >
                       {task.title}
                     </ThemedText>
                   </View>
@@ -573,7 +810,10 @@ export default function HomeScreen() {
                       { backgroundColor: `${Colors.dark.primary}20` },
                     ]}
                   >
-                    <ThemedText type="small" style={{ color: Colors.dark.primary }}>
+                    <ThemedText
+                      type="small"
+                      style={{ color: Colors.dark.primary }}
+                    >
                       {devices.length}
                     </ThemedText>
                   </View>
@@ -594,13 +834,30 @@ export default function HomeScreen() {
                 />
               ))
             ) : (
-              <View style={[styles.emptyCard, { backgroundColor: theme.backgroundDefault }]}>
+              <View
+                style={[
+                  styles.emptyCard,
+                  { backgroundColor: theme.backgroundDefault },
+                ]}
+              >
                 <View style={styles.emptyCardContent}>
-                  <Feather name="bluetooth" size={32} color={theme.textSecondary} />
-                  <ThemedText type="body" secondary style={{ marginTop: Spacing.md, textAlign: "center" }}>
+                  <Feather
+                    name="bluetooth"
+                    size={32}
+                    color={theme.textSecondary}
+                  />
+                  <ThemedText
+                    type="body"
+                    secondary
+                    style={{ marginTop: Spacing.md, textAlign: "center" }}
+                  >
                     No devices connected
                   </ThemedText>
-                  <ThemedText type="small" secondary style={{ textAlign: "center", marginTop: Spacing.xs }}>
+                  <ThemedText
+                    type="small"
+                    secondary
+                    style={{ textAlign: "center", marginTop: Spacing.xs }}
+                  >
                     Connect your Omi or Limitless device to start capturing
                   </ThemedText>
                 </View>
@@ -614,14 +871,27 @@ export default function HomeScreen() {
                   { backgroundColor: `${Colors.dark.accent}15` },
                 ]}
               >
-                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: Spacing.sm }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    marginBottom: Spacing.sm,
+                  }}
+                >
                   <PulsingDot color={Colors.dark.accent} />
-                  <ThemedText type="small" style={{ marginLeft: Spacing.sm, color: Colors.dark.accent }}>
+                  <ThemedText
+                    type="small"
+                    style={{
+                      marginLeft: Spacing.sm,
+                      color: Colors.dark.accent,
+                    }}
+                  >
                     Live Transcription
                   </ThemedText>
                 </View>
                 <ThemedText type="body" secondary numberOfLines={2}>
-                  "...and that's why we need to prioritize the user experience in the next sprint..."
+                  &quot;...and that&apos;s why we need to prioritize the user
+                  experience in the next sprint...&quot;
                 </ThemedText>
               </View>
             ) : null}
@@ -630,7 +900,10 @@ export default function HomeScreen() {
 
         <Pressable
           onPress={handleUploadPress}
-          style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, marginTop: Spacing.lg })}
+          style={({ pressed }) => ({
+            opacity: pressed ? 0.8 : 1,
+            marginTop: Spacing.lg,
+          })}
         >
           <LinearGradient
             colors={Gradients.accent}

@@ -1,5 +1,12 @@
 import React, { useState } from "react";
-import { View, StyleSheet, Alert, ScrollView, Pressable, ActivityIndicator } from "react-native";
+import {
+  View,
+  StyleSheet,
+  Alert,
+  ScrollView,
+  Pressable,
+  ActivityIndicator,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -22,14 +29,14 @@ import { useAuth } from "@/context/AuthContext";
 
 function mapZekeDeviceToDeviceInfo(zekeDevice: ZekeDevice): DeviceInfo {
   const deviceType = zekeDevice.type === "limitless" ? "limitless" : "omi";
-  
+
   let lastSync = "Never";
   if (zekeDevice.lastSyncAt) {
     const syncDate = new Date(zekeDevice.lastSyncAt);
     const now = new Date();
     const diffMs = now.getTime() - syncDate.getTime();
     const diffMins = Math.floor(diffMs / 60000);
-    
+
     if (diffMins < 1) {
       lastSync = "Just now";
     } else if (diffMins < 60) {
@@ -42,7 +49,7 @@ function mapZekeDeviceToDeviceInfo(zekeDevice: ZekeDevice): DeviceInfo {
       lastSync = `${days} day${days > 1 ? "s" : ""} ago`;
     }
   }
-  
+
   return {
     id: zekeDevice.id,
     name: zekeDevice.name,
@@ -58,25 +65,25 @@ export default function SettingsScreen() {
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
-  const navigation = useNavigation<NativeStackNavigationProp<SettingsStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<SettingsStackParamList>>();
   const { unpairDevice } = useAuth();
 
   const { data: zekeDevices = [], isLoading: isLoadingDevices } = useQuery({
-    queryKey: ['/api/devices'],
+    queryKey: ["/api/devices"],
     queryFn: getZekeDevices,
     staleTime: 30000,
   });
-  
+
   const devices: DeviceInfo[] = zekeDevices.map(mapZekeDeviceToDeviceInfo);
   const [autoSync, setAutoSync] = useState(true);
-  const [notifications, setNotifications] = useState(true);
 
   const handleDeviceConfigure = (device: DeviceInfo) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Alert.alert(
       `Configure ${device.name}`,
       "Device configuration options would appear here.",
-      [{ text: "OK" }]
+      [{ text: "OK" }],
     );
   };
 
@@ -89,7 +96,7 @@ export default function SettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     Alert.alert(
       "Clear All Data",
-      "This will remove all your memories, chat history, and device settings. This action cannot be undone.",
+      "This will remove your chat history and device settings. This action cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -100,7 +107,7 @@ export default function SettingsScreen() {
             Alert.alert("Done", "All data has been cleared.");
           },
         },
-      ]
+      ],
     );
   };
 
@@ -118,7 +125,7 @@ export default function SettingsScreen() {
             await unpairDevice();
           },
         },
-      ]
+      ],
     );
   };
 
@@ -127,7 +134,7 @@ export default function SettingsScreen() {
     Alert.alert(
       "ZEKE AI Companion",
       "Version 1.0.0\n\nA companion dashboard for your AI wearables.\n\nBuilt with Expo.",
-      [{ text: "OK" }]
+      [{ text: "OK" }],
     );
   };
 
@@ -155,7 +162,9 @@ export default function SettingsScreen() {
           ZEKE User
         </ThemedText>
         <ThemedText type="small" secondary>
-          {devices.filter((d) => d.isConnected).length} device{devices.filter((d) => d.isConnected).length !== 1 ? "s" : ""} connected
+          {devices.filter((d) => d.isConnected).length} device
+          {devices.filter((d) => d.isConnected).length !== 1 ? "s" : ""}{" "}
+          connected
         </ThemedText>
       </View>
 
@@ -163,17 +172,29 @@ export default function SettingsScreen() {
         {isLoadingDevices ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color={Colors.dark.primary} />
-            <ThemedText type="small" secondary style={{ marginTop: Spacing.sm }}>
+            <ThemedText
+              type="small"
+              secondary
+              style={{ marginTop: Spacing.sm }}
+            >
               Loading devices...
             </ThemedText>
           </View>
         ) : devices.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Feather name="smartphone" size={32} color={theme.textSecondary} />
-            <ThemedText type="body" secondary style={{ marginTop: Spacing.md, textAlign: "center" }}>
+            <ThemedText
+              type="body"
+              secondary
+              style={{ marginTop: Spacing.md, textAlign: "center" }}
+            >
               No devices connected
             </ThemedText>
-            <ThemedText type="small" secondary style={{ marginTop: Spacing.xs, textAlign: "center" }}>
+            <ThemedText
+              type="small"
+              secondary
+              style={{ marginTop: Spacing.xs, textAlign: "center" }}
+            >
               Tap below to add a device
             </ThemedText>
           </View>
@@ -190,25 +211,20 @@ export default function SettingsScreen() {
           onPress={handleAddDevice}
           style={({ pressed }) => [
             styles.addDeviceButton,
-            { backgroundColor: theme.backgroundDefault, borderColor: theme.border, opacity: pressed ? 0.8 : 1 },
+            {
+              backgroundColor: theme.backgroundDefault,
+              borderColor: theme.border,
+              opacity: pressed ? 0.8 : 1,
+            },
           ]}
         >
           <Feather name="plus" size={20} color={Colors.dark.primary} />
-          <ThemedText style={{ color: Colors.dark.primary, marginLeft: Spacing.sm }}>
+          <ThemedText
+            style={{ color: Colors.dark.primary, marginLeft: Spacing.sm }}
+          >
             Add Device
           </ThemedText>
         </Pressable>
-        <View style={{ marginTop: Spacing.md }}>
-          <SettingsRow
-            icon="mic"
-            label="Live Capture"
-            value="Real-time transcription"
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              navigation.navigate("LiveCapture");
-            }}
-          />
-        </View>
       </SettingsSection>
 
       <SettingsSection title="PREFERENCES">
@@ -237,26 +253,9 @@ export default function SettingsScreen() {
             icon="database"
             label="Data Retention"
             value="30 days"
-            onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-          />
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
-          <SettingsRow
-            icon="download"
-            label="Export Data"
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              navigation.navigate("DataExport");
-            }}
-          />
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
-          <SettingsRow
-            icon="bar-chart-2"
-            label="Analytics"
-            value="View your stats"
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              navigation.navigate("Analytics");
-            }}
+            onPress={() =>
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+            }
           />
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <SettingsRow
@@ -282,13 +281,17 @@ export default function SettingsScreen() {
           <SettingsRow
             icon="file-text"
             label="Privacy Policy"
-            onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+            onPress={() =>
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+            }
           />
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <SettingsRow
             icon="help-circle"
             label="Help & Support"
-            onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+            onPress={() =>
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+            }
           />
         </View>
       </SettingsSection>

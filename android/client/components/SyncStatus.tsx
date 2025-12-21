@@ -1,47 +1,47 @@
-import React from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
-import { ThemedText } from './ThemedText';
-import { useTheme } from '@/hooks/useTheme';
-import { Colors, Spacing, BorderRadius } from '@/constants/theme';
-import { ConnectionStatus } from '@/hooks/useZekeSync';
+import React from "react";
+import { View, StyleSheet, Pressable } from "react-native";
+import { ThemedText } from "./ThemedText";
+import { useTheme } from "@/hooks/useTheme";
+import { Spacing, BorderRadius } from "@/constants/theme";
+import { ConnectionStatus } from "@/hooks/useZekeSync";
 
 interface SyncStatusProps {
   status: ConnectionStatus;
   showLabel?: boolean;
-  size?: 'small' | 'medium';
+  size?: "small" | "medium";
   onPress?: () => void;
 }
 
-export function SyncStatus({ 
-  status, 
-  showLabel = false, 
-  size = 'small',
-  onPress 
+export function SyncStatus({
+  status,
+  showLabel = false,
+  size = "small",
+  onPress,
 }: SyncStatusProps) {
   const theme = useTheme();
-  
-  const dotSize = size === 'small' ? 8 : 12;
-  const containerPadding = size === 'small' ? Spacing.xs : Spacing.sm;
+
+  const dotSize = size === "small" ? 8 : 12;
+  const containerPadding = size === "small" ? Spacing.xs : Spacing.sm;
 
   const getStatusColor = () => {
     switch (status) {
-      case 'connected':
+      case "connected":
         return theme.theme.success;
-      case 'connecting':
+      case "connecting":
         return theme.theme.warning;
-      case 'disconnected':
+      case "disconnected":
         return theme.theme.error;
     }
   };
 
   const getStatusLabel = () => {
     switch (status) {
-      case 'connected':
-        return 'Synced';
-      case 'connecting':
-        return 'Connecting...';
-      case 'disconnected':
-        return 'Offline';
+      case "connected":
+        return "Synced";
+      case "connecting":
+        return "Connecting...";
+      case "disconnected":
+        return "Offline";
     }
   };
 
@@ -59,13 +59,13 @@ export function SyncStatus({
         ]}
       />
       {showLabel ? (
-        <ThemedText 
+        <ThemedText
           style={[
-            styles.label, 
-            { 
+            styles.label,
+            {
               color: getStatusColor(),
-              fontSize: size === 'small' ? 12 : 14,
-            }
+              fontSize: size === "small" ? 12 : 14,
+            },
           ]}
         >
           {getStatusLabel()}
@@ -76,12 +76,9 @@ export function SyncStatus({
 
   if (onPress) {
     return (
-      <Pressable 
+      <Pressable
         onPress={onPress}
-        style={({ pressed }) => [
-          styles.pressable,
-          pressed && styles.pressed
-        ]}
+        style={({ pressed }) => [styles.pressable, pressed && styles.pressed]}
       >
         {content}
       </Pressable>
@@ -99,18 +96,18 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   container: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: Spacing.xs,
   },
   dot: {
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
     elevation: 2,
   },
   label: {
-    fontWeight: '500',
+    fontWeight: "500",
   },
 });

@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { View, StyleSheet, ScrollView, Pressable, Platform, Linking, Dimensions, Alert } from "react-native";
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  Platform,
+  Linking,
+  Dimensions,
+  Alert,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { Feather } from "@expo/vector-icons";
@@ -17,7 +25,7 @@ import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { SettingsRow, SettingsSection } from "@/components/SettingsRow";
 import { useTheme } from "@/hooks/useTheme";
-import { Spacing, Colors, BorderRadius } from "@/constants/theme";
+import { Spacing, BorderRadius } from "@/constants/theme";
 
 interface SensorData {
   x: number;
@@ -40,9 +48,19 @@ export default function DeviceFeaturesScreen() {
   const [contactsCount, setContactsCount] = useState<number | null>(null);
   const [contactsPermission, setContactsPermission] = useState<boolean>(false);
 
-  const [accelerometerData, setAccelerometerData] = useState<SensorData>({ x: 0, y: 0, z: 0 });
-  const [gyroscopeData, setGyroscopeData] = useState<SensorData>({ x: 0, y: 0, z: 0 });
-  const [barometerPressure, setBarometerPressure] = useState<number | null>(null);
+  const [accelerometerData, setAccelerometerData] = useState<SensorData>({
+    x: 0,
+    y: 0,
+    z: 0,
+  });
+  const [gyroscopeData, setGyroscopeData] = useState<SensorData>({
+    x: 0,
+    y: 0,
+    z: 0,
+  });
+  const [barometerPressure, setBarometerPressure] = useState<number | null>(
+    null,
+  );
   const [stepCount, setStepCount] = useState<number>(0);
   const [sensorsEnabled, setSensorsEnabled] = useState<boolean>(false);
 
@@ -79,17 +97,20 @@ export default function DeviceFeaturesScreen() {
       checkBiometricAvailability();
     }
 
-    const unsubscribeNetwork = NetInfo.addEventListener((state: NetInfoState) => {
-      setNetworkState({
-        type: state.type,
-        isConnected: state.isConnected ?? false,
-        isInternetReachable: state.isInternetReachable,
-      });
-    });
+    const unsubscribeNetwork = NetInfo.addEventListener(
+      (state: NetInfoState) => {
+        setNetworkState({
+          type: state.type,
+          isConnected: state.isConnected ?? false,
+          isInternetReachable: state.isInternetReachable,
+        });
+      },
+    );
 
     return () => {
       unsubscribeNetwork();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadDeviceInfo = async () => {
@@ -135,15 +156,26 @@ export default function DeviceFeaturesScreen() {
     try {
       const hasHardware = await LocalAuthentication.hasHardwareAsync();
       const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-      const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
+      const supportedTypes =
+        await LocalAuthentication.supportedAuthenticationTypesAsync();
 
       setBiometricAvailable(hasHardware && isEnrolled);
 
-      if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+      if (
+        supportedTypes.includes(
+          LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION,
+        )
+      ) {
         setBiometricType("Face ID");
-      } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+      } else if (
+        supportedTypes.includes(
+          LocalAuthentication.AuthenticationType.FINGERPRINT,
+        )
+      ) {
         setBiometricType("Fingerprint");
-      } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.IRIS)) {
+      } else if (
+        supportedTypes.includes(LocalAuthentication.AuthenticationType.IRIS)
+      ) {
         setBiometricType("Iris");
       } else {
         setBiometricType("None");
@@ -186,7 +218,7 @@ export default function DeviceFeaturesScreen() {
                 },
               },
             ]
-          : [{ text: "OK" }]
+          : [{ text: "OK" }],
       );
     }
   };
@@ -297,7 +329,7 @@ export default function DeviceFeaturesScreen() {
 
     Alert.alert(
       "Share ZEKE AI",
-      "Sharing feature ready! In a real implementation, this would share app content or exported data."
+      "Sharing feature ready! In a real implementation, this would share app content or exported data.",
     );
   };
 
@@ -312,7 +344,7 @@ export default function DeviceFeaturesScreen() {
 
     setIsSpeaking(true);
     Speech.speak(
-      "Hello! I am ZEKE, your AI assistant. I can help you manage your memories, tasks, and daily activities.",
+      "Hello! I am ZEKE, your AI assistant. I can help you manage your tasks, calendar, and daily activities.",
       {
         language: "en-US",
         pitch: 1.0,
@@ -320,15 +352,21 @@ export default function DeviceFeaturesScreen() {
         onDone: () => setIsSpeaking(false),
         onStopped: () => setIsSpeaking(false),
         onError: () => setIsSpeaking(false),
-      }
+      },
     );
   };
 
   const renderWebFallback = (featureName: string) => (
-    <View style={[styles.webFallback, { backgroundColor: theme.backgroundSecondary }]}>
+    <View
+      style={[
+        styles.webFallback,
+        { backgroundColor: theme.backgroundSecondary },
+      ]}
+    >
       <Feather name="smartphone" size={24} color={theme.textSecondary} />
       <ThemedText type="small" secondary style={styles.webFallbackText}>
-        {featureName} requires a native device. Run in Expo Go to use this feature.
+        {featureName} requires a native device. Run in Expo Go to use this
+        feature.
       </ThemedText>
     </View>
   );
@@ -353,8 +391,14 @@ export default function DeviceFeaturesScreen() {
           <View style={{ borderRadius: BorderRadius.md, overflow: "hidden" }}>
             <SettingsRow
               icon="users"
-              label={contactsPermission ? "Contacts Accessible" : "Request Contacts Permission"}
-              value={contactsCount !== null ? `${contactsCount} contacts` : undefined}
+              label={
+                contactsPermission
+                  ? "Contacts Accessible"
+                  : "Request Contacts Permission"
+              }
+              value={
+                contactsCount !== null ? `${contactsCount} contacts` : undefined
+              }
               onPress={requestContactsPermission}
               showChevron={!contactsPermission}
             />
@@ -375,27 +419,46 @@ export default function DeviceFeaturesScreen() {
               onToggle={toggleSensors}
             />
             {sensorsEnabled ? (
-              <View style={[styles.sensorData, { backgroundColor: theme.backgroundDefault }]}>
+              <View
+                style={[
+                  styles.sensorData,
+                  { backgroundColor: theme.backgroundDefault },
+                ]}
+              >
                 <View style={styles.sensorRow}>
-                  <ThemedText type="caption" secondary>Accelerometer:</ThemedText>
+                  <ThemedText type="caption" secondary>
+                    Accelerometer:
+                  </ThemedText>
                   <ThemedText type="small">
-                    X: {formatSensorValue(accelerometerData.x)} | Y: {formatSensorValue(accelerometerData.y)} | Z: {formatSensorValue(accelerometerData.z)}
+                    X: {formatSensorValue(accelerometerData.x)} | Y:{" "}
+                    {formatSensorValue(accelerometerData.y)} | Z:{" "}
+                    {formatSensorValue(accelerometerData.z)}
                   </ThemedText>
                 </View>
                 <View style={styles.sensorRow}>
-                  <ThemedText type="caption" secondary>Gyroscope:</ThemedText>
+                  <ThemedText type="caption" secondary>
+                    Gyroscope:
+                  </ThemedText>
                   <ThemedText type="small">
-                    X: {formatSensorValue(gyroscopeData.x)} | Y: {formatSensorValue(gyroscopeData.y)} | Z: {formatSensorValue(gyroscopeData.z)}
+                    X: {formatSensorValue(gyroscopeData.x)} | Y:{" "}
+                    {formatSensorValue(gyroscopeData.y)} | Z:{" "}
+                    {formatSensorValue(gyroscopeData.z)}
                   </ThemedText>
                 </View>
                 <View style={styles.sensorRow}>
-                  <ThemedText type="caption" secondary>Barometer:</ThemedText>
+                  <ThemedText type="caption" secondary>
+                    Barometer:
+                  </ThemedText>
                   <ThemedText type="small">
-                    {barometerPressure !== null ? `${barometerPressure.toFixed(2)} hPa` : "Not available"}
+                    {barometerPressure !== null
+                      ? `${barometerPressure.toFixed(2)} hPa`
+                      : "Not available"}
                   </ThemedText>
                 </View>
                 <View style={styles.sensorRow}>
-                  <ThemedText type="caption" secondary>Steps Today:</ThemedText>
+                  <ThemedText type="caption" secondary>
+                    Steps Today:
+                  </ThemedText>
                   <ThemedText type="small">{stepCount}</ThemedText>
                 </View>
               </View>
@@ -488,7 +551,13 @@ export default function DeviceFeaturesScreen() {
           <SettingsRow
             icon="cloud"
             label="Internet Reachable"
-            value={networkState.isInternetReachable === null ? "Unknown" : networkState.isInternetReachable ? "Yes" : "No"}
+            value={
+              networkState.isInternetReachable === null
+                ? "Unknown"
+                : networkState.isInternetReachable
+                  ? "Yes"
+                  : "No"
+            }
             showChevron={false}
           />
         </View>
@@ -508,9 +577,15 @@ export default function DeviceFeaturesScreen() {
               disabled={!biometricAvailable}
             />
             {!biometricAvailable ? (
-              <View style={[styles.infoBox, { backgroundColor: theme.backgroundSecondary }]}>
+              <View
+                style={[
+                  styles.infoBox,
+                  { backgroundColor: theme.backgroundSecondary },
+                ]}
+              >
                 <ThemedText type="small" secondary>
-                  Biometric authentication is not available or not enrolled on this device.
+                  Biometric authentication is not available or not enrolled on
+                  this device.
                 </ThemedText>
               </View>
             ) : null}

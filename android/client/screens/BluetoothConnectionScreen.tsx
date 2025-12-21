@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { View, StyleSheet, ScrollView, Pressable, Platform, Alert } from "react-native";
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  Platform,
+  Alert,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
@@ -28,8 +35,10 @@ export default function BluetoothConnectionScreen() {
 
   const [isScanning, setIsScanning] = useState(false);
   const [nearbyDevices, setNearbyDevices] = useState<BLEDevice[]>([]);
-  const [connectionState, setConnectionState] = useState<ConnectionState>("disconnected");
-  const [connectingDeviceId, setConnectingDeviceId] = useState<string | null>(null);
+  const [, setConnectionState] = useState<ConnectionState>("disconnected");
+  const [connectingDeviceId, setConnectingDeviceId] = useState<string | null>(
+    null,
+  );
 
   const scanPulse = useSharedValue(1);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -38,20 +47,24 @@ export default function BluetoothConnectionScreen() {
   const bleStatus = bluetoothService.getBleStatus();
 
   useEffect(() => {
-    const unsubscribeDiscovery = bluetoothService.onDeviceDiscovered((device) => {
-      setNearbyDevices((prev) => {
-        if (prev.find((d) => d.id === device.id)) return prev;
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        return [...prev, device];
-      });
-    });
+    const unsubscribeDiscovery = bluetoothService.onDeviceDiscovered(
+      (device) => {
+        setNearbyDevices((prev) => {
+          if (prev.find((d) => d.id === device.id)) return prev;
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          return [...prev, device];
+        });
+      },
+    );
 
-    const unsubscribeConnection = bluetoothService.onConnectionStateChange((state, device) => {
-      setConnectionState(state);
-      if (state === "connected" && device) {
-        setConnectingDeviceId(null);
-      }
-    });
+    const unsubscribeConnection = bluetoothService.onConnectionStateChange(
+      (state, device) => {
+        setConnectionState(state);
+        if (state === "connected" && device) {
+          setConnectingDeviceId(null);
+        }
+      },
+    );
 
     return () => {
       unsubscribeDiscovery();
@@ -75,11 +88,12 @@ export default function BluetoothConnectionScreen() {
             text: "Try Simulation",
             onPress: () => startScanning(),
           },
-        ]
+        ],
       );
       return;
     }
     startScanning();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMockMode]);
 
   const startScanning = useCallback(() => {
@@ -90,10 +104,10 @@ export default function BluetoothConnectionScreen() {
     scanPulse.value = withRepeat(
       withSequence(
         withTiming(1.2, { duration: 1000 }),
-        withTiming(1, { duration: 1000 })
+        withTiming(1, { duration: 1000 }),
       ),
       -1,
-      false
+      false,
     );
 
     bluetoothService.startScan();
@@ -111,6 +125,7 @@ export default function BluetoothConnectionScreen() {
         }
       }
     }, 500);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleStopScan = useCallback(() => {
@@ -122,44 +137,55 @@ export default function BluetoothConnectionScreen() {
       clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = null;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleConnectDevice = useCallback((device: BLEDevice) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert(
-      `Connect to ${device.name}?`,
-      isMockMode
-        ? "This is a simulated connection. In a production build with BLE support, the device would pair here."
-        : "ZEKE will pair with this device.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Connect",
-          onPress: async () => {
-            setConnectingDeviceId(device.id);
-            const success = await bluetoothService.connect(device.id);
-            if (success) {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              Alert.alert(
-                "Connected!",
-                `Successfully connected to ${device.name}${isMockMode ? " (simulated)" : ""}.`,
-                [
-                  {
-                    text: "OK",
-                    onPress: () => navigation.goBack(),
-                  },
-                ]
-              );
-            } else {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-              Alert.alert("Connection Failed", "Could not connect to the device. Please try again.");
-              setConnectingDeviceId(null);
-            }
+  const handleConnectDevice = useCallback(
+    (device: BLEDevice) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      Alert.alert(
+        `Connect to ${device.name}?`,
+        isMockMode
+          ? "This is a simulated connection. In a production build with BLE support, the device would pair here."
+          : "ZEKE will pair with this device.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Connect",
+            onPress: async () => {
+              setConnectingDeviceId(device.id);
+              const success = await bluetoothService.connect(device.id);
+              if (success) {
+                Haptics.notificationAsync(
+                  Haptics.NotificationFeedbackType.Success,
+                );
+                Alert.alert(
+                  "Connected!",
+                  `Successfully connected to ${device.name}${isMockMode ? " (simulated)" : ""}.`,
+                  [
+                    {
+                      text: "OK",
+                      onPress: () => navigation.goBack(),
+                    },
+                  ],
+                );
+              } else {
+                Haptics.notificationAsync(
+                  Haptics.NotificationFeedbackType.Error,
+                );
+                Alert.alert(
+                  "Connection Failed",
+                  "Could not connect to the device. Please try again.",
+                );
+                setConnectingDeviceId(null);
+              }
+            },
           },
-        },
-      ]
-    );
-  }, [isMockMode, navigation]);
+        ],
+      );
+    },
+    [isMockMode, navigation],
+  );
 
   const getSignalIcon = (strength: number): keyof typeof Feather.glyphMap => {
     if (strength > -50) return "wifi";
@@ -188,12 +214,21 @@ export default function BluetoothConnectionScreen() {
       scrollIndicatorInsets={{ bottom: insets.bottom }}
       showsVerticalScrollIndicator={false}
     >
-      <View style={[styles.warningCard, { backgroundColor: theme.backgroundDefault }]}>
+      <View
+        style={[
+          styles.warningCard,
+          { backgroundColor: theme.backgroundDefault },
+        ]}
+      >
         <View style={styles.warningIconContainer}>
-          <Feather 
-            name={bleStatus.mode === "real" ? "check-circle" : "info"} 
-            size={20} 
-            color={bleStatus.mode === "real" ? Colors.dark.success : Colors.dark.warning} 
+          <Feather
+            name={bleStatus.mode === "real" ? "check-circle" : "info"}
+            size={20}
+            color={
+              bleStatus.mode === "real"
+                ? Colors.dark.success
+                : Colors.dark.warning
+            }
           />
         </View>
         <View style={styles.warningContent}>
@@ -204,10 +239,17 @@ export default function BluetoothConnectionScreen() {
             {bleStatus.reason}
           </ThemedText>
           <View style={styles.bleStatusBadge}>
-            <View style={[
-              styles.bleStatusDot, 
-              { backgroundColor: bleStatus.mode === "real" ? Colors.dark.success : Colors.dark.warning }
-            ]} />
+            <View
+              style={[
+                styles.bleStatusDot,
+                {
+                  backgroundColor:
+                    bleStatus.mode === "real"
+                      ? Colors.dark.success
+                      : Colors.dark.warning,
+                },
+              ]}
+            />
             <ThemedText type="caption" secondary>
               {bleStatus.mode.toUpperCase()} BLE ({bleStatus.platform})
             </ThemedText>
@@ -218,14 +260,23 @@ export default function BluetoothConnectionScreen() {
       <View style={styles.scanSection}>
         <Animated.View style={[styles.scanButtonWrapper, scanAnimatedStyle]}>
           {isScanning ? (
-            <View style={[styles.scanPulseRing, { borderColor: Colors.dark.primary }]} />
+            <View
+              style={[
+                styles.scanPulseRing,
+                { borderColor: Colors.dark.primary },
+              ]}
+            />
           ) : null}
           <Pressable
             onPress={isScanning ? handleStopScan : handleStartScan}
             style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
           >
             <LinearGradient
-              colors={isScanning ? [Colors.dark.error, Colors.dark.error] : Gradients.primary}
+              colors={
+                isScanning
+                  ? [Colors.dark.error, Colors.dark.error]
+                  : Gradients.primary
+              }
               style={styles.scanButton}
             >
               <Feather
@@ -256,7 +307,9 @@ export default function BluetoothConnectionScreen() {
               key={device.id}
               onPress={() => handleConnectDevice(device)}
               disabled={connectingDeviceId === device.id}
-              style={({ pressed }) => ({ opacity: pressed || connectingDeviceId === device.id ? 0.6 : 1 })}
+              style={({ pressed }) => ({
+                opacity: pressed || connectingDeviceId === device.id ? 0.6 : 1,
+              })}
             >
               <Card elevation={1} style={styles.deviceCard}>
                 <View style={styles.deviceRow}>
@@ -265,7 +318,9 @@ export default function BluetoothConnectionScreen() {
                       styles.deviceIcon,
                       {
                         backgroundColor:
-                          device.type === "omi" ? Colors.dark.primary : Colors.dark.secondary,
+                          device.type === "omi"
+                            ? Colors.dark.primary
+                            : Colors.dark.secondary,
                       },
                     ]}
                   >
@@ -285,7 +340,11 @@ export default function BluetoothConnectionScreen() {
                         size={12}
                         color={getSignalColor(device.signalStrength)}
                       />
-                      <ThemedText type="caption" secondary style={{ marginLeft: 4 }}>
+                      <ThemedText
+                        type="caption"
+                        secondary
+                        style={{ marginLeft: 4 }}
+                      >
                         {device.signalStrength} dBm
                       </ThemedText>
                       {device.batteryLevel !== undefined ? (
@@ -296,7 +355,11 @@ export default function BluetoothConnectionScreen() {
                             color={theme.textSecondary}
                             style={{ marginLeft: Spacing.sm }}
                           />
-                          <ThemedText type="caption" secondary style={{ marginLeft: 4 }}>
+                          <ThemedText
+                            type="caption"
+                            secondary
+                            style={{ marginLeft: 4 }}
+                          >
                             {device.batteryLevel}%
                           </ThemedText>
                         </>
@@ -304,11 +367,18 @@ export default function BluetoothConnectionScreen() {
                     </View>
                   </View>
                   {connectingDeviceId === device.id ? (
-                    <ThemedText type="caption" style={{ color: Colors.dark.primary }}>
+                    <ThemedText
+                      type="caption"
+                      style={{ color: Colors.dark.primary }}
+                    >
                       Connecting...
                     </ThemedText>
                   ) : (
-                    <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+                    <Feather
+                      name="chevron-right"
+                      size={20}
+                      color={theme.textSecondary}
+                    />
                   )}
                 </View>
               </Card>
@@ -324,7 +394,12 @@ export default function BluetoothConnectionScreen() {
           </ThemedText>
           <View style={styles.instructionsList}>
             <View style={styles.instructionItem}>
-              <View style={[styles.instructionNumber, { backgroundColor: theme.backgroundSecondary }]}>
+              <View
+                style={[
+                  styles.instructionNumber,
+                  { backgroundColor: theme.backgroundSecondary },
+                ]}
+              >
                 <ThemedText type="small">1</ThemedText>
               </View>
               <ThemedText type="body" style={styles.instructionText}>
@@ -332,15 +407,26 @@ export default function BluetoothConnectionScreen() {
               </ThemedText>
             </View>
             <View style={styles.instructionItem}>
-              <View style={[styles.instructionNumber, { backgroundColor: theme.backgroundSecondary }]}>
+              <View
+                style={[
+                  styles.instructionNumber,
+                  { backgroundColor: theme.backgroundSecondary },
+                ]}
+              >
                 <ThemedText type="small">2</ThemedText>
               </View>
               <ThemedText type="body" style={styles.instructionText}>
-                Forget any previous pairing from your phone's Bluetooth settings
+                Forget any previous pairing from your phone&apos;s Bluetooth
+                settings
               </ThemedText>
             </View>
             <View style={styles.instructionItem}>
-              <View style={[styles.instructionNumber, { backgroundColor: theme.backgroundSecondary }]}>
+              <View
+                style={[
+                  styles.instructionNumber,
+                  { backgroundColor: theme.backgroundSecondary },
+                ]}
+              >
                 <ThemedText type="small">3</ThemedText>
               </View>
               <ThemedText type="body" style={styles.instructionText}>
@@ -353,11 +439,19 @@ export default function BluetoothConnectionScreen() {
             onPress={() => navigation.navigate("LimitlessSetup" as never)}
             style={({ pressed }) => [
               styles.setupGuideButton,
-              { backgroundColor: theme.backgroundSecondary, opacity: pressed ? 0.8 : 1 },
+              {
+                backgroundColor: theme.backgroundSecondary,
+                opacity: pressed ? 0.8 : 1,
+              },
             ]}
           >
             <View style={styles.setupGuideContent}>
-              <View style={[styles.setupGuideIcon, { backgroundColor: Colors.dark.secondary }]}>
+              <View
+                style={[
+                  styles.setupGuideIcon,
+                  { backgroundColor: Colors.dark.secondary },
+                ]}
+              >
                 <Feather name="disc" size={20} color="#FFFFFF" />
               </View>
               <View style={styles.setupGuideText}>
@@ -368,7 +462,11 @@ export default function BluetoothConnectionScreen() {
                   Factory reset instructions and troubleshooting
                 </ThemedText>
               </View>
-              <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+              <Feather
+                name="chevron-right"
+                size={20}
+                color={theme.textSecondary}
+              />
             </View>
           </Pressable>
         </View>

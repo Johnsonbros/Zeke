@@ -15,7 +15,10 @@ interface PulsingDotProps {
   size?: number;
 }
 
-export function PulsingDot({ color = Colors.dark.accent, size = 10 }: PulsingDotProps) {
+export function PulsingDot({
+  color = Colors.dark.accent,
+  size = 10,
+}: PulsingDotProps) {
   const opacity = useSharedValue(1);
   const scale = useSharedValue(1);
 
@@ -23,19 +26,20 @@ export function PulsingDot({ color = Colors.dark.accent, size = 10 }: PulsingDot
     opacity.value = withRepeat(
       withSequence(
         withTiming(0.4, { duration: 800 }),
-        withTiming(1, { duration: 800 })
+        withTiming(1, { duration: 800 }),
       ),
       -1,
-      true
+      true,
     );
     scale.value = withRepeat(
       withSequence(
         withTiming(0.8, { duration: 800 }),
-        withTiming(1.2, { duration: 800 })
+        withTiming(1.2, { duration: 800 }),
       ),
       -1,
-      true
+      true,
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -47,7 +51,12 @@ export function PulsingDot({ color = Colors.dark.accent, size = 10 }: PulsingDot
     <Animated.View
       style={[
         styles.dot,
-        { backgroundColor: color, width: size, height: size, borderRadius: size / 2 },
+        {
+          backgroundColor: color,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+        },
         animatedStyle,
       ]}
     />

@@ -29,7 +29,11 @@ import { EmptyState } from "@/components/EmptyState";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, Colors, BorderRadius } from "@/constants/theme";
-import { useLocalLists, useSyncStatus, type ListWithItems } from "@/hooks/useLocalLists";
+import {
+  useLocalLists,
+  useSyncStatus,
+  type ListWithItems,
+} from "@/hooks/useLocalLists";
 import type { ListData, ListItemData } from "@/lib/filesystem-repository";
 
 const LIST_COLORS = [
@@ -51,7 +55,13 @@ interface ListItemRowProps {
   theme: any;
 }
 
-function ListItemRow({ item, listId, onToggle, onDelete, theme }: ListItemRowProps) {
+function ListItemRow({
+  item,
+  listId,
+  onToggle,
+  onDelete,
+  theme,
+}: ListItemRowProps) {
   const translateX = useSharedValue(0);
 
   const handleToggle = () => {
@@ -61,18 +71,14 @@ function ListItemRow({ item, listId, onToggle, onDelete, theme }: ListItemRowPro
 
   const triggerDelete = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert(
-      "Delete Item",
-      `Remove this item from the list?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => onDelete(listId, item.id),
-        },
-      ]
-    );
+    Alert.alert("Delete Item", `Remove this item from the list?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => onDelete(listId, item.id),
+      },
+    ]);
   }, [listId, item.id, onDelete]);
 
   const panGesture = Gesture.Pan()
@@ -106,11 +112,21 @@ function ListItemRow({ item, listId, onToggle, onDelete, theme }: ListItemRowPro
         >
           <View style={styles.checkbox}>
             {item.checked ? (
-              <View style={[styles.checkboxChecked, { backgroundColor: Colors.dark.success }]}>
+              <View
+                style={[
+                  styles.checkboxChecked,
+                  { backgroundColor: Colors.dark.success },
+                ]}
+              >
                 <Feather name="check" size={14} color="#fff" />
               </View>
             ) : (
-              <View style={[styles.checkboxUnchecked, { borderColor: theme.textSecondary }]} />
+              <View
+                style={[
+                  styles.checkboxUnchecked,
+                  { borderColor: theme.textSecondary },
+                ]}
+              />
             )}
           </View>
           <ThemedText
@@ -150,7 +166,7 @@ function ListCard({ list, onPress, onDelete, theme }: ListCardProps) {
           style: "destructive",
           onPress: () => onDelete(list.id),
         },
-      ]
+      ],
     );
   };
 
@@ -164,7 +180,11 @@ function ListCard({ list, onPress, onDelete, theme }: ListCardProps) {
               {list.name}
             </ThemedText>
             {list.description ? (
-              <ThemedText type="caption" style={{ color: theme.textSecondary }} numberOfLines={1}>
+              <ThemedText
+                type="caption"
+                style={{ color: theme.textSecondary }}
+                numberOfLines={1}
+              >
                 {list.description}
               </ThemedText>
             ) : null}
@@ -228,55 +248,67 @@ export default function ListsScreen() {
       await createList(
         newListName.trim(),
         newListDescription.trim() || undefined,
-        newListColor
+        newListColor,
       );
       setIsAddListModalVisible(false);
       resetAddListForm();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (err) {
+    } catch {
       Alert.alert("Error", "Failed to create list. Please try again.");
     } finally {
       setIsCreating(false);
     }
   };
 
-  const handleOpenList = useCallback(async (list: ListData) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const listWithItems = await getListWithItems(list.id);
-    if (listWithItems) {
-      setSelectedList(listWithItems);
-      setIsDetailModalVisible(true);
-    }
-  }, [getListWithItems]);
+  const handleOpenList = useCallback(
+    async (list: ListData) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const listWithItems = await getListWithItems(list.id);
+      if (listWithItems) {
+        setSelectedList(listWithItems);
+        setIsDetailModalVisible(true);
+      }
+    },
+    [getListWithItems],
+  );
 
-  const handleDeleteList = useCallback(async (id: string) => {
-    try {
-      await deleteList(id);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (err) {
-      Alert.alert("Error", "Failed to delete list. Please try again.");
-    }
-  }, [deleteList]);
+  const handleDeleteList = useCallback(
+    async (id: string) => {
+      try {
+        await deleteList(id);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch {
+        Alert.alert("Error", "Failed to delete list. Please try again.");
+      }
+    },
+    [deleteList],
+  );
 
-  const handleToggleItem = useCallback(async (listId: string, itemId: string) => {
-    try {
-      await toggleListItem(listId, itemId);
-      const updated = await getListWithItems(listId);
-      if (updated) setSelectedList(updated);
-    } catch (err) {
-      Alert.alert("Error", "Failed to update item. Please try again.");
-    }
-  }, [toggleListItem, getListWithItems]);
+  const handleToggleItem = useCallback(
+    async (listId: string, itemId: string) => {
+      try {
+        await toggleListItem(listId, itemId);
+        const updated = await getListWithItems(listId);
+        if (updated) setSelectedList(updated);
+      } catch {
+        Alert.alert("Error", "Failed to update item. Please try again.");
+      }
+    },
+    [toggleListItem, getListWithItems],
+  );
 
-  const handleDeleteItem = useCallback(async (listId: string, itemId: string) => {
-    try {
-      await deleteListItem(listId, itemId);
-      const updated = await getListWithItems(listId);
-      if (updated) setSelectedList(updated);
-    } catch (err) {
-      Alert.alert("Error", "Failed to delete item. Please try again.");
-    }
-  }, [deleteListItem, getListWithItems]);
+  const handleDeleteItem = useCallback(
+    async (listId: string, itemId: string) => {
+      try {
+        await deleteListItem(listId, itemId);
+        const updated = await getListWithItems(listId);
+        if (updated) setSelectedList(updated);
+      } catch {
+        Alert.alert("Error", "Failed to delete item. Please try again.");
+      }
+    },
+    [deleteListItem, getListWithItems],
+  );
 
   const handleAddItem = async () => {
     if (!newItemText.trim() || !selectedList) return;
@@ -286,7 +318,7 @@ export default function ListsScreen() {
       const updated = await getListWithItems(selectedList.id);
       if (updated) setSelectedList(updated);
       setNewItemText("");
-    } catch (err) {
+    } catch {
       Alert.alert("Error", "Failed to add item. Please try again.");
     } finally {
       setIsAddingItem(false);
@@ -295,14 +327,14 @@ export default function ListsScreen() {
 
   const handleClearChecked = async () => {
     if (!selectedList) return;
-    const checkedCount = selectedList.items.filter(i => i.checked).length;
+    const checkedCount = selectedList.items.filter((i) => i.checked).length;
     if (checkedCount === 0) {
       Alert.alert("No Items", "There are no checked items to clear.");
       return;
     }
     Alert.alert(
       "Clear Checked Items",
-      `Remove ${checkedCount} checked item${checkedCount > 1 ? 's' : ''}?`,
+      `Remove ${checkedCount} checked item${checkedCount > 1 ? "s" : ""}?`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -313,12 +345,15 @@ export default function ListsScreen() {
               await clearCheckedItems(selectedList.id);
               const updated = await getListWithItems(selectedList.id);
               if (updated) setSelectedList(updated);
-            } catch (err) {
-              Alert.alert("Error", "Failed to clear checked items. Please try again.");
+            } catch {
+              Alert.alert(
+                "Error",
+                "Failed to clear checked items. Please try again.",
+              );
             }
           },
         },
-      ]
+      ],
     );
   };
 
@@ -346,15 +381,15 @@ export default function ListsScreen() {
       >
         <View style={styles.syncStatusRow}>
           {pendingChanges > 0 ? (
-            <Pressable 
-              onPress={syncNow} 
+            <Pressable
+              onPress={syncNow}
               disabled={isSyncing}
               style={styles.syncButton}
             >
-              <Feather 
-                name={isSyncing ? "loader" : "cloud"} 
-                size={16} 
-                color={Colors.dark.warning} 
+              <Feather
+                name={isSyncing ? "loader" : "cloud"}
+                size={16}
+                color={Colors.dark.warning}
               />
               <ThemedText type="caption" style={{ color: Colors.dark.warning }}>
                 {isSyncing ? "Syncing..." : `${pendingChanges} pending`}
@@ -362,7 +397,11 @@ export default function ListsScreen() {
             </Pressable>
           ) : (
             <View style={styles.syncButton}>
-              <Feather name="check-circle" size={16} color={Colors.dark.success} />
+              <Feather
+                name="check-circle"
+                size={16}
+                color={Colors.dark.success}
+              />
               <ThemedText type="caption" style={{ color: Colors.dark.success }}>
                 Synced locally
               </ThemedText>
@@ -383,7 +422,12 @@ export default function ListsScreen() {
           <ActivityIndicator size="large" color={Colors.dark.primary} />
         </View>
       ) : lists.length === 0 ? (
-        <View style={[styles.emptyContainer, { paddingBottom: tabBarHeight + Spacing.xl }]}>
+        <View
+          style={[
+            styles.emptyContainer,
+            { paddingBottom: tabBarHeight + Spacing.xl },
+          ]}
+        >
           <EmptyState
             icon="list"
             title="No Lists Yet"
@@ -425,10 +469,22 @@ export default function ListsScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setIsAddListModalVisible(false)}
       >
-        <View style={[styles.modalContainer, { backgroundColor: theme.backgroundRoot }]}>
-          <View style={[styles.modalHeader, { paddingTop: insets.top + Spacing.md }]}>
+        <View
+          style={[
+            styles.modalContainer,
+            { backgroundColor: theme.backgroundRoot },
+          ]}
+        >
+          <View
+            style={[
+              styles.modalHeader,
+              { paddingTop: insets.top + Spacing.md },
+            ]}
+          >
             <Pressable onPress={() => setIsAddListModalVisible(false)}>
-              <ThemedText style={{ color: Colors.dark.primary }}>Cancel</ThemedText>
+              <ThemedText style={{ color: Colors.dark.primary }}>
+                Cancel
+              </ThemedText>
             </Pressable>
             <ThemedText type="h4">New List</ThemedText>
             <Pressable onPress={handleCreateList} disabled={isCreating}>
@@ -440,7 +496,9 @@ export default function ListsScreen() {
 
           <KeyboardAwareScrollViewCompat
             style={styles.modalContent}
-            contentContainerStyle={{ paddingBottom: insets.bottom + Spacing.xl }}
+            contentContainerStyle={{
+              paddingBottom: insets.bottom + Spacing.xl,
+            }}
           >
             <View style={styles.inputGroup}>
               <ThemedText type="small" style={styles.inputLabel}>
@@ -515,13 +573,32 @@ export default function ListsScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setIsDetailModalVisible(false)}
       >
-        <View style={[styles.modalContainer, { backgroundColor: theme.backgroundRoot }]}>
-          <View style={[styles.modalHeader, { paddingTop: insets.top + Spacing.md }]}>
+        <View
+          style={[
+            styles.modalContainer,
+            { backgroundColor: theme.backgroundRoot },
+          ]}
+        >
+          <View
+            style={[
+              styles.modalHeader,
+              { paddingTop: insets.top + Spacing.md },
+            ]}
+          >
             <Pressable onPress={() => setIsDetailModalVisible(false)}>
-              <Feather name="chevron-left" size={24} color={Colors.dark.primary} />
+              <Feather
+                name="chevron-left"
+                size={24}
+                color={Colors.dark.primary}
+              />
             </Pressable>
             <View style={styles.modalTitleContainer}>
-              <View style={[styles.colorDotSmall, { backgroundColor: selectedList?.color || LIST_COLORS[0] }]} />
+              <View
+                style={[
+                  styles.colorDotSmall,
+                  { backgroundColor: selectedList?.color || LIST_COLORS[0] },
+                ]}
+              />
               <ThemedText type="h4" numberOfLines={1}>
                 {selectedList?.name || "List"}
               </ThemedText>
@@ -586,7 +663,9 @@ export default function ListsScreen() {
                 paddingHorizontal: Spacing.lg,
                 paddingBottom: insets.bottom + Spacing.xl,
               }}
-              ItemSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
+              ItemSeparatorComponent={() => (
+                <View style={{ height: Spacing.sm }} />
+              )}
             />
           )}
         </View>

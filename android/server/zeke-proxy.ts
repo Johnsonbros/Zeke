@@ -460,11 +460,12 @@ export function registerZekeProxyRoutes(app: Express): void {
     res.json(result.data);
   });
 
-  app.get("/api/zeke/memories", async (req: Request, res: Response) => {
+
+  app.get("/api/zeke/devices", async (req: Request, res: Response) => {
     const headers = extractForwardHeaders(req.headers);
-    const result = await proxyToZeke("GET", "/api/memories", undefined, headers);
+    const result = await proxyToZeke("GET", "/api/omi/devices", undefined, headers);
     if (!result.success) {
-      return res.status(result.status).json({ error: result.error || "Failed to fetch memories", memories: [] });
+      return res.status(result.status).json({ error: result.error || "Failed to fetch devices", devices: [] });
     }
     res.json(result.data);
   });

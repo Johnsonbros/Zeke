@@ -17,7 +17,7 @@ interface CardProps {
   description?: string;
   children?: React.ReactNode;
   onPress?: () => void;
-  style?: ViewStyle;
+  style?: ViewStyle | (ViewStyle | undefined)[];
 }
 
 const springConfig: WithSpringConfig = {

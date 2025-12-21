@@ -1,5 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
-import { View, StyleSheet, TextInput, Pressable, Platform, KeyboardAvoidingView, ActivityIndicator, Alert } from "react-native";
+import {
+  View,
+  StyleSheet,
+  TextInput,
+  Pressable,
+  Platform,
+  KeyboardAvoidingView,
+  ActivityIndicator,
+  Alert,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { Feather } from "@expo/vector-icons";
@@ -30,7 +39,9 @@ export default function SmsComposeScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     navigation.setOptions({
-      headerTitle: contactName || (initialPhoneNumber ? initialPhoneNumber : "New Message"),
+      headerTitle:
+        contactName ||
+        (initialPhoneNumber ? initialPhoneNumber : "New Message"),
     });
     if (initialPhoneNumber) {
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -46,7 +57,7 @@ export default function SmsComposeScreen({ route, navigation }: Props) {
     onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       queryClient.invalidateQueries({ queryKey: ["twilio-conversations"] });
-      if (Platform.OS === 'web') {
+      if (Platform.OS === "web") {
         window.alert("Your message has been sent.");
         navigation.goBack();
       } else {
@@ -56,7 +67,7 @@ export default function SmsComposeScreen({ route, navigation }: Props) {
       }
     },
     onError: (error: Error) => {
-      if (Platform.OS === 'web') {
+      if (Platform.OS === "web") {
         window.alert(`Failed to Send: ${error.message || "Please try again."}`);
       } else {
         Alert.alert("Failed to Send", error.message || "Please try again.");
@@ -70,7 +81,10 @@ export default function SmsComposeScreen({ route, navigation }: Props) {
     sendMutation.mutate({ to: phoneNumber.trim(), body: message.trim() });
   };
 
-  const canSend = message.trim().length > 0 && phoneNumber.trim().length > 0 && !sendMutation.isPending;
+  const canSend =
+    message.trim().length > 0 &&
+    phoneNumber.trim().length > 0 &&
+    !sendMutation.isPending;
 
   return (
     <ThemedView style={styles.container}>
@@ -80,7 +94,9 @@ export default function SmsComposeScreen({ route, navigation }: Props) {
         keyboardVerticalOffset={headerHeight}
       >
         <View style={[styles.content, { paddingTop: Spacing.lg }]}>
-          <View style={[styles.recipientRow, { borderBottomColor: theme.border }]}>
+          <View
+            style={[styles.recipientRow, { borderBottomColor: theme.border }]}
+          >
             <ThemedText type="small" style={{ color: theme.textSecondary }}>
               To:
             </ThemedText>
@@ -124,7 +140,11 @@ export default function SmsComposeScreen({ route, navigation }: Props) {
 
             <ThemedText
               type="caption"
-              style={{ color: theme.textSecondary, textAlign: "right", marginTop: Spacing.xs }}
+              style={{
+                color: theme.textSecondary,
+                textAlign: "right",
+                marginTop: Spacing.xs,
+              }}
             >
               {message.length}/1600
             </ThemedText>
@@ -150,7 +170,12 @@ export default function SmsComposeScreen({ route, navigation }: Props) {
             ]}
           >
             {sendMutation.isPending ? (
-              <View style={[styles.sendGradient, { backgroundColor: Colors.dark.primary }]}>
+              <View
+                style={[
+                  styles.sendGradient,
+                  { backgroundColor: Colors.dark.primary },
+                ]}
+              >
                 <ActivityIndicator color="#FFFFFF" size="small" />
               </View>
             ) : (

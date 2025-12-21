@@ -4,10 +4,7 @@ import HomeScreen from "@/screens/HomeScreen";
 import AudioUploadScreen from "@/screens/AudioUploadScreen";
 import SettingsScreen from "@/screens/SettingsScreen";
 import NotificationSettingsScreen from "@/screens/NotificationSettingsScreen";
-import DataExportScreen from "@/screens/DataExportScreen";
-import AnalyticsScreen from "@/screens/AnalyticsScreen";
 import BluetoothConnectionScreen from "@/screens/BluetoothConnectionScreen";
-import LiveCaptureScreen from "@/screens/LiveCaptureScreen";
 import LocationScreen from "@/screens/LocationScreen";
 import DeviceFeaturesScreen from "@/screens/DeviceFeaturesScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
@@ -18,10 +15,7 @@ export type HomeStackParamList = {
   AudioUpload: undefined;
   Settings: undefined;
   NotificationSettings: undefined;
-  DataExport: undefined;
-  Analytics: undefined;
   BluetoothConnection: undefined;
-  LiveCapture: undefined;
   Location: undefined;
   DeviceFeatures: undefined;
 };
@@ -37,9 +31,12 @@ export default function HomeStackNavigator() {
         name="Home"
         component={HomeScreen}
         options={{
-          headerTitle: "",
+          title: "",
+          headerTitle: () => null,
           headerLeft: () => <ZekeHeaderTitle />,
           headerRight: () => <ZekeHeaderButtons />,
+          headerLeftContainerStyle: { paddingLeft: 12 },
+          headerRightContainerStyle: { paddingRight: 12 },
         }}
       />
       <Stack.Screen
@@ -64,31 +61,10 @@ export default function HomeStackNavigator() {
         }}
       />
       <Stack.Screen
-        name="DataExport"
-        component={DataExportScreen}
-        options={{
-          headerTitle: "Export Data",
-        }}
-      />
-      <Stack.Screen
-        name="Analytics"
-        component={AnalyticsScreen}
-        options={{
-          headerTitle: "Analytics",
-        }}
-      />
-      <Stack.Screen
         name="BluetoothConnection"
         component={BluetoothConnectionScreen}
         options={{
           headerTitle: "Pair Device",
-        }}
-      />
-      <Stack.Screen
-        name="LiveCapture"
-        component={LiveCaptureScreen}
-        options={{
-          headerTitle: "Live Capture",
         }}
       />
       <Stack.Screen

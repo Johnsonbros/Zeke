@@ -71,20 +71,48 @@ export function DeviceCard({ device, onPress }: DeviceCardProps) {
           end={{ x: 1, y: 1 }}
           style={styles.gradientBorder}
         >
-          <View style={[styles.innerCard, { backgroundColor: theme.backgroundDefault }]}>
-            <CardContent device={device} theme={theme} getBatteryIcon={getBatteryIcon} getBatteryColor={getBatteryColor} />
+          <View
+            style={[
+              styles.innerCard,
+              { backgroundColor: theme.backgroundDefault },
+            ]}
+          >
+            <CardContent
+              device={device}
+              theme={theme}
+              getBatteryIcon={getBatteryIcon}
+              getBatteryColor={getBatteryColor}
+            />
           </View>
         </LinearGradient>
       ) : (
-        <View style={[styles.card, { backgroundColor: theme.backgroundDefault, borderColor: theme.border }]}>
-          <CardContent device={device} theme={theme} getBatteryIcon={getBatteryIcon} getBatteryColor={getBatteryColor} />
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: theme.backgroundDefault,
+              borderColor: theme.border,
+            },
+          ]}
+        >
+          <CardContent
+            device={device}
+            theme={theme}
+            getBatteryIcon={getBatteryIcon}
+            getBatteryColor={getBatteryColor}
+          />
         </View>
       )}
     </AnimatedPressable>
   );
 }
 
-function CardContent({ device, theme, getBatteryIcon, getBatteryColor }: {
+function CardContent({
+  device,
+  theme,
+  getBatteryIcon,
+  getBatteryColor,
+}: {
   device: DeviceInfo;
   theme: typeof Colors.dark;
   getBatteryIcon: () => string;
@@ -94,11 +122,18 @@ function CardContent({ device, theme, getBatteryIcon, getBatteryColor }: {
     <>
       <View style={styles.header}>
         <View style={styles.deviceInfo}>
-          <View style={[styles.iconContainer, { backgroundColor: theme.backgroundSecondary }]}>
+          <View
+            style={[
+              styles.iconContainer,
+              { backgroundColor: theme.backgroundSecondary },
+            ]}
+          >
             <Feather
               name={device.type === "omi" ? "headphones" : "disc"}
               size={20}
-              color={device.isConnected ? Colors.dark.primary : theme.textSecondary}
+              color={
+                device.isConnected ? Colors.dark.primary : theme.textSecondary
+              }
             />
           </View>
           <View>
@@ -126,7 +161,11 @@ function CardContent({ device, theme, getBatteryIcon, getBatteryColor }: {
 
       <View style={styles.footer}>
         <View style={styles.stat}>
-          <Feather name={getBatteryIcon() as any} size={14} color={getBatteryColor()} />
+          <Feather
+            name={getBatteryIcon() as any}
+            size={14}
+            color={getBatteryColor()}
+          />
           <ThemedText type="small" secondary style={{ marginLeft: Spacing.xs }}>
             {device.batteryLevel}%
           </ThemedText>

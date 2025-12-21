@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { View, StyleSheet, ScrollView, Alert, Platform, Linking, Pressable } from "react-native";
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  Alert,
+  Platform,
+  Linking,
+  Pressable,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import * as Haptics from "expo-haptics";
@@ -9,11 +17,11 @@ import { ThemedText } from "@/components/ThemedText";
 import { SettingsRow, SettingsSection } from "@/components/SettingsRow";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius, Colors } from "@/constants/theme";
-import { 
-  getSettings, 
-  saveSettings, 
+import {
+  getSettings,
+  saveSettings,
   NotificationSettings,
-  getDefaultNotificationSettings 
+  getDefaultNotificationSettings,
 } from "@/lib/storage";
 
 export default function NotificationSettingsScreen() {
@@ -21,8 +29,11 @@ export default function NotificationSettingsScreen() {
   const headerHeight = useHeaderHeight();
   const { theme } = useTheme();
 
-  const [settings, setSettings] = useState<NotificationSettings>(getDefaultNotificationSettings());
-  const [permissionStatus, setPermissionStatus] = useState<Notifications.PermissionStatus | null>(null);
+  const [settings, setSettings] = useState<NotificationSettings>(
+    getDefaultNotificationSettings(),
+  );
+  const [permissionStatus, setPermissionStatus] =
+    useState<Notifications.PermissionStatus | null>(null);
   const [canAskAgain, setCanAskAgain] = useState(true);
 
   const hasPermission = permissionStatus === "granted";
@@ -41,14 +52,16 @@ export default function NotificationSettingsScreen() {
   };
 
   const checkPermission = async () => {
-    const { status, canAskAgain: canAsk } = await Notifications.getPermissionsAsync();
+    const { status, canAskAgain: canAsk } =
+      await Notifications.getPermissionsAsync();
     setPermissionStatus(status);
     setCanAskAgain(canAsk);
   };
 
   const requestPermission = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const { status, canAskAgain: canAsk } = await Notifications.requestPermissionsAsync();
+    const { status, canAskAgain: canAsk } =
+      await Notifications.requestPermissionsAsync();
     setPermissionStatus(status);
     setCanAskAgain(canAsk);
     return status === "granted";
@@ -59,19 +72,19 @@ export default function NotificationSettingsScreen() {
     if (Platform.OS !== "web") {
       try {
         await Linking.openSettings();
-      } catch (error) {
+      } catch {
         Alert.alert(
           "Cannot Open Settings",
           "Please manually open your device settings to enable notifications.",
-          [{ text: "OK" }]
+          [{ text: "OK" }],
         );
       }
     }
   };
 
   const updateSetting = async <K extends keyof NotificationSettings>(
-    key: K, 
-    value: NotificationSettings[K]
+    key: K,
+    value: NotificationSettings[K],
   ) => {
     if (!notificationsEnabled && key !== "enabled") {
       return;
@@ -119,7 +132,7 @@ export default function NotificationSettingsScreen() {
         {!hasPermission && permissionStatus !== null ? (
           <View style={styles.permissionContainer}>
             <ThemedText type="caption" secondary style={styles.permissionNote}>
-              {canAskAgain 
+              {canAskAgain
                 ? "Tap below to enable notification permissions"
                 : "Notifications are disabled in your device settings"}
             </ThemedText>
@@ -128,17 +141,25 @@ export default function NotificationSettingsScreen() {
                 onPress={requestPermission}
                 style={({ pressed }) => [
                   styles.permissionButton,
-                  { backgroundColor: Colors.dark.primary, opacity: pressed ? 0.8 : 1 }
+                  {
+                    backgroundColor: Colors.dark.primary,
+                    opacity: pressed ? 0.8 : 1,
+                  },
                 ]}
               >
-                <ThemedText style={{ color: "#FFFFFF" }}>Enable Notifications</ThemedText>
+                <ThemedText style={{ color: "#FFFFFF" }}>
+                  Enable Notifications
+                </ThemedText>
               </Pressable>
             ) : Platform.OS !== "web" ? (
               <Pressable
                 onPress={openSettings}
                 style={({ pressed }) => [
                   styles.permissionButton,
-                  { backgroundColor: theme.backgroundSecondary, opacity: pressed ? 0.8 : 1 }
+                  {
+                    backgroundColor: theme.backgroundSecondary,
+                    opacity: pressed ? 0.8 : 1,
+                  },
                 ]}
               >
                 <ThemedText>Open Settings</ThemedText>
@@ -235,7 +256,9 @@ export default function NotificationSettingsScreen() {
           />
           {settings.quietHoursEnabled && notificationsEnabled ? (
             <>
-              <View style={[styles.divider, { backgroundColor: theme.border }]} />
+              <View
+                style={[styles.divider, { backgroundColor: theme.border }]}
+              />
               <SettingsRow
                 icon="clock"
                 label="Start Time"
@@ -244,7 +267,9 @@ export default function NotificationSettingsScreen() {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 }}
               />
-              <View style={[styles.divider, { backgroundColor: theme.border }]} />
+              <View
+                style={[styles.divider, { backgroundColor: theme.border }]}
+              />
               <SettingsRow
                 icon="clock"
                 label="End Time"

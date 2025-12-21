@@ -1,7 +1,11 @@
-import * as Location from 'expo-location';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
-import { syncLocationToZeke, syncLocationBatchToZeke, type ZekeLocationUpdate, type ZekeLocationSample } from './zeke-api-adapter';
+import * as Location from "expo-location";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  syncLocationToZeke,
+  syncLocationBatchToZeke,
+  type ZekeLocationUpdate,
+  type ZekeLocationSample,
+} from "./zeke-api-adapter";
 
 export interface LocationData {
   latitude: number;
@@ -42,10 +46,10 @@ export interface StarredPlace {
 }
 
 const STORAGE_KEYS = {
-  LOCATION_HISTORY: '@zeke/location_history',
-  STARRED_PLACES: '@zeke/starred_places',
-  LAST_LOCATION: '@zeke/last_location',
-  LOCATION_SETTINGS: '@zeke/location_settings',
+  LOCATION_HISTORY: "@zeke/location_history",
+  STARRED_PLACES: "@zeke/starred_places",
+  LAST_LOCATION: "@zeke/last_location",
+  LOCATION_SETTINGS: "@zeke/location_settings",
 };
 
 export interface LocationSettings {
@@ -78,9 +82,10 @@ export async function requestLocationPermission(): Promise<{
   canAskAgain: boolean;
   status: Location.PermissionStatus;
 }> {
-  const { status, canAskAgain } = await Location.requestForegroundPermissionsAsync();
+  const { status, canAskAgain } =
+    await Location.requestForegroundPermissionsAsync();
   return {
-    granted: status === 'granted',
+    granted: status === "granted",
     canAskAgain,
     status,
   };
@@ -91,19 +96,22 @@ export async function checkLocationPermission(): Promise<{
   canAskAgain: boolean;
   status: Location.PermissionStatus;
 }> {
-  const { status, canAskAgain } = await Location.getForegroundPermissionsAsync();
+  const { status, canAskAgain } =
+    await Location.getForegroundPermissionsAsync();
   return {
-    granted: status === 'granted',
+    granted: status === "granted",
     canAskAgain,
     status,
   };
 }
 
-export async function getCurrentLocation(highAccuracy: boolean = true): Promise<LocationData | null> {
+export async function getCurrentLocation(
+  highAccuracy: boolean = true,
+): Promise<LocationData | null> {
   try {
     const permission = await checkLocationPermission();
     if (!permission.granted) {
-      console.warn('Location permission not granted');
+      console.warn("Location permission not granted");
       return null;
     }
 
@@ -121,25 +129,25 @@ export async function getCurrentLocation(highAccuracy: boolean = true): Promise<
       timestamp: location.timestamp,
     };
   } catch (error) {
-    console.error('Error getting current location:', error);
+    console.error("Error getting current location:", error);
     return null;
   }
 }
 
 export async function reverseGeocode(
   latitude: number,
-  longitude: number
+  longitude: number,
 ): Promise<GeocodedLocation | null> {
   try {
     const results = await Location.reverseGeocodeAsync({ latitude, longitude });
-    
+
     if (results.length === 0) {
       return null;
     }
 
     const result = results[0];
     const parts: string[] = [];
-    
+
     if (result.city) parts.push(result.city);
     if (result.region) parts.push(result.region);
     if (result.country && !result.region?.includes(result.country)) {
@@ -153,25 +161,29 @@ export async function reverseGeocode(
       street: result.street,
       postalCode: result.postalCode,
       name: result.name,
-      formattedAddress: parts.length > 0 ? parts.join(', ') : 'Unknown Location',
+      formattedAddress:
+        parts.length > 0 ? parts.join(", ") : "Unknown Location",
     };
   } catch (error) {
-    console.error('Error reverse geocoding:', error);
+    console.error("Error reverse geocoding:", error);
     return null;
   }
 }
 
 export async function getLocationWithAddress(
-  highAccuracy: boolean = true
-): Promise<{ location: LocationData; geocoded: GeocodedLocation | null } | null> {
+  highAccuracy: boolean = true,
+): Promise<{
+  location: LocationData;
+  geocoded: GeocodedLocation | null;
+} | null> {
   const location = await getCurrentLocation(highAccuracy);
-  
+
   if (!location) {
     return null;
   }
 
   const geocoded = await reverseGeocode(location.latitude, location.longitude);
-  
+
   return { location, geocoded };
 }
 
@@ -180,16 +192,19 @@ export async function getLastLocation(): Promise<LocationRecord | null> {
     const data = await AsyncStorage.getItem(STORAGE_KEYS.LAST_LOCATION);
     return data ? JSON.parse(data) : null;
   } catch (error) {
-    console.error('Error getting last location:', error);
+    console.error("Error getting last location:", error);
     return null;
   }
 }
 
 export async function saveLastLocation(record: LocationRecord): Promise<void> {
   try {
-    await AsyncStorage.setItem(STORAGE_KEYS.LAST_LOCATION, JSON.stringify(record));
+    await AsyncStorage.setItem(
+      STORAGE_KEYS.LAST_LOCATION,
+      JSON.stringify(record),
+    );
   } catch (error) {
-    console.error('Error saving last location:', error);
+    console.error("Error saving last location:", error);
   }
 }
 
@@ -198,21 +213,26 @@ export async function getLocationHistory(): Promise<LocationRecord[]> {
     const data = await AsyncStorage.getItem(STORAGE_KEYS.LOCATION_HISTORY);
     return data ? JSON.parse(data) : [];
   } catch (error) {
-    console.error('Error getting location history:', error);
+    console.error("Error getting location history:", error);
     return [];
   }
 }
 
-export async function addLocationToHistory(record: LocationRecord): Promise<void> {
+export async function addLocationToHistory(
+  record: LocationRecord,
+): Promise<void> {
   try {
     const settings = await getLocationSettings();
     if (!settings.saveHistoryEnabled) return;
 
     const history = await getLocationHistory();
     const updated = [record, ...history].slice(0, settings.maxHistoryItems);
-    await AsyncStorage.setItem(STORAGE_KEYS.LOCATION_HISTORY, JSON.stringify(updated));
+    await AsyncStorage.setItem(
+      STORAGE_KEYS.LOCATION_HISTORY,
+      JSON.stringify(updated),
+    );
   } catch (error) {
-    console.error('Error adding location to history:', error);
+    console.error("Error adding location to history:", error);
   }
 }
 
@@ -220,7 +240,7 @@ export async function clearLocationHistory(): Promise<void> {
   try {
     await AsyncStorage.removeItem(STORAGE_KEYS.LOCATION_HISTORY);
   } catch (error) {
-    console.error('Error clearing location history:', error);
+    console.error("Error clearing location history:", error);
   }
 }
 
@@ -229,7 +249,7 @@ export async function getStarredPlaces(): Promise<StarredPlace[]> {
     const data = await AsyncStorage.getItem(STORAGE_KEYS.STARRED_PLACES);
     return data ? JSON.parse(data) : [];
   } catch (error) {
-    console.error('Error getting starred places:', error);
+    console.error("Error getting starred places:", error);
     return [];
   }
 }
@@ -238,56 +258,69 @@ export async function addStarredPlace(place: StarredPlace): Promise<void> {
   try {
     const places = await getStarredPlaces();
     const updated = [place, ...places];
-    await AsyncStorage.setItem(STORAGE_KEYS.STARRED_PLACES, JSON.stringify(updated));
+    await AsyncStorage.setItem(
+      STORAGE_KEYS.STARRED_PLACES,
+      JSON.stringify(updated),
+    );
   } catch (error) {
-    console.error('Error adding starred place:', error);
+    console.error("Error adding starred place:", error);
   }
 }
 
 export async function removeStarredPlace(placeId: string): Promise<void> {
   try {
     const places = await getStarredPlaces();
-    const updated = places.filter(p => p.id !== placeId);
-    await AsyncStorage.setItem(STORAGE_KEYS.STARRED_PLACES, JSON.stringify(updated));
+    const updated = places.filter((p) => p.id !== placeId);
+    await AsyncStorage.setItem(
+      STORAGE_KEYS.STARRED_PLACES,
+      JSON.stringify(updated),
+    );
   } catch (error) {
-    console.error('Error removing starred place:', error);
+    console.error("Error removing starred place:", error);
   }
 }
 
 export async function updateStarredPlace(
   placeId: string,
-  updates: Partial<StarredPlace>
+  updates: Partial<StarredPlace>,
 ): Promise<void> {
   try {
     const places = await getStarredPlaces();
-    const updated = places.map(p => 
-      p.id === placeId ? { ...p, ...updates } : p
+    const updated = places.map((p) =>
+      p.id === placeId ? { ...p, ...updates } : p,
     );
-    await AsyncStorage.setItem(STORAGE_KEYS.STARRED_PLACES, JSON.stringify(updated));
+    await AsyncStorage.setItem(
+      STORAGE_KEYS.STARRED_PLACES,
+      JSON.stringify(updated),
+    );
   } catch (error) {
-    console.error('Error updating starred place:', error);
+    console.error("Error updating starred place:", error);
   }
 }
 
 export async function getLocationSettings(): Promise<LocationSettings> {
   try {
     const data = await AsyncStorage.getItem(STORAGE_KEYS.LOCATION_SETTINGS);
-    return data ? { ...DEFAULT_LOCATION_SETTINGS, ...JSON.parse(data) } : DEFAULT_LOCATION_SETTINGS;
+    return data
+      ? { ...DEFAULT_LOCATION_SETTINGS, ...JSON.parse(data) }
+      : DEFAULT_LOCATION_SETTINGS;
   } catch (error) {
-    console.error('Error getting location settings:', error);
+    console.error("Error getting location settings:", error);
     return DEFAULT_LOCATION_SETTINGS;
   }
 }
 
-export async function saveLocationSettings(settings: Partial<LocationSettings>): Promise<void> {
+export async function saveLocationSettings(
+  settings: Partial<LocationSettings>,
+): Promise<void> {
   try {
     const current = await getLocationSettings();
     await AsyncStorage.setItem(
       STORAGE_KEYS.LOCATION_SETTINGS,
-      JSON.stringify({ ...current, ...settings })
+      JSON.stringify({ ...current, ...settings }),
     );
   } catch (error) {
-    console.error('Error saving location settings:', error);
+    console.error("Error saving location settings:", error);
   }
 }
 
@@ -295,7 +328,7 @@ export function calculateDistance(
   lat1: number,
   lon1: number,
   lat2: number,
-  lon2: number
+  lon2: number,
 ): number {
   const R = 6371e3;
   const phi1 = (lat1 * Math.PI) / 180;
@@ -305,7 +338,10 @@ export function calculateDistance(
 
   const a =
     Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
-    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+    Math.cos(phi1) *
+      Math.cos(phi2) *
+      Math.sin(deltaLambda / 2) *
+      Math.sin(deltaLambda / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
   return R * c;
@@ -323,8 +359,8 @@ export function formatDistance(meters: number): string {
 }
 
 export function formatCoordinates(latitude: number, longitude: number): string {
-  const latDir = latitude >= 0 ? 'N' : 'S';
-  const lonDir = longitude >= 0 ? 'E' : 'W';
+  const latDir = latitude >= 0 ? "N" : "S";
+  const lonDir = longitude >= 0 ? "E" : "W";
   return `${Math.abs(latitude).toFixed(4)}° ${latDir}, ${Math.abs(longitude).toFixed(4)}° ${lonDir}`;
 }
 
@@ -332,17 +368,17 @@ export function getRelativeTime(timestamp: number): string {
   const now = Date.now();
   const diffMs = now - timestamp;
   const diffMins = Math.floor(diffMs / 60000);
-  
-  if (diffMins < 1) return 'Just now';
+
+  if (diffMins < 1) return "Just now";
   if (diffMins < 60) return `${diffMins} min ago`;
-  
+
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours} hr ago`;
-  
+
   const diffDays = Math.floor(diffHours / 24);
-  if (diffDays === 1) return 'Yesterday';
+  if (diffDays === 1) return "Yesterday";
   if (diffDays < 7) return `${diffDays} days ago`;
-  
+
   return new Date(timestamp).toLocaleDateString();
 }
 
@@ -358,12 +394,12 @@ export type LocationSubscription = Location.LocationSubscription;
 
 export async function startLocationUpdates(
   callback: (location: LocationData) => void,
-  settings?: Partial<LocationSettings>
+  settings?: Partial<LocationSettings>,
 ): Promise<LocationSubscription | null> {
   try {
     const permission = await checkLocationPermission();
     if (!permission.granted) {
-      console.warn('Location permission not granted');
+      console.warn("Location permission not granted");
       return null;
     }
 
@@ -387,12 +423,12 @@ export async function startLocationUpdates(
           timestamp: location.timestamp,
         };
         callback(locationData);
-      }
+      },
     );
 
     return subscription;
   } catch (error) {
-    console.error('Error starting location updates:', error);
+    console.error("Error starting location updates:", error);
     return null;
   }
 }
@@ -401,8 +437,8 @@ export function stopLocationUpdates(subscription: LocationSubscription): void {
   subscription.remove();
 }
 
-const PENDING_SYNC_KEY = '@zeke/pending_location_sync';
-const SYNC_SETTINGS_KEY = '@zeke/location_sync_settings';
+const PENDING_SYNC_KEY = "@zeke/pending_location_sync";
+const SYNC_SETTINGS_KEY = "@zeke/location_sync_settings";
 
 export interface LocationSyncSettings {
   syncEnabled: boolean;
@@ -421,22 +457,32 @@ const DEFAULT_SYNC_SETTINGS: LocationSyncSettings = {
 export async function getLocationSyncSettings(): Promise<LocationSyncSettings> {
   try {
     const data = await AsyncStorage.getItem(SYNC_SETTINGS_KEY);
-    return data ? { ...DEFAULT_SYNC_SETTINGS, ...JSON.parse(data) } : DEFAULT_SYNC_SETTINGS;
+    return data
+      ? { ...DEFAULT_SYNC_SETTINGS, ...JSON.parse(data) }
+      : DEFAULT_SYNC_SETTINGS;
   } catch {
     return DEFAULT_SYNC_SETTINGS;
   }
 }
 
-export async function saveLocationSyncSettings(settings: Partial<LocationSyncSettings>): Promise<void> {
+export async function saveLocationSyncSettings(
+  settings: Partial<LocationSyncSettings>,
+): Promise<void> {
   try {
     const current = await getLocationSyncSettings();
-    await AsyncStorage.setItem(SYNC_SETTINGS_KEY, JSON.stringify({ ...current, ...settings }));
+    await AsyncStorage.setItem(
+      SYNC_SETTINGS_KEY,
+      JSON.stringify({ ...current, ...settings }),
+    );
   } catch (error) {
-    console.error('Error saving location sync settings:', error);
+    console.error("Error saving location sync settings:", error);
   }
 }
 
-export async function addPendingLocationSync(location: LocationData, geocoded: GeocodedLocation | null): Promise<void> {
+export async function addPendingLocationSync(
+  location: LocationData,
+  geocoded: GeocodedLocation | null,
+): Promise<void> {
   try {
     const pending = await getPendingLocationSyncs();
     const sample: ZekeLocationSample = {
@@ -451,7 +497,7 @@ export async function addPendingLocationSync(location: LocationData, geocoded: G
     pending.push(sample);
     await AsyncStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(pending));
   } catch (error) {
-    console.error('Error adding pending location sync:', error);
+    console.error("Error adding pending location sync:", error);
   }
 }
 
@@ -468,11 +514,14 @@ export async function clearPendingLocationSyncs(): Promise<void> {
   try {
     await AsyncStorage.removeItem(PENDING_SYNC_KEY);
   } catch (error) {
-    console.error('Error clearing pending location syncs:', error);
+    console.error("Error clearing pending location syncs:", error);
   }
 }
 
-export async function syncPendingLocationsToZeke(): Promise<{ success: boolean; synced: number }> {
+export async function syncPendingLocationsToZeke(): Promise<{
+  success: boolean;
+  synced: number;
+}> {
   try {
     const syncSettings = await getLocationSyncSettings();
     if (!syncSettings.syncEnabled) {
@@ -499,14 +548,14 @@ export async function syncPendingLocationsToZeke(): Promise<{ success: boolean; 
 
     return result;
   } catch (error) {
-    console.error('Error syncing pending locations:', error);
+    console.error("Error syncing pending locations:", error);
     return { success: false, synced: 0 };
   }
 }
 
 export async function syncCurrentLocationToZeke(
   location: LocationData,
-  geocoded: GeocodedLocation | null
+  geocoded: GeocodedLocation | null,
 ): Promise<{ success: boolean; id?: string }> {
   try {
     const update: ZekeLocationUpdate = {
@@ -527,14 +576,14 @@ export async function syncCurrentLocationToZeke(
 
     return await syncLocationToZeke(update);
   } catch (error) {
-    console.error('Error syncing current location to Zeke:', error);
+    console.error("Error syncing current location to Zeke:", error);
     return { success: false };
   }
 }
 
 export async function startLocationUpdatesWithZekeSync(
   callback: (location: LocationData) => void,
-  settings?: Partial<LocationSettings>
+  settings?: Partial<LocationSettings>,
 ): Promise<LocationSubscription | null> {
   const syncSettings = await getLocationSyncSettings();
 
@@ -546,13 +595,18 @@ export async function startLocationUpdatesWithZekeSync(
       try {
         geocoded = await reverseGeocode(location.latitude, location.longitude);
         const result = await syncCurrentLocationToZeke(location, geocoded);
-        
+
         if (!result.success) {
-          console.log('[ZEKE Location] Real-time sync returned failure, queueing for batch');
+          console.log(
+            "[ZEKE Location] Real-time sync returned failure, queueing for batch",
+          );
           await addPendingLocationSync(location, geocoded);
         }
       } catch (error) {
-        console.error('[ZEKE Location] Real-time sync error, queueing for batch:', error);
+        console.error(
+          "[ZEKE Location] Real-time sync error, queueing for batch:",
+          error,
+        );
         await addPendingLocationSync(location, geocoded);
       }
     }

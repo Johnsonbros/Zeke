@@ -48,10 +48,15 @@ export function validateMasterSecret(secret: string): boolean {
     console.warn('[DeviceAuth] ZEKE_SHARED_SECRET not configured');
     return false;
   }
-  return crypto.timingSafeEqual(
-    Buffer.from(secret),
-    Buffer.from(ZEKE_SECRET)
-  );
+  
+  const inputBuffer = Buffer.from(secret);
+  const expectedBuffer = Buffer.from(ZEKE_SECRET);
+  
+  if (inputBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+  
+  return crypto.timingSafeEqual(inputBuffer, expectedBuffer);
 }
 
 export async function registerDevice(deviceName: string): Promise<DeviceTokenData> {

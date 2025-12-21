@@ -43,8 +43,15 @@ export function GradientText({
         </Text>
       }
     >
-      <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-        <Text style={[styles.text, getTypeStyle(), style, styles.invisible]} {...rest}>
+      <LinearGradient
+        colors={colors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+      >
+        <Text
+          style={[styles.text, getTypeStyle(), style, styles.invisible]}
+          {...rest}
+        >
           {children}
         </Text>
       </LinearGradient>

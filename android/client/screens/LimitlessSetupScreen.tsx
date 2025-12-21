@@ -1,15 +1,19 @@
 import React, { useState, useCallback } from "react";
-import { View, StyleSheet, ScrollView, Pressable, Platform, Linking } from "react-native";
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  Platform,
+  Linking,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import Animated, {
-  FadeIn,
-  FadeInDown,
-} from "react-native-reanimated";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
@@ -30,7 +34,8 @@ const FACTORY_RESET_STEPS: SetupStep[] = [
   {
     id: 1,
     title: "Clear Any Red Light",
-    description: "If your pendant shows a solid red light (while not charging), hold the button for 10+ seconds until the red light turns off.",
+    description:
+      "If your pendant shows a solid red light (while not charging), hold the button for 10+ seconds until the red light turns off.",
     icon: "alert-circle",
     lightColor: Colors.dark.error,
     lightLabel: "Red = Hold 10s",
@@ -39,14 +44,16 @@ const FACTORY_RESET_STEPS: SetupStep[] = [
   {
     id: 2,
     title: "Quick Double-Press",
-    description: "Press the button quickly (tap and release), then immediately press and hold. The timing is important - very little pause between the two presses.",
+    description:
+      "Press the button quickly (tap and release), then immediately press and hold. The timing is important - very little pause between the two presses.",
     icon: "target",
     tip: "Think: tap... hold",
   },
   {
     id: 3,
     title: "Watch for Purple Light",
-    description: "Keep holding after the second press. A purple light will appear - continue holding.",
+    description:
+      "Keep holding after the second press. A purple light will appear - continue holding.",
     icon: "eye",
     lightColor: "#A855F7",
     lightLabel: "Purple = Keep holding",
@@ -60,7 +67,8 @@ const FACTORY_RESET_STEPS: SetupStep[] = [
   {
     id: 5,
     title: "Confirm Solid Blue",
-    description: "The light should turn solid blue. This means your pendant is factory reset and ready to pair with ZEKE.",
+    description:
+      "The light should turn solid blue. This means your pendant is factory reset and ready to pair with ZEKE.",
     icon: "bluetooth",
     lightColor: Colors.dark.primary,
     lightLabel: "Blue = Ready to pair",
@@ -134,7 +142,9 @@ export default function LimitlessSetupScreen() {
   const { theme } = useTheme();
 
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
-  const [expandedTroubleshoot, setExpandedTroubleshoot] = useState<number | null>(null);
+  const [expandedTroubleshoot, setExpandedTroubleshoot] = useState<
+    number | null
+  >(null);
   const [currentStep, setCurrentStep] = useState(0);
 
   const handleCheckItem = useCallback((id: string) => {
@@ -154,7 +164,7 @@ export default function LimitlessSetupScreen() {
     if (Platform.OS === "web") return;
     try {
       await Linking.openSettings();
-    } catch (e) {
+    } catch {
       console.log("Could not open settings");
     }
   }, []);
@@ -179,7 +189,12 @@ export default function LimitlessSetupScreen() {
     >
       <Animated.View entering={FadeIn.duration(300)}>
         <View style={styles.heroSection}>
-          <View style={[styles.iconWrapper, { backgroundColor: theme.backgroundSecondary }]}>
+          <View
+            style={[
+              styles.iconWrapper,
+              { backgroundColor: theme.backgroundSecondary },
+            ]}
+          >
             <Feather name="disc" size={40} color={Colors.dark.secondary} />
           </View>
           <ThemedText type="h2" style={styles.heroTitle}>
@@ -208,31 +223,37 @@ export default function LimitlessSetupScreen() {
                 setCurrentStep(index);
               }}
             >
-              <Card 
-                elevation={currentStep === index ? 2 : 1} 
+              <Card
+                elevation={currentStep === index ? 2 : 1}
                 style={[
                   styles.stepCard,
-                  currentStep === index && { borderColor: Colors.dark.primary, borderWidth: 1 },
+                  currentStep === index
+                    ? { borderColor: Colors.dark.primary, borderWidth: 1 }
+                    : undefined,
                 ]}
               >
                 <View style={styles.stepHeader}>
                   <View
                     style={[
                       styles.stepNumber,
-                      { 
-                        backgroundColor: currentStep >= index 
-                          ? Colors.dark.primary 
-                          : theme.backgroundSecondary 
+                      {
+                        backgroundColor:
+                          currentStep >= index
+                            ? Colors.dark.primary
+                            : theme.backgroundSecondary,
                       },
                     ]}
                   >
                     {currentStep > index ? (
                       <Feather name="check" size={14} color="#FFFFFF" />
                     ) : (
-                      <ThemedText 
-                        type="small" 
-                        style={{ 
-                          color: currentStep >= index ? "#FFFFFF" : theme.textSecondary 
+                      <ThemedText
+                        type="small"
+                        style={{
+                          color:
+                            currentStep >= index
+                              ? "#FFFFFF"
+                              : theme.textSecondary,
                         }}
                       >
                         {step.id}
@@ -243,12 +264,21 @@ export default function LimitlessSetupScreen() {
                     <ThemedText type="body" style={{ fontWeight: "600" }}>
                       {step.title}
                     </ThemedText>
-                    <ThemedText type="small" secondary style={{ marginTop: Spacing.xs }}>
+                    <ThemedText
+                      type="small"
+                      secondary
+                      style={{ marginTop: Spacing.xs }}
+                    >
                       {step.description}
                     </ThemedText>
                     {step.lightColor ? (
                       <View style={styles.lightIndicator}>
-                        <View style={[styles.lightDot, { backgroundColor: step.lightColor }]} />
+                        <View
+                          style={[
+                            styles.lightDot,
+                            { backgroundColor: step.lightColor },
+                          ]}
+                        />
                         <ThemedText type="caption" secondary>
                           {step.lightLabel}
                         </ThemedText>
@@ -256,8 +286,18 @@ export default function LimitlessSetupScreen() {
                     ) : null}
                     {step.tip ? (
                       <View style={styles.tipContainer}>
-                        <Feather name="info" size={12} color={Colors.dark.warning} />
-                        <ThemedText type="caption" style={{ color: Colors.dark.warning, marginLeft: Spacing.xs }}>
+                        <Feather
+                          name="info"
+                          size={12}
+                          color={Colors.dark.warning}
+                        />
+                        <ThemedText
+                          type="caption"
+                          style={{
+                            color: Colors.dark.warning,
+                            marginLeft: Spacing.xs,
+                          }}
+                        >
                           {step.tip}
                         </ThemedText>
                       </View>
@@ -275,18 +315,33 @@ export default function LimitlessSetupScreen() {
             disabled={currentStep === 0}
             style={({ pressed }) => [
               styles.navButton,
-              { backgroundColor: theme.backgroundSecondary, opacity: currentStep === 0 ? 0.5 : pressed ? 0.8 : 1 },
+              {
+                backgroundColor: theme.backgroundSecondary,
+                opacity: currentStep === 0 ? 0.5 : pressed ? 0.8 : 1,
+              },
             ]}
           >
             <Feather name="chevron-left" size={20} color={theme.text} />
             <ThemedText type="small">Previous</ThemedText>
           </Pressable>
           <Pressable
-            onPress={() => setCurrentStep(Math.min(FACTORY_RESET_STEPS.length - 1, currentStep + 1))}
+            onPress={() =>
+              setCurrentStep(
+                Math.min(FACTORY_RESET_STEPS.length - 1, currentStep + 1),
+              )
+            }
             disabled={currentStep === FACTORY_RESET_STEPS.length - 1}
             style={({ pressed }) => [
               styles.navButton,
-              { backgroundColor: theme.backgroundSecondary, opacity: currentStep === FACTORY_RESET_STEPS.length - 1 ? 0.5 : pressed ? 0.8 : 1 },
+              {
+                backgroundColor: theme.backgroundSecondary,
+                opacity:
+                  currentStep === FACTORY_RESET_STEPS.length - 1
+                    ? 0.5
+                    : pressed
+                      ? 0.8
+                      : 1,
+              },
             ]}
           >
             <ThemedText type="small">Next</ThemedText>
@@ -296,7 +351,10 @@ export default function LimitlessSetupScreen() {
       </Animated.View>
 
       <Animated.View entering={FadeInDown.delay(200).duration(300)}>
-        <ThemedText type="h3" style={[styles.sectionTitle, { marginTop: Spacing["2xl"] }]}>
+        <ThemedText
+          type="h3"
+          style={[styles.sectionTitle, { marginTop: Spacing["2xl"] }]}
+        >
           Pre-Pairing Checklist
         </ThemedText>
 
@@ -330,14 +388,20 @@ export default function LimitlessSetupScreen() {
               <Feather
                 name={item.icon}
                 size={18}
-                color={checkedItems.has(item.id) ? Colors.dark.success : theme.textSecondary}
+                color={
+                  checkedItems.has(item.id)
+                    ? Colors.dark.success
+                    : theme.textSecondary
+                }
                 style={{ marginRight: Spacing.sm }}
               />
               <ThemedText
                 type="body"
                 style={{
                   flex: 1,
-                  textDecorationLine: checkedItems.has(item.id) ? "line-through" : "none",
+                  textDecorationLine: checkedItems.has(item.id)
+                    ? "line-through"
+                    : "none",
                   opacity: checkedItems.has(item.id) ? 0.7 : 1,
                 }}
               >
@@ -356,7 +420,10 @@ export default function LimitlessSetupScreen() {
             ]}
           >
             <Feather name="settings" size={16} color={Colors.dark.primary} />
-            <ThemedText type="small" style={{ color: Colors.dark.primary, marginLeft: Spacing.sm }}>
+            <ThemedText
+              type="small"
+              style={{ color: Colors.dark.primary, marginLeft: Spacing.sm }}
+            >
               Open Phone Settings to forget old pairing
             </ThemedText>
           </Pressable>
@@ -370,22 +437,35 @@ export default function LimitlessSetupScreen() {
             marginTop: Spacing.lg,
           })}
         >
-          <LinearGradient colors={Gradients.primary} style={styles.continueButton}>
-            <ThemedText type="body" style={{ color: "#FFFFFF", fontWeight: "600" }}>
+          <LinearGradient
+            colors={Gradients.primary}
+            style={styles.continueButton}
+          >
+            <ThemedText
+              type="body"
+              style={{ color: "#FFFFFF", fontWeight: "600" }}
+            >
               Continue to Pairing
             </ThemedText>
             <Feather name="arrow-right" size={20} color="#FFFFFF" />
           </LinearGradient>
         </Pressable>
         {!allChecked ? (
-          <ThemedText type="caption" secondary style={{ textAlign: "center", marginTop: Spacing.sm }}>
+          <ThemedText
+            type="caption"
+            secondary
+            style={{ textAlign: "center", marginTop: Spacing.sm }}
+          >
             Complete all checklist items to continue
           </ThemedText>
         ) : null}
       </Animated.View>
 
       <Animated.View entering={FadeInDown.delay(300).duration(300)}>
-        <ThemedText type="h3" style={[styles.sectionTitle, { marginTop: Spacing["2xl"] }]}>
+        <ThemedText
+          type="h3"
+          style={[styles.sectionTitle, { marginTop: Spacing["2xl"] }]}
+        >
           Troubleshooting
         </ThemedText>
 
@@ -394,7 +474,9 @@ export default function LimitlessSetupScreen() {
             key={index}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setExpandedTroubleshoot(expandedTroubleshoot === index ? null : index);
+              setExpandedTroubleshoot(
+                expandedTroubleshoot === index ? null : index,
+              );
             }}
           >
             <Card elevation={1} style={styles.troubleshootCard}>
@@ -409,7 +491,11 @@ export default function LimitlessSetupScreen() {
                   {tip.problem}
                 </ThemedText>
                 <Feather
-                  name={expandedTroubleshoot === index ? "chevron-up" : "chevron-down"}
+                  name={
+                    expandedTroubleshoot === index
+                      ? "chevron-up"
+                      : "chevron-down"
+                  }
                   size={18}
                   color={theme.textSecondary}
                 />

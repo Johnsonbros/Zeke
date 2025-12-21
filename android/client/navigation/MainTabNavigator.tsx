@@ -28,7 +28,8 @@ export default function MainTabNavigator() {
   const insets = useSafeAreaInsets();
 
   const androidBottomPadding = Math.max(insets.bottom, 16);
-  const tabBarHeight = Platform.OS === "android" ? 60 + androidBottomPadding : 80;
+  const tabBarHeight =
+    Platform.OS === "android" ? 60 + androidBottomPadding : 80;
 
   return (
     <View style={styles.container}>

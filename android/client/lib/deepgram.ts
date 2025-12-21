@@ -1,12 +1,18 @@
 import { getApiUrl } from "./query-client";
 import { bluetoothService } from "./bluetooth";
-import { Platform } from "react-native";
 
-export type TranscriptionCallback = (transcript: string, isFinal: boolean) => void;
+export type TranscriptionCallback = (
+  transcript: string,
+  isFinal: boolean,
+) => void;
 export type ConnectionStateCallback = (state: DeepgramConnectionState) => void;
 export type ErrorCallback = (error: string) => void;
 
-export type DeepgramConnectionState = "disconnected" | "connecting" | "connected" | "error";
+export type DeepgramConnectionState =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "error";
 
 interface DeepgramWord {
   word: string;
@@ -26,7 +32,13 @@ interface DeepgramChannel {
 }
 
 interface DeepgramResponse {
-  type: "Results" | "Metadata" | "UtteranceEnd" | "connected" | "disconnected" | "error";
+  type:
+    | "Results"
+    | "Metadata"
+    | "UtteranceEnd"
+    | "connected"
+    | "disconnected"
+    | "error";
   channel_index?: number[];
   duration?: number;
   start?: number;
@@ -54,11 +66,11 @@ class DeepgramService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
   private reconnectDelay = 1000;
-  
+
   private transcriptionCallbacks: TranscriptionCallback[] = [];
   private connectionStateCallbacks: ConnectionStateCallback[] = [];
   private errorCallbacks: ErrorCallback[] = [];
-  
+
   private fullTranscript: string = "";
   private transcriptSegments: TranscriptSegment[] = [];
   private isStreaming = false;
@@ -113,35 +125,41 @@ class DeepgramService {
   public onTranscription(callback: TranscriptionCallback): () => void {
     this.transcriptionCallbacks.push(callback);
     return () => {
-      this.transcriptionCallbacks = this.transcriptionCallbacks.filter(cb => cb !== callback);
+      this.transcriptionCallbacks = this.transcriptionCallbacks.filter(
+        (cb) => cb !== callback,
+      );
     };
   }
 
-  public onConnectionStateChange(callback: ConnectionStateCallback): () => void {
+  public onConnectionStateChange(
+    callback: ConnectionStateCallback,
+  ): () => void {
     this.connectionStateCallbacks.push(callback);
     callback(this.connectionState);
     return () => {
-      this.connectionStateCallbacks = this.connectionStateCallbacks.filter(cb => cb !== callback);
+      this.connectionStateCallbacks = this.connectionStateCallbacks.filter(
+        (cb) => cb !== callback,
+      );
     };
   }
 
   public onError(callback: ErrorCallback): () => void {
     this.errorCallbacks.push(callback);
     return () => {
-      this.errorCallbacks = this.errorCallbacks.filter(cb => cb !== callback);
+      this.errorCallbacks = this.errorCallbacks.filter((cb) => cb !== callback);
     };
   }
 
   private notifyTranscription(transcript: string, isFinal: boolean): void {
-    this.transcriptionCallbacks.forEach(cb => cb(transcript, isFinal));
+    this.transcriptionCallbacks.forEach((cb) => cb(transcript, isFinal));
   }
 
   private notifyConnectionStateChange(): void {
-    this.connectionStateCallbacks.forEach(cb => cb(this.connectionState));
+    this.connectionStateCallbacks.forEach((cb) => cb(this.connectionState));
   }
 
   private notifyError(error: string): void {
-    this.errorCallbacks.forEach(cb => cb(error));
+    this.errorCallbacks.forEach((cb) => cb(error));
   }
 
   private buildProxyWebSocketUrl(): string {
@@ -160,7 +178,10 @@ class DeepgramService {
       }
     }
 
-    if (this.connectionState === "connected" || this.connectionState === "connecting") {
+    if (
+      this.connectionState === "connected" ||
+      this.connectionState === "connecting"
+    ) {
       return true;
     }
 
@@ -182,7 +203,7 @@ class DeepgramService {
         this.ws.onmessage = (event) => {
           try {
             const data: DeepgramResponse = JSON.parse(event.data);
-            
+
             if (data.type === "connected") {
               console.log("[Deepgram] Connected to transcription service");
               this.connectionState = "connected";
@@ -242,10 +263,19 @@ class DeepgramService {
     this.connectionState = "disconnected";
     this.notifyConnectionStateChange();
 
-    if (wasConnected && this.isStreaming && this.reconnectAttempts < this.maxReconnectAttempts) {
+    if (
+      wasConnected &&
+      this.isStreaming &&
+      this.reconnectAttempts < this.maxReconnectAttempts
+    ) {
       this.reconnectAttempts++;
-      console.log(`[Deepgram] Attempting reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-      setTimeout(() => this.connect(), this.reconnectDelay * this.reconnectAttempts);
+      console.log(
+        `[Deepgram] Attempting reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
+      );
+      setTimeout(
+        () => this.connect(),
+        this.reconnectDelay * this.reconnectAttempts,
+      );
     }
   }
 
@@ -272,12 +302,12 @@ class DeepgramService {
 
   public disconnect(): void {
     this.stopStreaming();
-    
+
     if (this.ws) {
       this.ws.close();
       this.ws = null;
     }
-    
+
     this.connectionState = "disconnected";
     this.notifyConnectionStateChange();
   }
@@ -291,9 +321,11 @@ class DeepgramService {
     this.isStreaming = true;
     this.audioBuffer = [];
 
-    this.unsubscribeBluetooth = bluetoothService.onAudioData((audioData: Uint8Array) => {
-      this.sendAudioData(audioData);
-    });
+    this.unsubscribeBluetooth = bluetoothService.onAudioData(
+      (audioData: Uint8Array) => {
+        this.sendAudioData(audioData);
+      },
+    );
 
     const streamStarted = await bluetoothService.startStreamingAudio();
     if (!streamStarted) {
@@ -337,39 +369,6 @@ class DeepgramService {
     this.transcriptSegments = [];
     this.audioBuffer = [];
     this.sessionId = null;
-  }
-
-  public async sendCaptureToZeke(title?: string): Promise<boolean> {
-    const transcript = this.getFullTranscript();
-    if (!transcript.trim()) {
-      console.warn("[Deepgram] No transcript to send");
-      return false;
-    }
-
-    try {
-      const { createZekeMemory } = await import("./zeke-api-adapter");
-      
-      const duration = this.sessionStartTime 
-        ? Math.floor((Date.now() - this.sessionStartTime) / 1000)
-        : 0;
-
-      const success = await createZekeMemory({
-        title: title || `Live Capture - ${new Date().toLocaleString()}`,
-        transcript,
-        duration,
-        speakers: null,
-        source: "mobile-capture",
-      });
-
-      if (success) {
-        console.log("[Deepgram] Capture sent to ZEKE successfully");
-      }
-      
-      return success;
-    } catch (error) {
-      console.error("[Deepgram] Error sending capture to ZEKE:", error);
-      return false;
-    }
   }
 
   public getSessionDuration(): number {

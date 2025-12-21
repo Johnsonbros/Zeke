@@ -1,5 +1,17 @@
 import React, { useState, useCallback } from "react";
-import { View, ScrollView, StyleSheet, Pressable, ActivityIndicator, Alert, Platform, RefreshControl, Modal, TextInput, Switch } from "react-native";
+import {
+  View,
+  ScrollView,
+  StyleSheet,
+  Pressable,
+  ActivityIndicator,
+  Alert,
+  Platform,
+  RefreshControl,
+  Modal,
+  TextInput,
+  Switch,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
@@ -18,10 +30,10 @@ import { useTheme } from "@/hooks/useTheme";
 import { useLocation } from "@/hooks/useLocation";
 import { useGeofenceMonitor } from "@/hooks/useGeofenceMonitor";
 import { Spacing, Colors, BorderRadius, Gradients } from "@/constants/theme";
-import { 
-  getLocationHistory, 
-  getStarredPlaces, 
-  addStarredPlace, 
+import {
+  getLocationHistory,
+  getStarredPlaces,
+  addStarredPlace,
   removeStarredPlace,
   formatCoordinates,
   formatDistance,
@@ -37,7 +49,6 @@ import {
   deleteGeofence,
   getLocationLists,
   addLocationList,
-  updateLocationList,
   deleteLocationList,
   type Geofence,
   type LocationList,
@@ -50,15 +61,16 @@ import {
   getTriggerLabel,
 } from "@/lib/geofence";
 
-type TabType = 'current' | 'history' | 'starred' | 'geofences';
+type TabType = "current" | "history" | "starred" | "geofences";
 
 export default function LocationScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const { theme } = useTheme();
-  const navigation = useNavigation<NativeStackNavigationProp<GeoStackParamList>>();
-  
-  const [activeTab, setActiveTab] = useState<TabType>('current');
+  const navigation =
+    useNavigation<NativeStackNavigationProp<GeoStackParamList>>();
+
+  const [activeTab, setActiveTab] = useState<TabType>("current");
   const [locationHistory, setLocationHistory] = useState<LocationRecord[]>([]);
   const [starredPlaces, setStarredPlaces] = useState<StarredPlace[]>([]);
   const [geofences, setGeofences] = useState<Geofence[]>([]);
@@ -67,22 +79,27 @@ export default function LocationScreen() {
   const [isLoadingGeofences, setIsLoadingGeofences] = useState(false);
   const [showAddGeofenceModal, setShowAddGeofenceModal] = useState(false);
   const [editingGeofence, setEditingGeofence] = useState<Geofence | null>(null);
-  const [geofenceName, setGeofenceName] = useState('');
-  const [geofenceRadius, setGeofenceRadius] = useState('500');
-  const [geofenceActionType, setGeofenceActionType] = useState<Geofence['actionType']>('notification');
-  const [geofenceTriggerOn, setGeofenceTriggerOn] = useState<Geofence['triggerOn']>('enter');
+  const [geofenceName, setGeofenceName] = useState("");
+  const [geofenceRadius, setGeofenceRadius] = useState("500");
+  const [geofenceActionType, setGeofenceActionType] =
+    useState<Geofence["actionType"]>("notification");
+  const [geofenceTriggerOn, setGeofenceTriggerOn] =
+    useState<Geofence["triggerOn"]>("enter");
   const [useCurrentLocation, setUseCurrentLocation] = useState(true);
-  const [manualLat, setManualLat] = useState('');
-  const [manualLon, setManualLon] = useState('');
-  
+  const [manualLat, setManualLat] = useState("");
+  const [manualLon, setManualLon] = useState("");
+
   const [locationLists, setLocationLists] = useState<LocationList[]>([]);
   const [isLoadingLists, setIsLoadingLists] = useState(false);
   const [showAddListModal, setShowAddListModal] = useState(false);
-  const [selectedListId, setSelectedListId] = useState<string | undefined>(undefined);
-  const [newListName, setNewListName] = useState('');
-  const [newListRadius, setNewListRadius] = useState('500');
-  const [newListActionType, setNewListActionType] = useState<LocationList['actionType']>('notification');
-  
+  const [selectedListId, setSelectedListId] = useState<string | undefined>(
+    undefined,
+  );
+  const [newListName, setNewListName] = useState("");
+  const [newListRadius, setNewListRadius] = useState("500");
+  const [newListActionType, setNewListActionType] =
+    useState<LocationList["actionType"]>("notification");
+
   const {
     location,
     geocoded,
@@ -98,25 +115,25 @@ export default function LocationScreen() {
   } = useLocation();
 
   const [monitoringEnabled, setMonitoringEnabled] = useState(false);
-  
+
   const {
     isMonitoring,
     nearbyGeofences,
     lastTrigger,
     hasNotificationPermission,
     requestPermission: requestNotificationPermission,
-  } = useGeofenceMonitor(monitoringEnabled && permissionStatus === 'granted');
+  } = useGeofenceMonitor(monitoringEnabled && permissionStatus === "granted");
 
   const handleToggleMonitoring = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (!monitoringEnabled) {
       // First, ensure location permission is granted
-      if (permissionStatus !== 'granted') {
+      if (permissionStatus !== "granted") {
         const granted = await requestPermission();
         if (!granted) {
           Alert.alert(
-            'Location Permission Required',
-            'Geofence monitoring requires location access. Please enable location permissions to use this feature.'
+            "Location Permission Required",
+            "Geofence monitoring requires location access. Please enable location permissions to use this feature.",
           );
           return;
         }
@@ -126,9 +143,9 @@ export default function LocationScreen() {
         const notifGranted = await requestNotificationPermission();
         if (!notifGranted) {
           Alert.alert(
-            'Notifications Disabled',
-            'Geofence monitoring is enabled but you won\'t receive alerts. Enable notifications in Settings for the full experience.',
-            [{ text: 'OK' }]
+            "Notifications Disabled",
+            "Geofence monitoring is enabled but you won't receive alerts. Enable notifications in Settings for the full experience.",
+            [{ text: "OK" }],
           );
         }
       }
@@ -136,7 +153,13 @@ export default function LocationScreen() {
     } else {
       setMonitoringEnabled(false);
     }
-  }, [monitoringEnabled, hasNotificationPermission, requestNotificationPermission, permissionStatus, requestPermission]);
+  }, [
+    monitoringEnabled,
+    hasNotificationPermission,
+    requestNotificationPermission,
+    permissionStatus,
+    requestPermission,
+  ]);
 
   const loadHistory = useCallback(async () => {
     setIsLoadingHistory(true);
@@ -144,7 +167,7 @@ export default function LocationScreen() {
       const history = await getLocationHistory();
       setLocationHistory(history);
     } catch (error) {
-      console.error('Error loading location history:', error);
+      console.error("Error loading location history:", error);
     } finally {
       setIsLoadingHistory(false);
     }
@@ -156,7 +179,7 @@ export default function LocationScreen() {
       const places = await getStarredPlaces();
       setStarredPlaces(places);
     } catch (error) {
-      console.error('Error loading starred places:', error);
+      console.error("Error loading starred places:", error);
     } finally {
       setIsLoadingStarred(false);
     }
@@ -168,7 +191,7 @@ export default function LocationScreen() {
       const fences = await getGeofences();
       setGeofences(fences);
     } catch (error) {
-      console.error('Error loading geofences:', error);
+      console.error("Error loading geofences:", error);
     } finally {
       setIsLoadingGeofences(false);
     }
@@ -180,66 +203,83 @@ export default function LocationScreen() {
       const lists = await getLocationLists();
       setLocationLists(lists);
     } catch (error) {
-      console.error('Error loading location lists:', error);
+      console.error("Error loading location lists:", error);
     } finally {
       setIsLoadingLists(false);
     }
   }, []);
 
   React.useEffect(() => {
-    if (activeTab === 'history') {
+    if (activeTab === "history") {
       loadHistory();
-    } else if (activeTab === 'starred') {
+    } else if (activeTab === "starred") {
       loadStarredPlaces();
-    } else if (activeTab === 'geofences') {
+    } else if (activeTab === "geofences") {
       loadGeofences();
       loadLocationLists();
     }
-  }, [activeTab, loadHistory, loadStarredPlaces, loadGeofences, loadLocationLists]);
+  }, [
+    activeTab,
+    loadHistory,
+    loadStarredPlaces,
+    loadGeofences,
+    loadLocationLists,
+  ]);
 
   const handleRefresh = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (activeTab === 'current') {
+    if (activeTab === "current") {
       await refreshLocation();
-    } else if (activeTab === 'history') {
+    } else if (activeTab === "history") {
       await loadHistory();
-    } else if (activeTab === 'starred') {
+    } else if (activeTab === "starred") {
       await loadStarredPlaces();
-    } else if (activeTab === 'geofences') {
+    } else if (activeTab === "geofences") {
       await loadGeofences();
     }
-  }, [activeTab, refreshLocation, loadHistory, loadStarredPlaces, loadGeofences]);
+  }, [
+    activeTab,
+    refreshLocation,
+    loadHistory,
+    loadStarredPlaces,
+    loadGeofences,
+  ]);
 
   const resetGeofenceForm = useCallback(() => {
-    setGeofenceName('');
-    setGeofenceRadius('500');
-    setGeofenceActionType('notification');
-    setGeofenceTriggerOn('enter');
+    setGeofenceName("");
+    setGeofenceRadius("500");
+    setGeofenceActionType("notification");
+    setGeofenceTriggerOn("enter");
     setUseCurrentLocation(true);
-    setManualLat('');
-    setManualLon('');
+    setManualLat("");
+    setManualLon("");
     setEditingGeofence(null);
     setSelectedListId(undefined);
   }, []);
 
   const resetListForm = useCallback(() => {
-    setNewListName('');
-    setNewListRadius('500');
-    setNewListActionType('notification');
+    setNewListName("");
+    setNewListRadius("500");
+    setNewListActionType("notification");
   }, []);
 
-  const getListById = useCallback((listId: string | undefined) => {
-    if (!listId) return null;
-    return locationLists.find(l => l.id === listId) || null;
-  }, [locationLists]);
+  const getListById = useCallback(
+    (listId: string | undefined) => {
+      if (!listId) return null;
+      return locationLists.find((l) => l.id === listId) || null;
+    },
+    [locationLists],
+  );
 
   const handleQuickAddAsGroceryStore = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setGeofenceActionType('grocery_prompt');
-    setGeofenceRadius('500');
-    setGeofenceTriggerOn('enter');
-    
-    const groceryList = locationLists.find(l => l.name.toLowerCase().includes('grocery'));
+    setGeofenceActionType("grocery_prompt");
+    setGeofenceRadius("500");
+    setGeofenceTriggerOn("enter");
+
+    const groceryList = locationLists.find((l) =>
+      l.name.toLowerCase().includes("grocery"),
+    );
     if (groceryList) {
       setSelectedListId(groceryList.id);
     }
@@ -247,13 +287,16 @@ export default function LocationScreen() {
 
   const handleSaveLocationList = useCallback(async () => {
     if (!newListName.trim()) {
-      Alert.alert('Error', 'Please enter a name for the list.');
+      Alert.alert("Error", "Please enter a name for the list.");
       return;
     }
 
     const radius = parseInt(newListRadius, 10);
     if (isNaN(radius) || radius < 50) {
-      Alert.alert('Error', 'Please enter a valid default radius (minimum 50m).');
+      Alert.alert(
+        "Error",
+        "Please enter a valid default radius (minimum 50m).",
+      );
       return;
     }
 
@@ -270,12 +313,12 @@ export default function LocationScreen() {
         createdAt: new Date().toISOString(),
       };
       await addLocationList(newList);
-      setLocationLists(prev => [newList, ...prev]);
+      setLocationLists((prev) => [newList, ...prev]);
       setShowAddListModal(false);
       resetListForm();
     } catch (error) {
-      console.error('Error saving location list:', error);
-      Alert.alert('Error', 'Failed to save location list. Please try again.');
+      console.error("Error saving location list:", error);
+      Alert.alert("Error", "Failed to save location list. Please try again.");
     }
   }, [newListName, newListRadius, newListActionType, resetListForm]);
 
@@ -285,26 +328,22 @@ export default function LocationScreen() {
     const confirmDelete = async () => {
       try {
         await deleteLocationList(list.id);
-        setLocationLists(prev => prev.filter(l => l.id !== list.id));
+        setLocationLists((prev) => prev.filter((l) => l.id !== list.id));
       } catch (error) {
-        console.error('Error deleting location list:', error);
-        Alert.alert('Error', 'Failed to delete location list.');
+        console.error("Error deleting location list:", error);
+        Alert.alert("Error", "Failed to delete location list.");
       }
     };
 
-    if (Platform.OS === 'web') {
+    if (Platform.OS === "web") {
       if (window.confirm(`Delete list "${list.name}"?`)) {
         await confirmDelete();
       }
     } else {
-      Alert.alert(
-        'Delete List',
-        `Delete "${list.name}"?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete', style: 'destructive', onPress: confirmDelete },
-        ]
-      );
+      Alert.alert("Delete List", `Delete "${list.name}"?`, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: confirmDelete },
+      ]);
     }
   }, []);
 
@@ -330,13 +369,13 @@ export default function LocationScreen() {
 
   const handleSaveGeofence = useCallback(async () => {
     if (!geofenceName.trim()) {
-      Alert.alert('Error', 'Please enter a name for the geofence.');
+      Alert.alert("Error", "Please enter a name for the geofence.");
       return;
     }
 
     const radius = parseInt(geofenceRadius, 10);
     if (isNaN(radius) || radius < 50) {
-      Alert.alert('Error', 'Please enter a valid radius (minimum 50m).');
+      Alert.alert("Error", "Please enter a valid radius (minimum 50m).");
       return;
     }
 
@@ -345,7 +384,10 @@ export default function LocationScreen() {
 
     if (useCurrentLocation) {
       if (!location) {
-        Alert.alert('Error', 'Current location not available. Please enable location or enter coordinates manually.');
+        Alert.alert(
+          "Error",
+          "Current location not available. Please enable location or enter coordinates manually.",
+        );
         return;
       }
       lat = location.latitude;
@@ -354,7 +396,7 @@ export default function LocationScreen() {
       lat = parseFloat(manualLat);
       lon = parseFloat(manualLon);
       if (isNaN(lat) || isNaN(lon)) {
-        Alert.alert('Error', 'Please enter valid coordinates.');
+        Alert.alert("Error", "Please enter valid coordinates.");
         return;
       }
     }
@@ -373,7 +415,9 @@ export default function LocationScreen() {
           listId: selectedListId,
         });
         if (updated) {
-          setGeofences(prev => prev.map(g => g.id === updated.id ? updated : g));
+          setGeofences((prev) =>
+            prev.map((g) => (g.id === updated.id ? updated : g)),
+          );
         }
       } else {
         const newGeofence: Geofence = {
@@ -389,15 +433,27 @@ export default function LocationScreen() {
           createdAt: new Date().toISOString(),
         };
         await addGeofence(newGeofence);
-        setGeofences(prev => [newGeofence, ...prev]);
+        setGeofences((prev) => [newGeofence, ...prev]);
       }
       setShowAddGeofenceModal(false);
       resetGeofenceForm();
     } catch (error) {
-      console.error('Error saving geofence:', error);
-      Alert.alert('Error', 'Failed to save geofence. Please try again.');
+      console.error("Error saving geofence:", error);
+      Alert.alert("Error", "Failed to save geofence. Please try again.");
     }
-  }, [geofenceName, geofenceRadius, geofenceActionType, geofenceTriggerOn, useCurrentLocation, location, manualLat, manualLon, editingGeofence, resetGeofenceForm, selectedListId]);
+  }, [
+    geofenceName,
+    geofenceRadius,
+    geofenceActionType,
+    geofenceTriggerOn,
+    useCurrentLocation,
+    location,
+    manualLat,
+    manualLon,
+    editingGeofence,
+    resetGeofenceForm,
+    selectedListId,
+  ]);
 
   const handleDeleteGeofence = useCallback(async (geofence: Geofence) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -405,51 +461,51 @@ export default function LocationScreen() {
     const confirmDelete = async () => {
       try {
         await deleteGeofence(geofence.id);
-        setGeofences(prev => prev.filter(g => g.id !== geofence.id));
+        setGeofences((prev) => prev.filter((g) => g.id !== geofence.id));
       } catch (error) {
-        console.error('Error deleting geofence:', error);
-        Alert.alert('Error', 'Failed to delete geofence.');
+        console.error("Error deleting geofence:", error);
+        Alert.alert("Error", "Failed to delete geofence.");
       }
     };
 
-    if (Platform.OS === 'web') {
+    if (Platform.OS === "web") {
       if (window.confirm(`Delete geofence "${geofence.name}"?`)) {
         await confirmDelete();
       }
     } else {
-      Alert.alert(
-        'Delete Geofence',
-        `Delete "${geofence.name}"?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete', style: 'destructive', onPress: confirmDelete },
-        ]
-      );
+      Alert.alert("Delete Geofence", `Delete "${geofence.name}"?`, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: confirmDelete },
+      ]);
     }
   }, []);
 
   const handleToggleGeofenceActive = useCallback(async (geofence: Geofence) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
-      const updated = await updateGeofence(geofence.id, { isActive: !geofence.isActive });
+      const updated = await updateGeofence(geofence.id, {
+        isActive: !geofence.isActive,
+      });
       if (updated) {
-        setGeofences(prev => prev.map(g => g.id === updated.id ? updated : g));
+        setGeofences((prev) =>
+          prev.map((g) => (g.id === updated.id ? updated : g)),
+        );
       }
     } catch (error) {
-      console.error('Error toggling geofence:', error);
+      console.error("Error toggling geofence:", error);
     }
   }, []);
 
   const handleStarCurrentLocation = useCallback(async () => {
     if (!location || !geocoded) {
-      Alert.alert('No Location', 'Unable to get current location to star.');
+      Alert.alert("No Location", "Unable to get current location to star.");
       return;
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const placeName = geocoded.city || geocoded.region || 'My Location';
-    
+    const placeName = geocoded.city || geocoded.region || "My Location";
+
     const newPlace: StarredPlace = {
       id: generateLocationId(),
       name: placeName,
@@ -460,47 +516,53 @@ export default function LocationScreen() {
 
     try {
       await addStarredPlace(newPlace);
-      setStarredPlaces(prev => [newPlace, ...prev]);
-      
-      if (Platform.OS === 'web') {
+      setStarredPlaces((prev) => [newPlace, ...prev]);
+
+      if (Platform.OS === "web") {
         window.alert(`${placeName} has been starred!`);
       } else {
-        Alert.alert('Location Starred', `${placeName} has been saved to your starred places.`);
+        Alert.alert(
+          "Location Starred",
+          `${placeName} has been saved to your starred places.`,
+        );
       }
     } catch (error) {
-      console.error('Error starring location:', error);
-      Alert.alert('Error', 'Failed to star location. Please try again.');
+      console.error("Error starring location:", error);
+      Alert.alert("Error", "Failed to star location. Please try again.");
     }
   }, [location, geocoded]);
 
-  const handleRemoveStarredPlace = useCallback(async (placeId: string, placeName: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    const confirmRemove = async () => {
-      try {
-        await removeStarredPlace(placeId);
-        setStarredPlaces(prev => prev.filter(p => p.id !== placeId));
-      } catch (error) {
-        console.error('Error removing starred place:', error);
-        Alert.alert('Error', 'Failed to remove starred place.');
-      }
-    };
+  const handleRemoveStarredPlace = useCallback(
+    async (placeId: string, placeName: string) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    if (Platform.OS === 'web') {
-      if (window.confirm(`Remove ${placeName} from starred places?`)) {
-        await confirmRemove();
+      const confirmRemove = async () => {
+        try {
+          await removeStarredPlace(placeId);
+          setStarredPlaces((prev) => prev.filter((p) => p.id !== placeId));
+        } catch (error) {
+          console.error("Error removing starred place:", error);
+          Alert.alert("Error", "Failed to remove starred place.");
+        }
+      };
+
+      if (Platform.OS === "web") {
+        if (window.confirm(`Remove ${placeName} from starred places?`)) {
+          await confirmRemove();
+        }
+      } else {
+        Alert.alert(
+          "Remove Starred Place",
+          `Remove ${placeName} from your starred places?`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Remove", style: "destructive", onPress: confirmRemove },
+          ],
+        );
       }
-    } else {
-      Alert.alert(
-        'Remove Starred Place',
-        `Remove ${placeName} from your starred places?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Remove', style: 'destructive', onPress: confirmRemove },
-        ]
-      );
-    }
-  }, []);
+    },
+    [],
+  );
 
   const handleToggleTracking = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -511,7 +573,11 @@ export default function LocationScreen() {
     }
   }, [isTracking, startTracking, stopTracking]);
 
-  const renderTabButton = (tab: TabType, label: string, icon: keyof typeof Feather.glyphMap) => (
+  const renderTabButton = (
+    tab: TabType,
+    label: string,
+    icon: keyof typeof Feather.glyphMap,
+  ) => (
     <Pressable
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -522,16 +588,19 @@ export default function LocationScreen() {
         activeTab === tab && { backgroundColor: `${Colors.dark.primary}20` },
       ]}
     >
-      <Feather 
-        name={icon} 
-        size={16} 
-        color={activeTab === tab ? Colors.dark.primary : theme.textSecondary} 
+      <Feather
+        name={icon}
+        size={16}
+        color={activeTab === tab ? Colors.dark.primary : theme.textSecondary}
       />
-      <ThemedText 
-        type="caption" 
+      <ThemedText
+        type="caption"
         style={[
           styles.tabLabel,
-          { color: activeTab === tab ? Colors.dark.primary : theme.textSecondary }
+          {
+            color:
+              activeTab === tab ? Colors.dark.primary : theme.textSecondary,
+          },
         ]}
       >
         {label}
@@ -545,40 +614,53 @@ export default function LocationScreen() {
         <View style={styles.cardHeader}>
           <View style={styles.cardTitleRow}>
             <Feather name="navigation" size={20} color={Colors.dark.primary} />
-            <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>Current Location</ThemedText>
+            <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>
+              Current Location
+            </ThemedText>
           </View>
           <View style={styles.statusBadge}>
             {isLoading ? (
               <ActivityIndicator size="small" color={Colors.dark.primary} />
-            ) : permissionStatus === 'granted' && location ? (
+            ) : permissionStatus === "granted" && location ? (
               <>
                 <PulsingDot color={Colors.dark.success} size={8} />
-                <ThemedText type="caption" style={{ marginLeft: Spacing.xs, color: Colors.dark.success }}>
+                <ThemedText
+                  type="caption"
+                  style={{ marginLeft: Spacing.xs, color: Colors.dark.success }}
+                >
                   Active
                 </ThemedText>
               </>
             ) : (
               <ThemedText type="caption" style={{ color: Colors.dark.warning }}>
-                {permissionStatus === 'denied' ? 'Denied' : 'Inactive'}
+                {permissionStatus === "denied" ? "Denied" : "Inactive"}
               </ThemedText>
             )}
           </View>
         </View>
 
-        {permissionStatus === 'granted' && location ? (
+        {permissionStatus === "granted" && location ? (
           <>
             <View style={styles.locationDetails}>
               <ThemedText type="h3" style={{ marginBottom: Spacing.xs }}>
-                {geocoded?.formattedAddress || 'Getting address...'}
+                {geocoded?.formattedAddress || "Getting address..."}
               </ThemedText>
               <ThemedText type="caption" secondary>
                 {formatCoordinates(location.latitude, location.longitude)}
               </ThemedText>
-              <ThemedText type="caption" secondary style={{ marginTop: Spacing.xs }}>
-                Last updated: {lastUpdated || 'Just now'}
+              <ThemedText
+                type="caption"
+                secondary
+                style={{ marginTop: Spacing.xs }}
+              >
+                Last updated: {lastUpdated || "Just now"}
               </ThemedText>
               {location.accuracy !== null && (
-                <ThemedText type="caption" secondary style={{ marginTop: Spacing.xs }}>
+                <ThemedText
+                  type="caption"
+                  secondary
+                  style={{ marginTop: Spacing.xs }}
+                >
                   Accuracy: {Math.round(location.accuracy)}m
                 </ThemedText>
               )}
@@ -589,11 +671,21 @@ export default function LocationScreen() {
                 onPress={handleRefresh}
                 style={({ pressed }) => [
                   styles.actionButton,
-                  { backgroundColor: `${Colors.dark.primary}20`, opacity: pressed ? 0.7 : 1 },
+                  {
+                    backgroundColor: `${Colors.dark.primary}20`,
+                    opacity: pressed ? 0.7 : 1,
+                  },
                 ]}
               >
-                <Feather name="refresh-cw" size={18} color={Colors.dark.primary} />
-                <ThemedText type="small" style={{ marginLeft: Spacing.xs, color: Colors.dark.primary }}>
+                <Feather
+                  name="refresh-cw"
+                  size={18}
+                  color={Colors.dark.primary}
+                />
+                <ThemedText
+                  type="small"
+                  style={{ marginLeft: Spacing.xs, color: Colors.dark.primary }}
+                >
                   Refresh
                 </ThemedText>
               </Pressable>
@@ -602,11 +694,17 @@ export default function LocationScreen() {
                 onPress={handleStarCurrentLocation}
                 style={({ pressed }) => [
                   styles.actionButton,
-                  { backgroundColor: `${Colors.dark.accent}20`, opacity: pressed ? 0.7 : 1 },
+                  {
+                    backgroundColor: `${Colors.dark.accent}20`,
+                    opacity: pressed ? 0.7 : 1,
+                  },
                 ]}
               >
                 <Feather name="star" size={18} color={Colors.dark.accent} />
-                <ThemedText type="small" style={{ marginLeft: Spacing.xs, color: Colors.dark.accent }}>
+                <ThemedText
+                  type="small"
+                  style={{ marginLeft: Spacing.xs, color: Colors.dark.accent }}
+                >
                   Star
                 </ThemedText>
               </Pressable>
@@ -615,55 +713,75 @@ export default function LocationScreen() {
                 onPress={handleToggleTracking}
                 style={({ pressed }) => [
                   styles.actionButton,
-                  { 
-                    backgroundColor: isTracking ? `${Colors.dark.error}20` : `${Colors.dark.success}20`, 
-                    opacity: pressed ? 0.7 : 1 
+                  {
+                    backgroundColor: isTracking
+                      ? `${Colors.dark.error}20`
+                      : `${Colors.dark.success}20`,
+                    opacity: pressed ? 0.7 : 1,
                   },
                 ]}
               >
-                <Feather 
-                  name={isTracking ? "pause" : "play"} 
-                  size={18} 
-                  color={isTracking ? Colors.dark.error : Colors.dark.success} 
+                <Feather
+                  name={isTracking ? "pause" : "play"}
+                  size={18}
+                  color={isTracking ? Colors.dark.error : Colors.dark.success}
                 />
-                <ThemedText 
-                  type="small" 
-                  style={{ 
-                    marginLeft: Spacing.xs, 
-                    color: isTracking ? Colors.dark.error : Colors.dark.success 
+                <ThemedText
+                  type="small"
+                  style={{
+                    marginLeft: Spacing.xs,
+                    color: isTracking ? Colors.dark.error : Colors.dark.success,
                   }}
                 >
-                  {isTracking ? 'Stop' : 'Track'}
+                  {isTracking ? "Stop" : "Track"}
                 </ThemedText>
               </Pressable>
 
               <Pressable
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  navigation.navigate('Map');
+                  navigation.navigate("Map");
                 }}
                 style={({ pressed }) => [
                   styles.actionButton,
-                  { backgroundColor: `${Colors.dark.secondary}20`, opacity: pressed ? 0.7 : 1 },
+                  {
+                    backgroundColor: `${Colors.dark.secondary}20`,
+                    opacity: pressed ? 0.7 : 1,
+                  },
                 ]}
               >
                 <Feather name="map" size={18} color={Colors.dark.secondary} />
-                <ThemedText type="small" style={{ marginLeft: Spacing.xs, color: Colors.dark.secondary }}>
+                <ThemedText
+                  type="small"
+                  style={{
+                    marginLeft: Spacing.xs,
+                    color: Colors.dark.secondary,
+                  }}
+                >
                   Map
                 </ThemedText>
               </Pressable>
             </View>
           </>
-        ) : permissionStatus === 'denied' ? (
+        ) : permissionStatus === "denied" ? (
           <View style={styles.permissionContainer}>
             <Feather name="alert-circle" size={48} color={Colors.dark.error} />
-            <ThemedText type="body" style={{ marginTop: Spacing.md, textAlign: 'center' }}>
+            <ThemedText
+              type="body"
+              style={{ marginTop: Spacing.md, textAlign: "center" }}
+            >
               Location access denied
             </ThemedText>
-            <ThemedText type="caption" secondary style={{ marginTop: Spacing.xs, textAlign: 'center' }}>
-              {Platform.OS !== 'web' ? 'Please enable location in your device settings.' : 'Enable location access in your browser.'}
+            <ThemedText
+              type="caption"
+              secondary
+              style={{ marginTop: Spacing.xs, textAlign: "center" }}
+            >
+              {Platform.OS !== "web"
+                ? "Please enable location in your device settings."
+                : "Enable location access in your browser."}
             </ThemedText>
-            {Platform.OS !== 'web' && (
+            {Platform.OS !== "web" && (
               <Pressable
                 onPress={openSettings}
                 style={({ pressed }) => [
@@ -677,7 +795,7 @@ export default function LocationScreen() {
                   end={{ x: 1, y: 0 }}
                   style={styles.enableButtonGradient}
                 >
-                  <ThemedText type="body" style={{ color: '#FFFFFF' }}>
+                  <ThemedText type="body" style={{ color: "#FFFFFF" }}>
                     Open Settings
                   </ThemedText>
                 </LinearGradient>
@@ -687,10 +805,17 @@ export default function LocationScreen() {
         ) : (
           <View style={styles.permissionContainer}>
             <Feather name="map-pin" size={48} color={Colors.dark.primary} />
-            <ThemedText type="body" style={{ marginTop: Spacing.md, textAlign: 'center' }}>
+            <ThemedText
+              type="body"
+              style={{ marginTop: Spacing.md, textAlign: "center" }}
+            >
               Enable Location Access
             </ThemedText>
-            <ThemedText type="caption" secondary style={{ marginTop: Spacing.xs, textAlign: 'center' }}>
+            <ThemedText
+              type="caption"
+              secondary
+              style={{ marginTop: Spacing.xs, textAlign: "center" }}
+            >
               Allow ZEKE to access your location for tracking features.
             </ThemedText>
             <Pressable
@@ -706,7 +831,7 @@ export default function LocationScreen() {
                 end={{ x: 1, y: 0 }}
                 style={styles.enableButtonGradient}
               >
-                <ThemedText type="body" style={{ color: '#FFFFFF' }}>
+                <ThemedText type="body" style={{ color: "#FFFFFF" }}>
                   Enable Location
                 </ThemedText>
               </LinearGradient>
@@ -715,11 +840,18 @@ export default function LocationScreen() {
         )}
       </View>
 
-      <View style={[styles.infoCard, { backgroundColor: theme.backgroundDefault }]}>
+      <View
+        style={[styles.infoCard, { backgroundColor: theme.backgroundDefault }]}
+      >
         <View style={styles.infoRow}>
           <Feather name="info" size={16} color={theme.textSecondary} />
-          <ThemedText type="caption" secondary style={{ marginLeft: Spacing.sm, flex: 1 }}>
-            ZEKE uses GPS for accurate location tracking. Your location data is stored locally and synced with your ZEKE account.
+          <ThemedText
+            type="caption"
+            secondary
+            style={{ marginLeft: Spacing.sm, flex: 1 }}
+          >
+            ZEKE uses GPS for accurate location tracking. Your location data is
+            stored locally and synced with your ZEKE account.
           </ThemedText>
         </View>
       </View>
@@ -736,21 +868,35 @@ export default function LocationScreen() {
           </ThemedText>
         </View>
       ) : locationHistory.length === 0 ? (
-        <View style={[styles.emptyCard, { backgroundColor: theme.backgroundDefault }]}>
+        <View
+          style={[
+            styles.emptyCard,
+            { backgroundColor: theme.backgroundDefault },
+          ]}
+        >
           <Feather name="clock" size={48} color={theme.textSecondary} />
-          <ThemedText type="body" secondary style={{ marginTop: Spacing.md, textAlign: 'center' }}>
+          <ThemedText
+            type="body"
+            secondary
+            style={{ marginTop: Spacing.md, textAlign: "center" }}
+          >
             No location history yet
           </ThemedText>
-          <ThemedText type="caption" secondary style={{ marginTop: Spacing.xs, textAlign: 'center' }}>
-            Your location history will appear here as ZEKE tracks your movements.
+          <ThemedText
+            type="caption"
+            secondary
+            style={{ marginTop: Spacing.xs, textAlign: "center" }}
+          >
+            Your location history will appear here as ZEKE tracks your
+            movements.
           </ThemedText>
         </View>
       ) : (
         locationHistory.map((record, index) => (
-          <View 
-            key={record.id} 
+          <View
+            key={record.id}
             style={[
-              styles.historyItem, 
+              styles.historyItem,
               { backgroundColor: theme.backgroundDefault },
               index === 0 && styles.firstHistoryItem,
             ]}
@@ -760,7 +906,11 @@ export default function LocationScreen() {
             </View>
             <View style={styles.historyContent}>
               <ThemedText type="body" numberOfLines={1}>
-                {record.geocoded?.formattedAddress || formatCoordinates(record.location.latitude, record.location.longitude)}
+                {record.geocoded?.formattedAddress ||
+                  formatCoordinates(
+                    record.location.latitude,
+                    record.location.longitude,
+                  )}
               </ThemedText>
               <ThemedText type="caption" secondary style={{ marginTop: 2 }}>
                 {new Date(record.createdAt).toLocaleString()}
@@ -782,23 +932,36 @@ export default function LocationScreen() {
           </ThemedText>
         </View>
       ) : starredPlaces.length === 0 ? (
-        <View style={[styles.emptyCard, { backgroundColor: theme.backgroundDefault }]}>
+        <View
+          style={[
+            styles.emptyCard,
+            { backgroundColor: theme.backgroundDefault },
+          ]}
+        >
           <Feather name="star" size={48} color={theme.textSecondary} />
-          <ThemedText type="body" secondary style={{ marginTop: Spacing.md, textAlign: 'center' }}>
+          <ThemedText
+            type="body"
+            secondary
+            style={{ marginTop: Spacing.md, textAlign: "center" }}
+          >
             No starred places yet
           </ThemedText>
-          <ThemedText type="caption" secondary style={{ marginTop: Spacing.xs, textAlign: 'center' }}>
+          <ThemedText
+            type="caption"
+            secondary
+            style={{ marginTop: Spacing.xs, textAlign: "center" }}
+          >
             Star your favorite locations to quickly access them later.
           </ThemedText>
         </View>
       ) : (
         starredPlaces.map((place) => {
-          const distance = location 
+          const distance = location
             ? calculateDistance(
-                location.latitude, 
-                location.longitude, 
-                place.location.latitude, 
-                place.location.longitude
+                location.latitude,
+                location.longitude,
+                place.location.latitude,
+                place.location.longitude,
               )
             : null;
 
@@ -808,19 +971,36 @@ export default function LocationScreen() {
               onLongPress={() => handleRemoveStarredPlace(place.id, place.name)}
               style={({ pressed }) => [
                 styles.starredItem,
-                { backgroundColor: theme.backgroundDefault, opacity: pressed ? 0.9 : 1 },
+                {
+                  backgroundColor: theme.backgroundDefault,
+                  opacity: pressed ? 0.9 : 1,
+                },
               ]}
             >
-              <View style={[styles.starredIconContainer, { backgroundColor: `${Colors.dark.accent}20` }]}>
+              <View
+                style={[
+                  styles.starredIconContainer,
+                  { backgroundColor: `${Colors.dark.accent}20` },
+                ]}
+              >
                 <Feather name="star" size={20} color={Colors.dark.accent} />
               </View>
               <View style={styles.starredContent}>
-                <ThemedText type="body" numberOfLines={1}>{place.name}</ThemedText>
+                <ThemedText type="body" numberOfLines={1}>
+                  {place.name}
+                </ThemedText>
                 <ThemedText type="caption" secondary numberOfLines={1}>
-                  {place.geocoded?.formattedAddress || formatCoordinates(place.location.latitude, place.location.longitude)}
+                  {place.geocoded?.formattedAddress ||
+                    formatCoordinates(
+                      place.location.latitude,
+                      place.location.longitude,
+                    )}
                 </ThemedText>
                 {distance !== null && (
-                  <ThemedText type="caption" style={{ color: Colors.dark.primary, marginTop: 2 }}>
+                  <ThemedText
+                    type="caption"
+                    style={{ color: Colors.dark.primary, marginTop: 2 }}
+                  >
                     {formatDistance(distance)} away
                   </ThemedText>
                 )}
@@ -843,14 +1023,23 @@ export default function LocationScreen() {
       <View style={[styles.card, { backgroundColor: theme.backgroundDefault }]}>
         <View style={styles.cardHeader}>
           <View style={styles.cardTitleRow}>
-            <Feather name="radio" size={20} color={isMonitoring ? Colors.dark.success : theme.textSecondary} />
-            <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>Geofence Monitoring</ThemedText>
+            <Feather
+              name="radio"
+              size={20}
+              color={isMonitoring ? Colors.dark.success : theme.textSecondary}
+            />
+            <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>
+              Geofence Monitoring
+            </ThemedText>
           </View>
           <View style={styles.statusBadge}>
             {isMonitoring ? (
               <>
                 <PulsingDot color={Colors.dark.success} size={8} />
-                <ThemedText type="caption" style={{ marginLeft: Spacing.xs, color: Colors.dark.success }}>
+                <ThemedText
+                  type="caption"
+                  style={{ marginLeft: Spacing.xs, color: Colors.dark.success }}
+                >
                   Active
                 </ThemedText>
               </>
@@ -873,21 +1062,29 @@ export default function LocationScreen() {
             value={monitoringEnabled}
             onValueChange={handleToggleMonitoring}
             trackColor={{ false: theme.border, true: Colors.dark.primary }}
-            thumbColor={monitoringEnabled ? Colors.dark.success : theme.textSecondary}
-            disabled={permissionStatus !== 'granted'}
+            thumbColor={
+              monitoringEnabled ? Colors.dark.success : theme.textSecondary
+            }
+            disabled={permissionStatus !== "granted"}
           />
         </View>
 
         {lastTrigger ? (
-          <View style={[styles.lastTriggerCard, { backgroundColor: `${Colors.dark.primary}10` }]}>
-            <Feather 
-              name={lastTrigger.event === 'enter' ? 'log-in' : 'log-out'} 
-              size={16} 
-              color={Colors.dark.primary} 
+          <View
+            style={[
+              styles.lastTriggerCard,
+              { backgroundColor: `${Colors.dark.primary}10` },
+            ]}
+          >
+            <Feather
+              name={lastTrigger.event === "enter" ? "log-in" : "log-out"}
+              size={16}
+              color={Colors.dark.primary}
             />
             <View style={{ marginLeft: Spacing.sm, flex: 1 }}>
               <ThemedText type="small">
-                {lastTrigger.event === 'enter' ? 'Entered' : 'Left'} {lastTrigger.geofenceName}
+                {lastTrigger.event === "enter" ? "Entered" : "Left"}{" "}
+                {lastTrigger.geofenceName}
               </ThemedText>
               <ThemedText type="caption" secondary>
                 {new Date(lastTrigger.timestamp).toLocaleTimeString()}
@@ -898,38 +1095,74 @@ export default function LocationScreen() {
 
         {nearbyGeofences.length > 0 ? (
           <View style={{ marginTop: Spacing.md }}>
-            <ThemedText type="caption" secondary style={{ marginBottom: Spacing.xs }}>
+            <ThemedText
+              type="caption"
+              secondary
+              style={{ marginBottom: Spacing.xs }}
+            >
               Nearby Geofences ({nearbyGeofences.length})
             </ThemedText>
             {nearbyGeofences.slice(0, 3).map(({ geofence, distance }) => (
               <View key={geofence.id} style={styles.nearbyGeofenceItem}>
                 <Feather name="target" size={14} color={theme.textSecondary} />
-                <ThemedText type="small" style={{ marginLeft: Spacing.xs, flex: 1 }} numberOfLines={1}>
+                <ThemedText
+                  type="small"
+                  style={{ marginLeft: Spacing.xs, flex: 1 }}
+                  numberOfLines={1}
+                >
                   {geofence.name}
                 </ThemedText>
-                <ThemedText type="caption" style={{ color: Colors.dark.primary }}>
-                  {distance < 1000 ? `${Math.round(distance)}m` : `${(distance / 1000).toFixed(1)}km`}
+                <ThemedText
+                  type="caption"
+                  style={{ color: Colors.dark.primary }}
+                >
+                  {distance < 1000
+                    ? `${Math.round(distance)}m`
+                    : `${(distance / 1000).toFixed(1)}km`}
                 </ThemedText>
               </View>
             ))}
           </View>
         ) : null}
 
-        <View style={[styles.infoCard, { backgroundColor: `${Colors.dark.warning}10`, marginTop: Spacing.md }]}>
+        <View
+          style={[
+            styles.infoCard,
+            {
+              backgroundColor: `${Colors.dark.warning}10`,
+              marginTop: Spacing.md,
+            },
+          ]}
+        >
           <View style={styles.infoRow}>
             <Feather name="info" size={14} color={Colors.dark.warning} />
-            <ThemedText type="caption" style={{ marginLeft: Spacing.sm, flex: 1, color: Colors.dark.warning }}>
-              Background monitoring requires a native build. In Expo Go, monitoring only works while the app is open.
+            <ThemedText
+              type="caption"
+              style={{
+                marginLeft: Spacing.sm,
+                flex: 1,
+                color: Colors.dark.warning,
+              }}
+            >
+              Background monitoring requires a native build. In Expo Go,
+              monitoring only works while the app is open.
             </ThemedText>
           </View>
         </View>
       </View>
 
-      <View style={[styles.card, { backgroundColor: theme.backgroundDefault, marginTop: Spacing.md }]}>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: theme.backgroundDefault, marginTop: Spacing.md },
+        ]}
+      >
         <View style={styles.cardHeader}>
           <View style={styles.cardTitleRow}>
             <Feather name="folder" size={20} color={Colors.dark.accent} />
-            <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>Location Lists</ThemedText>
+            <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>
+              Location Lists
+            </ThemedText>
           </View>
           <Pressable
             onPress={() => {
@@ -946,27 +1179,31 @@ export default function LocationScreen() {
           <ActivityIndicator size="small" color={Colors.dark.primary} />
         ) : locationLists.length === 0 ? (
           <View style={{ paddingVertical: Spacing.md }}>
-            <ThemedText type="body" secondary style={{ textAlign: 'center' }}>
+            <ThemedText type="body" secondary style={{ textAlign: "center" }}>
               No location lists yet
             </ThemedText>
-            <ThemedText type="caption" secondary style={{ textAlign: 'center', marginTop: Spacing.xs }}>
+            <ThemedText
+              type="caption"
+              secondary
+              style={{ textAlign: "center", marginTop: Spacing.xs }}
+            >
               Create lists to group geofences (e.g., Grocery Stores)
             </ThemedText>
             <Pressable
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setNewListName('Grocery Stores');
-                setNewListRadius('500');
-                setNewListActionType('grocery_prompt');
+                setNewListName("Grocery Stores");
+                setNewListRadius("500");
+                setNewListActionType("grocery_prompt");
                 setShowAddListModal(true);
               }}
               style={({ pressed }) => [
-                { 
-                  backgroundColor: `${Colors.dark.success}20`, 
-                  paddingVertical: Spacing.sm, 
+                {
+                  backgroundColor: `${Colors.dark.success}20`,
+                  paddingVertical: Spacing.sm,
                   paddingHorizontal: Spacing.md,
                   borderRadius: BorderRadius.sm,
-                  alignSelf: 'center',
+                  alignSelf: "center",
                   marginTop: Spacing.md,
                   opacity: pressed ? 0.7 : 1,
                 },
@@ -982,20 +1219,32 @@ export default function LocationScreen() {
             {locationLists.map((list) => (
               <View
                 key={list.id}
-                style={[styles.nearbyGeofenceItem, { paddingVertical: Spacing.sm }]}
+                style={[
+                  styles.nearbyGeofenceItem,
+                  { paddingVertical: Spacing.sm },
+                ]}
               >
-                <Feather 
-                  name="folder" 
-                  size={16} 
-                  color={list.actionType === 'grocery_prompt' ? Colors.dark.success : Colors.dark.accent} 
+                <Feather
+                  name="folder"
+                  size={16}
+                  color={
+                    list.actionType === "grocery_prompt"
+                      ? Colors.dark.success
+                      : Colors.dark.accent
+                  }
                 />
                 <View style={{ flex: 1, marginLeft: Spacing.sm }}>
                   <ThemedText type="small">{list.name}</ThemedText>
                   <ThemedText type="caption" secondary>
-                    {getActionTypeLabel(list.actionType)} - {formatRadius(list.defaultRadius)}
+                    {getActionTypeLabel(list.actionType)} -{" "}
+                    {formatRadius(list.defaultRadius)}
                   </ThemedText>
                 </View>
-                <ThemedText type="caption" secondary style={{ marginRight: Spacing.sm }}>
+                <ThemedText
+                  type="caption"
+                  secondary
+                  style={{ marginRight: Spacing.sm }}
+                >
                   {list.geofenceIds?.length || 0} places
                 </ThemedText>
                 <Pressable
@@ -1018,13 +1267,27 @@ export default function LocationScreen() {
           </ThemedText>
         </View>
       ) : geofences.length === 0 ? (
-        <View style={[styles.emptyCard, { backgroundColor: theme.backgroundDefault }]}>
+        <View
+          style={[
+            styles.emptyCard,
+            { backgroundColor: theme.backgroundDefault },
+          ]}
+        >
           <Feather name="target" size={48} color={theme.textSecondary} />
-          <ThemedText type="body" secondary style={{ marginTop: Spacing.md, textAlign: 'center' }}>
+          <ThemedText
+            type="body"
+            secondary
+            style={{ marginTop: Spacing.md, textAlign: "center" }}
+          >
             No geofences yet
           </ThemedText>
-          <ThemedText type="caption" secondary style={{ marginTop: Spacing.xs, textAlign: 'center' }}>
-            Create geofences to trigger actions when you enter or leave locations.
+          <ThemedText
+            type="caption"
+            secondary
+            style={{ marginTop: Spacing.xs, textAlign: "center" }}
+          >
+            Create geofences to trigger actions when you enter or leave
+            locations.
           </ThemedText>
           <Pressable
             onPress={handleOpenAddGeofence}
@@ -1039,7 +1302,7 @@ export default function LocationScreen() {
               end={{ x: 1, y: 0 }}
               style={styles.enableButtonGradient}
             >
-              <ThemedText type="body" style={{ color: '#FFFFFF' }}>
+              <ThemedText type="body" style={{ color: "#FFFFFF" }}>
                 Add Geofence
               </ThemedText>
             </LinearGradient>
@@ -1049,7 +1312,13 @@ export default function LocationScreen() {
         <>
           {geofences.map((geofence) => {
             const distance = location
-              ? calculateDistanceToGeofence({ latitude: location.latitude, longitude: location.longitude }, geofence)
+              ? calculateDistanceToGeofence(
+                  {
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                  },
+                  geofence,
+                )
               : null;
             const geofenceList = getListById(geofence.listId);
 
@@ -1059,38 +1328,87 @@ export default function LocationScreen() {
                 onPress={() => handleEditGeofence(geofence)}
                 style={({ pressed }) => [
                   styles.geofenceItem,
-                  { backgroundColor: theme.backgroundDefault, opacity: pressed ? 0.9 : 1 },
+                  {
+                    backgroundColor: theme.backgroundDefault,
+                    opacity: pressed ? 0.9 : 1,
+                  },
                 ]}
               >
-                <View style={[styles.geofenceIconContainer, { backgroundColor: geofence.isActive ? `${Colors.dark.primary}20` : `${theme.textSecondary}20` }]}>
-                  <Feather name="target" size={20} color={geofence.isActive ? Colors.dark.primary : theme.textSecondary} />
+                <View
+                  style={[
+                    styles.geofenceIconContainer,
+                    {
+                      backgroundColor: geofence.isActive
+                        ? `${Colors.dark.primary}20`
+                        : `${theme.textSecondary}20`,
+                    },
+                  ]}
+                >
+                  <Feather
+                    name="target"
+                    size={20}
+                    color={
+                      geofence.isActive
+                        ? Colors.dark.primary
+                        : theme.textSecondary
+                    }
+                  />
                 </View>
                 <View style={styles.geofenceContent}>
-                  <ThemedText type="body" numberOfLines={1}>{geofence.name}</ThemedText>
+                  <ThemedText type="body" numberOfLines={1}>
+                    {geofence.name}
+                  </ThemedText>
                   {geofenceList ? (
-                    <ThemedText type="caption" style={{ color: Colors.dark.success, marginTop: 2 }}>
+                    <ThemedText
+                      type="caption"
+                      style={{ color: Colors.dark.success, marginTop: 2 }}
+                    >
                       {geofenceList.name}
                     </ThemedText>
                   ) : null}
                   <View style={styles.geofenceMetaRow}>
-                    <View style={[styles.geofenceBadge, { backgroundColor: `${Colors.dark.secondary}20` }]}>
-                      <ThemedText type="caption" style={{ color: Colors.dark.secondary }}>
+                    <View
+                      style={[
+                        styles.geofenceBadge,
+                        { backgroundColor: `${Colors.dark.secondary}20` },
+                      ]}
+                    >
+                      <ThemedText
+                        type="caption"
+                        style={{ color: Colors.dark.secondary }}
+                      >
                         {formatRadius(geofence.radius)}
                       </ThemedText>
                     </View>
-                    <View style={[styles.geofenceBadge, { backgroundColor: `${Colors.dark.accent}20` }]}>
-                      <ThemedText type="caption" style={{ color: Colors.dark.accent }}>
+                    <View
+                      style={[
+                        styles.geofenceBadge,
+                        { backgroundColor: `${Colors.dark.accent}20` },
+                      ]}
+                    >
+                      <ThemedText
+                        type="caption"
+                        style={{ color: Colors.dark.accent }}
+                      >
                         {getActionTypeLabel(geofence.actionType)}
                       </ThemedText>
                     </View>
-                    <View style={[styles.geofenceBadge, { backgroundColor: `${theme.textSecondary}20` }]}>
+                    <View
+                      style={[
+                        styles.geofenceBadge,
+                        { backgroundColor: `${theme.textSecondary}20` },
+                      ]}
+                    >
                       <ThemedText type="caption" secondary>
                         {getTriggerLabel(geofence.triggerOn)}
                       </ThemedText>
                     </View>
                   </View>
                   {distance !== null ? (
-                    <ThemedText type="caption" style={{ color: Colors.dark.primary, marginTop: 4 }}>
+                    <ThemedText
+                      type="caption"
+                      style={{ color: Colors.dark.primary, marginTop: 4 }}
+                    >
                       {formatDistance(distance)} away
                     </ThemedText>
                   ) : null}
@@ -1102,16 +1420,24 @@ export default function LocationScreen() {
                     style={{ marginRight: Spacing.sm }}
                   >
                     <Feather
-                      name={geofence.isActive ? 'toggle-right' : 'toggle-left'}
+                      name={geofence.isActive ? "toggle-right" : "toggle-left"}
                       size={24}
-                      color={geofence.isActive ? Colors.dark.success : theme.textSecondary}
+                      color={
+                        geofence.isActive
+                          ? Colors.dark.success
+                          : theme.textSecondary
+                      }
                     />
                   </Pressable>
                   <Pressable
                     onPress={() => handleDeleteGeofence(geofence)}
                     hitSlop={10}
                   >
-                    <Feather name="trash-2" size={18} color={Colors.dark.error} />
+                    <Feather
+                      name="trash-2"
+                      size={18}
+                      color={Colors.dark.error}
+                    />
                   </Pressable>
                 </View>
               </Pressable>
@@ -1124,287 +1450,504 @@ export default function LocationScreen() {
 
   const renderAddGeofenceModal = () => (
     <>
-    <Modal
-      visible={showAddGeofenceModal}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={() => {
-        setShowAddGeofenceModal(false);
-        resetGeofenceForm();
-      }}
-    >
-      <View style={[styles.modalContainer, { backgroundColor: theme.backgroundRoot }]}>
-        <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-          <Pressable
-            onPress={() => {
-              setShowAddGeofenceModal(false);
-              resetGeofenceForm();
-            }}
-            hitSlop={10}
-          >
-            <ThemedText type="body" style={{ color: Colors.dark.primary }}>Cancel</ThemedText>
-          </Pressable>
-          <ThemedText type="h4">{editingGeofence ? 'Edit Geofence' : 'Add Geofence'}</ThemedText>
-          <Pressable onPress={handleSaveGeofence} hitSlop={10}>
-            <ThemedText type="body" style={{ color: Colors.dark.primary, fontWeight: '600' }}>Save</ThemedText>
-          </Pressable>
-        </View>
-
-        <KeyboardAwareScrollViewCompat
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.modalContent}
+      <Modal
+        visible={showAddGeofenceModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => {
+          setShowAddGeofenceModal(false);
+          resetGeofenceForm();
+        }}
+      >
+        <View
+          style={[
+            styles.modalContainer,
+            { backgroundColor: theme.backgroundRoot },
+          ]}
         >
-          {!editingGeofence && location ? (
+          <View
+            style={[styles.modalHeader, { borderBottomColor: theme.border }]}
+          >
             <Pressable
-              onPress={handleQuickAddAsGroceryStore}
-              style={({ pressed }) => [
-                {
-                  backgroundColor: `${Colors.dark.success}20`,
-                  paddingVertical: Spacing.md,
-                  paddingHorizontal: Spacing.lg,
-                  borderRadius: BorderRadius.md,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: Spacing.lg,
-                  borderWidth: 1,
-                  borderColor: Colors.dark.success,
-                  opacity: pressed ? 0.7 : 1,
-                },
-              ]}
+              onPress={() => {
+                setShowAddGeofenceModal(false);
+                resetGeofenceForm();
+              }}
+              hitSlop={10}
             >
-              <Feather name="shopping-cart" size={18} color={Colors.dark.success} />
-              <ThemedText type="body" style={{ marginLeft: Spacing.sm, color: Colors.dark.success, fontWeight: '600' }}>
-                Add as Grocery Store
+              <ThemedText type="body" style={{ color: Colors.dark.primary }}>
+                Cancel
               </ThemedText>
             </Pressable>
-          ) : null}
-
-          <View style={styles.formGroup}>
-            <ThemedText type="small" secondary style={styles.formLabel}>Name</ThemedText>
-            <TextInput
-              value={geofenceName}
-              onChangeText={setGeofenceName}
-              placeholder="e.g., Home, Office, Grocery Store"
-              placeholderTextColor={theme.textSecondary}
-              style={[styles.textInput, { backgroundColor: theme.backgroundDefault, color: theme.text, borderColor: theme.border }]}
-            />
+            <ThemedText type="h4">
+              {editingGeofence ? "Edit Geofence" : "Add Geofence"}
+            </ThemedText>
+            <Pressable onPress={handleSaveGeofence} hitSlop={10}>
+              <ThemedText
+                type="body"
+                style={{ color: Colors.dark.primary, fontWeight: "600" }}
+              >
+                Save
+              </ThemedText>
+            </Pressable>
           </View>
 
-          <View style={styles.formGroup}>
-            <ThemedText type="small" secondary style={styles.formLabel}>Location</ThemedText>
-            <View style={styles.locationToggle}>
+          <KeyboardAwareScrollViewCompat
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.modalContent}
+          >
+            {!editingGeofence && location ? (
               <Pressable
-                onPress={() => setUseCurrentLocation(true)}
-                style={[
-                  styles.locationToggleButton,
-                  { backgroundColor: useCurrentLocation ? `${Colors.dark.primary}20` : theme.backgroundDefault, borderColor: theme.border },
+                onPress={handleQuickAddAsGroceryStore}
+                style={({ pressed }) => [
+                  {
+                    backgroundColor: `${Colors.dark.success}20`,
+                    paddingVertical: Spacing.md,
+                    paddingHorizontal: Spacing.lg,
+                    borderRadius: BorderRadius.md,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: Spacing.lg,
+                    borderWidth: 1,
+                    borderColor: Colors.dark.success,
+                    opacity: pressed ? 0.7 : 1,
+                  },
                 ]}
               >
-                <Feather name="navigation" size={16} color={useCurrentLocation ? Colors.dark.primary : theme.textSecondary} />
-                <ThemedText type="small" style={{ marginLeft: Spacing.xs, color: useCurrentLocation ? Colors.dark.primary : theme.textSecondary }}>
-                  Current
+                <Feather
+                  name="shopping-cart"
+                  size={18}
+                  color={Colors.dark.success}
+                />
+                <ThemedText
+                  type="body"
+                  style={{
+                    marginLeft: Spacing.sm,
+                    color: Colors.dark.success,
+                    fontWeight: "600",
+                  }}
+                >
+                  Add as Grocery Store
                 </ThemedText>
               </Pressable>
-              <Pressable
-                onPress={() => setUseCurrentLocation(false)}
-                style={[
-                  styles.locationToggleButton,
-                  { backgroundColor: !useCurrentLocation ? `${Colors.dark.primary}20` : theme.backgroundDefault, borderColor: theme.border },
-                ]}
-              >
-                <Feather name="edit-3" size={16} color={!useCurrentLocation ? Colors.dark.primary : theme.textSecondary} />
-                <ThemedText type="small" style={{ marginLeft: Spacing.xs, color: !useCurrentLocation ? Colors.dark.primary : theme.textSecondary }}>
-                  Manual
-                </ThemedText>
-              </Pressable>
-            </View>
-            {!useCurrentLocation && (
-              <View style={styles.coordinateInputs}>
-                <TextInput
-                  value={manualLat}
-                  onChangeText={setManualLat}
-                  placeholder="Latitude"
-                  placeholderTextColor={theme.textSecondary}
-                  keyboardType="decimal-pad"
-                  style={[styles.textInput, styles.coordinateInput, { backgroundColor: theme.backgroundDefault, color: theme.text, borderColor: theme.border }]}
-                />
-                <TextInput
-                  value={manualLon}
-                  onChangeText={setManualLon}
-                  placeholder="Longitude"
-                  placeholderTextColor={theme.textSecondary}
-                  keyboardType="decimal-pad"
-                  style={[styles.textInput, styles.coordinateInput, { backgroundColor: theme.backgroundDefault, color: theme.text, borderColor: theme.border }]}
-                />
-              </View>
-            )}
-          </View>
+            ) : null}
 
-          <View style={styles.formGroup}>
-            <ThemedText type="small" secondary style={styles.formLabel}>Radius (meters)</ThemedText>
-            <TextInput
-              value={geofenceRadius}
-              onChangeText={setGeofenceRadius}
-              placeholder="500"
-              placeholderTextColor={theme.textSecondary}
-              keyboardType="number-pad"
-              style={[styles.textInput, { backgroundColor: theme.backgroundDefault, color: theme.text, borderColor: theme.border }]}
-            />
-          </View>
-
-          <View style={styles.formGroup}>
-            <ThemedText type="small" secondary style={styles.formLabel}>Trigger On</ThemedText>
-            <View style={styles.optionsRow}>
-              {(['enter', 'exit', 'both'] as const).map((option) => (
-                <Pressable
-                  key={option}
-                  onPress={() => setGeofenceTriggerOn(option)}
-                  style={[
-                    styles.optionButton,
-                    { backgroundColor: geofenceTriggerOn === option ? `${Colors.dark.primary}20` : theme.backgroundDefault, borderColor: theme.border },
-                  ]}
-                >
-                  <ThemedText type="small" style={{ color: geofenceTriggerOn === option ? Colors.dark.primary : theme.textSecondary }}>
-                    {getTriggerLabel(option)}
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          <View style={styles.formGroup}>
-            <ThemedText type="small" secondary style={styles.formLabel}>Action Type</ThemedText>
-            <View style={styles.optionsRow}>
-              {(['notification', 'grocery_prompt', 'custom'] as const).map((option) => (
-                <Pressable
-                  key={option}
-                  onPress={() => setGeofenceActionType(option)}
-                  style={[
-                    styles.optionButton,
-                    { backgroundColor: geofenceActionType === option ? `${Colors.dark.accent}20` : theme.backgroundDefault, borderColor: theme.border },
-                  ]}
-                >
-                  <ThemedText type="small" style={{ color: geofenceActionType === option ? Colors.dark.accent : theme.textSecondary }}>
-                    {getActionTypeLabel(option)}
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          {locationLists.length > 0 ? (
             <View style={styles.formGroup}>
-              <ThemedText type="small" secondary style={styles.formLabel}>Add to List (optional)</ThemedText>
-              <View style={styles.optionsRow}>
+              <ThemedText type="small" secondary style={styles.formLabel}>
+                Name
+              </ThemedText>
+              <TextInput
+                value={geofenceName}
+                onChangeText={setGeofenceName}
+                placeholder="e.g., Home, Office, Grocery Store"
+                placeholderTextColor={theme.textSecondary}
+                style={[
+                  styles.textInput,
+                  {
+                    backgroundColor: theme.backgroundDefault,
+                    color: theme.text,
+                    borderColor: theme.border,
+                  },
+                ]}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <ThemedText type="small" secondary style={styles.formLabel}>
+                Location
+              </ThemedText>
+              <View style={styles.locationToggle}>
                 <Pressable
-                  onPress={() => setSelectedListId(undefined)}
+                  onPress={() => setUseCurrentLocation(true)}
                   style={[
-                    styles.optionButton,
-                    { backgroundColor: !selectedListId ? `${Colors.dark.primary}20` : theme.backgroundDefault, borderColor: theme.border },
+                    styles.locationToggleButton,
+                    {
+                      backgroundColor: useCurrentLocation
+                        ? `${Colors.dark.primary}20`
+                        : theme.backgroundDefault,
+                      borderColor: theme.border,
+                    },
                   ]}
                 >
-                  <ThemedText type="small" style={{ color: !selectedListId ? Colors.dark.primary : theme.textSecondary }}>
-                    None
+                  <Feather
+                    name="navigation"
+                    size={16}
+                    color={
+                      useCurrentLocation
+                        ? Colors.dark.primary
+                        : theme.textSecondary
+                    }
+                  />
+                  <ThemedText
+                    type="small"
+                    style={{
+                      marginLeft: Spacing.xs,
+                      color: useCurrentLocation
+                        ? Colors.dark.primary
+                        : theme.textSecondary,
+                    }}
+                  >
+                    Current
                   </ThemedText>
                 </Pressable>
-                {locationLists.map((list) => (
+                <Pressable
+                  onPress={() => setUseCurrentLocation(false)}
+                  style={[
+                    styles.locationToggleButton,
+                    {
+                      backgroundColor: !useCurrentLocation
+                        ? `${Colors.dark.primary}20`
+                        : theme.backgroundDefault,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
+                  <Feather
+                    name="edit-3"
+                    size={16}
+                    color={
+                      !useCurrentLocation
+                        ? Colors.dark.primary
+                        : theme.textSecondary
+                    }
+                  />
+                  <ThemedText
+                    type="small"
+                    style={{
+                      marginLeft: Spacing.xs,
+                      color: !useCurrentLocation
+                        ? Colors.dark.primary
+                        : theme.textSecondary,
+                    }}
+                  >
+                    Manual
+                  </ThemedText>
+                </Pressable>
+              </View>
+              {!useCurrentLocation && (
+                <View style={styles.coordinateInputs}>
+                  <TextInput
+                    value={manualLat}
+                    onChangeText={setManualLat}
+                    placeholder="Latitude"
+                    placeholderTextColor={theme.textSecondary}
+                    keyboardType="decimal-pad"
+                    style={[
+                      styles.textInput,
+                      styles.coordinateInput,
+                      {
+                        backgroundColor: theme.backgroundDefault,
+                        color: theme.text,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                  />
+                  <TextInput
+                    value={manualLon}
+                    onChangeText={setManualLon}
+                    placeholder="Longitude"
+                    placeholderTextColor={theme.textSecondary}
+                    keyboardType="decimal-pad"
+                    style={[
+                      styles.textInput,
+                      styles.coordinateInput,
+                      {
+                        backgroundColor: theme.backgroundDefault,
+                        color: theme.text,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                  />
+                </View>
+              )}
+            </View>
+
+            <View style={styles.formGroup}>
+              <ThemedText type="small" secondary style={styles.formLabel}>
+                Radius (meters)
+              </ThemedText>
+              <TextInput
+                value={geofenceRadius}
+                onChangeText={setGeofenceRadius}
+                placeholder="500"
+                placeholderTextColor={theme.textSecondary}
+                keyboardType="number-pad"
+                style={[
+                  styles.textInput,
+                  {
+                    backgroundColor: theme.backgroundDefault,
+                    color: theme.text,
+                    borderColor: theme.border,
+                  },
+                ]}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <ThemedText type="small" secondary style={styles.formLabel}>
+                Trigger On
+              </ThemedText>
+              <View style={styles.optionsRow}>
+                {(["enter", "exit", "both"] as const).map((option) => (
                   <Pressable
-                    key={list.id}
-                    onPress={() => setSelectedListId(list.id)}
+                    key={option}
+                    onPress={() => setGeofenceTriggerOn(option)}
                     style={[
                       styles.optionButton,
-                      { backgroundColor: selectedListId === list.id ? `${Colors.dark.success}20` : theme.backgroundDefault, borderColor: theme.border },
+                      {
+                        backgroundColor:
+                          geofenceTriggerOn === option
+                            ? `${Colors.dark.primary}20`
+                            : theme.backgroundDefault,
+                        borderColor: theme.border,
+                      },
                     ]}
                   >
-                    <ThemedText type="small" style={{ color: selectedListId === list.id ? Colors.dark.success : theme.textSecondary }}>
-                      {list.name}
+                    <ThemedText
+                      type="small"
+                      style={{
+                        color:
+                          geofenceTriggerOn === option
+                            ? Colors.dark.primary
+                            : theme.textSecondary,
+                      }}
+                    >
+                      {getTriggerLabel(option)}
                     </ThemedText>
                   </Pressable>
                 ))}
               </View>
             </View>
-          ) : null}
-        </KeyboardAwareScrollViewCompat>
-      </View>
-    </Modal>
 
-    <Modal
-      visible={showAddListModal}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={() => {
-        setShowAddListModal(false);
-        resetListForm();
-      }}
-    >
-      <View style={[styles.modalContainer, { backgroundColor: theme.backgroundRoot }]}>
-        <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-          <Pressable
-            onPress={() => {
-              setShowAddListModal(false);
-              resetListForm();
-            }}
-            hitSlop={10}
-          >
-            <ThemedText type="body" style={{ color: Colors.dark.primary }}>Cancel</ThemedText>
-          </Pressable>
-          <ThemedText type="h4">New Location List</ThemedText>
-          <Pressable onPress={handleSaveLocationList} hitSlop={10}>
-            <ThemedText type="body" style={{ color: Colors.dark.primary, fontWeight: '600' }}>Save</ThemedText>
-          </Pressable>
-        </View>
-
-        <KeyboardAwareScrollViewCompat
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.modalContent}
-        >
-          <View style={styles.formGroup}>
-            <ThemedText type="small" secondary style={styles.formLabel}>List Name</ThemedText>
-            <TextInput
-              value={newListName}
-              onChangeText={setNewListName}
-              placeholder="e.g., Grocery Stores, Coffee Shops"
-              placeholderTextColor={theme.textSecondary}
-              style={[styles.textInput, { backgroundColor: theme.backgroundDefault, color: theme.text, borderColor: theme.border }]}
-            />
-          </View>
-
-          <View style={styles.formGroup}>
-            <ThemedText type="small" secondary style={styles.formLabel}>Default Radius (meters)</ThemedText>
-            <TextInput
-              value={newListRadius}
-              onChangeText={setNewListRadius}
-              placeholder="500"
-              placeholderTextColor={theme.textSecondary}
-              keyboardType="number-pad"
-              style={[styles.textInput, { backgroundColor: theme.backgroundDefault, color: theme.text, borderColor: theme.border }]}
-            />
-          </View>
-
-          <View style={styles.formGroup}>
-            <ThemedText type="small" secondary style={styles.formLabel}>Default Action Type</ThemedText>
-            <View style={styles.optionsRow}>
-              {(['notification', 'grocery_prompt', 'custom'] as const).map((option) => (
-                <Pressable
-                  key={option}
-                  onPress={() => setNewListActionType(option)}
-                  style={[
-                    styles.optionButton,
-                    { backgroundColor: newListActionType === option ? `${Colors.dark.accent}20` : theme.backgroundDefault, borderColor: theme.border },
-                  ]}
-                >
-                  <ThemedText type="small" style={{ color: newListActionType === option ? Colors.dark.accent : theme.textSecondary }}>
-                    {getActionTypeLabel(option)}
-                  </ThemedText>
-                </Pressable>
-              ))}
+            <View style={styles.formGroup}>
+              <ThemedText type="small" secondary style={styles.formLabel}>
+                Action Type
+              </ThemedText>
+              <View style={styles.optionsRow}>
+                {(["notification", "grocery_prompt", "custom"] as const).map(
+                  (option) => (
+                    <Pressable
+                      key={option}
+                      onPress={() => setGeofenceActionType(option)}
+                      style={[
+                        styles.optionButton,
+                        {
+                          backgroundColor:
+                            geofenceActionType === option
+                              ? `${Colors.dark.accent}20`
+                              : theme.backgroundDefault,
+                          borderColor: theme.border,
+                        },
+                      ]}
+                    >
+                      <ThemedText
+                        type="small"
+                        style={{
+                          color:
+                            geofenceActionType === option
+                              ? Colors.dark.accent
+                              : theme.textSecondary,
+                        }}
+                      >
+                        {getActionTypeLabel(option)}
+                      </ThemedText>
+                    </Pressable>
+                  ),
+                )}
+              </View>
             </View>
+
+            {locationLists.length > 0 ? (
+              <View style={styles.formGroup}>
+                <ThemedText type="small" secondary style={styles.formLabel}>
+                  Add to List (optional)
+                </ThemedText>
+                <View style={styles.optionsRow}>
+                  <Pressable
+                    onPress={() => setSelectedListId(undefined)}
+                    style={[
+                      styles.optionButton,
+                      {
+                        backgroundColor: !selectedListId
+                          ? `${Colors.dark.primary}20`
+                          : theme.backgroundDefault,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                  >
+                    <ThemedText
+                      type="small"
+                      style={{
+                        color: !selectedListId
+                          ? Colors.dark.primary
+                          : theme.textSecondary,
+                      }}
+                    >
+                      None
+                    </ThemedText>
+                  </Pressable>
+                  {locationLists.map((list) => (
+                    <Pressable
+                      key={list.id}
+                      onPress={() => setSelectedListId(list.id)}
+                      style={[
+                        styles.optionButton,
+                        {
+                          backgroundColor:
+                            selectedListId === list.id
+                              ? `${Colors.dark.success}20`
+                              : theme.backgroundDefault,
+                          borderColor: theme.border,
+                        },
+                      ]}
+                    >
+                      <ThemedText
+                        type="small"
+                        style={{
+                          color:
+                            selectedListId === list.id
+                              ? Colors.dark.success
+                              : theme.textSecondary,
+                        }}
+                      >
+                        {list.name}
+                      </ThemedText>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+          </KeyboardAwareScrollViewCompat>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showAddListModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => {
+          setShowAddListModal(false);
+          resetListForm();
+        }}
+      >
+        <View
+          style={[
+            styles.modalContainer,
+            { backgroundColor: theme.backgroundRoot },
+          ]}
+        >
+          <View
+            style={[styles.modalHeader, { borderBottomColor: theme.border }]}
+          >
+            <Pressable
+              onPress={() => {
+                setShowAddListModal(false);
+                resetListForm();
+              }}
+              hitSlop={10}
+            >
+              <ThemedText type="body" style={{ color: Colors.dark.primary }}>
+                Cancel
+              </ThemedText>
+            </Pressable>
+            <ThemedText type="h4">New Location List</ThemedText>
+            <Pressable onPress={handleSaveLocationList} hitSlop={10}>
+              <ThemedText
+                type="body"
+                style={{ color: Colors.dark.primary, fontWeight: "600" }}
+              >
+                Save
+              </ThemedText>
+            </Pressable>
           </View>
-        </KeyboardAwareScrollViewCompat>
-      </View>
-    </Modal>
-  </>
+
+          <KeyboardAwareScrollViewCompat
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.modalContent}
+          >
+            <View style={styles.formGroup}>
+              <ThemedText type="small" secondary style={styles.formLabel}>
+                List Name
+              </ThemedText>
+              <TextInput
+                value={newListName}
+                onChangeText={setNewListName}
+                placeholder="e.g., Grocery Stores, Coffee Shops"
+                placeholderTextColor={theme.textSecondary}
+                style={[
+                  styles.textInput,
+                  {
+                    backgroundColor: theme.backgroundDefault,
+                    color: theme.text,
+                    borderColor: theme.border,
+                  },
+                ]}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <ThemedText type="small" secondary style={styles.formLabel}>
+                Default Radius (meters)
+              </ThemedText>
+              <TextInput
+                value={newListRadius}
+                onChangeText={setNewListRadius}
+                placeholder="500"
+                placeholderTextColor={theme.textSecondary}
+                keyboardType="number-pad"
+                style={[
+                  styles.textInput,
+                  {
+                    backgroundColor: theme.backgroundDefault,
+                    color: theme.text,
+                    borderColor: theme.border,
+                  },
+                ]}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <ThemedText type="small" secondary style={styles.formLabel}>
+                Default Action Type
+              </ThemedText>
+              <View style={styles.optionsRow}>
+                {(["notification", "grocery_prompt", "custom"] as const).map(
+                  (option) => (
+                    <Pressable
+                      key={option}
+                      onPress={() => setNewListActionType(option)}
+                      style={[
+                        styles.optionButton,
+                        {
+                          backgroundColor:
+                            newListActionType === option
+                              ? `${Colors.dark.accent}20`
+                              : theme.backgroundDefault,
+                          borderColor: theme.border,
+                        },
+                      ]}
+                    >
+                      <ThemedText
+                        type="small"
+                        style={{
+                          color:
+                            newListActionType === option
+                              ? Colors.dark.accent
+                              : theme.textSecondary,
+                        }}
+                      >
+                        {getActionTypeLabel(option)}
+                      </ThemedText>
+                    </Pressable>
+                  ),
+                )}
+              </View>
+            </View>
+          </KeyboardAwareScrollViewCompat>
+        </View>
+      </Modal>
+    </>
   );
 
   return (
@@ -1435,24 +1978,28 @@ export default function LocationScreen() {
           </ThemedText>
         </View>
 
-        <View style={[styles.tabContainer, { backgroundColor: theme.backgroundDefault }]}>
-          {renderTabButton('current', 'Current', 'navigation')}
-          {renderTabButton('history', 'History', 'clock')}
-          {renderTabButton('starred', 'Starred', 'star')}
-          {renderTabButton('geofences', 'Fences', 'target')}
+        <View
+          style={[
+            styles.tabContainer,
+            { backgroundColor: theme.backgroundDefault },
+          ]}
+        >
+          {renderTabButton("current", "Current", "navigation")}
+          {renderTabButton("history", "History", "clock")}
+          {renderTabButton("starred", "Starred", "star")}
+          {renderTabButton("geofences", "Fences", "target")}
         </View>
 
-        {activeTab === 'current' && renderCurrentLocation()}
-        {activeTab === 'history' && renderLocationHistory()}
-        {activeTab === 'starred' && renderStarredPlaces()}
-        {activeTab === 'geofences' && renderGeofences()}
+        {activeTab === "current" && renderCurrentLocation()}
+        {activeTab === "history" && renderLocationHistory()}
+        {activeTab === "starred" && renderStarredPlaces()}
+        {activeTab === "geofences" && renderGeofences()}
       </ScrollView>
 
-      {activeTab === 'geofences' && geofences.length > 0 && (
+      {activeTab === "geofences" && geofences.length > 0 && (
         <FloatingActionButton
           onPress={handleOpenAddGeofence}
-          icon="plus"
-          style={{ bottom: insets.bottom + Spacing.xl }}
+          bottom={insets.bottom + Spacing.xl}
         />
       )}
 
@@ -1466,16 +2013,16 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   tabContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     borderRadius: BorderRadius.md,
     padding: Spacing.xs,
     marginBottom: Spacing.lg,
   },
   tabButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.sm,
   },
@@ -1491,69 +2038,69 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: Spacing.md,
   },
   cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   locationDetails: {
     marginBottom: Spacing.lg,
   },
   actionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   actionButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.md,
     borderRadius: BorderRadius.sm,
     marginHorizontal: Spacing.xs,
   },
   permissionContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: Spacing.xl,
   },
   enableButton: {
     marginTop: Spacing.lg,
     borderRadius: BorderRadius.md,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   enableButtonGradient: {
     paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing['2xl'],
+    paddingHorizontal: Spacing["2xl"],
   },
   infoCard: {
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
   },
   infoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
   },
   loadingContainer: {
-    alignItems: 'center',
-    paddingVertical: Spacing['3xl'],
+    alignItems: "center",
+    paddingVertical: Spacing["3xl"],
   },
   emptyCard: {
     borderRadius: BorderRadius.lg,
-    padding: Spacing['2xl'],
-    alignItems: 'center',
+    padding: Spacing["2xl"],
+    alignItems: "center",
   },
   historyItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: Spacing.md,
     borderRadius: BorderRadius.md,
     marginBottom: Spacing.sm,
@@ -1567,16 +2114,16 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     backgroundColor: `${Colors.dark.primary}20`,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: Spacing.md,
   },
   historyContent: {
     flex: 1,
   },
   starredItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: Spacing.md,
     borderRadius: BorderRadius.md,
     marginBottom: Spacing.sm,
@@ -1585,16 +2132,16 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: Spacing.md,
   },
   starredContent: {
     flex: 1,
   },
   geofenceItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: Spacing.md,
     borderRadius: BorderRadius.md,
     marginBottom: Spacing.sm,
@@ -1603,16 +2150,16 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: Spacing.md,
   },
   geofenceContent: {
     flex: 1,
   },
   geofenceMetaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     marginTop: Spacing.xs,
     gap: Spacing.xs,
   },
@@ -1622,23 +2169,23 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xs,
   },
   geofenceActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   modalContainer: {
     flex: 1,
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     borderBottomWidth: 1,
   },
   modalContent: {
     padding: Spacing.lg,
-    paddingBottom: Spacing['3xl'],
+    paddingBottom: Spacing["3xl"],
   },
   formGroup: {
     marginBottom: Spacing.lg,
@@ -1654,20 +2201,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   locationToggle: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: Spacing.sm,
   },
   locationToggleButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
   },
   coordinateInputs: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: Spacing.sm,
     marginTop: Spacing.sm,
   },
@@ -1675,8 +2222,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   optionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: Spacing.sm,
   },
   optionButton: {
@@ -1686,22 +2233,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   monitoringToggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.dark.border,
     marginBottom: Spacing.md,
   },
   lastTriggerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: Spacing.md,
     borderRadius: BorderRadius.sm,
   },
   nearbyGeofenceItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: Spacing.xs,
   },
 });

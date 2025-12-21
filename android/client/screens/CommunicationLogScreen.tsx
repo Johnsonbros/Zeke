@@ -1,5 +1,16 @@
 import React, { useState, useCallback, useMemo } from "react";
-import { View, FlatList, StyleSheet, RefreshControl, Pressable, ActivityIndicator, Modal, TextInput, Alert, Platform } from "react-native";
+import {
+  View,
+  FlatList,
+  StyleSheet,
+  RefreshControl,
+  Pressable,
+  ActivityIndicator,
+  Modal,
+  TextInput,
+  Alert,
+  Platform,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { Feather } from "@expo/vector-icons";
@@ -8,16 +19,33 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { LinearGradient } from "expo-linear-gradient";
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { EmptyState } from "@/components/EmptyState";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useTheme } from "@/hooks/useTheme";
-import { Spacing, Colors, BorderRadius, Gradients, Shadows } from "@/constants/theme";
+import {
+  Spacing,
+  Colors,
+  BorderRadius,
+  Gradients,
+  Shadows,
+} from "@/constants/theme";
 import { queryClient } from "@/lib/query-client";
-import { getSmsConversations, getConversations, ZekeContactConversation, ZekeConversation, sendSms, initiateCall } from "@/lib/zeke-api-adapter";
+import {
+  getSmsConversations,
+  getConversations,
+  ZekeContactConversation,
+  ZekeConversation,
+  sendSms,
+  initiateCall,
+} from "@/lib/zeke-api-adapter";
 import { CommunicationStackParamList } from "@/navigation/CommunicationStackNavigator";
 
 type FilterType = "all" | "sms" | "voice" | "app";
@@ -152,7 +180,10 @@ function CommunicationRow({ item, onPress }: CommunicationRowProps) {
       onPress={onPress}
       style={({ pressed }) => [
         styles.communicationRow,
-        { backgroundColor: theme.backgroundDefault, opacity: pressed ? 0.8 : 1 },
+        {
+          backgroundColor: theme.backgroundDefault,
+          opacity: pressed ? 0.8 : 1,
+        },
       ]}
     >
       {item.contactInitials ? (
@@ -162,14 +193,23 @@ function CommunicationRow({ item, onPress }: CommunicationRowProps) {
           </ThemedText>
         </View>
       ) : (
-        <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
+        <View
+          style={[
+            styles.avatar,
+            { backgroundColor: theme.backgroundSecondary },
+          ]}
+        >
           <Feather name="phone" size={20} color={theme.textSecondary} />
         </View>
       )}
-      
+
       <View style={styles.contentContainer}>
         <View style={styles.topRow}>
-          <ThemedText type="body" style={{ fontWeight: "600", flex: 1 }} numberOfLines={1}>
+          <ThemedText
+            type="body"
+            style={{ fontWeight: "600", flex: 1 }}
+            numberOfLines={1}
+          >
             {item.title}
           </ThemedText>
           <ThemedText type="caption" style={{ color: theme.textSecondary }}>
@@ -178,9 +218,9 @@ function CommunicationRow({ item, onPress }: CommunicationRowProps) {
         </View>
         <View style={styles.bottomRow}>
           {item.lastMessage ? (
-            <ThemedText 
-              type="small" 
-              style={{ color: theme.textSecondary, flex: 1 }} 
+            <ThemedText
+              type="small"
+              style={{ color: theme.textSecondary, flex: 1 }}
               numberOfLines={1}
             >
               {item.lastMessage}
@@ -188,19 +228,22 @@ function CommunicationRow({ item, onPress }: CommunicationRowProps) {
           ) : (
             <View style={{ flex: 1 }} />
           )}
-          <View style={[styles.typeBadge, { backgroundColor: typeColor + "20" }]}>
+          <View
+            style={[styles.typeBadge, { backgroundColor: typeColor + "20" }]}
+          >
             <Feather name={typeIcon} size={12} color={typeColor} />
-            <ThemedText type="caption" style={{ color: typeColor, fontWeight: "500" }}>
+            <ThemedText
+              type="caption"
+              style={{ color: typeColor, fontWeight: "500" }}
+            >
               {getTypeBadgeText(item.type)}
             </ThemedText>
           </View>
         </View>
       </View>
-      
-      {item.isUnread ? (
-        <View style={styles.unreadDot} />
-      ) : null}
-      
+
+      {item.isUnread ? <View style={styles.unreadDot} /> : null}
+
       <Feather name="chevron-right" size={18} color={theme.textSecondary} />
     </Pressable>
   );
@@ -214,30 +257,40 @@ export default function CommunicationLogScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const { theme } = useTheme();
-  const navigation = useNavigation<NativeStackNavigationProp<CommunicationStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<CommunicationStackParamList>>();
 
   const [filter, setFilter] = useState<FilterType>("all");
   const [modalType, setModalType] = useState<ModalType>("none");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [smsMessage, setSmsMessage] = useState("");
-  
+
   const fabScale = useSharedValue(1);
   const fabAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: fabScale.value }],
   }));
 
-  const { data: smsConversations, isLoading: smsLoading, isFetching: smsFetching } = useQuery<ZekeContactConversation[]>({
+  const {
+    data: smsConversations,
+    isLoading: smsLoading,
+    isFetching: smsFetching,
+  } = useQuery<ZekeContactConversation[]>({
     queryKey: ["/api/sms-log"],
     queryFn: getSmsConversations,
   });
 
-  const { data: appConversations, isLoading: appLoading, isFetching: appFetching } = useQuery<ZekeConversation[]>({
+  const {
+    data: appConversations,
+    isLoading: appLoading,
+    isFetching: appFetching,
+  } = useQuery<ZekeConversation[]>({
     queryKey: ["/api/conversations"],
     queryFn: getConversations,
   });
 
   const smsMutation = useMutation({
-    mutationFn: ({ to, message }: { to: string; message: string }) => sendSms(to, message),
+    mutationFn: ({ to, message }: { to: string; message: string }) =>
+      sendSms(to, message),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sms-log"] });
       setModalType("none");
@@ -276,7 +329,7 @@ export default function CommunicationLogScreen() {
         .slice(0, 2)
         .map((w) => w.charAt(0).toUpperCase())
         .join("");
-      
+
       items.push({
         id: `sms-${conv.id}`,
         conversationId: conv.id,
@@ -299,7 +352,10 @@ export default function CommunicationLogScreen() {
       });
     });
 
-    items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    items.sort(
+      (a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
     return items;
   }, [smsConversations, appConversations]);
 
@@ -316,17 +372,20 @@ export default function CommunicationLogScreen() {
     ]);
   }, []);
 
-  const handleItemPress = useCallback((item: CommunicationItem) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    if (item.type === "sms" || item.type === "voice") {
-      navigation.navigate("SmsConversation", {
-        conversationId: item.conversationId,
-        contactId: item.contactId,
-        phoneNumber: item.phoneNumber,
-      });
-    }
-  }, [navigation]);
+  const handleItemPress = useCallback(
+    (item: CommunicationItem) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      if (item.type === "sms" || item.type === "voice") {
+        navigation.navigate("SmsConversation", {
+          conversationId: item.conversationId,
+          contactId: item.contactId,
+          phoneNumber: item.phoneNumber,
+        });
+      }
+    },
+    [navigation],
+  );
 
   const handleFabPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -381,11 +440,12 @@ export default function CommunicationLogScreen() {
         </View>
       );
     }
-    
-    const emptyMessage = filter === "all" 
-      ? "No communications yet"
-      : `No ${getTypeBadgeText(filter)} conversations`;
-    
+
+    const emptyMessage =
+      filter === "all"
+        ? "No communications yet"
+        : `No ${getTypeBadgeText(filter)} conversations`;
+
     return (
       <EmptyState
         icon="message-circle"
@@ -425,7 +485,10 @@ export default function CommunicationLogScreen() {
         ItemSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
       />
 
-      <View style={[styles.fabWrapper, { bottom: fabBottom }]} pointerEvents="box-none">
+      <View
+        style={[styles.fabWrapper, { bottom: fabBottom }]}
+        pointerEvents="box-none"
+      >
         <AnimatedPressable
           onPress={handleFabPress}
           onPressIn={handleFabPressIn}
@@ -450,10 +513,17 @@ export default function CommunicationLogScreen() {
         onRequestClose={closeModal}
       >
         <Pressable style={styles.modalOverlay} onPress={closeModal}>
-          <View style={[styles.actionSheet, { backgroundColor: theme.backgroundDefault }]}>
+          <View
+            style={[
+              styles.actionSheet,
+              { backgroundColor: theme.backgroundDefault },
+            ]}
+          >
             <View style={styles.actionSheetHandle} />
-            <ThemedText type="h3" style={styles.actionSheetTitle}>New Communication</ThemedText>
-            
+            <ThemedText type="h3" style={styles.actionSheetTitle}>
+              New Communication
+            </ThemedText>
+
             <Pressable
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -461,21 +531,40 @@ export default function CommunicationLogScreen() {
               }}
               style={({ pressed }) => [
                 styles.actionOption,
-                { backgroundColor: pressed ? theme.backgroundSecondary : "transparent" },
+                {
+                  backgroundColor: pressed
+                    ? theme.backgroundSecondary
+                    : "transparent",
+                },
               ]}
             >
-              <View style={[styles.actionIcon, { backgroundColor: Colors.dark.success + "20" }]}>
-                <Feather name="message-square" size={24} color={Colors.dark.success} />
+              <View
+                style={[
+                  styles.actionIcon,
+                  { backgroundColor: Colors.dark.success + "20" },
+                ]}
+              >
+                <Feather
+                  name="message-square"
+                  size={24}
+                  color={Colors.dark.success}
+                />
               </View>
               <View style={styles.actionTextContainer}>
-                <ThemedText type="body" style={{ fontWeight: "600" }}>New SMS</ThemedText>
+                <ThemedText type="body" style={{ fontWeight: "600" }}>
+                  New SMS
+                </ThemedText>
                 <ThemedText type="small" style={{ color: theme.textSecondary }}>
                   Send a text message
                 </ThemedText>
               </View>
-              <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+              <Feather
+                name="chevron-right"
+                size={20}
+                color={theme.textSecondary}
+              />
             </Pressable>
-            
+
             <Pressable
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -483,26 +572,46 @@ export default function CommunicationLogScreen() {
               }}
               style={({ pressed }) => [
                 styles.actionOption,
-                { backgroundColor: pressed ? theme.backgroundSecondary : "transparent" },
+                {
+                  backgroundColor: pressed
+                    ? theme.backgroundSecondary
+                    : "transparent",
+                },
               ]}
             >
-              <View style={[styles.actionIcon, { backgroundColor: Colors.dark.warning + "20" }]}>
+              <View
+                style={[
+                  styles.actionIcon,
+                  { backgroundColor: Colors.dark.warning + "20" },
+                ]}
+              >
                 <Feather name="phone" size={24} color={Colors.dark.warning} />
               </View>
               <View style={styles.actionTextContainer}>
-                <ThemedText type="body" style={{ fontWeight: "600" }}>New Call</ThemedText>
+                <ThemedText type="body" style={{ fontWeight: "600" }}>
+                  New Call
+                </ThemedText>
                 <ThemedText type="small" style={{ color: theme.textSecondary }}>
                   Initiate a phone call
                 </ThemedText>
               </View>
-              <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+              <Feather
+                name="chevron-right"
+                size={20}
+                color={theme.textSecondary}
+              />
             </Pressable>
-            
+
             <Pressable
               onPress={closeModal}
-              style={[styles.cancelButton, { backgroundColor: theme.backgroundSecondary }]}
+              style={[
+                styles.cancelButton,
+                { backgroundColor: theme.backgroundSecondary },
+              ]}
             >
-              <ThemedText type="body" style={{ fontWeight: "600" }}>Cancel</ThemedText>
+              <ThemedText type="body" style={{ fontWeight: "600" }}>
+                Cancel
+              </ThemedText>
             </Pressable>
           </View>
         </Pressable>
@@ -519,7 +628,12 @@ export default function CommunicationLogScreen() {
             contentContainerStyle={styles.modalScrollContent}
             bounces={false}
           >
-            <View style={[styles.formModal, { backgroundColor: theme.backgroundDefault }]}>
+            <View
+              style={[
+                styles.formModal,
+                { backgroundColor: theme.backgroundDefault },
+              ]}
+            >
               <View style={styles.modalHeader}>
                 <Pressable onPress={closeModal} style={styles.modalCloseButton}>
                   <Feather name="x" size={24} color={theme.text} />
@@ -529,7 +643,10 @@ export default function CommunicationLogScreen() {
               </View>
 
               <View style={styles.formGroup}>
-                <ThemedText type="small" style={[styles.label, { color: theme.textSecondary }]}>
+                <ThemedText
+                  type="small"
+                  style={[styles.label, { color: theme.textSecondary }]}
+                >
                   Phone Number
                 </ThemedText>
                 <TextInput
@@ -551,7 +668,10 @@ export default function CommunicationLogScreen() {
               </View>
 
               <View style={styles.formGroup}>
-                <ThemedText type="small" style={[styles.label, { color: theme.textSecondary }]}>
+                <ThemedText
+                  type="small"
+                  style={[styles.label, { color: theme.textSecondary }]}
+                >
                   Message
                 </ThemedText>
                 <TextInput
@@ -592,7 +712,9 @@ export default function CommunicationLogScreen() {
                   ) : (
                     <>
                       <Feather name="send" size={18} color="#FFFFFF" />
-                      <ThemedText type="body" style={styles.submitText}>Send SMS</ThemedText>
+                      <ThemedText type="body" style={styles.submitText}>
+                        Send SMS
+                      </ThemedText>
                     </>
                   )}
                 </LinearGradient>
@@ -613,7 +735,12 @@ export default function CommunicationLogScreen() {
             contentContainerStyle={styles.modalScrollContent}
             bounces={false}
           >
-            <View style={[styles.formModal, { backgroundColor: theme.backgroundDefault }]}>
+            <View
+              style={[
+                styles.formModal,
+                { backgroundColor: theme.backgroundDefault },
+              ]}
+            >
               <View style={styles.modalHeader}>
                 <Pressable onPress={closeModal} style={styles.modalCloseButton}>
                   <Feather name="x" size={24} color={theme.text} />
@@ -623,7 +750,10 @@ export default function CommunicationLogScreen() {
               </View>
 
               <View style={styles.formGroup}>
-                <ThemedText type="small" style={[styles.label, { color: theme.textSecondary }]}>
+                <ThemedText
+                  type="small"
+                  style={[styles.label, { color: theme.textSecondary }]}
+                >
                   Phone Number
                 </ThemedText>
                 <TextInput
@@ -663,7 +793,9 @@ export default function CommunicationLogScreen() {
                   ) : (
                     <>
                       <Feather name="phone" size={18} color="#FFFFFF" />
-                      <ThemedText type="body" style={styles.submitText}>Start Call</ThemedText>
+                      <ThemedText type="body" style={styles.submitText}>
+                        Start Call
+                      </ThemedText>
                     </>
                   )}
                 </LinearGradient>

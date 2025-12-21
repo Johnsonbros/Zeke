@@ -8,7 +8,6 @@ import {
   Modal,
   Alert,
   SectionList,
-  Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -102,18 +101,14 @@ function TaskItemRow({ item, onToggle, onDelete, theme }: TaskItemRowProps) {
 
   const triggerDelete = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert(
-      "Delete Task",
-      `Remove "${item.title}" from your tasks?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => onDelete(item.id),
-        },
-      ]
-    );
+    Alert.alert("Delete Task", `Remove "${item.title}" from your tasks?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => onDelete(item.id),
+      },
+    ]);
   }, [item.id, item.title, onDelete]);
 
   const panGesture = Gesture.Pan()
@@ -149,11 +144,21 @@ function TaskItemRow({ item, onToggle, onDelete, theme }: TaskItemRowProps) {
         >
           <View style={styles.checkbox}>
             {isCompleted ? (
-              <View style={[styles.checkboxChecked, { backgroundColor: Colors.dark.success }]}>
+              <View
+                style={[
+                  styles.checkboxChecked,
+                  { backgroundColor: Colors.dark.success },
+                ]}
+              >
                 <Feather name="check" size={14} color="#fff" />
               </View>
             ) : (
-              <View style={[styles.checkboxUnchecked, { borderColor: theme.textSecondary }]} />
+              <View
+                style={[
+                  styles.checkboxUnchecked,
+                  { borderColor: theme.textSecondary },
+                ]}
+              />
             )}
           </View>
           <View style={styles.itemContent}>
@@ -173,7 +178,12 @@ function TaskItemRow({ item, onToggle, onDelete, theme }: TaskItemRowProps) {
             ) : null}
           </View>
           {item.priority ? (
-            <View style={[styles.priorityIndicator, { backgroundColor: priorityColor }]} />
+            <View
+              style={[
+                styles.priorityIndicator,
+                { backgroundColor: priorityColor },
+              ]}
+            />
           ) : null}
         </Pressable>
       </Animated.View>
@@ -192,12 +202,13 @@ export default function TasksScreen() {
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
-  const [newTaskPriority, setNewTaskPriority] = useState<"low" | "medium" | "high">("medium");
+  const [newTaskPriority, setNewTaskPriority] = useState<
+    "low" | "medium" | "high"
+  >("medium");
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
 
   const {
     data: tasks = [],
-    isLoading,
     refetch,
     isRefetching,
   } = useQuery<ZekeTask[]>({
@@ -207,8 +218,11 @@ export default function TasksScreen() {
   });
 
   const addMutation = useMutation({
-    mutationFn: (data: { title: string; dueDate?: string; priority?: string }) =>
-      createTask(data.title, data.dueDate, data.priority),
+    mutationFn: (data: {
+      title: string;
+      dueDate?: string;
+      priority?: string;
+    }) => createTask(data.title, data.dueDate, data.priority),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       setIsAddModalVisible(false);
@@ -259,27 +273,36 @@ export default function TasksScreen() {
     });
   };
 
-  const handleToggle = useCallback((id: string, completed: boolean) => {
-    toggleMutation.mutate({ id, completed });
-  }, [toggleMutation]);
+  const handleToggle = useCallback(
+    (id: string, completed: boolean) => {
+      toggleMutation.mutate({ id, completed });
+    },
+    [toggleMutation],
+  );
 
-  const handleDelete = useCallback((id: string) => {
-    deleteMutation.mutate(id);
-  }, [deleteMutation]);
+  const handleDelete = useCallback(
+    (id: string) => {
+      deleteMutation.mutate(id);
+    },
+    [deleteMutation],
+  );
 
-  const handleVoiceRecordingComplete = async (audioUri: string, durationSeconds: number) => {
+  const handleVoiceRecordingComplete = async (
+    audioUri: string,
+    durationSeconds: number,
+  ) => {
     setIsProcessingVoice(true);
     try {
       await chatWithZeke(
         "I just recorded a voice message to add a task. Please help me create the task I mentioned.",
-        "mobile-app"
+        "mobile-app",
       );
       await refetch();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error) {
+    } catch {
       Alert.alert(
         "Voice Input",
-        "Voice input was recorded. To add tasks via voice, please use the Chat feature and say something like 'Add a task to call Mom tomorrow'."
+        "Voice input was recorded. To add tasks via voice, please use the Chat feature and say something like 'Add a task to call Mom tomorrow'.",
       );
     } finally {
       setIsProcessingVoice(false);
@@ -307,10 +330,12 @@ export default function TasksScreen() {
       groups[group].push(task);
     });
 
-    return GROUP_ORDER.filter((group) => groups[group]?.length > 0).map((group) => ({
-      title: group,
-      data: groups[group],
-    }));
+    return GROUP_ORDER.filter((group) => groups[group]?.length > 0).map(
+      (group) => ({
+        title: group,
+        data: groups[group],
+      }),
+    );
   }, [filteredTasks]);
 
   const handleRefresh = useCallback(() => {
@@ -354,7 +379,12 @@ export default function TasksScreen() {
             style={[
               styles.filterButton,
               filter === "all" && styles.filterButtonActive,
-              { backgroundColor: filter === "all" ? Colors.dark.primary : theme.backgroundSecondary },
+              {
+                backgroundColor:
+                  filter === "all"
+                    ? Colors.dark.primary
+                    : theme.backgroundSecondary,
+              },
             ]}
           >
             <ThemedText style={styles.filterText}>All</ThemedText>
@@ -364,7 +394,12 @@ export default function TasksScreen() {
             style={[
               styles.filterButton,
               filter === "pending" && styles.filterButtonActive,
-              { backgroundColor: filter === "pending" ? Colors.dark.primary : theme.backgroundSecondary },
+              {
+                backgroundColor:
+                  filter === "pending"
+                    ? Colors.dark.primary
+                    : theme.backgroundSecondary,
+              },
             ]}
           >
             <ThemedText style={styles.filterText}>Pending</ThemedText>
@@ -374,7 +409,12 @@ export default function TasksScreen() {
             style={[
               styles.filterButton,
               filter === "completed" && styles.filterButtonActive,
-              { backgroundColor: filter === "completed" ? Colors.dark.primary : theme.backgroundSecondary },
+              {
+                backgroundColor:
+                  filter === "completed"
+                    ? Colors.dark.primary
+                    : theme.backgroundSecondary,
+              },
             ]}
           >
             <ThemedText style={styles.filterText}>Completed</ThemedText>
@@ -397,7 +437,12 @@ export default function TasksScreen() {
       </View>
 
       {groupedTasks.length === 0 ? (
-        <View style={[styles.emptyContainer, { paddingBottom: tabBarHeight + Spacing.xl }]}>
+        <View
+          style={[
+            styles.emptyContainer,
+            { paddingBottom: tabBarHeight + Spacing.xl },
+          ]}
+        >
           <EmptyState
             icon="check-square"
             title={filter === "all" ? "No Tasks Yet" : `No ${filter} Tasks`}
@@ -421,7 +466,12 @@ export default function TasksScreen() {
             />
           )}
           renderSectionHeader={({ section: { title } }) => (
-            <View style={[styles.sectionHeader, { backgroundColor: theme.backgroundRoot }]}>
+            <View
+              style={[
+                styles.sectionHeader,
+                { backgroundColor: theme.backgroundRoot },
+              ]}
+            >
               <ThemedText type="h4" style={styles.sectionTitle}>
                 {title}
               </ThemedText>
@@ -440,7 +490,9 @@ export default function TasksScreen() {
           }
           stickySectionHeadersEnabled
           ItemSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
-          SectionSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
+          SectionSeparatorComponent={() => (
+            <View style={{ height: Spacing.md }} />
+          )}
         />
       )}
 
@@ -450,10 +502,22 @@ export default function TasksScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setIsAddModalVisible(false)}
       >
-        <View style={[styles.modalContainer, { backgroundColor: theme.backgroundRoot }]}>
-          <View style={[styles.modalHeader, { paddingTop: insets.top + Spacing.md }]}>
+        <View
+          style={[
+            styles.modalContainer,
+            { backgroundColor: theme.backgroundRoot },
+          ]}
+        >
+          <View
+            style={[
+              styles.modalHeader,
+              { paddingTop: insets.top + Spacing.md },
+            ]}
+          >
             <Pressable onPress={() => setIsAddModalVisible(false)}>
-              <ThemedText style={{ color: Colors.dark.primary }}>Cancel</ThemedText>
+              <ThemedText style={{ color: Colors.dark.primary }}>
+                Cancel
+              </ThemedText>
             </Pressable>
             <ThemedText type="h4">New Task</ThemedText>
             <Pressable onPress={handleAddTask} disabled={addMutation.isPending}>
@@ -465,7 +529,9 @@ export default function TasksScreen() {
 
           <KeyboardAwareScrollViewCompat
             style={styles.modalContent}
-            contentContainerStyle={{ paddingBottom: insets.bottom + Spacing.xl }}
+            contentContainerStyle={{
+              paddingBottom: insets.bottom + Spacing.xl,
+            }}
           >
             <View style={styles.inputGroup}>
               <ThemedText type="small" style={styles.inputLabel}>
@@ -525,7 +591,9 @@ export default function TasksScreen() {
                             ? PRIORITY_COLORS[p]
                             : theme.backgroundSecondary,
                         borderColor:
-                          newTaskPriority === p ? PRIORITY_COLORS[p] : theme.border,
+                          newTaskPriority === p
+                            ? PRIORITY_COLORS[p]
+                            : theme.border,
                       },
                     ]}
                   >

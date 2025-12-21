@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { View, StyleSheet, Pressable, Platform, Alert, Linking } from "react-native";
+import {
+  View,
+  StyleSheet,
+  Pressable,
+  Platform,
+  Alert,
+  Linking,
+} from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useAudioRecorder, AudioModule, RecordingPresets } from "expo-audio";
@@ -22,7 +29,10 @@ interface VoiceInputButtonProps {
   disabled?: boolean;
 }
 
-export function VoiceInputButton({ onRecordingComplete, disabled }: VoiceInputButtonProps) {
+export function VoiceInputButton({
+  onRecordingComplete,
+  disabled,
+}: VoiceInputButtonProps) {
   const { theme } = useTheme();
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -68,18 +78,18 @@ export function VoiceInputButton({ onRecordingComplete, disabled }: VoiceInputBu
       pulseScale.value = withRepeat(
         withSequence(
           withTiming(1.3, { duration: 600 }),
-          withTiming(1, { duration: 600 })
+          withTiming(1, { duration: 600 }),
         ),
         -1,
-        false
+        false,
       );
       waveOpacity.value = withRepeat(
         withSequence(
           withTiming(0.6, { duration: 600 }),
-          withTiming(0.2, { duration: 600 })
+          withTiming(0.2, { duration: 600 }),
         ),
         -1,
-        false
+        false,
       );
     } else {
       if (timerRef.current) {
@@ -118,7 +128,7 @@ export function VoiceInputButton({ onRecordingComplete, disabled }: VoiceInputBu
     if (Platform.OS === "web") {
       Alert.alert(
         "Voice Input Not Available",
-        "Voice input is only available in the mobile app. Please use Expo Go to access this feature."
+        "Voice input is only available in the mobile app. Please use Expo Go to access this feature.",
       );
       return;
     }
@@ -126,17 +136,14 @@ export function VoiceInputButton({ onRecordingComplete, disabled }: VoiceInputBu
     if (disabled) return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    buttonScale.value = withSequence(
-      withSpring(0.9),
-      withSpring(1)
-    );
+    buttonScale.value = withSequence(withSpring(0.9), withSpring(1));
 
     if (isRecording) {
       const finalDuration = recordingDuration;
       try {
         await recorder.stop();
         setIsRecording(false);
-        
+
         const uri = recorder.uri;
         if (uri) {
           onRecordingComplete(uri, finalDuration);
@@ -153,7 +160,7 @@ export function VoiceInputButton({ onRecordingComplete, disabled }: VoiceInputBu
           granted: status.granted,
           canAskAgain: status.canAskAgain,
         });
-        
+
         if (!status.granted) {
           if (!status.canAskAgain && (Platform.OS as string) !== "web") {
             Alert.alert(
@@ -162,12 +169,12 @@ export function VoiceInputButton({ onRecordingComplete, disabled }: VoiceInputBu
               [
                 { text: "Cancel", style: "cancel" },
                 { text: "Open Settings", onPress: openSettings },
-              ]
+              ],
             );
           } else {
             Alert.alert(
               "Microphone Permission Required",
-              "Please enable microphone access to use voice input."
+              "Please enable microphone access to use voice input.",
             );
           }
           return;
@@ -179,10 +186,21 @@ export function VoiceInputButton({ onRecordingComplete, disabled }: VoiceInputBu
         setIsRecording(true);
       } catch (error) {
         console.error("Error starting recording:", error);
-        Alert.alert("Recording Error", "Could not start recording. Please try again.");
+        Alert.alert(
+          "Recording Error",
+          "Could not start recording. Please try again.",
+        );
       }
     }
-  }, [isRecording, disabled, buttonScale, permissionStatus, recorder, recordingDuration, onRecordingComplete]);
+  }, [
+    isRecording,
+    disabled,
+    buttonScale,
+    permissionStatus,
+    recorder,
+    recordingDuration,
+    onRecordingComplete,
+  ]);
 
   const pulseStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulseScale.value }],
@@ -211,7 +229,9 @@ export function VoiceInputButton({ onRecordingComplete, disabled }: VoiceInputBu
           style={[
             styles.button,
             {
-              backgroundColor: isRecording ? Colors.dark.error : theme.backgroundSecondary,
+              backgroundColor: isRecording
+                ? Colors.dark.error
+                : theme.backgroundSecondary,
               opacity: disabled ? 0.5 : 1,
             },
           ]}

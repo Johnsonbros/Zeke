@@ -1,14 +1,15 @@
-import * as FileSystem from 'expo-file-system';
-import { Platform } from 'react-native';
-import { getApiUrl, apiRequest } from './query-client';
+import * as FileSystemLegacy from "expo-file-system/legacy";
+import { Platform } from "react-native";
+import { apiClient } from "./api-client";
 
-const DATA_DIRECTORY = `${FileSystem.documentDirectory}zeke-data/`;
-const SYNC_QUEUE_FILE = `${DATA_DIRECTORY}sync-queue.json`;
+const FileSystem = FileSystemLegacy;
+
+const DATA_DIRECTORY = `${FileSystem.documentDirectory || ""}zeke-data/`;
 
 export interface SyncMetadata {
   id: string;
   lastModified: string;
-  syncStatus: 'synced' | 'pending' | 'conflict';
+  syncStatus: "synced" | "pending" | "conflict";
   version: number;
 }
 
@@ -45,8 +46,8 @@ export interface GroceryItemData {
 
 export interface SyncQueueItem {
   id: string;
-  type: 'list' | 'listItem' | 'grocery';
-  action: 'create' | 'update' | 'delete';
+  type: "list" | "listItem" | "grocery";
+  action: "create" | "update" | "delete";
   data: any;
   timestamp: string;
   retryCount: number;
@@ -63,31 +64,33 @@ function generateId(): string {
 }
 
 async function ensureDirectoryExists(): Promise<void> {
-  if (Platform.OS === 'web') {
+  if (Platform.OS === "web") {
     return;
   }
-  
+
   const dirInfo = await FileSystem.getInfoAsync(DATA_DIRECTORY);
   if (!dirInfo.exists) {
-    await FileSystem.makeDirectoryAsync(DATA_DIRECTORY, { intermediates: true });
+    await FileSystem.makeDirectoryAsync(DATA_DIRECTORY, {
+      intermediates: true,
+    });
   }
 }
 
 async function readJsonFile<T>(filename: string, defaultValue: T): Promise<T> {
-  if (Platform.OS === 'web') {
+  if (Platform.OS === "web") {
     const stored = localStorage.getItem(`zeke-${filename}`);
     return stored ? JSON.parse(stored) : defaultValue;
   }
-  
+
   try {
     await ensureDirectoryExists();
     const filePath = `${DATA_DIRECTORY}${filename}`;
     const fileInfo = await FileSystem.getInfoAsync(filePath);
-    
+
     if (!fileInfo.exists) {
       return defaultValue;
     }
-    
+
     const content = await FileSystem.readAsStringAsync(filePath);
     return JSON.parse(content);
   } catch (error) {
@@ -97,15 +100,18 @@ async function readJsonFile<T>(filename: string, defaultValue: T): Promise<T> {
 }
 
 async function writeJsonFile<T>(filename: string, data: T): Promise<void> {
-  if (Platform.OS === 'web') {
+  if (Platform.OS === "web") {
     localStorage.setItem(`zeke-${filename}`, JSON.stringify(data));
     return;
   }
-  
+
   try {
     await ensureDirectoryExists();
     const filePath = `${DATA_DIRECTORY}${filename}`;
-    await FileSystem.writeAsStringAsync(filePath, JSON.stringify(data, null, 2));
+    await FileSystem.writeAsStringAsync(
+      filePath,
+      JSON.stringify(data, null, 2),
+    );
   } catch (error) {
     console.error(`Error writing ${filename}:`, error);
     throw error;
@@ -113,37 +119,55 @@ async function writeJsonFile<T>(filename: string, data: T): Promise<void> {
 }
 
 export class ListsRepository {
-  private static LISTS_FILE = 'lists.json';
-  private static LIST_ITEMS_FILE = 'list-items.json';
-  
+  private static LISTS_FILE = "lists.json";
+  private static LIST_ITEMS_FILE = "list-items.json";
+
   static async getLists(): Promise<ListData[]> {
-    const data = await readJsonFile<StoredData<ListData>>(this.LISTS_FILE, { items: [], metadata: {} });
+    const data = await readJsonFile<StoredData<ListData>>(this.LISTS_FILE, {
+      items: [],
+      metadata: {},
+    });
     return data.items;
   }
-  
+
   static async getList(id: string): Promise<ListData | null> {
     const lists = await this.getLists();
-    return lists.find(l => l.id === id) || null;
+    return lists.find((l) => l.id === id) || null;
   }
-  
-  static async getListWithItems(id: string): Promise<(ListData & { items: ListItemData[] }) | null> {
+
+  static async getListWithItems(
+    id: string,
+  ): Promise<(ListData & { items: ListItemData[] }) | null> {
     const list = await this.getList(id);
     if (!list) return null;
-    
+
     const allItems = await this.getListItems();
-    const items = allItems.filter(item => item.listId === id).sort((a, b) => a.order - b.order);
-    
+    const items = allItems
+      .filter((item) => item.listId === id)
+      .sort((a, b) => a.order - b.order);
+
     return { ...list, items };
   }
-  
+
   static async getListItems(): Promise<ListItemData[]> {
-    const data = await readJsonFile<StoredData<ListItemData>>(this.LIST_ITEMS_FILE, { items: [], metadata: {} });
+    const data = await readJsonFile<StoredData<ListItemData>>(
+      this.LIST_ITEMS_FILE,
+      { items: [], metadata: {} },
+    );
     return data.items;
   }
-  
-  static async createList(name: string, description?: string, color?: string, type?: string): Promise<ListData> {
-    const data = await readJsonFile<StoredData<ListData>>(this.LISTS_FILE, { items: [], metadata: {} });
-    
+
+  static async createList(
+    name: string,
+    description?: string,
+    color?: string,
+    type?: string,
+  ): Promise<ListData> {
+    const data = await readJsonFile<StoredData<ListData>>(this.LISTS_FILE, {
+      items: [],
+      metadata: {},
+    });
+
     const now = new Date().toISOString();
     const newList: ListData = {
       id: generateId(),
@@ -154,66 +178,87 @@ export class ListsRepository {
       createdAt: now,
       updatedAt: now,
     };
-    
+
     data.items.push(newList);
     data.metadata[newList.id] = {
       id: newList.id,
       lastModified: now,
-      syncStatus: 'pending',
+      syncStatus: "pending",
       version: 1,
     };
-    
+
     await writeJsonFile(this.LISTS_FILE, data);
-    await SyncQueue.add('list', 'create', newList);
-    
+    await SyncQueue.add("list", "create", newList);
+
     return newList;
   }
-  
-  static async updateList(id: string, updates: Partial<ListData>): Promise<ListData | null> {
-    const data = await readJsonFile<StoredData<ListData>>(this.LISTS_FILE, { items: [], metadata: {} });
-    
-    const index = data.items.findIndex(l => l.id === id);
+
+  static async updateList(
+    id: string,
+    updates: Partial<ListData>,
+  ): Promise<ListData | null> {
+    const data = await readJsonFile<StoredData<ListData>>(this.LISTS_FILE, {
+      items: [],
+      metadata: {},
+    });
+
+    const index = data.items.findIndex((l) => l.id === id);
     if (index === -1) return null;
-    
+
     const now = new Date().toISOString();
     data.items[index] = { ...data.items[index], ...updates, updatedAt: now };
-    
+
     data.metadata[id] = {
       ...data.metadata[id],
       lastModified: now,
-      syncStatus: 'pending',
+      syncStatus: "pending",
       version: (data.metadata[id]?.version || 0) + 1,
     };
-    
+
     await writeJsonFile(this.LISTS_FILE, data);
-    await SyncQueue.add('list', 'update', data.items[index]);
-    
+    await SyncQueue.add("list", "update", data.items[index]);
+
     return data.items[index];
   }
-  
+
   static async deleteList(id: string): Promise<void> {
-    const data = await readJsonFile<StoredData<ListData>>(this.LISTS_FILE, { items: [], metadata: {} });
-    
-    data.items = data.items.filter(l => l.id !== id);
+    const data = await readJsonFile<StoredData<ListData>>(this.LISTS_FILE, {
+      items: [],
+      metadata: {},
+    });
+
+    data.items = data.items.filter((l) => l.id !== id);
     delete data.metadata[id];
-    
+
     await writeJsonFile(this.LISTS_FILE, data);
-    
-    const itemsData = await readJsonFile<StoredData<ListItemData>>(this.LIST_ITEMS_FILE, { items: [], metadata: {} });
-    const deletedItems = itemsData.items.filter(item => item.listId === id);
-    itemsData.items = itemsData.items.filter(item => item.listId !== id);
-    deletedItems.forEach(item => delete itemsData.metadata[item.id]);
+
+    const itemsData = await readJsonFile<StoredData<ListItemData>>(
+      this.LIST_ITEMS_FILE,
+      { items: [], metadata: {} },
+    );
+    const deletedItems = itemsData.items.filter((item) => item.listId === id);
+    itemsData.items = itemsData.items.filter((item) => item.listId !== id);
+    deletedItems.forEach((item) => delete itemsData.metadata[item.id]);
     await writeJsonFile(this.LIST_ITEMS_FILE, itemsData);
-    
-    await SyncQueue.add('list', 'delete', { id });
+
+    await SyncQueue.add("list", "delete", { id });
   }
-  
-  static async addListItem(listId: string, text: string): Promise<ListItemData> {
-    const data = await readJsonFile<StoredData<ListItemData>>(this.LIST_ITEMS_FILE, { items: [], metadata: {} });
-    
-    const existingItems = data.items.filter(i => i.listId === listId);
-    const maxOrder = existingItems.length > 0 ? Math.max(...existingItems.map(i => i.order)) : 0;
-    
+
+  static async addListItem(
+    listId: string,
+    text: string,
+  ): Promise<ListItemData> {
+    const data = await readJsonFile<StoredData<ListItemData>>(
+      this.LIST_ITEMS_FILE,
+      { items: [], metadata: {} },
+    );
+
+    const existingItems = data.items.filter((i) => i.listId === listId);
+    const maxOrder =
+      existingItems.length > 0
+        ? Math.max(...existingItems.map((i) => i.order))
+        : 0;
+
     const now = new Date().toISOString();
     const newItem: ListItemData = {
       id: generateId(),
@@ -224,80 +269,101 @@ export class ListsRepository {
       createdAt: now,
       updatedAt: now,
     };
-    
+
     data.items.push(newItem);
     data.metadata[newItem.id] = {
       id: newItem.id,
       lastModified: now,
-      syncStatus: 'pending',
+      syncStatus: "pending",
       version: 1,
     };
-    
+
     await writeJsonFile(this.LIST_ITEMS_FILE, data);
-    await SyncQueue.add('listItem', 'create', newItem);
-    
+    await SyncQueue.add("listItem", "create", newItem);
+
     return newItem;
   }
-  
-  static async toggleListItem(listId: string, itemId: string): Promise<ListItemData | null> {
-    const data = await readJsonFile<StoredData<ListItemData>>(this.LIST_ITEMS_FILE, { items: [], metadata: {} });
-    
-    const index = data.items.findIndex(i => i.id === itemId && i.listId === listId);
+
+  static async toggleListItem(
+    listId: string,
+    itemId: string,
+  ): Promise<ListItemData | null> {
+    const data = await readJsonFile<StoredData<ListItemData>>(
+      this.LIST_ITEMS_FILE,
+      { items: [], metadata: {} },
+    );
+
+    const index = data.items.findIndex(
+      (i) => i.id === itemId && i.listId === listId,
+    );
     if (index === -1) return null;
-    
+
     const now = new Date().toISOString();
     data.items[index] = {
       ...data.items[index],
       checked: !data.items[index].checked,
       updatedAt: now,
     };
-    
+
     data.metadata[itemId] = {
       ...data.metadata[itemId],
       lastModified: now,
-      syncStatus: 'pending',
+      syncStatus: "pending",
       version: (data.metadata[itemId]?.version || 0) + 1,
     };
-    
+
     await writeJsonFile(this.LIST_ITEMS_FILE, data);
-    await SyncQueue.add('listItem', 'update', data.items[index]);
-    
+    await SyncQueue.add("listItem", "update", data.items[index]);
+
     return data.items[index];
   }
-  
+
   static async deleteListItem(listId: string, itemId: string): Promise<void> {
-    const data = await readJsonFile<StoredData<ListItemData>>(this.LIST_ITEMS_FILE, { items: [], metadata: {} });
-    
-    data.items = data.items.filter(i => !(i.id === itemId && i.listId === listId));
+    const data = await readJsonFile<StoredData<ListItemData>>(
+      this.LIST_ITEMS_FILE,
+      { items: [], metadata: {} },
+    );
+
+    data.items = data.items.filter(
+      (i) => !(i.id === itemId && i.listId === listId),
+    );
     delete data.metadata[itemId];
-    
+
     await writeJsonFile(this.LIST_ITEMS_FILE, data);
-    await SyncQueue.add('listItem', 'delete', { id: itemId, listId });
+    await SyncQueue.add("listItem", "delete", { id: itemId, listId });
   }
-  
+
   static async clearCheckedItems(listId: string): Promise<void> {
-    const data = await readJsonFile<StoredData<ListItemData>>(this.LIST_ITEMS_FILE, { items: [], metadata: {} });
-    
-    const checkedItems = data.items.filter(i => i.listId === listId && i.checked);
-    data.items = data.items.filter(i => !(i.listId === listId && i.checked));
-    checkedItems.forEach(item => delete data.metadata[item.id]);
-    
+    const data = await readJsonFile<StoredData<ListItemData>>(
+      this.LIST_ITEMS_FILE,
+      { items: [], metadata: {} },
+    );
+
+    const checkedItems = data.items.filter(
+      (i) => i.listId === listId && i.checked,
+    );
+    data.items = data.items.filter((i) => !(i.listId === listId && i.checked));
+    checkedItems.forEach((item) => delete data.metadata[item.id]);
+
     await writeJsonFile(this.LIST_ITEMS_FILE, data);
-    
+
     for (const item of checkedItems) {
-      await SyncQueue.add('listItem', 'delete', { id: item.id, listId });
+      await SyncQueue.add("listItem", "delete", { id: item.id, listId });
     }
   }
-  
+
   static async getListCount(listId: string): Promise<number> {
     const items = await this.getListItems();
-    return items.filter(i => i.listId === listId).length;
+    return items.filter((i) => i.listId === listId).length;
   }
-  
-  static async importFromBackend(lists: any[], listItems: any[]): Promise<void> {
+
+  static async importFromBackend(
+    lists: any[],
+    listItems: any[],
+  ): Promise<void> {
     const listsData: StoredData<ListData> = { items: [], metadata: {} };
     const itemsData: StoredData<ListItemData> = { items: [], metadata: {} };
-    
+
     for (const list of lists) {
       const listData: ListData = {
         id: list.id,
@@ -312,11 +378,11 @@ export class ListsRepository {
       listsData.metadata[list.id] = {
         id: list.id,
         lastModified: listData.updatedAt,
-        syncStatus: 'synced',
+        syncStatus: "synced",
         version: 1,
       };
     }
-    
+
     for (const item of listItems) {
       const itemData: ListItemData = {
         id: item.id,
@@ -331,124 +397,151 @@ export class ListsRepository {
       itemsData.metadata[item.id] = {
         id: item.id,
         lastModified: itemData.updatedAt,
-        syncStatus: 'synced',
+        syncStatus: "synced",
         version: 1,
       };
     }
-    
+
     listsData.lastSyncTime = new Date().toISOString();
     itemsData.lastSyncTime = new Date().toISOString();
-    
+
     await writeJsonFile(this.LISTS_FILE, listsData);
     await writeJsonFile(this.LIST_ITEMS_FILE, itemsData);
   }
 }
 
 export class GroceryRepository {
-  private static GROCERY_FILE = 'grocery.json';
-  
+  private static GROCERY_FILE = "grocery.json";
+
   static async getItems(): Promise<GroceryItemData[]> {
-    const data = await readJsonFile<StoredData<GroceryItemData>>(this.GROCERY_FILE, { items: [], metadata: {} });
+    const data = await readJsonFile<StoredData<GroceryItemData>>(
+      this.GROCERY_FILE,
+      { items: [], metadata: {} },
+    );
     return data.items;
   }
-  
+
   static async getItem(id: string): Promise<GroceryItemData | null> {
     const items = await this.getItems();
-    return items.find(i => i.id === id) || null;
+    return items.find((i) => i.id === id) || null;
   }
-  
-  static async addItem(name: string, quantity?: number, unit?: string, category?: string): Promise<GroceryItemData> {
-    const data = await readJsonFile<StoredData<GroceryItemData>>(this.GROCERY_FILE, { items: [], metadata: {} });
-    
+
+  static async addItem(
+    name: string,
+    quantity?: number,
+    unit?: string,
+    category?: string,
+  ): Promise<GroceryItemData> {
+    const data = await readJsonFile<StoredData<GroceryItemData>>(
+      this.GROCERY_FILE,
+      { items: [], metadata: {} },
+    );
+
     const now = new Date().toISOString();
     const newItem: GroceryItemData = {
       id: generateId(),
       name,
       quantity,
       unit,
-      category: category || 'Other',
+      category: category || "Other",
       isPurchased: false,
       createdAt: now,
       updatedAt: now,
     };
-    
+
     data.items.push(newItem);
     data.metadata[newItem.id] = {
       id: newItem.id,
       lastModified: now,
-      syncStatus: 'pending',
+      syncStatus: "pending",
       version: 1,
     };
-    
+
     await writeJsonFile(this.GROCERY_FILE, data);
-    await SyncQueue.add('grocery', 'create', newItem);
-    
+    await SyncQueue.add("grocery", "create", newItem);
+
     return newItem;
   }
-  
-  static async updateItem(id: string, updates: Partial<GroceryItemData>): Promise<GroceryItemData | null> {
-    const data = await readJsonFile<StoredData<GroceryItemData>>(this.GROCERY_FILE, { items: [], metadata: {} });
-    
-    const index = data.items.findIndex(i => i.id === id);
+
+  static async updateItem(
+    id: string,
+    updates: Partial<GroceryItemData>,
+  ): Promise<GroceryItemData | null> {
+    const data = await readJsonFile<StoredData<GroceryItemData>>(
+      this.GROCERY_FILE,
+      { items: [], metadata: {} },
+    );
+
+    const index = data.items.findIndex((i) => i.id === id);
     if (index === -1) return null;
-    
+
     const now = new Date().toISOString();
     data.items[index] = { ...data.items[index], ...updates, updatedAt: now };
-    
+
     data.metadata[id] = {
       ...data.metadata[id],
       lastModified: now,
-      syncStatus: 'pending',
+      syncStatus: "pending",
       version: (data.metadata[id]?.version || 0) + 1,
     };
-    
+
     await writeJsonFile(this.GROCERY_FILE, data);
-    await SyncQueue.add('grocery', 'update', data.items[index]);
-    
+    await SyncQueue.add("grocery", "update", data.items[index]);
+
     return data.items[index];
   }
-  
+
   static async togglePurchased(id: string): Promise<GroceryItemData | null> {
     const item = await this.getItem(id);
     if (!item) return null;
-    
+
     return this.updateItem(id, { isPurchased: !item.isPurchased });
   }
-  
+
   static async deleteItem(id: string): Promise<void> {
-    const data = await readJsonFile<StoredData<GroceryItemData>>(this.GROCERY_FILE, { items: [], metadata: {} });
-    
-    data.items = data.items.filter(i => i.id !== id);
+    const data = await readJsonFile<StoredData<GroceryItemData>>(
+      this.GROCERY_FILE,
+      { items: [], metadata: {} },
+    );
+
+    data.items = data.items.filter((i) => i.id !== id);
     delete data.metadata[id];
-    
+
     await writeJsonFile(this.GROCERY_FILE, data);
-    await SyncQueue.add('grocery', 'delete', { id });
+    await SyncQueue.add("grocery", "delete", { id });
   }
-  
+
   static async clearPurchased(): Promise<void> {
-    const data = await readJsonFile<StoredData<GroceryItemData>>(this.GROCERY_FILE, { items: [], metadata: {} });
-    
-    const purchasedItems = data.items.filter(i => i.isPurchased);
-    data.items = data.items.filter(i => !i.isPurchased);
-    purchasedItems.forEach(item => delete data.metadata[item.id]);
-    
+    const data = await readJsonFile<StoredData<GroceryItemData>>(
+      this.GROCERY_FILE,
+      { items: [], metadata: {} },
+    );
+
+    const purchasedItems = data.items.filter((i) => i.isPurchased);
+    data.items = data.items.filter((i) => !i.isPurchased);
+    purchasedItems.forEach((item) => delete data.metadata[item.id]);
+
     await writeJsonFile(this.GROCERY_FILE, data);
-    
+
     for (const item of purchasedItems) {
-      await SyncQueue.add('grocery', 'delete', { id: item.id });
+      await SyncQueue.add("grocery", "delete", { id: item.id });
     }
   }
-  
+
   static async importFromBackend(items: any[]): Promise<void> {
-    const data: StoredData<GroceryItemData> = { items: [], metadata: {}, lastSyncTime: new Date().toISOString() };
-    
+    const data: StoredData<GroceryItemData> = {
+      items: [],
+      metadata: {},
+      lastSyncTime: new Date().toISOString(),
+    };
+
     for (const item of items) {
       const groceryData: GroceryItemData = {
         id: item.id,
         name: item.name,
         quantity: item.quantity,
         unit: item.unit,
-        category: item.category || 'Other',
+        category: item.category || "Other",
         isPurchased: item.isPurchased || false,
         createdAt: item.createdAt || new Date().toISOString(),
         updatedAt: item.updatedAt || new Date().toISOString(),
@@ -457,23 +550,27 @@ export class GroceryRepository {
       data.metadata[item.id] = {
         id: item.id,
         lastModified: groceryData.updatedAt,
-        syncStatus: 'synced',
+        syncStatus: "synced",
         version: 1,
       };
     }
-    
+
     await writeJsonFile(this.GROCERY_FILE, data);
   }
 }
 
 export class SyncQueue {
   static async getQueue(): Promise<SyncQueueItem[]> {
-    return await readJsonFile<SyncQueueItem[]>('sync-queue.json', []);
+    return await readJsonFile<SyncQueueItem[]>("sync-queue.json", []);
   }
-  
-  static async add(type: SyncQueueItem['type'], action: SyncQueueItem['action'], data: any): Promise<void> {
+
+  static async add(
+    type: SyncQueueItem["type"],
+    action: SyncQueueItem["action"],
+    data: any,
+  ): Promise<void> {
     const queue = await this.getQueue();
-    
+
     queue.push({
       id: generateId(),
       type,
@@ -482,20 +579,20 @@ export class SyncQueue {
       timestamp: new Date().toISOString(),
       retryCount: 0,
     });
-    
-    await writeJsonFile('sync-queue.json', queue);
+
+    await writeJsonFile("sync-queue.json", queue);
   }
-  
+
   static async remove(id: string): Promise<void> {
     const queue = await this.getQueue();
-    const filtered = queue.filter(item => item.id !== id);
-    await writeJsonFile('sync-queue.json', filtered);
+    const filtered = queue.filter((item) => item.id !== id);
+    await writeJsonFile("sync-queue.json", filtered);
   }
-  
+
   static async clear(): Promise<void> {
-    await writeJsonFile('sync-queue.json', []);
+    await writeJsonFile("sync-queue.json", []);
   }
-  
+
   static async getPendingCount(): Promise<number> {
     const queue = await this.getQueue();
     return queue.length;
@@ -504,19 +601,27 @@ export class SyncQueue {
 
 export class SyncService {
   private static isSyncing = false;
-  
-  static async syncToBackend(): Promise<{ success: boolean; synced: number; errors: string[] }> {
+
+  static async syncToBackend(): Promise<{
+    success: boolean;
+    synced: number;
+    errors: string[];
+  }> {
     if (this.isSyncing) {
-      return { success: false, synced: 0, errors: ['Sync already in progress'] };
+      return {
+        success: false,
+        synced: 0,
+        errors: ["Sync already in progress"],
+      };
     }
-    
+
     this.isSyncing = true;
     const errors: string[] = [];
     let synced = 0;
-    
+
     try {
       const queue = await SyncQueue.getQueue();
-      
+
       for (const item of queue) {
         try {
           await this.syncItem(item);
@@ -529,111 +634,125 @@ export class SyncService {
           }
         }
       }
-      
+
       return { success: errors.length === 0, synced, errors };
     } finally {
       this.isSyncing = false;
     }
   }
-  
+
   private static async syncItem(item: SyncQueueItem): Promise<void> {
-    const baseUrl = getApiUrl();
-    
     switch (item.type) {
-      case 'list':
+      case "list":
         await this.syncList(item);
         break;
-      case 'listItem':
+      case "listItem":
         await this.syncListItem(item);
         break;
-      case 'grocery':
+      case "grocery":
         await this.syncGrocery(item);
         break;
     }
   }
-  
+
   private static async syncList(item: SyncQueueItem): Promise<void> {
     switch (item.action) {
-      case 'create':
-        await apiRequest('POST', '/api/lists', item.data);
+      case "create":
+        await apiClient.post("/api/lists", item.data);
         break;
-      case 'update':
-        await apiRequest('PATCH', `/api/lists/${item.data.id}`, item.data);
+      case "update":
+        await apiClient.patch(`/api/lists/${item.data.id}`, item.data);
         break;
-      case 'delete':
-        await apiRequest('DELETE', `/api/lists/${item.data.id}`);
+      case "delete":
+        await apiClient.delete(`/api/lists/${item.data.id}`);
         break;
     }
   }
-  
+
   private static async syncListItem(item: SyncQueueItem): Promise<void> {
     switch (item.action) {
-      case 'create':
-        await apiRequest('POST', `/api/lists/${item.data.listId}/items`, { text: item.data.text });
+      case "create":
+        await apiClient.post(`/api/lists/${item.data.listId}/items`, {
+          text: item.data.text,
+        });
         break;
-      case 'update':
-        await apiRequest('PATCH', `/api/lists/${item.data.listId}/items/${item.data.id}`, item.data);
+      case "update":
+        await apiClient.patch(
+          `/api/lists/${item.data.listId}/items/${item.data.id}`,
+          item.data,
+        );
         break;
-      case 'delete':
-        await apiRequest('DELETE', `/api/lists/${item.data.listId}/items/${item.data.id}`);
+      case "delete":
+        await apiClient.delete(
+          `/api/lists/${item.data.listId}/items/${item.data.id}`,
+        );
         break;
     }
   }
-  
+
   private static async syncGrocery(item: SyncQueueItem): Promise<void> {
     switch (item.action) {
-      case 'create':
-        await apiRequest('POST', '/api/grocery', item.data);
+      case "create":
+        await apiClient.post("/api/grocery", item.data);
         break;
-      case 'update':
-        await apiRequest('PATCH', `/api/grocery/${item.data.id}`, item.data);
+      case "update":
+        await apiClient.patch(`/api/grocery/${item.data.id}`, item.data);
         break;
-      case 'delete':
-        await apiRequest('DELETE', `/api/grocery/${item.data.id}`);
+      case "delete":
+        await apiClient.delete(`/api/grocery/${item.data.id}`);
         break;
     }
   }
-  
-  static async importFromBackend(): Promise<{ lists: number; grocery: number }> {
+
+  static async importFromBackend(): Promise<{
+    lists: number;
+    grocery: number;
+  }> {
     try {
-      const [listsRes, groceryRes] = await Promise.all([
-        fetch(new URL('/api/lists', getApiUrl()).toString(), { credentials: 'include' }),
-        fetch(new URL('/api/grocery', getApiUrl()).toString(), { credentials: 'include' }),
+      // Retry, timeout, and auth now handled centrally by ZekeApiClient
+      const [listsData, groceryData] = await Promise.all([
+        apiClient
+          .get<{
+            lists?: any[];
+            items?: any[];
+          }>("/api/lists", { emptyArrayOn404: true })
+          .catch(() => ({ lists: [] })),
+        apiClient
+          .get<{ items?: any[] }>("/api/grocery", { emptyArrayOn404: true })
+          .catch(() => ({ items: [] })),
       ]);
-      
-      let lists: any[] = [];
-      let grocery: any[] = [];
+
+      let lists: any[] = listsData.lists || [];
+      let grocery: any[] = groceryData.items || [];
       let listItems: any[] = [];
-      
-      if (listsRes.ok) {
-        const listsData = await listsRes.json();
-        lists = listsData.lists || listsData || [];
-        
+
+      if (lists.length > 0) {
         for (const list of lists) {
-          const itemsRes = await fetch(
-            new URL(`/api/lists/${list.id}`, getApiUrl()).toString(),
-            { credentials: 'include' }
-          );
-          if (itemsRes.ok) {
-            const listData = await itemsRes.json();
-            if (listData.items) {
-              listItems.push(...listData.items.map((item: any) => ({ ...item, listId: list.id })));
+          try {
+            const listItemData = await apiClient.get<{ items?: any[] }>(
+              `/api/lists/${list.id}`,
+              { emptyArrayOn404: true },
+            );
+            if (listItemData.items) {
+              listItems.push(
+                ...listItemData.items.map((item: any) => ({
+                  ...item,
+                  listId: list.id,
+                })),
+              );
             }
+          } catch {
+            // Skip lists with fetch errors
           }
         }
       }
-      
-      if (groceryRes.ok) {
-        const groceryData = await groceryRes.json();
-        grocery = groceryData.items || groceryData || [];
-      }
-      
+
       await ListsRepository.importFromBackend(lists, listItems);
       await GroceryRepository.importFromBackend(grocery);
-      
+
       return { lists: lists.length, grocery: grocery.length };
     } catch (error) {
-      console.error('Import from backend failed:', error);
+      console.error("Import from backend failed:", error);
       throw error;
     }
   }
@@ -645,12 +764,19 @@ export async function getSyncStatus(): Promise<{
   isOnline: boolean;
 }> {
   const pendingCount = await SyncQueue.getPendingCount();
-  
-  const listsData = await readJsonFile<StoredData<ListData>>('lists.json', { items: [], metadata: {} });
-  const groceryData = await readJsonFile<StoredData<GroceryItemData>>('grocery.json', { items: [], metadata: {} });
-  
-  const lastSyncTime = listsData.lastSyncTime || groceryData.lastSyncTime || null;
-  
+
+  const listsData = await readJsonFile<StoredData<ListData>>("lists.json", {
+    items: [],
+    metadata: {},
+  });
+  const groceryData = await readJsonFile<StoredData<GroceryItemData>>(
+    "grocery.json",
+    { items: [], metadata: {} },
+  );
+
+  const lastSyncTime =
+    listsData.lastSyncTime || groceryData.lastSyncTime || null;
+
   return {
     pendingChanges: pendingCount,
     lastSyncTime,

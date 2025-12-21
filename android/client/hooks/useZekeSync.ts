@@ -1,27 +1,27 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { getApiUrl } from '@/lib/query-client';
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { getApiUrl } from "@/lib/query-client";
 
-export type ZekeSyncMessageType = 
-  | 'sms' 
-  | 'voice' 
-  | 'activity' 
-  | 'device_status' 
-  | 'notification'
-  | 'task'
-  | 'grocery'
-  | 'list'
-  | 'calendar'
-  | 'contact';
+export type ZekeSyncMessageType =
+  | "sms"
+  | "voice"
+  | "activity"
+  | "device_status"
+  | "notification"
+  | "task"
+  | "grocery"
+  | "list"
+  | "calendar"
+  | "contact";
 
 export interface ZekeSyncMessage {
   type: ZekeSyncMessageType;
-  action: 'created' | 'updated' | 'deleted';
+  action: "created" | "updated" | "deleted";
   data?: unknown;
   timestamp: string;
 }
 
-export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
+export type ConnectionStatus = "connected" | "connecting" | "disconnected";
 
 interface UseZekeSyncOptions {
   enabled?: boolean;
@@ -36,63 +36,70 @@ export function useZekeSync(options: UseZekeSyncOptions = {}) {
   const { enabled = true, onMessage } = options;
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY);
-  const [status, setStatus] = useState<ConnectionStatus>('disconnected');
+  const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const mountedRef = useRef(true);
 
-  const invalidateQueriesForType = useCallback((type: ZekeSyncMessageType) => {
-    switch (type) {
-      case 'sms':
-        queryClient.invalidateQueries({ queryKey: ['/api/sms'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/communications'] });
-        break;
-      case 'voice':
-        queryClient.invalidateQueries({ queryKey: ['/api/voice'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/communications'] });
-        break;
-      case 'activity':
-        queryClient.invalidateQueries({ queryKey: ['/api/activity'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/timeline'] });
-        break;
-      case 'device_status':
-        queryClient.invalidateQueries({ queryKey: ['/api/devices'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/device'] });
-        break;
-      case 'notification':
-        queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
-        break;
-      case 'task':
-        queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
-        break;
-      case 'grocery':
-        queryClient.invalidateQueries({ queryKey: ['/api/grocery'] });
-        break;
-      case 'list':
-        queryClient.invalidateQueries({ queryKey: ['/api/lists'] });
-        break;
-      case 'calendar':
-        queryClient.invalidateQueries({ queryKey: ['/api/calendar'] });
-        break;
-      case 'contact':
-        queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
-        break;
-    }
-  }, [queryClient]);
+  const invalidateQueriesForType = useCallback(
+    (type: ZekeSyncMessageType) => {
+      switch (type) {
+        case "sms":
+          queryClient.invalidateQueries({ queryKey: ["/api/sms"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/communications"] });
+          break;
+        case "voice":
+          queryClient.invalidateQueries({ queryKey: ["/api/voice"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/communications"] });
+          break;
+        case "activity":
+          queryClient.invalidateQueries({ queryKey: ["/api/activity"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/timeline"] });
+          break;
+        case "device_status":
+          queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/device"] });
+          break;
+        case "notification":
+          queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+          break;
+        case "task":
+          queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+          break;
+        case "grocery":
+          queryClient.invalidateQueries({ queryKey: ["/api/grocery"] });
+          break;
+        case "list":
+          queryClient.invalidateQueries({ queryKey: ["/api/lists"] });
+          break;
+        case "calendar":
+          queryClient.invalidateQueries({ queryKey: ["/api/calendar"] });
+          break;
+        case "contact":
+          queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+          break;
+      }
+    },
+    [queryClient],
+  );
 
   const connect = useCallback(() => {
     if (!mountedRef.current || !enabled) return;
-    
-    if (wsRef.current?.readyState === WebSocket.OPEN || 
-        wsRef.current?.readyState === WebSocket.CONNECTING) {
+
+    if (
+      wsRef.current?.readyState === WebSocket.OPEN ||
+      wsRef.current?.readyState === WebSocket.CONNECTING
+    ) {
       return;
     }
 
-    setStatus('connecting');
+    setStatus("connecting");
 
     try {
       const baseUrl = getApiUrl();
-      const wsProtocol = baseUrl.startsWith('https') ? 'wss' : 'ws';
+      const wsProtocol = baseUrl.startsWith("https") ? "wss" : "ws";
       const host = new URL(baseUrl).host;
       const wsUrl = `${wsProtocol}://${host}/ws/zeke`;
 
@@ -104,40 +111,44 @@ export function useZekeSync(options: UseZekeSyncOptions = {}) {
           ws.close();
           return;
         }
-        console.log('[ZEKE Sync] Connected');
-        setStatus('connected');
+        console.log("[ZEKE Sync] Connected");
+        setStatus("connected");
         reconnectDelayRef.current = INITIAL_RECONNECT_DELAY;
       };
 
       ws.onmessage = (event) => {
         if (!mountedRef.current) return;
-        
+
         try {
           const message: ZekeSyncMessage = JSON.parse(event.data);
-          console.log('[ZEKE Sync] Message received:', message.type, message.action);
-          
+          console.log(
+            "[ZEKE Sync] Message received:",
+            message.type,
+            message.action,
+          );
+
           invalidateQueriesForType(message.type);
           onMessage?.(message);
         } catch (error) {
-          console.error('[ZEKE Sync] Failed to parse message:', error);
+          console.error("[ZEKE Sync] Failed to parse message:", error);
         }
       };
 
       ws.onclose = (event) => {
         if (!mountedRef.current) return;
-        
-        console.log('[ZEKE Sync] Disconnected', event.code, event.reason);
-        setStatus('disconnected');
+
+        console.log("[ZEKE Sync] Disconnected", event.code, event.reason);
+        setStatus("disconnected");
         wsRef.current = null;
 
         if (enabled) {
           const delay = reconnectDelayRef.current;
           console.log(`[ZEKE Sync] Reconnecting in ${delay}ms...`);
-          
+
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectDelayRef.current = Math.min(
               reconnectDelayRef.current * RECONNECT_MULTIPLIER,
-              MAX_RECONNECT_DELAY
+              MAX_RECONNECT_DELAY,
             );
             connect();
           }, delay);
@@ -145,12 +156,11 @@ export function useZekeSync(options: UseZekeSyncOptions = {}) {
       };
 
       ws.onerror = (error) => {
-        console.error('[ZEKE Sync] WebSocket error:', error);
+        console.error("[ZEKE Sync] WebSocket error:", error);
       };
-
     } catch (error) {
-      console.error('[ZEKE Sync] Failed to create WebSocket:', error);
-      setStatus('disconnected');
+      console.error("[ZEKE Sync] Failed to create WebSocket:", error);
+      setStatus("disconnected");
     }
   }, [enabled, invalidateQueriesForType, onMessage]);
 
@@ -165,7 +175,7 @@ export function useZekeSync(options: UseZekeSyncOptions = {}) {
       wsRef.current = null;
     }
 
-    setStatus('disconnected');
+    setStatus("disconnected");
   }, []);
 
   useEffect(() => {
@@ -183,8 +193,8 @@ export function useZekeSync(options: UseZekeSyncOptions = {}) {
 
   return {
     status,
-    isConnected: status === 'connected',
-    isConnecting: status === 'connecting',
+    isConnected: status === "connected",
+    isConnecting: status === "connecting",
     reconnect: connect,
     disconnect,
   };

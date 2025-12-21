@@ -1,8 +1,7 @@
-import { Platform, StatusBar, View, StyleSheet } from "react-native";
+import { Platform, View, StyleSheet } from "react-native";
 import { NativeStackNavigationOptions } from "@react-navigation/native-stack";
 import { BlurView } from "expo-blur";
 import { isLiquidGlassAvailable, GlassView } from "expo-glass-effect";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useTheme } from "@/hooks/useTheme";
 
@@ -14,13 +13,6 @@ export function useScreenOptions({
   transparent = true,
 }: UseScreenOptionsParams = {}): NativeStackNavigationOptions {
   const { theme, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
-
-  const statusBarHeight = Platform.select({
-    android: StatusBar.currentHeight || insets.top || 24,
-    ios: insets.top,
-    default: insets.top,
-  });
 
   const isIOS = Platform.OS === "ios";
   const isAndroid = Platform.OS === "android";
@@ -31,6 +23,7 @@ export function useScreenOptions({
     gestureEnabled: true,
     gestureDirection: "horizontal",
     fullScreenGestureEnabled: isLiquidGlassAvailable() ? false : true,
+    headerShadowVisible: false,
     contentStyle: {
       backgroundColor: theme.backgroundRoot,
     },
@@ -78,12 +71,24 @@ export function useScreenOptions({
   if (isAndroid) {
     return {
       ...baseOptions,
-      headerTransparent: false,
+      headerTransparent: transparent,
       headerStyle: {
-        backgroundColor: theme.backgroundDefault,
+        backgroundColor: transparent ? "transparent" : theme.backgroundDefault,
       },
-      headerStatusBarHeight: transparent ? statusBarHeight : undefined,
-      headerTopInsetEnabled: true,
+      headerBackground: transparent
+        ? () => (
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor: isDark
+                    ? "rgba(15, 23, 42, 0.95)"
+                    : "rgba(241, 245, 249, 0.95)",
+                },
+              ]}
+            />
+          )
+        : undefined,
     };
   }
 

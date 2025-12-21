@@ -35,17 +35,17 @@ import {
   type ZekeCalendar,
 } from "@/lib/zeke-api-adapter";
 
-type CalendarViewType = 'day' | 'week' | 'month';
+type CalendarViewType = "day" | "week" | "month";
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const WEEKDAYS_SHORT = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAYS_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
 
 function getWeekDates(date: Date): Date[] {
   const startOfWeek = new Date(date);
   const day = startOfWeek.getDay();
   startOfWeek.setDate(startOfWeek.getDate() - day);
   startOfWeek.setHours(0, 0, 0, 0);
-  
+
   const dates: Date[] = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(startOfWeek);
@@ -62,14 +62,14 @@ function getMonthDates(date: Date): (Date | null)[][] {
   const lastDay = new Date(year, month + 1, 0);
   const startDayOfWeek = firstDay.getDay();
   const daysInMonth = lastDay.getDate();
-  
+
   const weeks: (Date | null)[][] = [];
   let currentWeek: (Date | null)[] = [];
-  
+
   for (let i = 0; i < startDayOfWeek; i++) {
     currentWeek.push(null);
   }
-  
+
   for (let day = 1; day <= daysInMonth; day++) {
     currentWeek.push(new Date(year, month, day));
     if (currentWeek.length === 7) {
@@ -77,32 +77,34 @@ function getMonthDates(date: Date): (Date | null)[][] {
       currentWeek = [];
     }
   }
-  
+
   if (currentWeek.length > 0) {
     while (currentWeek.length < 7) {
       currentWeek.push(null);
     }
     weeks.push(currentWeek);
   }
-  
+
   return weeks;
 }
 
 function isSameDay(date1: Date, date2: Date): boolean {
-  return date1.getFullYear() === date2.getFullYear() &&
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
     date1.getMonth() === date2.getMonth() &&
-    date1.getDate() === date2.getDate();
+    date1.getDate() === date2.getDate()
+  );
 }
 
 function formatMonthYear(date: Date): string {
   return date.toLocaleDateString(undefined, {
-    month: 'long',
-    year: 'numeric',
+    month: "long",
+    year: "numeric",
   });
 }
 
 function getEventsForDate(events: ZekeEvent[], date: Date): ZekeEvent[] {
-  return events.filter(event => {
+  return events.filter((event) => {
     const eventDate = new Date(event.startTime);
     return isSameDay(eventDate, date);
   });
@@ -116,9 +118,7 @@ const CALENDAR_NAME_MAP: Record<string, string> = {
   "krazedrecords@gmail.com": "Nate",
 };
 
-const CALENDARS_TO_EXCLUDE = [
-  "Venture Café Cambridge",
-];
+const CALENDARS_TO_EXCLUDE = ["Venture Café Cambridge"];
 
 function getCalendarDisplayName(calendarName: string): string {
   return CALENDAR_NAME_MAP[calendarName] || calendarName;
@@ -181,7 +181,7 @@ function calculateEventLayout(events: ZekeEvent[]): EventWithLayout[] {
   if (events.length === 0) return [];
 
   const sortedEvents = [...events].sort(
-    (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
   );
 
   const eventsWithLayout: EventWithLayout[] = [];
@@ -270,7 +270,7 @@ function EventCard({ event, onPress, onDelete, theme }: EventCardProps) {
           style: "destructive",
           onPress: () => onDelete(event),
         },
-      ]
+      ],
     );
   };
 
@@ -297,8 +297,13 @@ function EventCard({ event, onPress, onDelete, theme }: EventCardProps) {
             {event.endTime ? ` - ${formatTime(event.endTime)}` : ""}
           </ThemedText>
           {event.calendarName ? (
-            <View style={[styles.calendarBadge, { backgroundColor: `${color}40` }]}>
-              <ThemedText style={[styles.calendarBadgeText, { color }]} numberOfLines={1}>
+            <View
+              style={[styles.calendarBadge, { backgroundColor: `${color}40` }]}
+            >
+              <ThemedText
+                style={[styles.calendarBadgeText, { color }]}
+                numberOfLines={1}
+              >
                 {getCalendarDisplayName(event.calendarName)}
               </ThemedText>
             </View>
@@ -332,13 +337,18 @@ interface ViewToggleProps {
 
 function ViewToggle({ currentView, onViewChange, theme }: ViewToggleProps) {
   const views: { key: CalendarViewType; label: string }[] = [
-    { key: 'day', label: 'Day' },
-    { key: 'week', label: 'Week' },
-    { key: 'month', label: 'Month' },
+    { key: "day", label: "Day" },
+    { key: "week", label: "Week" },
+    { key: "month", label: "Month" },
   ];
 
   return (
-    <View style={[viewToggleStyles.container, { backgroundColor: theme.backgroundSecondary }]}>
+    <View
+      style={[
+        viewToggleStyles.container,
+        { backgroundColor: theme.backgroundSecondary },
+      ]}
+    >
       {views.map((view) => {
         const isActive = currentView === view.key;
         return (
@@ -356,7 +366,7 @@ function ViewToggle({ currentView, onViewChange, theme }: ViewToggleProps) {
             <ThemedText
               style={[
                 viewToggleStyles.buttonText,
-                { color: isActive ? '#fff' : theme.textSecondary },
+                { color: isActive ? "#fff" : theme.textSecondary },
               ]}
             >
               {view.label}
@@ -370,7 +380,7 @@ function ViewToggle({ currentView, onViewChange, theme }: ViewToggleProps) {
 
 const viewToggleStyles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
+    flexDirection: "row",
     borderRadius: BorderRadius.sm,
     padding: 2,
   },
@@ -379,12 +389,12 @@ const viewToggleStyles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.md,
     borderRadius: BorderRadius.xs,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   buttonText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });
 
@@ -394,7 +404,7 @@ export default function CalendarScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
 
-  const [viewType, setViewType] = useState<CalendarViewType>('day');
+  const [viewType, setViewType] = useState<CalendarViewType>("day");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingEvent, setEditingEvent] = useState<ZekeEvent | null>(null);
@@ -403,28 +413,41 @@ export default function CalendarScreen() {
   const [eventEndTime, setEventEndTime] = useState("");
   const [eventLocation, setEventLocation] = useState("");
   const [eventDescription, setEventDescription] = useState("");
-  const [selectedCalendarId, setSelectedCalendarId] = useState<string>("primary");
+  const [selectedCalendarId, setSelectedCalendarId] =
+    useState<string>("primary");
   const [filterCalendarId, setFilterCalendarId] = useState<string | null>(null);
   const [showCalendarFilter, setShowCalendarFilter] = useState(false);
 
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
   const monthDates = useMemo(() => getMonthDates(selectedDate), [selectedDate]);
-  
+
   const dateRangeQuery = useMemo(() => {
-    if (viewType === 'day') {
-      return { key: 'calendar-events-today', start: null, end: null };
-    } else if (viewType === 'week') {
+    if (viewType === "day") {
+      return { key: "calendar-events-today", start: null, end: null };
+    } else if (viewType === "week") {
       const start = new Date(weekDates[0]);
       start.setHours(0, 0, 0, 0);
       const end = new Date(weekDates[6]);
       end.setHours(23, 59, 59, 999);
       return { key: `calendar-events-week-${start.toISOString()}`, start, end };
     } else {
-      const start = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+      const start = new Date(
+        selectedDate.getFullYear(),
+        selectedDate.getMonth(),
+        1,
+      );
       start.setHours(0, 0, 0, 0);
-      const end = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
+      const end = new Date(
+        selectedDate.getFullYear(),
+        selectedDate.getMonth() + 1,
+        0,
+      );
       end.setHours(23, 59, 59, 999);
-      return { key: `calendar-events-month-${start.toISOString()}`, start, end };
+      return {
+        key: `calendar-events-month-${start.toISOString()}`,
+        start,
+        end,
+      };
     }
   }, [viewType, selectedDate, weekDates]);
 
@@ -436,7 +459,7 @@ export default function CalendarScreen() {
   } = useQuery<ZekeEvent[]>({
     queryKey: [dateRangeQuery.key],
     queryFn: () => {
-      if (viewType === 'day') {
+      if (viewType === "day") {
         return getTodayEvents();
       } else if (dateRangeQuery.start && dateRangeQuery.end) {
         return getEventsForDateRange(dateRangeQuery.start, dateRangeQuery.end);
@@ -470,7 +493,7 @@ export default function CalendarScreen() {
         data.endTime,
         data.location,
         data.calendarId,
-        data.description
+        data.description,
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calendar-events-today"] });
@@ -504,7 +527,8 @@ export default function CalendarScreen() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (event: ZekeEvent) => deleteCalendarEvent(event.id, event.calendarId),
+    mutationFn: (event: ZekeEvent) =>
+      deleteCalendarEvent(event.id, event.calendarId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calendar-events-today"] });
     },
@@ -560,7 +584,10 @@ export default function CalendarScreen() {
     const today = new Date();
     const startTimeDate = parseTimeString(eventStartTime, today);
     if (!startTimeDate) {
-      Alert.alert("Error", "Invalid start time format. Use format like '2:00 PM' or '14:00'.");
+      Alert.alert(
+        "Error",
+        "Invalid start time format. Use format like '2:00 PM' or '14:00'.",
+      );
       return;
     }
 
@@ -568,7 +595,10 @@ export default function CalendarScreen() {
     if (eventEndTime.trim()) {
       const parsedEndTime = parseTimeString(eventEndTime, today);
       if (!parsedEndTime) {
-        Alert.alert("Error", "Invalid end time format. Use format like '3:00 PM' or '15:00'.");
+        Alert.alert(
+          "Error",
+          "Invalid end time format. Use format like '3:00 PM' or '15:00'.",
+        );
         return;
       }
       endTimeDate = parsedEndTime;
@@ -602,7 +632,7 @@ export default function CalendarScreen() {
     (event: ZekeEvent) => {
       deleteMutation.mutate(event);
     },
-    [deleteMutation]
+    [deleteMutation],
   );
 
   function formatTimeForInput(dateString: string): string {
@@ -619,15 +649,17 @@ export default function CalendarScreen() {
   }, [refetch]);
 
   const filteredEvents = useMemo(() => {
-    let result = events.filter(e => e.calendarName && shouldShowCalendar(e.calendarName));
+    let result = events.filter(
+      (e) => e.calendarName && shouldShowCalendar(e.calendarName),
+    );
     if (!filterCalendarId) return result;
-    return result.filter(e => e.calendarId === filterCalendarId);
+    return result.filter((e) => e.calendarId === filterCalendarId);
   }, [events, filterCalendarId]);
 
   const { allDayEvents, timedEvents } = useMemo(() => {
     const allDay: ZekeEvent[] = [];
     const timed: ZekeEvent[] = [];
-    
+
     for (const event of filteredEvents) {
       if (event.allDay) {
         allDay.push(event);
@@ -635,23 +667,27 @@ export default function CalendarScreen() {
         timed.push(event);
       }
     }
-    
+
     allDay.sort((a, b) => a.title.localeCompare(b.title));
-    timed.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-    
+    timed.sort(
+      (a, b) =>
+        new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+    );
+
     return { allDayEvents: allDay, timedEvents: timed };
   }, [filteredEvents]);
 
   const sortedEvents = useMemo(() => {
     return [...filteredEvents].sort(
       (a, b) =>
-        new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+        new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
     );
   }, [filteredEvents]);
 
   const currentTimePosition = getCurrentTimePosition();
 
-  const timelineHeight = (TIMELINE_END_HOUR - TIMELINE_START_HOUR + 1) * HOUR_HEIGHT;
+  const timelineHeight =
+    (TIMELINE_END_HOUR - TIMELINE_START_HOUR + 1) * HOUR_HEIGHT;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
@@ -665,22 +701,30 @@ export default function CalendarScreen() {
       >
         <View style={styles.dateHeader}>
           <ThemedText type="h3" style={styles.dateText}>
-            {viewType === 'day' 
-              ? formatDateHeader() 
-              : viewType === 'week'
-              ? `${weekDates[0].toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${weekDates[6].toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
-              : formatMonthYear(selectedDate)}
+            {viewType === "day"
+              ? formatDateHeader()
+              : viewType === "week"
+                ? `${weekDates[0].toLocaleDateString(undefined, { month: "short", day: "numeric" })} - ${weekDates[6].toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
+                : formatMonthYear(selectedDate)}
           </ThemedText>
           <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-            {sortedEvents.length} event{sortedEvents.length !== 1 ? "s" : ""}{viewType === 'day' ? ' today' : ''}
+            {sortedEvents.length} event{sortedEvents.length !== 1 ? "s" : ""}
+            {viewType === "day" ? " today" : ""}
           </ThemedText>
         </View>
-        <ViewToggle currentView={viewType} onViewChange={setViewType} theme={theme} />
+        <ViewToggle
+          currentView={viewType}
+          onViewChange={setViewType}
+          theme={theme}
+        />
         <View style={styles.actionRow}>
           <View style={styles.actionRowLeft}>
             <Pressable
               onPress={openAddModal}
-              style={[styles.addButton, { backgroundColor: Colors.dark.primary }]}
+              style={[
+                styles.addButton,
+                { backgroundColor: Colors.dark.primary },
+              ]}
             >
               <Feather name="plus" size={20} color="#fff" />
               <ThemedText style={styles.addButtonText}>Add Event</ThemedText>
@@ -688,13 +732,29 @@ export default function CalendarScreen() {
             {calendars.length > 0 ? (
               <Pressable
                 onPress={() => setShowCalendarFilter(!showCalendarFilter)}
-                style={[styles.filterToggle, { backgroundColor: theme.backgroundSecondary }]}
+                style={[
+                  styles.filterToggle,
+                  { backgroundColor: theme.backgroundSecondary },
+                ]}
               >
                 <Feather name="filter" size={16} color={theme.textSecondary} />
-                <ThemedText style={[styles.filterToggleText, { color: theme.textSecondary }]} numberOfLines={1}>
-                  {filterCalendarId ? calendars.find(c => c.id === filterCalendarId)?.name || 'Filter' : 'All Calendars'}
+                <ThemedText
+                  style={[
+                    styles.filterToggleText,
+                    { color: theme.textSecondary },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {filterCalendarId
+                    ? calendars.find((c) => c.id === filterCalendarId)?.name ||
+                      "Filter"
+                    : "All Calendars"}
                 </ThemedText>
-                <Feather name={showCalendarFilter ? "chevron-up" : "chevron-down"} size={16} color={theme.textSecondary} />
+                <Feather
+                  name={showCalendarFilter ? "chevron-up" : "chevron-down"}
+                  size={16}
+                  color={theme.textSecondary}
+                />
               </Pressable>
             ) : null}
           </View>
@@ -707,49 +767,77 @@ export default function CalendarScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.calendarFilters}
             >
-                <Pressable
-                  onPress={() => { setFilterCalendarId(null); setShowCalendarFilter(false); }}
+              <Pressable
+                onPress={() => {
+                  setFilterCalendarId(null);
+                  setShowCalendarFilter(false);
+                }}
+                style={[
+                  styles.calendarChip,
+                  {
+                    backgroundColor: !filterCalendarId
+                      ? Colors.dark.primary
+                      : theme.backgroundSecondary,
+                    borderColor: !filterCalendarId
+                      ? Colors.dark.primary
+                      : theme.border,
+                  },
+                ]}
+              >
+                <ThemedText
                   style={[
-                    styles.calendarChip,
-                    {
-                      backgroundColor: !filterCalendarId ? Colors.dark.primary : theme.backgroundSecondary,
-                      borderColor: !filterCalendarId ? Colors.dark.primary : theme.border,
-                    },
+                    styles.calendarChipText,
+                    { color: !filterCalendarId ? "#fff" : theme.textSecondary },
                   ]}
                 >
-                  <ThemedText
-                    style={[
-                      styles.calendarChipText,
-                      { color: !filterCalendarId ? "#fff" : theme.textSecondary },
-                    ]}
-                  >
-                    All Calendars
-                  </ThemedText>
-                </Pressable>
-                {calendars.filter((cal) => shouldShowCalendar(cal.name)).map((cal) => (
+                  All Calendars
+                </ThemedText>
+              </Pressable>
+              {calendars
+                .filter((cal) => shouldShowCalendar(cal.name))
+                .map((cal) => (
                   <Pressable
                     key={cal.id}
-                    onPress={() => { setFilterCalendarId(filterCalendarId === cal.id ? null : cal.id); setShowCalendarFilter(false); }}
+                    onPress={() => {
+                      setFilterCalendarId(
+                        filterCalendarId === cal.id ? null : cal.id,
+                      );
+                      setShowCalendarFilter(false);
+                    }}
                     style={[
                       styles.calendarChip,
                       {
-                        backgroundColor: filterCalendarId === cal.id ? `${cal.color}` : theme.backgroundSecondary,
-                        borderColor: filterCalendarId === cal.id ? cal.color : theme.border,
+                        backgroundColor:
+                          filterCalendarId === cal.id
+                            ? `${cal.color}`
+                            : theme.backgroundSecondary,
+                        borderColor:
+                          filterCalendarId === cal.id
+                            ? cal.color
+                            : theme.border,
                       },
                     ]}
                   >
-                    <View style={[styles.calendarDot, { backgroundColor: cal.color }]} />
+                    <View
+                      style={[
+                        styles.calendarDot,
+                        { backgroundColor: cal.color },
+                      ]}
+                    />
                     <ThemedText
                       style={[
                         styles.calendarChipText,
-                        { color: filterCalendarId === cal.id ? "#fff" : theme.text },
+                        {
+                          color:
+                            filterCalendarId === cal.id ? "#fff" : theme.text,
+                        },
                       ]}
                       numberOfLines={1}
                     >
                       {getCalendarDisplayName(cal.name)}
                     </ThemedText>
                   </Pressable>
-              ))}
+                ))}
             </ScrollView>
           </View>
         ) : null}
@@ -759,7 +847,7 @@ export default function CalendarScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.dark.primary} />
         </View>
-      ) : viewType === 'week' ? (
+      ) : viewType === "week" ? (
         <ScrollView
           contentContainerStyle={{
             paddingBottom: tabBarHeight + Spacing.xl,
@@ -788,13 +876,21 @@ export default function CalendarScreen() {
                   onPress={() => setSelectedDate(date)}
                   style={[
                     styles.weekDayColumn,
-                    { backgroundColor: isSelected ? `${Colors.dark.primary}20` : 'transparent' },
+                    {
+                      backgroundColor: isSelected
+                        ? `${Colors.dark.primary}20`
+                        : "transparent",
+                    },
                   ]}
                 >
                   <ThemedText
                     style={[
                       styles.weekDayName,
-                      { color: isToday ? Colors.dark.primary : theme.textSecondary },
+                      {
+                        color: isToday
+                          ? Colors.dark.primary
+                          : theme.textSecondary,
+                      },
                     ]}
                   >
                     {WEEKDAYS[date.getDay()]}
@@ -808,16 +904,19 @@ export default function CalendarScreen() {
                     <ThemedText
                       style={[
                         styles.weekDayNumberText,
-                        { color: isToday ? '#fff' : theme.text },
+                        { color: isToday ? "#fff" : theme.text },
                       ]}
                     >
                       {date.getDate()}
                     </ThemedText>
                   </View>
                   <ThemedText
-                    style={[styles.weekEventCount, { color: theme.textSecondary }]}
+                    style={[
+                      styles.weekEventCount,
+                      { color: theme.textSecondary },
+                    ]}
                   >
-                    {dayEvents.length > 0 ? `${dayEvents.length}` : '-'}
+                    {dayEvents.length > 0 ? `${dayEvents.length}` : "-"}
                   </ThemedText>
                   <View style={styles.weekEventIndicators}>
                     {dayEvents.slice(0, 3).map((event, i) => (
@@ -825,25 +924,35 @@ export default function CalendarScreen() {
                         key={event.id}
                         style={[
                           styles.weekEventDot,
-                          { backgroundColor: event.color || Colors.dark.primary },
+                          {
+                            backgroundColor: event.color || Colors.dark.primary,
+                          },
                         ]}
                       />
                     ))}
                     {dayEvents.length > 3 ? (
-                      <ThemedText style={styles.weekMoreIndicator}>+{dayEvents.length - 3}</ThemedText>
+                      <ThemedText style={styles.weekMoreIndicator}>
+                        +{dayEvents.length - 3}
+                      </ThemedText>
                     ) : null}
                   </View>
                 </Pressable>
               );
             })}
           </ScrollView>
-          
+
           <View style={styles.weekSelectedDayEvents}>
             <ThemedText type="h4" style={{ marginBottom: Spacing.md }}>
-              {selectedDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+              {selectedDate.toLocaleDateString(undefined, {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })}
             </ThemedText>
             {getEventsForDate(filteredEvents, selectedDate).length === 0 ? (
-              <ThemedText style={{ color: theme.textSecondary }}>No events on this day</ThemedText>
+              <ThemedText style={{ color: theme.textSecondary }}>
+                No events on this day
+              </ThemedText>
             ) : (
               getEventsForDate(filteredEvents, selectedDate).map((event) => {
                 const color = event.color || Colors.dark.primary;
@@ -860,14 +969,25 @@ export default function CalendarScreen() {
                     ]}
                   >
                     <ThemedText style={[styles.eventTime, { color }]}>
-                      {event.allDay ? 'All Day' : formatTime(event.startTime)}
-                      {event.endTime && !event.allDay ? ` - ${formatTime(event.endTime)}` : ''}
+                      {event.allDay ? "All Day" : formatTime(event.startTime)}
+                      {event.endTime && !event.allDay
+                        ? ` - ${formatTime(event.endTime)}`
+                        : ""}
                     </ThemedText>
-                    <ThemedText style={styles.eventTitle}>{event.title}</ThemedText>
+                    <ThemedText style={styles.eventTitle}>
+                      {event.title}
+                    </ThemedText>
                     {event.location ? (
                       <View style={styles.locationRow}>
-                        <Feather name="map-pin" size={12} color={theme.textSecondary} />
-                        <ThemedText type="caption" style={{ color: theme.textSecondary, marginLeft: 4 }}>
+                        <Feather
+                          name="map-pin"
+                          size={12}
+                          color={theme.textSecondary}
+                        />
+                        <ThemedText
+                          type="caption"
+                          style={{ color: theme.textSecondary, marginLeft: 4 }}
+                        >
                           {event.location}
                         </ThemedText>
                       </View>
@@ -878,7 +998,7 @@ export default function CalendarScreen() {
             )}
           </View>
         </ScrollView>
-      ) : viewType === 'month' ? (
+      ) : viewType === "month" ? (
         <ScrollView
           contentContainerStyle={{
             paddingBottom: tabBarHeight + Spacing.xl,
@@ -901,7 +1021,11 @@ export default function CalendarScreen() {
               }}
               style={styles.monthNavButton}
             >
-              <Feather name="chevron-left" size={24} color={Colors.dark.primary} />
+              <Feather
+                name="chevron-left"
+                size={24}
+                color={Colors.dark.primary}
+              />
             </Pressable>
             <ThemedText type="h4">{formatMonthYear(selectedDate)}</ThemedText>
             <Pressable
@@ -912,21 +1036,30 @@ export default function CalendarScreen() {
               }}
               style={styles.monthNavButton}
             >
-              <Feather name="chevron-right" size={24} color={Colors.dark.primary} />
+              <Feather
+                name="chevron-right"
+                size={24}
+                color={Colors.dark.primary}
+              />
             </Pressable>
           </View>
-          
+
           <View style={styles.monthGrid}>
             <View style={styles.monthWeekdayHeader}>
               {WEEKDAYS_SHORT.map((day, index) => (
                 <View key={index} style={styles.monthWeekdayCell}>
-                  <ThemedText style={[styles.monthWeekdayText, { color: theme.textSecondary }]}>
+                  <ThemedText
+                    style={[
+                      styles.monthWeekdayText,
+                      { color: theme.textSecondary },
+                    ]}
+                  >
                     {day}
                   </ThemedText>
                 </View>
               ))}
             </View>
-            
+
             {monthDates.map((week, weekIndex) => (
               <View key={weekIndex} style={styles.monthWeekRow}>
                 {week.map((date, dayIndex) => {
@@ -942,7 +1075,9 @@ export default function CalendarScreen() {
                       onPress={() => setSelectedDate(date)}
                       style={[
                         styles.monthDayCell,
-                        isSelected && { backgroundColor: `${Colors.dark.primary}20` },
+                        isSelected && {
+                          backgroundColor: `${Colors.dark.primary}20`,
+                        },
                       ]}
                     >
                       <View
@@ -954,7 +1089,7 @@ export default function CalendarScreen() {
                         <ThemedText
                           style={[
                             styles.monthDayNumberText,
-                            { color: isToday ? '#fff' : theme.text },
+                            { color: isToday ? "#fff" : theme.text },
                           ]}
                         >
                           {date.getDate()}
@@ -967,7 +1102,10 @@ export default function CalendarScreen() {
                               key={event.id}
                               style={[
                                 styles.monthEventDot,
-                                { backgroundColor: event.color || Colors.dark.primary },
+                                {
+                                  backgroundColor:
+                                    event.color || Colors.dark.primary,
+                                },
                               ]}
                             />
                           ))}
@@ -979,13 +1117,19 @@ export default function CalendarScreen() {
               </View>
             ))}
           </View>
-          
+
           <View style={styles.monthSelectedDayEvents}>
             <ThemedText type="h4" style={{ marginBottom: Spacing.md }}>
-              {selectedDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+              {selectedDate.toLocaleDateString(undefined, {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })}
             </ThemedText>
             {getEventsForDate(filteredEvents, selectedDate).length === 0 ? (
-              <ThemedText style={{ color: theme.textSecondary }}>No events on this day</ThemedText>
+              <ThemedText style={{ color: theme.textSecondary }}>
+                No events on this day
+              </ThemedText>
             ) : (
               getEventsForDate(filteredEvents, selectedDate).map((event) => {
                 const color = event.color || Colors.dark.primary;
@@ -1002,14 +1146,25 @@ export default function CalendarScreen() {
                     ]}
                   >
                     <ThemedText style={[styles.eventTime, { color }]}>
-                      {event.allDay ? 'All Day' : formatTime(event.startTime)}
-                      {event.endTime && !event.allDay ? ` - ${formatTime(event.endTime)}` : ''}
+                      {event.allDay ? "All Day" : formatTime(event.startTime)}
+                      {event.endTime && !event.allDay
+                        ? ` - ${formatTime(event.endTime)}`
+                        : ""}
                     </ThemedText>
-                    <ThemedText style={styles.eventTitle}>{event.title}</ThemedText>
+                    <ThemedText style={styles.eventTitle}>
+                      {event.title}
+                    </ThemedText>
                     {event.location ? (
                       <View style={styles.locationRow}>
-                        <Feather name="map-pin" size={12} color={theme.textSecondary} />
-                        <ThemedText type="caption" style={{ color: theme.textSecondary, marginLeft: 4 }}>
+                        <Feather
+                          name="map-pin"
+                          size={12}
+                          color={theme.textSecondary}
+                        />
+                        <ThemedText
+                          type="caption"
+                          style={{ color: theme.textSecondary, marginLeft: 4 }}
+                        >
                           {event.location}
                         </ThemedText>
                       </View>
@@ -1049,7 +1204,13 @@ export default function CalendarScreen() {
         >
           {allDayEvents.length > 0 ? (
             <View style={styles.allDaySection}>
-              <ThemedText type="small" style={[styles.allDaySectionTitle, { color: theme.textSecondary }]}>
+              <ThemedText
+                type="small"
+                style={[
+                  styles.allDaySectionTitle,
+                  { color: theme.textSecondary },
+                ]}
+              >
                 All-Day Events
               </ThemedText>
               {allDayEvents.map((event) => {
@@ -1066,8 +1227,12 @@ export default function CalendarScreen() {
                         [
                           { text: "Cancel", style: "cancel" },
                           { text: "Edit", onPress: () => openEditModal(event) },
-                          { text: "Delete", style: "destructive", onPress: () => handleDeleteEvent(event) },
-                        ]
+                          {
+                            text: "Delete",
+                            style: "destructive",
+                            onPress: () => handleDeleteEvent(event),
+                          },
+                        ],
                       );
                     }}
                     style={[
@@ -1079,12 +1244,23 @@ export default function CalendarScreen() {
                     ]}
                   >
                     <View style={styles.allDayEventContent}>
-                      <ThemedText style={styles.allDayEventTitle} numberOfLines={1}>
+                      <ThemedText
+                        style={styles.allDayEventTitle}
+                        numberOfLines={1}
+                      >
                         {event.title}
                       </ThemedText>
                       {event.calendarName ? (
-                        <View style={[styles.calendarBadge, { backgroundColor: `${color}40` }]}>
-                          <ThemedText style={[styles.calendarBadgeText, { color }]} numberOfLines={1}>
+                        <View
+                          style={[
+                            styles.calendarBadge,
+                            { backgroundColor: `${color}40` },
+                          ]}
+                        >
+                          <ThemedText
+                            style={[styles.calendarBadgeText, { color }]}
+                            numberOfLines={1}
+                          >
                             {getCalendarDisplayName(event.calendarName)}
                           </ThemedText>
                         </View>
@@ -1104,10 +1280,10 @@ export default function CalendarScreen() {
                   hour === 0
                     ? "12 AM"
                     : hour < 12
-                    ? `${hour} AM`
-                    : hour === 12
-                    ? "12 PM"
-                    : `${hour - 12} PM`;
+                      ? `${hour} AM`
+                      : hour === 12
+                        ? "12 PM"
+                        : `${hour - 12} PM`;
                 return (
                   <View
                     key={hour}
@@ -1127,12 +1303,15 @@ export default function CalendarScreen() {
                     />
                   </View>
                 );
-              }
+              },
             )}
 
             {currentTimePosition >= 0 ? (
               <View
-                style={[styles.currentTimeIndicator, { top: currentTimePosition }]}
+                style={[
+                  styles.currentTimeIndicator,
+                  { top: currentTimePosition },
+                ]}
               >
                 <View
                   style={[
@@ -1171,17 +1350,27 @@ export default function CalendarScreen() {
         onRequestClose={closeModal}
       >
         <View
-          style={[styles.modalContainer, { backgroundColor: theme.backgroundRoot }]}
+          style={[
+            styles.modalContainer,
+            { backgroundColor: theme.backgroundRoot },
+          ]}
         >
-          <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+          <View
+            style={[styles.modalHeader, { borderBottomColor: theme.border }]}
+          >
             <Pressable onPress={closeModal}>
               <ThemedText style={{ color: Colors.dark.primary }}>
                 Cancel
               </ThemedText>
             </Pressable>
-            <ThemedText type="h4">{editingEvent ? "Edit Event" : "Add Event"}</ThemedText>
-            <Pressable onPress={handleSaveEvent} disabled={addMutation.isPending || updateMutation.isPending}>
-              {(addMutation.isPending || updateMutation.isPending) ? (
+            <ThemedText type="h4">
+              {editingEvent ? "Edit Event" : "Add Event"}
+            </ThemedText>
+            <Pressable
+              onPress={handleSaveEvent}
+              disabled={addMutation.isPending || updateMutation.isPending}
+            >
+              {addMutation.isPending || updateMutation.isPending ? (
                 <ActivityIndicator size="small" color={Colors.dark.primary} />
               ) : (
                 <ThemedText
@@ -1232,16 +1421,37 @@ export default function CalendarScreen() {
                         style={[
                           styles.calendarPickerChip,
                           {
-                            backgroundColor: selectedCalendarId === cal.id ? cal.color : theme.backgroundSecondary,
-                            borderColor: selectedCalendarId === cal.id ? cal.color : theme.border,
+                            backgroundColor:
+                              selectedCalendarId === cal.id
+                                ? cal.color
+                                : theme.backgroundSecondary,
+                            borderColor:
+                              selectedCalendarId === cal.id
+                                ? cal.color
+                                : theme.border,
                           },
                         ]}
                       >
-                        <View style={[styles.calendarDot, { backgroundColor: selectedCalendarId === cal.id ? "#fff" : cal.color }]} />
+                        <View
+                          style={[
+                            styles.calendarDot,
+                            {
+                              backgroundColor:
+                                selectedCalendarId === cal.id
+                                  ? "#fff"
+                                  : cal.color,
+                            },
+                          ]}
+                        />
                         <ThemedText
                           style={[
                             styles.calendarChipText,
-                            { color: selectedCalendarId === cal.id ? "#fff" : theme.text },
+                            {
+                              color:
+                                selectedCalendarId === cal.id
+                                  ? "#fff"
+                                  : theme.text,
+                            },
                           ]}
                           numberOfLines={1}
                         >
@@ -1342,10 +1552,15 @@ export default function CalendarScreen() {
                     closeModal();
                     handleDeleteEvent(editingEvent);
                   }}
-                  style={[styles.deleteButton, { backgroundColor: `${Colors.dark.error}15` }]}
+                  style={[
+                    styles.deleteButton,
+                    { backgroundColor: `${Colors.dark.error}15` },
+                  ]}
                 >
                   <Feather name="trash-2" size={18} color={Colors.dark.error} />
-                  <ThemedText style={{ color: Colors.dark.error, fontWeight: "600" }}>
+                  <ThemedText
+                    style={{ color: Colors.dark.error, fontWeight: "600" }}
+                  >
                     Delete Event
                   </ThemedText>
                 </Pressable>
@@ -1360,38 +1575,38 @@ export default function CalendarScreen() {
 
 function parseTimeString(timeStr: string, baseDate: Date): Date | null {
   const cleaned = timeStr.trim().toLowerCase();
-  
+
   const match12 = cleaned.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/);
   if (match12) {
     let hours = parseInt(match12[1], 10);
     const minutes = match12[2] ? parseInt(match12[2], 10) : 0;
     const period = match12[3];
-    
+
     if (hours < 1 || hours > 12 || minutes < 0 || minutes > 59) return null;
-    
+
     if (period === "am") {
       hours = hours === 12 ? 0 : hours;
     } else {
       hours = hours === 12 ? 12 : hours + 12;
     }
-    
+
     const result = new Date(baseDate);
     result.setHours(hours, minutes, 0, 0);
     return result;
   }
-  
+
   const match24 = cleaned.match(/^(\d{1,2}):(\d{2})$/);
   if (match24) {
     const hours = parseInt(match24[1], 10);
     const minutes = parseInt(match24[2], 10);
-    
+
     if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
-    
+
     const result = new Date(baseDate);
     result.setHours(hours, minutes, 0, 0);
     return result;
   }
-  
+
   return null;
 }
 
@@ -1666,34 +1881,34 @@ const styles = StyleSheet.create({
   },
   weekDayColumn: {
     width: 70,
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.md,
     gap: Spacing.xs,
   },
   weekDayName: {
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   weekDayNumber: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   weekDayNumberText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   weekEventCount: {
     fontSize: 11,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   weekEventIndicators: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 2,
-    alignItems: 'center',
+    alignItems: "center",
     height: 16,
   },
   weekEventDot: {
@@ -1717,9 +1932,9 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   monthNavigation: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
   },
@@ -1730,26 +1945,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
   },
   monthWeekdayHeader: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: Spacing.sm,
   },
   monthWeekdayCell: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: Spacing.xs,
   },
   monthWeekdayText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   monthWeekRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
   },
   monthDayCell: {
     flex: 1,
     aspectRatio: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: BorderRadius.sm,
     padding: 2,
   },
@@ -1757,15 +1972,15 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   monthDayNumberText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   monthEventDots: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 2,
     marginTop: 2,
   },

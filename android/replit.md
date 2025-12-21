@@ -1,7 +1,5 @@
 # ZEKE AI Companion Dashboard
 
-Last sync test: December 19, 2025 8:45 PM UTC
-
 ## Overview
 ZEKE AI is a mobile companion app (Expo/React Native) designed as a full extension of the main ZEKE web application. It provides quick access to daily essentials (calendar, tasks, grocery lists, custom lists, contacts), captures conversation memory from AI wearables, facilitates communication via SMS/Voice (Twilio), and includes an AI chat assistant. The app leverages native mobile features for communication and real-time data capture, while the ZEKE web server handles data persistence, AI processing, and complex integrations. The project aims to provide a comprehensive mobile interface for the ZEKE AI ecosystem, enhancing user interaction with AI functionalities on a dedicated mobile device.
 
@@ -56,3 +54,88 @@ Client-side data is persisted using AsyncStorage for devices, memories, chat mes
 - **Metro Bundler**: For path aliases.
 - **esbuild**: For server-side bundling.
 - **EAS Build**: For development builds with native modules (VoIP, BLE). Run `eas build --profile development --platform android` for Android APK.
+
+## Monorepo Configuration (ZekeAssistant)
+
+This project (ZEKEapp) is part of a unified monorepo at https://github.com/Johnsonbros/ZekeAssistant for AI assistance across both frontend and backend.
+
+### Repository Structure
+```
+ZekeAssistant/
+├── backend/          ← Zeke backend (private android/ excluded)
+│   ├── client/       ← Web UI
+│   ├── server/       ← Backend API
+│   └── python_agents/← AI agents
+│
+└── mobile/           ← ZEKEapp (this project)
+    ├── client/       ← Mobile app
+    └── server/       ← Mobile proxy
+```
+
+### Sync with Original Repos
+Uses Git subtrees for two-way sync:
+- Pull from Zeke/ZEKEapp into ZekeAssistant
+- Push from ZekeAssistant back to Zeke/ZEKEapp
+
+See `MONOREPO_SETUP.md` and `SYNC_GUIDE.md` for commands.
+
+### Privacy Note
+The `backend/android/` folder is excluded from ZekeAssistant (public) via .gitignore. It remains only in the private Zeke repo.
+
+## Testing Documentation
+
+### Airstrike Testing Methodology
+Comprehensive backend integration testing documentation is available at `docs/AIRSTRIKE_TEST_DOCUMENTATION.md`. This includes:
+- 10 structured test scripts for validating API routing, auth, error handling, and offline recovery
+- GO/NO-GO decision matrix for deployment readiness
+- Quick reference checklist for pre-deployment validation
+- Troubleshooting guide for common issues
+
+### Key Test Files
+- `client/lib/api-client.ts` — Centralized API client with retry/timeout/auth
+- `client/lib/zeke-api-adapter.ts` — Endpoint-specific API functions
+- `client/lib/query-client.ts` — React Query configuration and URL helpers
+
+### Minimum Shippable Criteria
+Airstrikes 1-6 must PASS for production deployment:
+1. CONFIG LOCK — API URLs hardcoded
+2. ROUTING PROOF — Endpoint classification working
+3. AUTH PIPELINE — Token injection working
+4. FAILURE MODES — Retry/timeout/error handling
+5. CHAT PIPELINE — Message send/receive
+6. CRUD GAUNTLET — Task/Grocery operations
+
+## Recent Changes
+
+### Memory Features Removed (Dec 2025)
+All memory management and storage is now handled entirely by the backend. The mobile app captures audio from pendants and transfers it to the backend for processing.
+
+**Removed Screens**:
+- AnalyticsScreen (memory stats)
+- SearchScreen (memory search)
+- DataExportScreen (memory/conversation export)
+- LiveCaptureScreen (real-time transcription with memory save)
+
+**Removed Functionality**:
+- Memory proxy routes (`/api/zeke/memories`, `/api/zeke/memories/search`, `/api/zeke/semantic-search`)
+- Memory-related functions (`getRecentMemories`, `createZekeMemory`, `searchMemories`)
+- Local memory storage and retrieval
+
+**Updated Screens**:
+- SettingsScreen - Removed Analytics, Data Export, and Live Capture navigation
+- ChatScreen, CommunicationsHubScreen, DeviceFeaturesScreen - Updated placeholder text
+
+### API Routing Fixes (Dec 2025)
+Fixed connection issues where mobile devices couldn't directly reach the external backend at `https://zekeai.replit.app`, causing authentication failures, timeouts, and "Load failed" errors.
+
+**Solution**: All API requests are now routed through the local server proxy via `/api/zeke/*` pattern:
+- `/api/zeke/health` → `/api/health`
+- `/api/zeke/dashboard` → `/api/dashboard`
+- `/api/zeke/tasks` → `/api/tasks`
+- `/api/zeke/grocery` → `/api/grocery`
+- `/api/zeke/devices` → `/api/omi/devices`
+
+**Files Changed**:
+- `client/lib/zeke-api-adapter.ts` — Updated endpoint paths to use proxy routes
+- `client/lib/api-client.ts` — Cleaned up CORE_API_PREFIXES documentation
+- `server/zeke-proxy.ts` — Added new proxy route handlers

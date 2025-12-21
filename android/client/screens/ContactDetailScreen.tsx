@@ -1,11 +1,24 @@
 import React, { useCallback } from "react";
-import { View, ScrollView, StyleSheet, Pressable, ActivityIndicator, Alert, Linking } from "react-native";
+import {
+  View,
+  ScrollView,
+  StyleSheet,
+  Pressable,
+  ActivityIndicator,
+  Alert,
+  Linking,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useRoute, useNavigation, RouteProp, CompositeNavigationProp } from "@react-navigation/native";
+import {
+  useRoute,
+  useNavigation,
+  RouteProp,
+  CompositeNavigationProp,
+} from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { ThemedText } from "@/components/ThemedText";
@@ -15,11 +28,20 @@ import { EmptyState } from "@/components/EmptyState";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, Colors, BorderRadius } from "@/constants/theme";
 import { queryClient } from "@/lib/query-client";
-import { getContact, deleteContact, initiateCall, ZekeContact, ZekeContactConversation } from "@/lib/zeke-api-adapter";
+import {
+  getContact,
+  deleteContact,
+  initiateCall,
+  ZekeContact,
+  ZekeContactConversation,
+} from "@/lib/zeke-api-adapter";
 import { CommunicationStackParamList } from "@/navigation/CommunicationStackNavigator";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 
-type ContactDetailRouteProp = RouteProp<CommunicationStackParamList, "ContactDetail">;
+type ContactDetailRouteProp = RouteProp<
+  CommunicationStackParamList,
+  "ContactDetail"
+>;
 type ContactDetailNavProp = CompositeNavigationProp<
   NativeStackNavigationProp<CommunicationStackParamList>,
   NativeStackNavigationProp<RootStackParamList>
@@ -32,7 +54,11 @@ function getInitials(contact: ZekeContact): string {
 }
 
 function getFullName(contact: ZekeContact): string {
-  const parts = [contact.firstName, contact.middleName, contact.lastName].filter(Boolean);
+  const parts = [
+    contact.firstName,
+    contact.middleName,
+    contact.lastName,
+  ].filter(Boolean);
   return parts.join(" ") || "Unknown";
 }
 
@@ -123,20 +149,35 @@ interface InfoRowProps {
 
 function InfoRow({ icon, label, value, onPress }: InfoRowProps) {
   const { theme } = useTheme();
-  
+
   const content = (
     <View style={styles.infoRow}>
-      <Feather name={icon} size={18} color={theme.textSecondary} style={styles.infoIcon} />
+      <Feather
+        name={icon}
+        size={18}
+        color={theme.textSecondary}
+        style={styles.infoIcon}
+      />
       <View style={styles.infoContent}>
-        <ThemedText type="caption" style={{ color: theme.textSecondary }}>{label}</ThemedText>
-        <ThemedText type="body" style={onPress ? { color: Colors.dark.primary } : undefined}>{value}</ThemedText>
+        <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+          {label}
+        </ThemedText>
+        <ThemedText
+          type="body"
+          style={onPress ? { color: Colors.dark.primary } : undefined}
+        >
+          {value}
+        </ThemedText>
       </View>
     </View>
   );
 
   if (onPress) {
     return (
-      <Pressable onPress={onPress} style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+      >
         {content}
       </Pressable>
     );
@@ -154,10 +195,10 @@ function PermissionRow({ label, enabled }: PermissionRowProps) {
   return (
     <View style={styles.permissionRow}>
       <ThemedText type="body">{label}</ThemedText>
-      <Feather 
-        name={enabled ? "check-circle" : "x-circle"} 
-        size={20} 
-        color={enabled ? Colors.dark.success : theme.textSecondary} 
+      <Feather
+        name={enabled ? "check-circle" : "x-circle"}
+        size={20}
+        color={enabled ? Colors.dark.success : theme.textSecondary}
       />
     </View>
   );
@@ -178,10 +219,18 @@ function ConversationItem({ conversation, onPress }: ConversationItemProps) {
       onPress={onPress}
       style={({ pressed }) => [
         styles.conversationItem,
-        { backgroundColor: theme.backgroundSecondary, opacity: pressed ? 0.8 : 1 },
+        {
+          backgroundColor: theme.backgroundSecondary,
+          opacity: pressed ? 0.8 : 1,
+        },
       ]}
     >
-      <View style={[styles.sourceIconContainer, { backgroundColor: sourceColor + "20" }]}>
+      <View
+        style={[
+          styles.sourceIconContainer,
+          { backgroundColor: sourceColor + "20" },
+        ]}
+      >
         <Feather name={sourceIcon} size={18} color={sourceColor} />
       </View>
       <View style={styles.conversationContent}>
@@ -189,7 +238,11 @@ function ConversationItem({ conversation, onPress }: ConversationItemProps) {
           {conversation.title}
         </ThemedText>
         {conversation.summary ? (
-          <ThemedText type="caption" numberOfLines={1} style={{ color: theme.textSecondary }}>
+          <ThemedText
+            type="caption"
+            numberOfLines={1}
+            style={{ color: theme.textSecondary }}
+          >
             {conversation.summary}
           </ThemedText>
         ) : null}
@@ -212,7 +265,11 @@ export default function ContactDetailScreen() {
   const navigation = useNavigation<ContactDetailNavProp>();
   const { contactId } = route.params;
 
-  const { data: contact, isLoading, isError } = useQuery<ZekeContact | null>({
+  const {
+    data: contact,
+    isLoading,
+    isError,
+  } = useQuery<ZekeContact | null>({
     queryKey: ["/api/contacts", contactId],
     queryFn: () => getContact(contactId),
   });
@@ -241,14 +298,10 @@ export default function ContactDetailScreen() {
   const handleCall = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (contact?.phoneNumber) {
-      Alert.alert(
-        "Call Contact",
-        `Call ${getFullName(contact)}?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Call", onPress: () => callMutation.mutate() },
-        ]
-      );
+      Alert.alert("Call Contact", `Call ${getFullName(contact)}?`, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Call", onPress: () => callMutation.mutate() },
+      ]);
     }
   }, [contact, callMutation]);
 
@@ -292,14 +345,17 @@ export default function ContactDetailScreen() {
           style: "destructive",
           onPress: () => deleteMutation.mutate(),
         },
-      ]
+      ],
     );
   }, [contact, deleteMutation]);
 
-  const handleConversationPress = useCallback((conversation: ZekeContactConversation) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Alert.alert("Conversation", `View conversation: ${conversation.title}`);
-  }, []);
+  const handleConversationPress = useCallback(
+    (conversation: ZekeContactConversation) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      Alert.alert("Conversation", `View conversation: ${conversation.title}`);
+    },
+    [],
+  );
 
   const handleEdit = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -309,7 +365,12 @@ export default function ContactDetailScreen() {
   if (isLoading) {
     return (
       <ThemedView style={styles.container}>
-        <View style={[styles.loadingContainer, { paddingTop: headerHeight + Spacing.xl }]}>
+        <View
+          style={[
+            styles.loadingContainer,
+            { paddingTop: headerHeight + Spacing.xl },
+          ]}
+        >
           <ActivityIndicator color={Colors.dark.primary} size="large" />
         </View>
       </ThemedView>
@@ -337,7 +398,7 @@ export default function ContactDetailScreen() {
   }
 
   const accessColor = getAccessLevelColor(contact.accessLevel);
-  const subtitle = contact.relationship || contact.organization || contact.occupation;
+  const subtitle = contact.organization || contact.occupation;
 
   return (
     <ThemedView style={styles.container}>
@@ -357,14 +418,21 @@ export default function ContactDetailScreen() {
               {getInitials(contact)}
             </ThemedText>
           </View>
-          <ThemedText type="h2" style={styles.name}>{getFullName(contact)}</ThemedText>
+          <ThemedText type="h2" style={styles.name}>
+            {getFullName(contact)}
+          </ThemedText>
           {subtitle ? (
-            <ThemedText type="body" style={{ color: theme.textSecondary }}>{subtitle}</ThemedText>
+            <ThemedText type="body" style={{ color: theme.textSecondary }}>
+              {subtitle}
+            </ThemedText>
           ) : null}
-          
+
           <Pressable
             onPress={handleEdit}
-            style={({ pressed }) => [styles.editButton, { opacity: pressed ? 0.7 : 1 }]}
+            style={({ pressed }) => [
+              styles.editButton,
+              { opacity: pressed ? 0.7 : 1 },
+            ]}
           >
             <Feather name="edit-2" size={20} color={Colors.dark.primary} />
           </Pressable>
@@ -375,18 +443,38 @@ export default function ContactDetailScreen() {
             <>
               <Pressable
                 onPress={handleMessage}
-                style={({ pressed }) => [styles.quickActionButton, { opacity: pressed ? 0.8 : 1 }]}
+                style={({ pressed }) => [
+                  styles.quickActionButton,
+                  { opacity: pressed ? 0.8 : 1 },
+                ]}
               >
-                <View style={[styles.quickActionIcon, { backgroundColor: Colors.dark.primary + "20" }]}>
-                  <Feather name="message-circle" size={22} color={Colors.dark.primary} />
+                <View
+                  style={[
+                    styles.quickActionIcon,
+                    { backgroundColor: Colors.dark.primary + "20" },
+                  ]}
+                >
+                  <Feather
+                    name="message-circle"
+                    size={22}
+                    color={Colors.dark.primary}
+                  />
                 </View>
                 <ThemedText type="caption">Message</ThemedText>
               </Pressable>
               <Pressable
                 onPress={handleCall}
-                style={({ pressed }) => [styles.quickActionButton, { opacity: pressed ? 0.8 : 1 }]}
+                style={({ pressed }) => [
+                  styles.quickActionButton,
+                  { opacity: pressed ? 0.8 : 1 },
+                ]}
               >
-                <View style={[styles.quickActionIcon, { backgroundColor: Colors.dark.success + "20" }]}>
+                <View
+                  style={[
+                    styles.quickActionIcon,
+                    { backgroundColor: Colors.dark.success + "20" },
+                  ]}
+                >
                   <Feather name="phone" size={22} color={Colors.dark.success} />
                 </View>
                 <ThemedText type="caption">Call</ThemedText>
@@ -396,9 +484,17 @@ export default function ContactDetailScreen() {
           {contact.email ? (
             <Pressable
               onPress={handleEmail}
-              style={({ pressed }) => [styles.quickActionButton, { opacity: pressed ? 0.8 : 1 }]}
+              style={({ pressed }) => [
+                styles.quickActionButton,
+                { opacity: pressed ? 0.8 : 1 },
+              ]}
             >
-              <View style={[styles.quickActionIcon, { backgroundColor: Colors.dark.secondary + "20" }]}>
+              <View
+                style={[
+                  styles.quickActionIcon,
+                  { backgroundColor: Colors.dark.secondary + "20" },
+                ]}
+              >
                 <Feather name="mail" size={22} color={Colors.dark.secondary} />
               </View>
               <ThemedText type="caption">Email</ThemedText>
@@ -407,79 +503,135 @@ export default function ContactDetailScreen() {
         </View>
 
         <Card elevation={1} style={styles.card}>
-          <ThemedText type="h4" style={styles.cardTitle}>Contact Info</ThemedText>
+          <ThemedText type="h4" style={styles.cardTitle}>
+            Contact Info
+          </ThemedText>
           {contact.phoneNumber ? (
-            <InfoRow 
-              icon="phone" 
-              label="Phone" 
-              value={contact.phoneNumber} 
+            <InfoRow
+              icon="phone"
+              label="Phone"
+              value={contact.phoneNumber}
               onPress={handlePhonePress}
             />
           ) : null}
           {contact.email ? (
-            <InfoRow 
-              icon="mail" 
-              label="Email" 
-              value={contact.email} 
+            <InfoRow
+              icon="mail"
+              label="Email"
+              value={contact.email}
               onPress={handleEmailPress}
             />
           ) : null}
           {contact.organization ? (
-            <InfoRow icon="briefcase" label="Organization" value={contact.organization} />
+            <InfoRow
+              icon="briefcase"
+              label="Organization"
+              value={contact.organization}
+            />
           ) : null}
           {contact.occupation ? (
-            <InfoRow icon="user" label="Occupation" value={contact.occupation} />
+            <InfoRow
+              icon="user"
+              label="Occupation"
+              value={contact.occupation}
+            />
           ) : null}
           {contact.birthday ? (
-            <InfoRow icon="gift" label="Birthday" value={formatBirthday(contact.birthday)} />
+            <InfoRow
+              icon="gift"
+              label="Birthday"
+              value={formatBirthday(contact.birthday)}
+            />
           ) : null}
           {contact.notes ? (
             <InfoRow icon="file-text" label="Notes" value={contact.notes} />
           ) : null}
-          {!contact.phoneNumber && !contact.email && !contact.organization && !contact.occupation && !contact.birthday && !contact.notes ? (
-            <ThemedText type="body" style={{ color: theme.textSecondary }}>No contact info available</ThemedText>
+          {!contact.phoneNumber &&
+          !contact.email &&
+          !contact.organization &&
+          !contact.occupation &&
+          !contact.birthday &&
+          !contact.notes ? (
+            <ThemedText type="body" style={{ color: theme.textSecondary }}>
+              No contact info available
+            </ThemedText>
           ) : null}
         </Card>
 
         <Card elevation={1} style={styles.card}>
-          <ThemedText type="h4" style={styles.cardTitle}>Permissions</ThemedText>
-          <View style={[styles.accessBadge, { backgroundColor: accessColor + "20" }]}>
+          <ThemedText type="h4" style={styles.cardTitle}>
+            Permissions
+          </ThemedText>
+          <View
+            style={[
+              styles.accessBadge,
+              { backgroundColor: accessColor + "20" },
+            ]}
+          >
             <Feather name="shield" size={14} color={accessColor} />
-            <ThemedText type="small" style={{ color: accessColor, fontWeight: "600" }}>
+            <ThemedText
+              type="small"
+              style={{ color: accessColor, fontWeight: "600" }}
+            >
               {formatAccessLevel(contact.accessLevel)}
             </ThemedText>
           </View>
           <View style={styles.permissionsGrid}>
-            <PermissionRow label="Can access calendar" enabled={contact.canAccessCalendar} />
-            <PermissionRow label="Can access tasks" enabled={contact.canAccessTasks} />
-            <PermissionRow label="Can access grocery" enabled={contact.canAccessGrocery} />
-            <PermissionRow label="Can set reminders" enabled={contact.canSetReminders} />
+            <PermissionRow
+              label="Can access calendar"
+              enabled={contact.canAccessCalendar}
+            />
+            <PermissionRow
+              label="Can access tasks"
+              enabled={contact.canAccessTasks}
+            />
+            <PermissionRow
+              label="Can access grocery"
+              enabled={contact.canAccessGrocery}
+            />
+            <PermissionRow
+              label="Can set reminders"
+              enabled={contact.canSetReminders}
+            />
           </View>
         </Card>
 
         <Card elevation={1} style={styles.card}>
           <View style={styles.interactionHeader}>
             <ThemedText type="h4">Interaction History</ThemedText>
-            <View style={[styles.countBadge, { backgroundColor: Colors.dark.primary + "20" }]}>
-              <ThemedText type="caption" style={{ color: Colors.dark.primary, fontWeight: "600" }}>
+            <View
+              style={[
+                styles.countBadge,
+                { backgroundColor: Colors.dark.primary + "20" },
+              ]}
+            >
+              <ThemedText
+                type="caption"
+                style={{ color: Colors.dark.primary, fontWeight: "600" }}
+              >
                 {contact.interactionCount} interactions
               </ThemedText>
             </View>
           </View>
           {contact.lastInteractionAt ? (
-            <ThemedText type="caption" style={{ color: theme.textSecondary, marginBottom: Spacing.md }}>
+            <ThemedText
+              type="caption"
+              style={{ color: theme.textSecondary, marginBottom: Spacing.md }}
+            >
               Last interaction: {formatRelativeDate(contact.lastInteractionAt)}
             </ThemedText>
           ) : null}
           {contact.conversations && contact.conversations.length > 0 ? (
             <View style={styles.conversationsList}>
-              {contact.conversations.slice(0, 5).map((conv) => (
-                <ConversationItem
-                  key={conv.id}
-                  conversation={conv}
-                  onPress={() => handleConversationPress(conv)}
-                />
-              ))}
+              {contact.conversations
+                .slice(0, 5)
+                .map((conv: ZekeContactConversation) => (
+                  <ConversationItem
+                    key={conv.id}
+                    conversation={conv}
+                    onPress={() => handleConversationPress(conv)}
+                  />
+                ))}
             </View>
           ) : (
             <ThemedText type="body" style={{ color: theme.textSecondary }}>
@@ -492,11 +644,17 @@ export default function ContactDetailScreen() {
           onPress={handleDeleteContact}
           style={({ pressed }) => [
             styles.deleteButton,
-            { backgroundColor: Colors.dark.error + "15", opacity: pressed ? 0.8 : 1 },
+            {
+              backgroundColor: Colors.dark.error + "15",
+              opacity: pressed ? 0.8 : 1,
+            },
           ]}
         >
           <Feather name="trash-2" size={18} color={Colors.dark.error} />
-          <ThemedText type="body" style={{ color: Colors.dark.error, fontWeight: "600" }}>
+          <ThemedText
+            type="body"
+            style={{ color: Colors.dark.error, fontWeight: "600" }}
+          >
             Delete Contact
           </ThemedText>
         </Pressable>

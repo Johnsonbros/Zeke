@@ -25,10 +25,13 @@ export default function MapScreen() {
   const headerHeight = useHeaderHeight();
   const { theme } = useTheme();
   const mapRef = useRef<MapView>(null);
-  
+
   const [mapReady, setMapReady] = useState(false);
-  const [selectedLocation, setSelectedLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  
+  const [selectedLocation, setSelectedLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+
   const {
     location,
     geocoded,
@@ -46,18 +49,21 @@ export default function MapScreen() {
 
   const handleCenterOnUser = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
+
     if (!location) {
       await refreshLocation();
       return;
     }
-    
-    mapRef.current?.animateToRegion({
-      latitude: location.latitude,
-      longitude: location.longitude,
-      latitudeDelta: 0.01,
-      longitudeDelta: 0.01,
-    }, 500);
+
+    mapRef.current?.animateToRegion(
+      {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      },
+      500,
+    );
   }, [location, refreshLocation]);
 
   const handleMapPress = useCallback((event: MapPressEvent) => {
@@ -78,32 +84,49 @@ export default function MapScreen() {
 
   useEffect(() => {
     if (mapReady && location) {
-      mapRef.current?.animateToRegion({
-        latitude: location.latitude,
-        longitude: location.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }, 1000);
+      mapRef.current?.animateToRegion(
+        {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        },
+        1000,
+      );
     }
   }, [mapReady, location]);
 
   const renderPermissionRequest = () => (
-    <ThemedView style={[styles.permissionContainer, { paddingTop: headerHeight + Spacing.xl }]}>
-      <View style={[styles.permissionCard, { backgroundColor: theme.backgroundDefault }]}>
+    <ThemedView
+      style={[
+        styles.permissionContainer,
+        { paddingTop: headerHeight + Spacing.xl },
+      ]}
+    >
+      <View
+        style={[
+          styles.permissionCard,
+          { backgroundColor: theme.backgroundDefault },
+        ]}
+      >
         <Feather name="map-pin" size={48} color={Colors.dark.primary} />
         <ThemedText type="h3" style={styles.permissionTitle}>
           Enable Location Access
         </ThemedText>
         <ThemedText type="body" secondary style={styles.permissionDescription}>
-          To show your location on the map, we need access to your device location.
+          To show your location on the map, we need access to your device
+          location.
         </ThemedText>
-        
-        {permissionStatus === 'denied' && !canAskAgain ? (
+
+        {permissionStatus === "denied" && !canAskAgain ? (
           <Pressable
             onPress={handleOpenSettings}
             style={({ pressed }) => [
               styles.permissionButton,
-              { backgroundColor: Colors.dark.primary, opacity: pressed ? 0.8 : 1 }
+              {
+                backgroundColor: Colors.dark.primary,
+                opacity: pressed ? 0.8 : 1,
+              },
             ]}
           >
             <Feather name="settings" size={18} color="#FFFFFF" />
@@ -116,7 +139,10 @@ export default function MapScreen() {
             onPress={handleRequestPermission}
             style={({ pressed }) => [
               styles.permissionButton,
-              { backgroundColor: Colors.dark.primary, opacity: pressed ? 0.8 : 1 }
+              {
+                backgroundColor: Colors.dark.primary,
+                opacity: pressed ? 0.8 : 1,
+              },
             ]}
           >
             <Feather name="navigation" size={18} color="#FFFFFF" />
@@ -129,7 +155,7 @@ export default function MapScreen() {
     </ThemedView>
   );
 
-  if (permissionStatus !== 'granted') {
+  if (permissionStatus !== "granted") {
     return renderPermissionRequest();
   }
 
@@ -138,12 +164,16 @@ export default function MapScreen() {
       <ConfigurableMap
         ref={mapRef}
         style={styles.map}
-        initialRegion={location ? {
-          latitude: location.latitude,
-          longitude: location.longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        } : DEFAULT_REGION}
+        initialRegion={
+          location
+            ? {
+                latitude: location.latitude,
+                longitude: location.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+              }
+            : DEFAULT_REGION
+        }
         showsUserLocation
         showsMyLocationButton={false}
         showsCompass
@@ -166,12 +196,20 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      <View style={[styles.floatingControls, { bottom: insets.bottom + Spacing.xl }]}>
+      <View
+        style={[
+          styles.floatingControls,
+          { bottom: insets.bottom + Spacing.xl },
+        ]}
+      >
         <Pressable
           onPress={handleCenterOnUser}
           style={({ pressed }) => [
             styles.floatingButton,
-            { backgroundColor: theme.backgroundDefault, opacity: pressed ? 0.8 : 1 }
+            {
+              backgroundColor: theme.backgroundDefault,
+              opacity: pressed ? 0.8 : 1,
+            },
           ]}
         >
           <Feather name="crosshair" size={24} color={Colors.dark.primary} />
@@ -180,10 +218,19 @@ export default function MapScreen() {
 
       {geocoded ? (
         <View style={[styles.addressBar, { top: headerHeight + Spacing.md }]}>
-          <View style={[styles.addressContent, { backgroundColor: theme.backgroundDefault }]}>
+          <View
+            style={[
+              styles.addressContent,
+              { backgroundColor: theme.backgroundDefault },
+            ]}
+          >
             <Feather name="map-pin" size={16} color={Colors.dark.primary} />
-            <ThemedText type="small" numberOfLines={1} style={styles.addressText}>
-              {geocoded.formattedAddress || 'Loading address...'}
+            <ThemedText
+              type="small"
+              numberOfLines={1}
+              style={styles.addressText}
+            >
+              {geocoded.formattedAddress || "Loading address..."}
             </ThemedText>
           </View>
         </View>
@@ -201,29 +248,29 @@ const styles = StyleSheet.create({
   },
   permissionContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: Spacing.xl,
   },
   permissionCard: {
     padding: Spacing.xl,
     borderRadius: BorderRadius.xl,
-    alignItems: 'center',
+    alignItems: "center",
     maxWidth: 320,
   },
   permissionTitle: {
     marginTop: Spacing.lg,
-    textAlign: 'center',
+    textAlign: "center",
   },
   permissionDescription: {
     marginTop: Spacing.sm,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 22,
   },
   permissionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.lg,
@@ -231,18 +278,18 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   permissionButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
+    color: "#FFFFFF",
+    fontWeight: "600",
   },
   loadingOverlay: {
-    position: 'absolute',
+    position: "absolute",
     left: Spacing.md,
     padding: Spacing.sm,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: "rgba(255,255,255,0.9)",
     borderRadius: BorderRadius.md,
   },
   floatingControls: {
-    position: 'absolute',
+    position: "absolute",
     right: Spacing.md,
     gap: Spacing.sm,
   },
@@ -250,26 +297,26 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 4,
   },
   addressBar: {
-    position: 'absolute',
+    position: "absolute",
     left: Spacing.md,
     right: Spacing.md,
   },
   addressContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: Spacing.md,
     borderRadius: BorderRadius.lg,
     gap: Spacing.sm,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,

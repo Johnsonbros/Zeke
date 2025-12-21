@@ -33,14 +33,35 @@ export function SettingsRow({
 }: SettingsRowProps) {
   const { theme } = useTheme();
 
-  const iconColor = isDestructive ? Colors.dark.error : disabled ? theme.textSecondary : theme.textSecondary;
-  const textColor = isDestructive ? Colors.dark.error : disabled ? theme.textSecondary : theme.text;
+  const iconColor = isDestructive
+    ? Colors.dark.error
+    : disabled
+      ? theme.textSecondary
+      : theme.textSecondary;
+  const textColor = isDestructive
+    ? Colors.dark.error
+    : disabled
+      ? theme.textSecondary
+      : theme.text;
 
   if (isToggle) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.backgroundDefault, opacity: disabled ? 0.5 : 1 }]}>
+      <View
+        style={[
+          styles.container,
+          {
+            backgroundColor: theme.backgroundDefault,
+            opacity: disabled ? 0.5 : 1,
+          },
+        ]}
+      >
         <View style={styles.left}>
-          <View style={[styles.iconContainer, { backgroundColor: theme.backgroundSecondary }]}>
+          <View
+            style={[
+              styles.iconContainer,
+              { backgroundColor: theme.backgroundSecondary },
+            ]}
+          >
             <Feather name={icon} size={18} color={iconColor} />
           </View>
           <ThemedText style={{ color: textColor }}>{label}</ThemedText>
@@ -49,7 +70,10 @@ export function SettingsRow({
           value={toggleValue}
           onValueChange={disabled ? undefined : onToggle}
           disabled={disabled}
-          trackColor={{ false: theme.backgroundSecondary, true: Colors.dark.primary }}
+          trackColor={{
+            false: theme.backgroundSecondary,
+            true: Colors.dark.primary,
+          }}
           thumbColor="#FFFFFF"
         />
       </View>
@@ -61,11 +85,19 @@ export function SettingsRow({
       onPress={onPress}
       style={({ pressed }) => [
         styles.container,
-        { backgroundColor: theme.backgroundDefault, opacity: pressed ? 0.8 : 1 },
+        {
+          backgroundColor: theme.backgroundDefault,
+          opacity: pressed ? 0.8 : 1,
+        },
       ]}
     >
       <View style={styles.left}>
-        <View style={[styles.iconContainer, { backgroundColor: theme.backgroundSecondary }]}>
+        <View
+          style={[
+            styles.iconContainer,
+            { backgroundColor: theme.backgroundSecondary },
+          ]}
+        >
           <Feather name={icon} size={18} color={iconColor} />
         </View>
         <ThemedText style={{ color: textColor }}>{label}</ThemedText>

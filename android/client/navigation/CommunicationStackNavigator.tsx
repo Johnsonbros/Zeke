@@ -1,19 +1,12 @@
 import React from "react";
-import { Pressable, StyleSheet } from "react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { useNavigation, CompositeNavigationProp } from "@react-navigation/native";
-import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import CommunicationsHubScreen from "@/screens/CommunicationsHubScreen";
 import SmsConversationScreen from "@/screens/SmsConversationScreen";
 import ContactDetailScreen from "@/screens/ContactDetailScreen";
 import VoIPCallingScreen from "@/screens/VoIPCallingScreen";
 import ImportContactsScreen from "@/screens/ImportContactsScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
-import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { ZekeHeaderTitle, ZekeHeaderButtons } from "@/components/ZekeHeader";
-import { Colors, Spacing } from "@/constants/theme";
 
 export type CommunicationStackParamList = {
   CommunicationsHub: undefined;

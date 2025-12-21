@@ -6,7 +6,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { ThemedText } from "@/components/ThemedText";
 import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
-import { Spacing, BorderRadius, Gradients } from "@/constants/theme";
+import { Spacing, Gradients } from "@/constants/theme";
 
 interface EmptyStateProps {
   icon: keyof typeof Feather.glyphMap;
@@ -23,7 +23,7 @@ export function EmptyState({
   actionLabel,
   onAction,
 }: EmptyStateProps) {
-  const { theme } = useTheme();
+  useTheme();
 
   return (
     <View style={styles.container}>

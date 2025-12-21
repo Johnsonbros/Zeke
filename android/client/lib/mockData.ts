@@ -27,7 +27,8 @@ export const mockMemories: Memory[] = [
   {
     id: "mem-1",
     title: "Morning standup meeting",
-    transcript: "We discussed the quarterly targets and sprint planning for the next two weeks. The team is focused on delivering the new dashboard features...",
+    transcript:
+      "We discussed the quarterly targets and sprint planning for the next two weeks. The team is focused on delivering the new dashboard features...",
     timestamp: "Today, 9:30 AM",
     deviceType: "omi",
     speakers: ["Alex", "Jordan", "Sam"],
@@ -37,7 +38,8 @@ export const mockMemories: Memory[] = [
   {
     id: "mem-2",
     title: "Product brainstorm session",
-    transcript: "Explored new feature ideas for the mobile app. Key suggestions included improved onboarding flow and personalized recommendations...",
+    transcript:
+      "Explored new feature ideas for the mobile app. Key suggestions included improved onboarding flow and personalized recommendations...",
     timestamp: "Today, 2:15 PM",
     deviceType: "limitless",
     speakers: ["Taylor", "Morgan"],
@@ -47,7 +49,8 @@ export const mockMemories: Memory[] = [
   {
     id: "mem-3",
     title: "Client call - Q4 Review",
-    transcript: "Reviewed client feedback on the latest release. They are happy with performance improvements but requested additional analytics...",
+    transcript:
+      "Reviewed client feedback on the latest release. They are happy with performance improvements but requested additional analytics...",
     timestamp: "Yesterday, 4:00 PM",
     deviceType: "omi",
     speakers: ["Client", "You"],
@@ -57,7 +60,8 @@ export const mockMemories: Memory[] = [
   {
     id: "mem-4",
     title: "Coffee chat with mentor",
-    transcript: "Discussed career growth strategies and upcoming opportunities. Got great advice on improving technical leadership skills...",
+    transcript:
+      "Discussed career growth strategies and upcoming opportunities. Got great advice on improving technical leadership skills...",
     timestamp: "Yesterday, 11:00 AM",
     deviceType: "limitless",
     speakers: ["Mentor"],
@@ -67,7 +71,8 @@ export const mockMemories: Memory[] = [
   {
     id: "mem-5",
     title: "Team retrospective",
-    transcript: "Reflected on the past sprint successes and areas for improvement. The team agreed to focus more on code reviews...",
+    transcript:
+      "Reflected on the past sprint successes and areas for improvement. The team agreed to focus more on code reviews...",
     timestamp: "2 days ago",
     deviceType: "omi",
     speakers: ["Team"],
@@ -91,7 +96,8 @@ export const mockMessages: Message[] = [
   },
   {
     id: "msg-3",
-    content: "Based on your recordings today, you had 2 meetings:\n\n1. **Morning standup** (9:30 AM, 23 min) - Discussed quarterly targets and sprint planning.\n\n2. **Product brainstorm** (2:15 PM, 45 min) - Explored new mobile app features including improved onboarding.\n\nWould you like more details on either meeting?",
+    content:
+      "Based on your recordings today, you had 2 meetings:\n\n1. **Morning standup** (9:30 AM, 23 min) - Discussed quarterly targets and sprint planning.\n\n2. **Product brainstorm** (2:15 PM, 45 min) - Explored new mobile app features including improved onboarding.\n\nWould you like more details on either meeting?",
     role: "assistant",
     timestamp: "10:01 AM",
   },

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { View, StyleSheet, Pressable, Platform } from "react-native";
+import React, { useState, useEffect, useCallback } from "react";
+import { View, StyleSheet, Pressable } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
@@ -7,7 +7,6 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  withTiming,
   runOnJS,
 } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -30,7 +29,8 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-const SAMPLE_AUDIO_URI = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+const SAMPLE_AUDIO_URI =
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
 
 export function AudioPlayer({
   audioUri = SAMPLE_AUDIO_URI,
@@ -51,7 +51,7 @@ export function AudioPlayer({
   const status = useAudioPlayerStatus(player);
 
   const isPlaying = status.playing;
-  const currentTime = isScrubbing ? scrubTime : (status.currentTime || 0);
+  const currentTime = isScrubbing ? scrubTime : status.currentTime || 0;
   const duration = status.duration || initialDuration || 180;
 
   useEffect(() => {
@@ -88,12 +88,13 @@ export function AudioPlayer({
   const updateTimeFromGesture = useCallback(
     (x: number) => {
       const clampedX = Math.max(0, Math.min(x, timelineWidth.value));
-      const newProgress = timelineWidth.value > 0 ? clampedX / timelineWidth.value : 0;
+      const newProgress =
+        timelineWidth.value > 0 ? clampedX / timelineWidth.value : 0;
       const newTime = newProgress * duration;
       progress.value = newProgress;
       setScrubTime(newTime);
     },
-    [duration, progress, timelineWidth]
+    [duration, progress, timelineWidth],
   );
 
   const finalizeScrub = useCallback(() => {
@@ -120,7 +121,8 @@ export function AudioPlayer({
     runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
     runOnJS(updateTimeFromGesture)(e.x);
     const clampedX = Math.max(0, Math.min(e.x, timelineWidth.value));
-    const newProgress = timelineWidth.value > 0 ? clampedX / timelineWidth.value : 0;
+    const newProgress =
+      timelineWidth.value > 0 ? clampedX / timelineWidth.value : 0;
     const newTime = newProgress * duration;
     player.seekTo(newTime);
   });
@@ -141,7 +143,9 @@ export function AudioPlayer({
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.backgroundDefault }]}>
+    <View
+      style={[styles.container, { backgroundColor: theme.backgroundDefault }]}
+    >
       {title ? (
         <View style={styles.header}>
           <ThemedText type="body" style={styles.title} numberOfLines={1}>
@@ -158,7 +162,12 @@ export function AudioPlayer({
       <View style={styles.timelineContainer}>
         <GestureDetector gesture={combinedGesture}>
           <View style={styles.timelineWrapper} onLayout={handleTimelineLayout}>
-            <View style={[styles.timelineTrack, { backgroundColor: theme.backgroundSecondary }]}>
+            <View
+              style={[
+                styles.timelineTrack,
+                { backgroundColor: theme.backgroundSecondary },
+              ]}
+            >
               <Animated.View
                 style={[
                   styles.timelineProgress,
@@ -168,7 +177,11 @@ export function AudioPlayer({
               />
             </View>
             <Animated.View
-              style={[styles.scrubber, { backgroundColor: Colors.dark.primary }, scrubberStyle]}
+              style={[
+                styles.scrubber,
+                { backgroundColor: Colors.dark.primary },
+                scrubberStyle,
+              ]}
             />
           </View>
         </GestureDetector>
@@ -186,7 +199,10 @@ export function AudioPlayer({
       <View style={styles.controls}>
         <Pressable
           onPress={handleSkipBack}
-          style={({ pressed }) => [styles.controlButton, { opacity: pressed ? 0.6 : 1 }]}
+          style={({ pressed }) => [
+            styles.controlButton,
+            { opacity: pressed ? 0.6 : 1 },
+          ]}
         >
           <Feather name="rotate-ccw" size={20} color={theme.text} />
           <ThemedText type="caption" secondary style={styles.skipLabel}>
@@ -198,15 +214,25 @@ export function AudioPlayer({
           onPress={handlePlayPause}
           style={({ pressed }) => [
             styles.playButton,
-            { backgroundColor: Colors.dark.primary, opacity: pressed ? 0.8 : 1 },
+            {
+              backgroundColor: Colors.dark.primary,
+              opacity: pressed ? 0.8 : 1,
+            },
           ]}
         >
-          <Feather name={isPlaying ? "pause" : "play"} size={28} color="#FFFFFF" />
+          <Feather
+            name={isPlaying ? "pause" : "play"}
+            size={28}
+            color="#FFFFFF"
+          />
         </Pressable>
 
         <Pressable
           onPress={handleSkipForward}
-          style={({ pressed }) => [styles.controlButton, { opacity: pressed ? 0.6 : 1 }]}
+          style={({ pressed }) => [
+            styles.controlButton,
+            { opacity: pressed ? 0.6 : 1 },
+          ]}
         >
           <Feather name="rotate-cw" size={20} color={theme.text} />
           <ThemedText type="caption" secondary style={styles.skipLabel}>
@@ -216,7 +242,12 @@ export function AudioPlayer({
       </View>
 
       {isScrubbing ? (
-        <View style={[styles.scrubbingIndicator, { backgroundColor: theme.backgroundSecondary }]}>
+        <View
+          style={[
+            styles.scrubbingIndicator,
+            { backgroundColor: theme.backgroundSecondary },
+          ]}
+        >
           <ThemedText type="h3">{formatTime(scrubTime)}</ThemedText>
         </View>
       ) : null}
@@ -264,7 +295,12 @@ export function CompactAudioPlayer({
   }));
 
   return (
-    <View style={[styles.compactContainer, { backgroundColor: theme.backgroundSecondary }]}>
+    <View
+      style={[
+        styles.compactContainer,
+        { backgroundColor: theme.backgroundSecondary },
+      ]}
+    >
       <Pressable
         onPress={handlePlayPause}
         style={({ pressed }) => [
@@ -272,17 +308,30 @@ export function CompactAudioPlayer({
           { backgroundColor: Colors.dark.primary, opacity: pressed ? 0.8 : 1 },
         ]}
       >
-        <Feather name={isPlaying ? "pause" : "play"} size={16} color="#FFFFFF" />
+        <Feather
+          name={isPlaying ? "pause" : "play"}
+          size={16}
+          color="#FFFFFF"
+        />
       </Pressable>
 
       <View style={styles.compactContent}>
         {title ? (
-          <ThemedText type="small" numberOfLines={1} style={styles.compactTitle}>
+          <ThemedText
+            type="small"
+            numberOfLines={1}
+            style={styles.compactTitle}
+          >
             {title}
           </ThemedText>
         ) : null}
         <View style={styles.compactTimelineWrapper}>
-          <View style={[styles.compactTimeline, { backgroundColor: theme.backgroundTertiary }]}>
+          <View
+            style={[
+              styles.compactTimeline,
+              { backgroundColor: theme.backgroundTertiary },
+            ]}
+          >
             <Animated.View
               style={[
                 styles.compactProgress,

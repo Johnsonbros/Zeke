@@ -1,11 +1,25 @@
 import React, { useState, useMemo } from "react";
-import { View, FlatList, StyleSheet, Pressable, Platform, Alert, ActivityIndicator, RefreshControl, TextInput, Modal, KeyboardAvoidingView } from "react-native";
+import {
+  View,
+  FlatList,
+  StyleSheet,
+  Pressable,
+  Platform,
+  Alert,
+  ActivityIndicator,
+  RefreshControl,
+  TextInput,
+  Modal,
+  KeyboardAvoidingView,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { useNavigation } from "@react-navigation/native";
+import {
+  useNavigation,
+  CompositeNavigationProp,
+} from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { CompositeNavigationProp } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
@@ -19,16 +33,16 @@ import { Spacing, Colors, BorderRadius, Gradients } from "@/constants/theme";
 import { CommunicationStackParamList } from "@/navigation/CommunicationStackNavigator";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { queryClient } from "@/lib/query-client";
-import { 
-  getTwilioConversations, 
-  getTwilioCalls, 
+import {
+  getTwilioConversations,
+  getTwilioCalls,
   getTwilioPhoneNumber,
   getContacts,
   initiateCall,
   sendSms,
   type TwilioSmsConversation,
   type TwilioCallRecord,
-  type ZekeContact 
+  type ZekeContact,
 } from "@/lib/zeke-api-adapter";
 
 type CommunicationNavigationProp = CompositeNavigationProp<
@@ -43,29 +57,29 @@ function formatTimestamp(dateString: string): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
-  
+
   if (diffMins < 1) return "Just now";
   if (diffMins < 60) return `${diffMins} min ago`;
-  
+
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours} hr ago`;
-  
+
   const diffDays = Math.floor(diffHours / 24);
   if (diffDays === 1) return "Yesterday";
   if (diffDays < 7) return `${diffDays} days ago`;
-  
+
   return date.toLocaleDateString();
 }
 
 function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
 function getInitials(name: string | null, phoneNumber: string): string {
   if (name) {
-    const parts = name.split(' ');
+    const parts = name.split(" ");
     if (parts.length >= 2) {
       return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
     }
@@ -90,13 +104,18 @@ function getAvatarColor(identifier: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
-function getCallDirection(direction: string): "incoming" | "outgoing" | "missed" {
-  if (direction === 'inbound') return 'incoming';
-  return 'outgoing';
+function getCallDirection(
+  direction: string,
+): "incoming" | "outgoing" | "missed" {
+  if (direction === "inbound") return "incoming";
+  return "outgoing";
 }
 
-function getCallIcon(direction: "incoming" | "outgoing" | "missed", status: string): { name: keyof typeof Feather.glyphMap; color: string } {
-  if (status === 'no-answer' || status === 'busy' || status === 'failed') {
+function getCallIcon(
+  direction: "incoming" | "outgoing" | "missed",
+  status: string,
+): { name: keyof typeof Feather.glyphMap; color: string } {
+  if (status === "no-answer" || status === "busy" || status === "failed") {
     return { name: "phone-missed", color: Colors.dark.error };
   }
   switch (direction) {
@@ -138,7 +157,12 @@ function TabButton({ label, isActive, onPress }: TabButtonProps) {
           </ThemedText>
         </LinearGradient>
       ) : (
-        <View style={[styles.tabButtonInactive, { backgroundColor: theme.backgroundSecondary }]}>
+        <View
+          style={[
+            styles.tabButtonInactive,
+            { backgroundColor: theme.backgroundSecondary },
+          ]}
+        >
           <ThemedText type="small" secondary>
             {label}
           </ThemedText>
@@ -156,7 +180,10 @@ interface SmsRowProps {
 function SmsRow({ conversation, onPress }: SmsRowProps) {
   const { theme } = useTheme();
   const displayName = conversation.contactName || conversation.phoneNumber;
-  const initials = getInitials(conversation.contactName, conversation.phoneNumber);
+  const initials = getInitials(
+    conversation.contactName,
+    conversation.phoneNumber,
+  );
   const avatarColor = getAvatarColor(conversation.phoneNumber);
 
   return (
@@ -164,7 +191,10 @@ function SmsRow({ conversation, onPress }: SmsRowProps) {
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,
-        { backgroundColor: theme.backgroundDefault, opacity: pressed ? 0.8 : 1 },
+        {
+          backgroundColor: theme.backgroundDefault,
+          opacity: pressed ? 0.8 : 1,
+        },
       ]}
     >
       <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
@@ -174,7 +204,11 @@ function SmsRow({ conversation, onPress }: SmsRowProps) {
       </View>
       <View style={styles.rowContent}>
         <View style={styles.rowHeader}>
-          <ThemedText type="body" style={{ fontWeight: "600", flex: 1 }} numberOfLines={1}>
+          <ThemedText
+            type="body"
+            style={{ fontWeight: "600", flex: 1 }}
+            numberOfLines={1}
+          >
             {displayName}
           </ThemedText>
           <ThemedText type="caption" secondary>
@@ -211,13 +245,24 @@ interface VoiceRowProps {
   onCallPress: () => void;
 }
 
-function VoiceRow({ call, twilioPhoneNumber, onPress, onCallPress }: VoiceRowProps) {
+function VoiceRow({
+  call,
+  twilioPhoneNumber,
+  onPress,
+  onCallPress,
+}: VoiceRowProps) {
   const { theme } = useTheme();
   const otherParty = call.from === twilioPhoneNumber ? call.to : call.from;
   const direction = getCallDirection(call.direction);
-  const isMissed = call.status === 'no-answer' || call.status === 'busy' || call.status === 'failed';
-  const displayDirection = isMissed ? 'missed' : direction;
-  const { name: iconName, color: iconColor } = getCallIcon(displayDirection, call.status);
+  const isMissed =
+    call.status === "no-answer" ||
+    call.status === "busy" ||
+    call.status === "failed";
+  const displayDirection = isMissed ? "missed" : direction;
+  const { name: iconName, color: iconColor } = getCallIcon(
+    displayDirection,
+    call.status,
+  );
   const initials = getInitials(null, otherParty);
   const avatarColor = getAvatarColor(otherParty);
 
@@ -226,7 +271,10 @@ function VoiceRow({ call, twilioPhoneNumber, onPress, onCallPress }: VoiceRowPro
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,
-        { backgroundColor: theme.backgroundDefault, opacity: pressed ? 0.8 : 1 },
+        {
+          backgroundColor: theme.backgroundDefault,
+          opacity: pressed ? 0.8 : 1,
+        },
       ]}
     >
       <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
@@ -267,7 +315,10 @@ function VoiceRow({ call, twilioPhoneNumber, onPress, onCallPress }: VoiceRowPro
       <Pressable
         onPress={onCallPress}
         hitSlop={8}
-        style={({ pressed }) => [styles.callButton, { opacity: pressed ? 0.6 : 1 }]}
+        style={({ pressed }) => [
+          styles.callButton,
+          { opacity: pressed ? 0.6 : 1 },
+        ]}
       >
         <Feather name="phone" size={20} color={Colors.dark.success} />
       </Pressable>
@@ -290,11 +341,19 @@ function ChatPlaceholder({ onStartChat }: ChatPlaceholderProps) {
       >
         <Feather name="message-circle" size={48} color="#FFFFFF" />
       </LinearGradient>
-      <ThemedText type="h3" style={{ marginTop: Spacing.xl, marginBottom: Spacing.sm }}>
+      <ThemedText
+        type="h3"
+        style={{ marginTop: Spacing.xl, marginBottom: Spacing.sm }}
+      >
         Chat with ZEKE
       </ThemedText>
-      <ThemedText type="body" secondary style={{ textAlign: "center", paddingHorizontal: Spacing.xl }}>
-        Direct connection with ZEKE. Ask about your memories, schedule meetings, or get insights from your recordings.
+      <ThemedText
+        type="body"
+        secondary
+        style={{ textAlign: "center", paddingHorizontal: Spacing.xl }}
+      >
+        Direct connection with ZEKE. Ask about your schedule, tasks, or get help
+        with daily activities.
       </ThemedText>
       <Pressable
         onPress={onStartChat}
@@ -307,7 +366,14 @@ function ChatPlaceholder({ onStartChat }: ChatPlaceholderProps) {
           style={styles.startChatButton}
         >
           <Feather name="message-square" size={20} color="#FFFFFF" />
-          <ThemedText type="body" style={{ color: "#FFFFFF", marginLeft: Spacing.sm, fontWeight: "600" }}>
+          <ThemedText
+            type="body"
+            style={{
+              color: "#FFFFFF",
+              marginLeft: Spacing.sm,
+              fontWeight: "600",
+            }}
+          >
             Start Chatting
           </ThemedText>
         </LinearGradient>
@@ -323,7 +389,11 @@ function getContactInitials(contact: ZekeContact): string {
 }
 
 function getContactFullName(contact: ZekeContact): string {
-  const parts = [contact.firstName, contact.middleName, contact.lastName].filter(Boolean);
+  const parts = [
+    contact.firstName,
+    contact.middleName,
+    contact.lastName,
+  ].filter(Boolean);
   return parts.join(" ") || "Unknown";
 }
 
@@ -374,7 +444,10 @@ function ContactRow({ contact, onPress, onCall, onMessage }: ContactRowProps) {
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,
-        { backgroundColor: theme.backgroundDefault, opacity: pressed ? 0.8 : 1 },
+        {
+          backgroundColor: theme.backgroundDefault,
+          opacity: pressed ? 0.8 : 1,
+        },
       ]}
     >
       <View style={[styles.avatar, { backgroundColor: accessColor }]}>
@@ -387,7 +460,12 @@ function ContactRow({ contact, onPress, onCall, onMessage }: ContactRowProps) {
           {getContactFullName(contact)}
         </ThemedText>
         {accessLabel ? (
-          <View style={[styles.accessBadge, { backgroundColor: accessColor + "30" }]}>
+          <View
+            style={[
+              styles.accessBadge,
+              { backgroundColor: accessColor + "30" },
+            ]}
+          >
             <ThemedText type="caption" style={{ color: accessColor }}>
               {accessLabel}
             </ThemedText>
@@ -400,16 +478,26 @@ function ContactRow({ contact, onPress, onCall, onMessage }: ContactRowProps) {
             <Pressable
               onPress={onCall}
               hitSlop={8}
-              style={({ pressed }) => [styles.actionButton, { opacity: pressed ? 0.6 : 1 }]}
+              style={({ pressed }) => [
+                styles.actionButton,
+                { opacity: pressed ? 0.6 : 1 },
+              ]}
             >
               <Feather name="phone" size={20} color={Colors.dark.success} />
             </Pressable>
             <Pressable
               onPress={onMessage}
               hitSlop={8}
-              style={({ pressed }) => [styles.actionButton, { opacity: pressed ? 0.6 : 1 }]}
+              style={({ pressed }) => [
+                styles.actionButton,
+                { opacity: pressed ? 0.6 : 1 },
+              ]}
             >
-              <Feather name="message-circle" size={20} color={Colors.dark.primary} />
+              <Feather
+                name="message-circle"
+                size={20}
+                color={Colors.dark.primary}
+              />
             </Pressable>
           </>
         ) : null}
@@ -419,36 +507,62 @@ function ContactRow({ contact, onPress, onCall, onMessage }: ContactRowProps) {
   );
 }
 
-function EmptyState({ type, onImport }: { type: 'sms' | 'voice' | 'contacts'; onImport?: () => void }) {
+function EmptyState({
+  type,
+  onImport,
+}: {
+  type: "sms" | "voice" | "contacts";
+  onImport?: () => void;
+}) {
   const { theme } = useTheme();
-  const iconName = type === 'sms' ? 'message-square' : type === 'voice' ? 'phone' : 'users';
-  const title = type === 'sms' ? 'No SMS Conversations' : type === 'voice' ? 'No Voice Calls' : 'No Contacts';
-  const message = type === 'sms' 
-    ? 'Your SMS conversations will appear here once you start messaging.'
-    : type === 'voice' 
-    ? 'Your call history will appear here once you make or receive calls.'
-    : 'Import contacts from your device to get started.';
-  
+  const iconName =
+    type === "sms" ? "message-square" : type === "voice" ? "phone" : "users";
+  const title =
+    type === "sms"
+      ? "No SMS Conversations"
+      : type === "voice"
+        ? "No Voice Calls"
+        : "No Contacts";
+  const message =
+    type === "sms"
+      ? "Your SMS conversations will appear here once you start messaging."
+      : type === "voice"
+        ? "Your call history will appear here once you make or receive calls."
+        : "Import contacts from your device to get started.";
+
   return (
     <View style={styles.emptyState}>
-      <Feather 
-        name={iconName} 
-        size={48} 
-        color={theme.textSecondary} 
-      />
-      <ThemedText type="h4" style={{ marginTop: Spacing.lg, marginBottom: Spacing.sm }}>
+      <Feather name={iconName} size={48} color={theme.textSecondary} />
+      <ThemedText
+        type="h4"
+        style={{ marginTop: Spacing.lg, marginBottom: Spacing.sm }}
+      >
         {title}
       </ThemedText>
-      <ThemedText type="body" secondary style={{ textAlign: 'center' }}>
+      <ThemedText type="body" secondary style={{ textAlign: "center" }}>
         {message}
       </ThemedText>
-      {type === 'contacts' && onImport ? (
-        <Pressable 
+      {type === "contacts" && onImport ? (
+        <Pressable
           onPress={onImport}
-          style={({ pressed }) => [styles.importButton, { opacity: pressed ? 0.8 : 1, backgroundColor: Colors.dark.primary, borderRadius: BorderRadius.md, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.lg, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }]}
+          style={({ pressed }) => [
+            styles.importButton,
+            {
+              opacity: pressed ? 0.8 : 1,
+              backgroundColor: Colors.dark.primary,
+              borderRadius: BorderRadius.md,
+              paddingVertical: Spacing.sm,
+              paddingHorizontal: Spacing.lg,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: Spacing.sm,
+            },
+          ]}
         >
           <Feather name="download" size={18} color="#FFFFFF" />
-          <ThemedText style={{ color: '#FFFFFF', fontWeight: '600' }}>Import from Device</ThemedText>
+          <ThemedText style={{ color: "#FFFFFF", fontWeight: "600" }}>
+            Import from Device
+          </ThemedText>
         </Pressable>
       ) : null}
     </View>
@@ -469,57 +583,57 @@ function LoadingState() {
 type ModalType = "none" | "sms" | "call";
 
 export default function CommunicationsHubScreen() {
-  const insets = useSafeAreaInsets();
+  useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
   const navigation = useNavigation<CommunicationNavigationProp>();
-  
+
   const [activeTab, setActiveTab] = useState<TabType>("sms");
   const [modalType, setModalType] = useState<ModalType>("none");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [smsMessage, setSmsMessage] = useState("");
 
   const { data: twilioPhoneNumber } = useQuery({
-    queryKey: ['twilio-phone-number'],
+    queryKey: ["twilio-phone-number"],
     queryFn: getTwilioPhoneNumber,
     staleTime: 300000,
   });
 
-  const { 
-    data: conversations = [], 
+  const {
+    data: conversations = [],
     isLoading: isLoadingSms,
     refetch: refetchSms,
-    isRefetching: isRefetchingSms
+    isRefetching: isRefetchingSms,
   } = useQuery({
-    queryKey: ['twilio-conversations'],
+    queryKey: ["twilio-conversations"],
     queryFn: getTwilioConversations,
     staleTime: 30000,
-    enabled: activeTab === 'sms',
+    enabled: activeTab === "sms",
   });
 
-  const { 
-    data: calls = [], 
+  const {
+    data: calls = [],
     isLoading: isLoadingCalls,
     refetch: refetchCalls,
-    isRefetching: isRefetchingCalls
+    isRefetching: isRefetchingCalls,
   } = useQuery({
-    queryKey: ['twilio-calls'],
+    queryKey: ["twilio-calls"],
     queryFn: getTwilioCalls,
     staleTime: 30000,
-    enabled: activeTab === 'voice',
+    enabled: activeTab === "voice",
   });
 
-  const { 
-    data: contacts = [], 
+  const {
+    data: contacts = [],
     isLoading: isLoadingContacts,
     refetch: refetchContacts,
-    isRefetching: isRefetchingContacts
+    isRefetching: isRefetchingContacts,
   } = useQuery<ZekeContact[]>({
-    queryKey: ['/api/contacts'],
+    queryKey: ["/api/contacts"],
     queryFn: getContacts,
     staleTime: 30000,
-    enabled: activeTab === 'contacts',
+    enabled: activeTab === "contacts",
   });
 
   const [contactSearchQuery, setContactSearchQuery] = useState("");
@@ -533,7 +647,11 @@ export default function CommunicationsHubScreen() {
       const fullName = getContactFullName(c).toLowerCase();
       const email = c.email?.toLowerCase() || "";
       const phone = c.phoneNumber || "";
-      return fullName.includes(query) || email.includes(query) || phone.includes(query);
+      return (
+        fullName.includes(query) ||
+        email.includes(query) ||
+        phone.includes(query)
+      );
     });
   }, [contacts, contactSearchQuery]);
 
@@ -545,20 +663,11 @@ export default function CommunicationsHubScreen() {
     });
   }, [filteredContacts]);
 
-  const callMutation = useMutation({
-    mutationFn: (contactId: string) => initiateCall(contactId),
-    onSuccess: () => {
-      Alert.alert("Call Initiated", "The call is being connected.");
-    },
-    onError: () => {
-      Alert.alert("Error", "Failed to initiate call. Please try again.");
-    },
-  });
-
   const smsMutation = useMutation({
-    mutationFn: ({ to, message }: { to: string; message: string }) => sendSms(to, message),
+    mutationFn: ({ to, message }: { to: string; message: string }) =>
+      sendSms(to, message),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['twilio-conversations'] });
+      queryClient.invalidateQueries({ queryKey: ["twilio-conversations"] });
       setModalType("none");
       setPhoneNumber("");
       setSmsMessage("");
@@ -585,9 +694,9 @@ export default function CommunicationsHubScreen() {
 
   const handleFabPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (activeTab === 'sms') {
+    if (activeTab === "sms") {
       setModalType("sms");
-    } else if (activeTab === 'voice') {
+    } else if (activeTab === "voice") {
       setModalType("call");
     }
   };
@@ -615,7 +724,7 @@ export default function CommunicationsHubScreen() {
 
   const handleSmsPress = (conversation: TwilioSmsConversation) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate("SmsConversation", { 
+    navigation.navigate("SmsConversation", {
       phoneNumber: conversation.phoneNumber,
     });
   };
@@ -623,12 +732,15 @@ export default function CommunicationsHubScreen() {
   const handleVoicePress = (call: TwilioCallRecord) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const otherParty = call.from === twilioPhoneNumber ? call.to : call.from;
-    const isMissed = call.status === 'no-answer' || call.status === 'busy' || call.status === 'failed';
-    const direction = call.direction === 'inbound' ? 'Incoming' : 'Outgoing';
-    const callType = isMissed ? 'Missed' : direction;
-    const message = `${callType} call ${direction === 'Incoming' ? 'from' : 'to'} ${otherParty}\n${!isMissed ? `Duration: ${formatDuration(call.duration)}\n` : ''}${formatTimestamp(call.dateCreated)}`;
-    
-    if (Platform.OS === 'web') {
+    const isMissed =
+      call.status === "no-answer" ||
+      call.status === "busy" ||
+      call.status === "failed";
+    const direction = call.direction === "inbound" ? "Incoming" : "Outgoing";
+    const callType = isMissed ? "Missed" : direction;
+    const message = `${callType} call ${direction === "Incoming" ? "from" : "to"} ${otherParty}\n${!isMissed ? `Duration: ${formatDuration(call.duration)}\n` : ""}${formatTimestamp(call.dateCreated)}`;
+
+    if (Platform.OS === "web") {
       window.alert(`Voice Call Details\n\n${message}`);
     } else {
       Alert.alert("Voice Call Details", message, [{ text: "OK" }]);
@@ -654,9 +766,11 @@ export default function CommunicationsHubScreen() {
   const handleContactCall = (contact: ZekeContact) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (contact.phoneNumber) {
-      navigation.navigate("VoIPCalling", { 
+      navigation.navigate("VoIPCalling", {
         phoneNumber: contact.phoneNumber,
-        contactName: `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || undefined
+        contactName:
+          `${contact.firstName || ""} ${contact.lastName || ""}`.trim() ||
+          undefined,
       });
     }
   };
@@ -664,7 +778,9 @@ export default function CommunicationsHubScreen() {
   const handleContactMessage = (contact: ZekeContact) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (contact.phoneNumber) {
-      navigation.navigate("SmsConversation", { phoneNumber: contact.phoneNumber });
+      navigation.navigate("SmsConversation", {
+        phoneNumber: contact.phoneNumber,
+      });
     }
   };
 
@@ -675,11 +791,11 @@ export default function CommunicationsHubScreen() {
 
   const onRefresh = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (activeTab === 'sms') {
+    if (activeTab === "sms") {
       await refetchSms();
-    } else if (activeTab === 'voice') {
+    } else if (activeTab === "voice") {
       await refetchCalls();
-    } else if (activeTab === 'contacts') {
+    } else if (activeTab === "contacts") {
       await refetchContacts();
     }
   };
@@ -689,17 +805,17 @@ export default function CommunicationsHubScreen() {
   );
 
   const renderVoiceItem = ({ item }: { item: TwilioCallRecord }) => (
-    <VoiceRow 
-      call={item} 
-      twilioPhoneNumber={twilioPhoneNumber ?? null} 
-      onPress={() => handleVoicePress(item)} 
+    <VoiceRow
+      call={item}
+      twilioPhoneNumber={twilioPhoneNumber ?? null}
+      onPress={() => handleVoicePress(item)}
       onCallPress={() => handleCallPress(item)}
     />
   );
 
   const renderContactItem = ({ item }: { item: ZekeContact }) => (
-    <ContactRow 
-      contact={item} 
+    <ContactRow
+      contact={item}
       onPress={() => handleContactPress(item)}
       onCall={() => handleContactCall(item)}
       onMessage={() => handleContactMessage(item)}
@@ -775,9 +891,16 @@ export default function CommunicationsHubScreen() {
               </View>
               <Pressable
                 onPress={handleImportContacts}
-                style={({ pressed }) => [styles.importIconButton, { opacity: pressed ? 0.7 : 1 }]}
+                style={({ pressed }) => [
+                  styles.importIconButton,
+                  { opacity: pressed ? 0.7 : 1 },
+                ]}
               >
-                <Feather name="download" size={20} color={Colors.dark.primary} />
+                <Feather
+                  name="download"
+                  size={20}
+                  color={Colors.dark.primary}
+                />
               </Pressable>
             </View>
             {sortedContacts.length === 0 ? (
@@ -840,12 +963,10 @@ export default function CommunicationsHubScreen() {
             onPress={() => handleTabPress("contacts")}
           />
         </View>
-        <View style={styles.tabContent}>
-          {renderContent()}
-        </View>
+        <View style={styles.tabContent}>{renderContent()}</View>
       </View>
 
-      {(activeTab === 'sms' || activeTab === 'voice') ? (
+      {activeTab === "sms" || activeTab === "voice" ? (
         <Pressable
           onPress={handleFabPress}
           style={({ pressed }) => [
@@ -853,12 +974,9 @@ export default function CommunicationsHubScreen() {
             { bottom: tabBarHeight + Spacing.xl, opacity: pressed ? 0.8 : 1 },
           ]}
         >
-          <LinearGradient
-            colors={Gradients.primary}
-            style={styles.fabGradient}
-          >
+          <LinearGradient colors={Gradients.primary} style={styles.fabGradient}>
             <Feather
-              name={activeTab === 'sms' ? 'message-circle' : 'phone'}
+              name={activeTab === "sms" ? "message-circle" : "phone"}
               size={24}
               color="#FFFFFF"
             />
@@ -873,14 +991,19 @@ export default function CommunicationsHubScreen() {
         onRequestClose={() => setModalType("none")}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalOverlay}
         >
           <Pressable
             style={styles.modalBackdrop}
             onPress={() => setModalType("none")}
           />
-          <View style={[styles.modalContent, { backgroundColor: theme.backgroundSecondary }]}>
+          <View
+            style={[
+              styles.modalContent,
+              { backgroundColor: theme.backgroundSecondary },
+            ]}
+          >
             <View style={styles.modalHeader}>
               <ThemedText type="h3">
                 {modalType === "sms" ? "New Message" : "New Call"}
@@ -892,7 +1015,13 @@ export default function CommunicationsHubScreen() {
 
             <View style={styles.modalBody}>
               <TextInput
-                style={[styles.modalInput, { backgroundColor: theme.backgroundDefault, color: theme.text }]}
+                style={[
+                  styles.modalInput,
+                  {
+                    backgroundColor: theme.backgroundDefault,
+                    color: theme.text,
+                  },
+                ]}
                 placeholder="Phone number"
                 placeholderTextColor={theme.textSecondary}
                 value={phoneNumber}
@@ -903,7 +1032,14 @@ export default function CommunicationsHubScreen() {
 
               {modalType === "sms" ? (
                 <TextInput
-                  style={[styles.modalInput, styles.messageInput, { backgroundColor: theme.backgroundDefault, color: theme.text }]}
+                  style={[
+                    styles.modalInput,
+                    styles.messageInput,
+                    {
+                      backgroundColor: theme.backgroundDefault,
+                      color: theme.text,
+                    },
+                  ]}
                   placeholder="Type your message..."
                   placeholderTextColor={theme.textSecondary}
                   value={smsMessage}
@@ -916,7 +1052,10 @@ export default function CommunicationsHubScreen() {
 
             <Pressable
               onPress={modalType === "sms" ? handleSendSms : handleMakeCall}
-              style={({ pressed }) => [styles.modalButton, { opacity: pressed ? 0.8 : 1 }]}
+              style={({ pressed }) => [
+                styles.modalButton,
+                { opacity: pressed ? 0.8 : 1 },
+              ]}
               disabled={smsMutation.isPending || newCallMutation.isPending}
             >
               <LinearGradient
@@ -932,7 +1071,13 @@ export default function CommunicationsHubScreen() {
                       size={18}
                       color="#FFFFFF"
                     />
-                    <ThemedText style={{ color: "#FFFFFF", fontWeight: "600", marginLeft: Spacing.sm }}>
+                    <ThemedText
+                      style={{
+                        color: "#FFFFFF",
+                        fontWeight: "600",
+                        marginLeft: Spacing.sm,
+                      }}
+                    >
                       {modalType === "sms" ? "Send Message" : "Call"}
                     </ThemedText>
                   </>

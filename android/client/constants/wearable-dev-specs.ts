@@ -274,8 +274,7 @@ export const OMI_WEARABLE_SPECS = {
     codebase: "Open-source (users can audit data flow)",
     encryption: "End-to-end encryption available",
     dataControl: "One-click data deletion",
-    microphoneMode:
-      "Configurable to hear all voices or only user's voice",
+    microphoneMode: "Configurable to hear all voices or only user's voice",
     remoteAccess: "Full data access/deletion via app if device lost",
   },
 
@@ -337,27 +336,22 @@ export const ZEKE_INTEGRATION_PATTERNS = {
       "Regular polling of /v1/lifelogs endpoint",
       "Cache invalidation on new imports",
     ],
-    rateLimit:
-      "180 requests/minute - batch requests to avoid throttling",
-    caching:
-      "Consider 5-10 minute cache for frequently accessed data",
+    rateLimit: "180 requests/minute - batch requests to avoid throttling",
+    caching: "Consider 5-10 minute cache for frequently accessed data",
   },
 
   omiIntegration: {
-    description:
-      "Direct BLE integration with Omi for real-time transcription",
+    description: "Direct BLE integration with Omi for real-time transcription",
     requirements: [
       "BLE protocol implementation (mobile-specific)",
       "Webhook handler for real-time transcripts",
       "Local processing capabilities",
     ],
-    platforms:
-      "iOS/Android only - requires development build (not Expo Go)",
+    platforms: "iOS/Android only - requires development build (not Expo Go)",
   },
 
   memoryCapture: {
-    description:
-      "Convert wearable data to ZEKE memory entries with timestamps",
+    description: "Convert wearable data to ZEKE memory entries with timestamps",
     dataMapping: {
       lifelogId: "unique memory ID",
       transcription: "memory content",

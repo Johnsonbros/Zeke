@@ -41,20 +41,21 @@ export default function ImportContactsScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const queryClient = useQueryClient();
-  
-  const [permission, setPermission] = useState<Contacts.PermissionStatus | null>(null);
+
+  const [permission, setPermission] =
+    useState<Contacts.PermissionStatus | null>(null);
   const [contacts, setContacts] = useState<DeviceContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [selectAll, setSelectAll] = useState(false);
-  const [importResult, setImportResult] = useState<{
+  const [, setImportResult] = useState<{
     imported: number;
     failed: number;
     duplicates: number;
   } | null>(null);
 
   const isWeb = Platform.OS === "web";
-  const selectedCount = contacts.filter(c => c.selected).length;
+  const selectedCount = contacts.filter((c) => c.selected).length;
 
   const loadContacts = useCallback(async () => {
     if (isWeb) {
@@ -79,8 +80,8 @@ export default function ImportContactsScreen() {
         });
 
         const mappedContacts: DeviceContact[] = data
-          .filter(c => c.firstName || c.lastName || c.name)
-          .map(c => ({
+          .filter((c) => c.firstName || c.lastName || c.name)
+          .map((c) => ({
             id: c.id,
             name: c.name || `${c.firstName || ""} ${c.lastName || ""}`.trim(),
             firstName: c.firstName,
@@ -132,15 +133,15 @@ export default function ImportContactsScreen() {
                 },
               },
             ]
-          : [{ text: "OK" }]
+          : [{ text: "OK" }],
       );
     }
   };
 
   const toggleContact = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setContacts(prev =>
-      prev.map(c => (c.id === id ? { ...c, selected: !c.selected } : c))
+    setContacts((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, selected: !c.selected } : c)),
     );
   };
 
@@ -148,12 +149,15 @@ export default function ImportContactsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const newSelectAll = !selectAll;
     setSelectAll(newSelectAll);
-    setContacts(prev => prev.map(c => ({ ...c, selected: newSelectAll })));
+    setContacts((prev) => prev.map((c) => ({ ...c, selected: newSelectAll })));
   };
 
   const handleImport = async () => {
     if (selectedCount === 0) {
-      Alert.alert("No Contacts Selected", "Please select at least one contact to import.");
+      Alert.alert(
+        "No Contacts Selected",
+        "Please select at least one contact to import.",
+      );
       return;
     }
 
@@ -162,8 +166,8 @@ export default function ImportContactsScreen() {
 
     try {
       const contactsToImport: ImportContactData[] = contacts
-        .filter(c => c.selected)
-        .map(c => ({
+        .filter((c) => c.selected)
+        .map((c) => ({
           firstName: c.firstName,
           lastName: c.lastName,
           phoneNumber: c.phoneNumber,
@@ -174,7 +178,7 @@ export default function ImportContactsScreen() {
 
       const result = await importContacts(contactsToImport);
       setImportResult(result);
-      
+
       await queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
 
       Alert.alert(
@@ -185,11 +189,14 @@ export default function ImportContactsScreen() {
             text: "Done",
             onPress: () => navigation.goBack(),
           },
-        ]
+        ],
       );
     } catch (error) {
       console.error("Import error:", error);
-      Alert.alert("Import Failed", "An error occurred while importing contacts.");
+      Alert.alert(
+        "Import Failed",
+        "An error occurred while importing contacts.",
+      );
     } finally {
       setImporting(false);
     }
@@ -208,7 +215,9 @@ export default function ImportContactsScreen() {
       <View style={styles.contactInfo}>
         <ThemedText style={styles.contactName}>{item.name}</ThemedText>
         {item.phoneNumber ? (
-          <ThemedText style={styles.contactDetail}>{item.phoneNumber}</ThemedText>
+          <ThemedText style={styles.contactDetail}>
+            {item.phoneNumber}
+          </ThemedText>
         ) : null}
         {item.email ? (
           <ThemedText style={styles.contactDetail}>{item.email}</ThemedText>
@@ -219,10 +228,21 @@ export default function ImportContactsScreen() {
 
   if (isWeb) {
     return (
-      <ThemedView style={[styles.container, { paddingTop: headerHeight + Spacing.xl }]}>
+      <ThemedView
+        style={[styles.container, { paddingTop: headerHeight + Spacing.xl }]}
+      >
         <View style={styles.emptyState}>
-          <View style={[styles.iconContainer, { backgroundColor: Colors.dark.backgroundSecondary }]}>
-            <Feather name="smartphone" size={48} color={Colors.dark.textSecondary} />
+          <View
+            style={[
+              styles.iconContainer,
+              { backgroundColor: Colors.dark.backgroundSecondary },
+            ]}
+          >
+            <Feather
+              name="smartphone"
+              size={48}
+              color={Colors.dark.textSecondary}
+            />
           </View>
           <ThemedText style={styles.emptyTitle}>Device Contacts</ThemedText>
           <ThemedText style={styles.emptySubtitle}>
@@ -235,10 +255,14 @@ export default function ImportContactsScreen() {
 
   if (loading) {
     return (
-      <ThemedView style={[styles.container, { paddingTop: headerHeight + Spacing.xl }]}>
+      <ThemedView
+        style={[styles.container, { paddingTop: headerHeight + Spacing.xl }]}
+      >
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.dark.accent} />
-          <ThemedText style={styles.loadingText}>Loading contacts...</ThemedText>
+          <ThemedText style={styles.loadingText}>
+            Loading contacts...
+          </ThemedText>
         </View>
       </ThemedView>
     );
@@ -246,12 +270,21 @@ export default function ImportContactsScreen() {
 
   if (permission !== Contacts.PermissionStatus.GRANTED) {
     return (
-      <ThemedView style={[styles.container, { paddingTop: headerHeight + Spacing.xl }]}>
+      <ThemedView
+        style={[styles.container, { paddingTop: headerHeight + Spacing.xl }]}
+      >
         <View style={styles.emptyState}>
-          <View style={[styles.iconContainer, { backgroundColor: Colors.dark.backgroundSecondary }]}>
+          <View
+            style={[
+              styles.iconContainer,
+              { backgroundColor: Colors.dark.backgroundSecondary },
+            ]}
+          >
             <Feather name="users" size={48} color={Colors.dark.textSecondary} />
           </View>
-          <ThemedText style={styles.emptyTitle}>Access Your Contacts</ThemedText>
+          <ThemedText style={styles.emptyTitle}>
+            Access Your Contacts
+          </ThemedText>
           <ThemedText style={styles.emptySubtitle}>
             Allow access to your device contacts to import them into ZEKE
           </ThemedText>
@@ -261,7 +294,9 @@ export default function ImportContactsScreen() {
               style={styles.permissionButton}
             >
               <Feather name="unlock" size={20} color="#FFFFFF" />
-              <Text style={styles.permissionButtonText}>Enable Contacts Access</Text>
+              <Text style={styles.permissionButtonText}>
+                Enable Contacts Access
+              </Text>
             </LinearGradient>
           </Pressable>
         </View>
@@ -275,8 +310,12 @@ export default function ImportContactsScreen() {
         <Card style={styles.selectionCard}>
           <View style={styles.selectionRow}>
             <Pressable onPress={toggleSelectAll} style={styles.selectAllButton}>
-              <View style={[styles.checkbox, selectAll && styles.checkboxSelected]}>
-                {selectAll ? <Feather name="check" size={14} color="#FFFFFF" /> : null}
+              <View
+                style={[styles.checkbox, selectAll && styles.checkboxSelected]}
+              >
+                {selectAll ? (
+                  <Feather name="check" size={14} color="#FFFFFF" />
+                ) : null}
               </View>
               <ThemedText style={styles.selectAllText}>
                 {selectAll ? "Deselect All" : "Select All"}
@@ -292,7 +331,7 @@ export default function ImportContactsScreen() {
       <FlatList
         data={contacts}
         renderItem={renderContact}
-        keyExtractor={item => item.id}
+        keyExtractor={(item) => item.id}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: insets.bottom + 100 },
@@ -300,13 +339,17 @@ export default function ImportContactsScreen() {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyList}>
-            <ThemedText style={styles.emptyListText}>No contacts found on device</ThemedText>
+            <ThemedText style={styles.emptyListText}>
+              No contacts found on device
+            </ThemedText>
           </View>
         }
       />
 
       {contacts.length > 0 ? (
-        <View style={[styles.footer, { paddingBottom: insets.bottom + Spacing.md }]}>
+        <View
+          style={[styles.footer, { paddingBottom: insets.bottom + Spacing.md }]}
+        >
           <Pressable
             onPress={handleImport}
             disabled={importing || selectedCount === 0}
@@ -314,7 +357,10 @@ export default function ImportContactsScreen() {
             <LinearGradient
               colors={
                 selectedCount === 0
-                  ? [Colors.dark.backgroundSecondary, Colors.dark.backgroundDefault]
+                  ? [
+                      Colors.dark.backgroundSecondary,
+                      Colors.dark.backgroundDefault,
+                    ]
                   : [Colors.dark.accent, Colors.dark.secondary]
               }
               style={styles.importButton}
@@ -325,7 +371,8 @@ export default function ImportContactsScreen() {
                 <>
                   <Feather name="download" size={20} color="#FFFFFF" />
                   <Text style={styles.importButtonText}>
-                    Import {selectedCount} Contact{selectedCount !== 1 ? "s" : ""} to ZEKE
+                    Import {selectedCount} Contact
+                    {selectedCount !== 1 ? "s" : ""} to ZEKE
                   </Text>
                 </>
               )}

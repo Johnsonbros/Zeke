@@ -1,35 +1,42 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, TextInput, Pressable, ActivityIndicator, Platform } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
-import * as Device from 'expo-device';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { Colors, Gradients, Spacing, BorderRadius } from '@/constants/theme';
-import { useAuth } from '@/context/AuthContext';
+import React, { useState } from "react";
+import {
+  View,
+  StyleSheet,
+  TextInput,
+  Pressable,
+  ActivityIndicator,
+  Platform,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Feather } from "@expo/vector-icons";
+import * as Device from "expo-device";
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
+import { Colors, Gradients, Spacing, BorderRadius } from "@/constants/theme";
+import { useAuth } from "@/context/AuthContext";
 
 export function PairingScreen() {
   const insets = useSafeAreaInsets();
   const { pairDevice, isLoading, error } = useAuth();
-  const [secret, setSecret] = useState('');
+  const [secret, setSecret] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
   const getDeviceName = (): string => {
-    if (Platform.OS === 'web') {
-      return 'Web Browser';
+    if (Platform.OS === "web") {
+      return "Web Browser";
     }
     return Device.deviceName || Device.modelName || `${Platform.OS} Device`;
   };
 
   const handlePair = async () => {
     if (!secret.trim()) {
-      setLocalError('Please enter your access key');
+      setLocalError("Please enter your access key");
       return;
     }
 
     if (secret.trim().length < 32) {
-      setLocalError('Access key must be at least 32 characters');
+      setLocalError("Access key must be at least 32 characters");
       return;
     }
 
@@ -42,7 +49,15 @@ export function PairingScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <View style={[styles.content, { paddingTop: insets.top + Spacing["2xl"], paddingBottom: insets.bottom + Spacing.xl }]}>
+      <View
+        style={[
+          styles.content,
+          {
+            paddingTop: insets.top + Spacing["2xl"],
+            paddingBottom: insets.bottom + Spacing.xl,
+          },
+        ]}
+      >
         <View style={styles.header}>
           <LinearGradient
             colors={Gradients.primary}
@@ -50,14 +65,16 @@ export function PairingScreen() {
           >
             <Feather name="shield" size={48} color={Colors.dark.text} />
           </LinearGradient>
-          
+
           <ThemedText style={styles.title}>ZEKE Command Center</ThemedText>
           <ThemedText style={styles.subtitle}>Secure Device Pairing</ThemedText>
         </View>
 
         <View style={styles.form}>
-          <ThemedText style={styles.label}>Enter your access key to pair this device</ThemedText>
-          
+          <ThemedText style={styles.label}>
+            Enter your access key to pair this device
+          </ThemedText>
+
           <TextInput
             style={styles.input}
             value={secret}
@@ -75,7 +92,11 @@ export function PairingScreen() {
 
           {displayError ? (
             <View style={styles.errorContainer}>
-              <Feather name="alert-circle" size={16} color={Colors.dark.error} />
+              <Feather
+                name="alert-circle"
+                size={16}
+                color={Colors.dark.error}
+              />
               <ThemedText style={styles.errorText}>{displayError}</ThemedText>
             </View>
           ) : null}
@@ -106,7 +127,8 @@ export function PairingScreen() {
         <View style={styles.footer}>
           <Feather name="info" size={14} color={Colors.dark.textSecondary} />
           <ThemedText style={styles.footerText}>
-            The access key is set in the ZEKE backend. Once paired, this device will have secure access to all ZEKE features.
+            The access key is set in the ZEKE backend. Once paired, this device
+            will have secure access to all ZEKE features.
           </ThemedText>
         </View>
       </View>
@@ -121,23 +143,23 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: Spacing.lg,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   header: {
-    alignItems: 'center',
-    marginBottom: Spacing.xxl,
+    alignItems: "center",
+    marginBottom: Spacing["2xl"],
   },
   iconContainer: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: Spacing.lg,
   },
   title: {
     fontSize: 28,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: Spacing.xs,
   },
   subtitle: {
@@ -145,16 +167,16 @@ const styles = StyleSheet.create({
     color: Colors.dark.textSecondary,
   },
   form: {
-    marginBottom: Spacing.xxl,
+    marginBottom: Spacing["2xl"],
   },
   label: {
     fontSize: 14,
     color: Colors.dark.textSecondary,
     marginBottom: Spacing.md,
-    textAlign: 'center',
+    textAlign: "center",
   },
   input: {
-    backgroundColor: Colors.dark.cardElevated,
+    backgroundColor: Colors.dark.backgroundSecondary,
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
@@ -165,8 +187,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.dark.border,
   },
   errorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: Spacing.xs,
     marginBottom: Spacing.md,
     paddingHorizontal: Spacing.sm,
@@ -178,26 +200,26 @@ const styles = StyleSheet.create({
   },
   button: {
     borderRadius: BorderRadius.md,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   buttonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: Spacing.sm,
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.xl,
   },
   buttonText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   footer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
   },

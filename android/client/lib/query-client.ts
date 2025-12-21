@@ -13,7 +13,7 @@ export function getDeviceToken(): string | null {
 export function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
   if (cachedDeviceToken) {
-    headers['X-ZEKE-Device-Token'] = cachedDeviceToken;
+    headers["X-ZEKE-Device-Token"] = cachedDeviceToken;
   }
   return headers;
 }
@@ -25,27 +25,8 @@ export function getAuthHeaders(): Record<string, string> {
  * @returns {string} The API base URL
  */
 export function getApiUrl(): string {
-  // Check for external ZEKE backend URL first (for sync mode)
-  const zekeBackendUrl = process.env.EXPO_PUBLIC_ZEKE_BACKEND_URL;
-  if (zekeBackendUrl) {
-    // Ensure URL has protocol
-    if (zekeBackendUrl.startsWith('http')) {
-      return zekeBackendUrl.endsWith('/') ? zekeBackendUrl : `${zekeBackendUrl}/`;
-    }
-    return `https://${zekeBackendUrl}/`;
-  }
-
-  // Fall back to local domain
-  let host = process.env.EXPO_PUBLIC_DOMAIN;
-
-  if (!host) {
-    // Fallback for standalone builds - use the main ZEKE backend
-    return 'https://zekeai.replit.app/';
-  }
-
-  let url = new URL(`https://${host}`);
-
-  return url.href;
+  // TEMPORARY: Force to zekeai.replit.app for config lock testing
+  return "https://zekeai.replit.app";
 }
 
 /**
@@ -57,62 +38,56 @@ export function isZekeSyncMode(): boolean {
 
 /**
  * Gets the local backend URL (always uses EXPO_PUBLIC_DOMAIN, ignoring external ZEKE URL)
- * Used for integrations that are only available on the local backend (e.g., Google Calendar, Twilio)
+ * Used for integrations that are only available on the local backend (e.g., Google Calendar, Twilio, Auth)
  * @returns {string} The local API base URL
  */
 export function getLocalApiUrl(): string {
-  let host = process.env.EXPO_PUBLIC_DOMAIN;
-
-  if (!host) {
-    // Fallback for standalone builds - use the main ZEKE backend
-    return 'https://zekeai.replit.app/';
+  const domain = process.env.EXPO_PUBLIC_DOMAIN;
+  if (domain) {
+    return `https://${domain}`;
   }
-
-  let url = new URL(`https://${host}`);
-
-  return url.href;
+  // Fallback for web: use current origin
+  if (typeof window !== "undefined" && window.location) {
+    return window.location.origin;
+  }
+  return "https://zekeai.replit.app";
 }
 
-async function throwIfResNotOk(res: Response) {
+async function throwIfResNotOk(res: Response): Promise<void> {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    const text = await res.text().catch(() => "Unknown error");
+    throw new Error(`HTTP ${res.status}: ${text}`);
   }
-}
-
-export async function apiRequest(
-  method: string,
-  route: string,
-  data?: unknown | undefined,
-): Promise<Response> {
-  const baseUrl = getApiUrl();
-  const url = new URL(route, baseUrl);
-
-  const headers: Record<string, string> = {
-    ...getAuthHeaders(),
-  };
-  
-  if (data) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
-  });
-
-  await throwIfResNotOk(res);
-  return res;
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
+
+/**
+ * @deprecated Use ZekeApiClient (apiClient.get/post/patch/delete) instead
+ *
+ * This is the legacy default query function. All new queries should use
+ * custom queryFn with ZekeApiClient for centralized retry, timeout, and auth handling.
+ *
+ * See: client/lib/api-client.ts and client/lib/zeke-api-adapter.ts
+ */
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
+    // Development-only deprecation warning
+    const isDev =
+      typeof __DEV__ !== "undefined"
+        ? __DEV__
+        : process.env.NODE_ENV === "development";
+    if (isDev) {
+      console.warn(
+        `[DEPRECATION] getQueryFn is legacy. Use ZekeApiClient instead.\n` +
+          `queryKey: ${queryKey.join("/")}\n` +
+          `Replace with: useQuery({ queryKey, queryFn: async () => apiClient.get(...) })`,
+      );
+    }
+
     const baseUrl = getApiUrl();
     const url = new URL(queryKey.join("/") as string, baseUrl);
 

@@ -1,14 +1,25 @@
 import React, { useState, useCallback, useMemo } from "react";
-import { View, FlatList, StyleSheet, RefreshControl, Pressable, ActivityIndicator, Alert, Platform } from "react-native";
+import {
+  View,
+  FlatList,
+  StyleSheet,
+  RefreshControl,
+  Pressable,
+  ActivityIndicator,
+  Alert,
+  Platform,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useNavigation } from "@react-navigation/native";
+import {
+  useNavigation,
+  CompositeNavigationProp,
+} from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { CompositeNavigationProp } from "@react-navigation/native";
 
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -38,7 +49,11 @@ function getInitials(contact: ZekeContact): string {
 }
 
 function getFullName(contact: ZekeContact): string {
-  const parts = [contact.firstName, contact.middleName, contact.lastName].filter(Boolean);
+  const parts = [
+    contact.firstName,
+    contact.middleName,
+    contact.lastName,
+  ].filter(Boolean);
   return parts.join(" ") || "Unknown";
 }
 
@@ -89,7 +104,10 @@ function ContactRow({ contact, onPress, onCall, onMessage }: ContactRowProps) {
       onPress={onPress}
       style={({ pressed }) => [
         styles.contactRow,
-        { backgroundColor: theme.backgroundDefault, opacity: pressed ? 0.8 : 1 },
+        {
+          backgroundColor: theme.backgroundDefault,
+          opacity: pressed ? 0.8 : 1,
+        },
       ]}
     >
       <View style={[styles.avatar, { backgroundColor: accessColor }]}>
@@ -115,16 +133,26 @@ function ContactRow({ contact, onPress, onCall, onMessage }: ContactRowProps) {
             <Pressable
               onPress={onCall}
               hitSlop={8}
-              style={({ pressed }) => [styles.actionButton, { opacity: pressed ? 0.6 : 1 }]}
+              style={({ pressed }) => [
+                styles.actionButton,
+                { opacity: pressed ? 0.6 : 1 },
+              ]}
             >
               <Feather name="phone" size={20} color={Colors.dark.success} />
             </Pressable>
             <Pressable
               onPress={onMessage}
               hitSlop={8}
-              style={({ pressed }) => [styles.actionButton, { opacity: pressed ? 0.6 : 1 }]}
+              style={({ pressed }) => [
+                styles.actionButton,
+                { opacity: pressed ? 0.6 : 1 },
+              ]}
             >
-              <Feather name="message-circle" size={20} color={Colors.dark.primary} />
+              <Feather
+                name="message-circle"
+                size={20}
+                color={Colors.dark.primary}
+              />
             </Pressable>
           </>
         ) : null}
@@ -143,7 +171,12 @@ export default function ContactsScreen() {
 
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data: contacts, isLoading, isError, isFetching } = useQuery<ZekeContact[]>({
+  const {
+    data: contacts,
+    isLoading,
+    isError,
+    isFetching,
+  } = useQuery<ZekeContact[]>({
     queryKey: ["/api/contacts"],
     queryFn: getContacts,
   });
@@ -158,7 +191,6 @@ export default function ContactsScreen() {
     },
   });
 
-
   const filteredContacts = useMemo(() => {
     if (!contacts) return [];
     if (!searchQuery.trim()) return contacts;
@@ -168,7 +200,11 @@ export default function ContactsScreen() {
       const fullName = getFullName(c).toLowerCase();
       const email = c.email?.toLowerCase() || "";
       const phone = c.phoneNumber || "";
-      return fullName.includes(query) || email.includes(query) || phone.includes(query);
+      return (
+        fullName.includes(query) ||
+        email.includes(query) ||
+        phone.includes(query)
+      );
     });
   }, [contacts, searchQuery]);
 
@@ -181,7 +217,11 @@ export default function ContactsScreen() {
 
     const grouped: Map<string, ZekeContact[]> = new Map();
     sorted.forEach((contact) => {
-      const letter = (contact.lastName?.charAt(0) || contact.firstName?.charAt(0) || "#").toUpperCase();
+      const letter = (
+        contact.lastName?.charAt(0) ||
+        contact.firstName?.charAt(0) ||
+        "#"
+      ).toUpperCase();
       if (!grouped.has(letter)) {
         grouped.set(letter, []);
       }
@@ -198,7 +238,10 @@ export default function ContactsScreen() {
   }, [filteredContacts]);
 
   const flatData = useMemo(() => {
-    const result: ({ type: "header"; letter: string } | { type: "contact"; contact: ZekeContact })[] = [];
+    const result: (
+      | { type: "header"; letter: string }
+      | { type: "contact"; contact: ZekeContact }
+    )[] = [];
     sections.forEach((section) => {
       result.push({ type: "header", letter: section.letter });
       section.data.forEach((contact) => {
@@ -220,17 +263,13 @@ export default function ContactsScreen() {
 
   const handleCall = (contact: ZekeContact) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert(
-      "Call Contact",
-      `Call ${getFullName(contact)}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Call",
-          onPress: () => callMutation.mutate(contact.id),
-        },
-      ]
-    );
+    Alert.alert("Call Contact", `Call ${getFullName(contact)}?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Call",
+        onPress: () => callMutation.mutate(contact.id),
+      },
+    ]);
   };
 
   const handleMessage = (contact: ZekeContact) => {
@@ -250,8 +289,16 @@ export default function ContactsScreen() {
   const renderItem = ({ item }: { item: (typeof flatData)[number] }) => {
     if (item.type === "header") {
       return (
-        <View style={[styles.sectionHeader, { backgroundColor: theme.backgroundRoot }]}>
-          <ThemedText type="small" style={{ color: theme.textSecondary, fontWeight: "600" }}>
+        <View
+          style={[
+            styles.sectionHeader,
+            { backgroundColor: theme.backgroundRoot },
+          ]}
+        >
+          <ThemedText
+            type="small"
+            style={{ color: theme.textSecondary, fontWeight: "600" }}
+          >
             {item.letter}
           </ThemedText>
         </View>
