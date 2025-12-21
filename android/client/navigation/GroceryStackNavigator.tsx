@@ -2,6 +2,7 @@ import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import GroceryScreen from "@/screens/GroceryScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
+import { ZekeHeaderTitle, ZekeHeaderButtons } from "@/components/ZekeHeader";
 
 export type GroceryStackParamList = {
   Grocery: undefined;
@@ -18,7 +19,11 @@ export default function GroceryStackNavigator() {
         name="Grocery"
         component={GroceryScreen}
         options={{
-          headerTitle: "Grocery List",
+          headerTitle: "",
+          headerLeft: () => <ZekeHeaderTitle />,
+          headerRight: () => <ZekeHeaderButtons />,
+          headerLeftContainerStyle: { paddingLeft: 12 },
+          headerRightContainerStyle: { paddingRight: 12 },
         }}
       />
     </Stack.Navigator>

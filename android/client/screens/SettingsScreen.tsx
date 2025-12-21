@@ -15,7 +15,8 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import { useQuery } from "@tanstack/react-query";
+import * as WebBrowser from "expo-web-browser";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ThemedText } from "@/components/ThemedText";
 import { SettingsRow, SettingsSection } from "@/components/SettingsRow";
@@ -26,6 +27,13 @@ import { clearAllData } from "@/lib/storage";
 import { getZekeDevices, ZekeDevice } from "@/lib/zeke-api-adapter";
 import { SettingsStackParamList } from "@/navigation/SettingsStackNavigator";
 import { useAuth } from "@/context/AuthContext";
+
+interface CalendarConnectionStatus {
+  connected: boolean;
+  email?: string;
+  authUrl?: string;
+  error?: string;
+}
 
 function mapZekeDeviceToDeviceInfo(zekeDevice: ZekeDevice): DeviceInfo {
   const deviceType = zekeDevice.type === "limitless" ? "limitless" : "omi";
@@ -69,14 +77,22 @@ export default function SettingsScreen() {
     useNavigation<NativeStackNavigationProp<SettingsStackParamList>>();
   const { unpairDevice } = useAuth();
 
+  const queryClient = useQueryClient();
+
   const { data: zekeDevices = [], isLoading: isLoadingDevices } = useQuery({
     queryKey: ["/api/devices"],
     queryFn: getZekeDevices,
     staleTime: 30000,
   });
 
+  const { data: calendarConnection, isLoading: isLoadingCalendar } = useQuery<CalendarConnectionStatus>({
+    queryKey: ["/api/calendar/connection"],
+    staleTime: 30000,
+  });
+
   const devices: DeviceInfo[] = zekeDevices.map(mapZekeDeviceToDeviceInfo);
   const [autoSync, setAutoSync] = useState(true);
+  const [isConnectingCalendar, setIsConnectingCalendar] = useState(false);
 
   const handleDeviceConfigure = (device: DeviceInfo) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -136,6 +152,48 @@ export default function SettingsScreen() {
       "Version 1.0.0\n\nA companion dashboard for your AI wearables.\n\nBuilt with Expo.",
       [{ text: "OK" }],
     );
+  };
+
+  const handleConnectCalendar = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    if (calendarConnection?.connected) {
+      Alert.alert(
+        "Google Calendar Connected",
+        calendarConnection.email 
+          ? `Connected to ${calendarConnection.email}`
+          : "Your Google Calendar is already connected.",
+        [{ text: "OK" }],
+      );
+      return;
+    }
+
+    if (!calendarConnection?.authUrl) {
+      Alert.alert(
+        "Connection Not Available",
+        "Google Calendar connection is not available in this environment. Please connect via the ZEKE web portal.",
+        [{ text: "OK" }],
+      );
+      return;
+    }
+
+    setIsConnectingCalendar(true);
+    try {
+      const result = await WebBrowser.openAuthSessionAsync(
+        calendarConnection.authUrl,
+        'zeke-ai://'
+      );
+      
+      if (result.type === 'success') {
+        queryClient.invalidateQueries({ queryKey: ["/api/calendar/connection"] });
+        Alert.alert("Success", "Google Calendar connected successfully!");
+      }
+    } catch (error) {
+      console.error("Error connecting calendar:", error);
+      Alert.alert("Error", "Failed to connect Google Calendar. Please try again.");
+    } finally {
+      setIsConnectingCalendar(false);
+    }
   };
 
   return (
@@ -225,6 +283,56 @@ export default function SettingsScreen() {
             Add Device
           </ThemedText>
         </Pressable>
+      </SettingsSection>
+
+      <SettingsSection title="INTEGRATIONS">
+        <View style={{ borderRadius: BorderRadius.md, overflow: "hidden" }}>
+          <Pressable
+            onPress={handleConnectCalendar}
+            disabled={isLoadingCalendar || isConnectingCalendar}
+            style={({ pressed }) => [
+              styles.integrationRow,
+              {
+                backgroundColor: theme.backgroundDefault,
+                opacity: pressed ? 0.8 : 1,
+              },
+            ]}
+          >
+            <View style={[styles.integrationIcon, { backgroundColor: `${Colors.dark.primary}15` }]}>
+              <Feather name="calendar" size={20} color={Colors.dark.primary} />
+            </View>
+            <View style={styles.integrationContent}>
+              <ThemedText type="body">Google Calendar</ThemedText>
+              {isLoadingCalendar || isConnectingCalendar ? (
+                <View style={styles.integrationStatusRow}>
+                  <ActivityIndicator size="small" color={Colors.dark.primary} />
+                  <ThemedText type="small" secondary style={{ marginLeft: Spacing.xs }}>
+                    {isConnectingCalendar ? "Connecting..." : "Checking..."}
+                  </ThemedText>
+                </View>
+              ) : calendarConnection?.connected ? (
+                <View style={styles.integrationStatusRow}>
+                  <View style={[styles.statusDot, { backgroundColor: Colors.dark.success }]} />
+                  <ThemedText type="small" style={{ color: Colors.dark.success }}>
+                    Connected{calendarConnection.email ? ` - ${calendarConnection.email}` : ""}
+                  </ThemedText>
+                </View>
+              ) : (
+                <View style={styles.integrationStatusRow}>
+                  <View style={[styles.statusDot, { backgroundColor: theme.textSecondary }]} />
+                  <ThemedText type="small" secondary>
+                    Not connected
+                  </ThemedText>
+                </View>
+              )}
+            </View>
+            <Feather 
+              name={calendarConnection?.connected ? "check-circle" : "chevron-right"} 
+              size={20} 
+              color={calendarConnection?.connected ? Colors.dark.success : theme.textSecondary} 
+            />
+          </Pressable>
+        </View>
       </SettingsSection>
 
       <SettingsSection title="PREFERENCES">
@@ -367,5 +475,33 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: Spacing["2xl"],
     paddingHorizontal: Spacing.lg,
+  },
+  integrationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+  },
+  integrationIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: Spacing.md,
+  },
+  integrationContent: {
+    flex: 1,
+  },
+  integrationStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: Spacing.xs,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: Spacing.xs,
   },
 });

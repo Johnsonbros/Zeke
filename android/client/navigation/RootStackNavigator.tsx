@@ -4,7 +4,7 @@ import MainTabNavigator from "@/navigation/MainTabNavigator";
 import ChatScreen from "@/screens/ChatScreen";
 import SmsComposeScreen from "@/screens/SmsComposeScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
-import { GradientText } from "@/components/GradientText";
+import { createZekeSubHeader } from "@/components/ZekeSubHeader";
 
 export type RootStackParamList = {
   Main: undefined;
@@ -33,7 +33,7 @@ export default function RootStackNavigator() {
         component={ChatScreen}
         options={{
           presentation: "modal",
-          headerTitle: () => <GradientText type="h4">ZEKE AI</GradientText>,
+          headerTitle: createZekeSubHeader("AI Chat"),
         }}
       />
       <Stack.Screen
@@ -41,7 +41,7 @@ export default function RootStackNavigator() {
         component={SmsComposeScreen}
         options={{
           presentation: "modal",
-          headerTitle: "New Message",
+          headerTitle: createZekeSubHeader("New Message"),
         }}
       />
     </Stack.Navigator>

@@ -27,6 +27,11 @@ export function useScreenOptions({
     contentStyle: {
       backgroundColor: theme.backgroundRoot,
     },
+    headerTitleStyle: {
+      fontSize: 18,
+      fontWeight: "600",
+      color: theme.text,
+    },
   };
 
   if (isIOS) {
@@ -71,24 +76,18 @@ export function useScreenOptions({
   if (isAndroid) {
     return {
       ...baseOptions,
-      headerTransparent: transparent,
+      headerTransparent: false,
       headerStyle: {
-        backgroundColor: transparent ? "transparent" : theme.backgroundDefault,
+        backgroundColor: theme.backgroundDefault,
+        elevation: 2,
       },
-      headerBackground: transparent
-        ? () => (
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  backgroundColor: isDark
-                    ? "rgba(15, 23, 42, 0.95)"
-                    : "rgba(241, 245, 249, 0.95)",
-                },
-              ]}
-            />
-          )
-        : undefined,
+      headerTitleStyle: {
+        fontSize: 18,
+        fontWeight: "600",
+        color: theme.text,
+      },
+      headerBackTitleVisible: false,
+      animation: "slide_from_right",
     };
   }
 

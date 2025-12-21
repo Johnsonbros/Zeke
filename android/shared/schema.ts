@@ -213,11 +213,31 @@ export const deviceTokens = pgTable("device_tokens", {
   lastUsedAt: timestamp("last_used_at").defaultNow().notNull(),
 });
 
+export const pairingCodes = pgTable("pairing_codes", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  sessionId: text("session_id").notNull().unique(),
+  code: text("code").notNull(),
+  deviceName: text("device_name").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const insertDeviceTokenSchema = createInsertSchema(deviceTokens).omit({
   id: true,
   createdAt: true,
   lastUsedAt: true,
 });
 
+export const insertPairingCodeSchema = createInsertSchema(pairingCodes).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type InsertDeviceToken = z.infer<typeof insertDeviceTokenSchema>;
 export type DeviceToken = typeof deviceTokens.$inferSelect;
+
+export type InsertPairingCode = z.infer<typeof insertPairingCodeSchema>;
+export type PairingCode = typeof pairingCodes.$inferSelect;

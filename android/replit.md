@@ -156,3 +156,60 @@ Fixed device pairing failures in published app caused by `EXPO_PUBLIC_DOMAIN` be
 - `client/lib/api-client.ts` — Removed `/api/auth/` from LOCAL_API_PREFIXES
 - `client/context/AuthContext.tsx` — Updated to use `/api/zeke/auth/*` proxy routes
 - `server/zeke-proxy.ts` — Added auth proxy route handlers
+
+### Runtime Proxy URL Resolution Fix (Dec 2025)
+Fixed published app data sync failures caused by stale `EXPO_PUBLIC_DOMAIN` values baked into static bundles at build time.
+
+**Problem**: In published Expo apps, environment variables are baked into static JS bundles at build time. When the deployment domain changes (or the original dev domain is stale), the app continues using the old domain for API calls, causing all proxy requests to fail.
+
+**Solution**: Implemented runtime domain resolution with verification:
+1. Added `/api/runtime-config` endpoint (public, no auth required) that returns the server's actual proxy origin from request headers
+2. Updated `initializeProxyOrigin()` to try multiple candidate URLs in order and verify each by fetching runtime-config
+3. Only verified URLs are cached; failed candidates fall through to the next option
+4. Added proper deep link URL parsing for native apps opened via `exps://domain/manifest`
+
+**Resolution Priority (tried in order until one verifies)**:
+- Web: `EXPO_PUBLIC_DOMAIN` env var → `window.location` with port 5000 → `window.location.origin`
+- Native: Deep link URL → `expoConfig.extra.localApiDomain` → `EXPO_PUBLIC_DOMAIN` env var
+
+**Key Files**:
+- `client/lib/query-client.ts` — `initializeProxyOrigin()`, `getCandidateOrigins()`, `verifyProxyOrigin()`
+- `server/index.ts` — `/api/runtime-config` endpoint
+- `server/auth-middleware.ts` — Added `/api/runtime-config` to PUBLIC_ROUTES
+- `client/App.tsx` — Calls `initializeProxyOrigin()` on startup
+
+**Technical Notes**:
+- AbortSignal.timeout not supported in Expo/React Native - uses AbortController + setTimeout instead
+- Deep link URLs like `exps://domain/manifest` require custom parsing (not standard URL API)
+- Web apps run on port 8081 (Expo) but Express server is on port 5000 - must handle port mapping
+- App.tsx gates rendering with `isProxyReady` state - QueryClientProvider only mounts after `initializeProxyOrigin()` completes, preventing race conditions where early API calls use stale URLs
+
+### Persistent Device Authentication (Dec 2025)
+Enhanced device authentication to persist across app sessions, device shutdowns, and app updates.
+
+**Storage Mechanism**:
+- Native (iOS/Android): Uses `expo-secure-store` for encrypted, persistent storage
+- Web: Uses `localStorage` for persistent storage
+- Both survive app restarts, device reboots, and app updates
+
+**Stored Credentials**:
+- `zeke_device_token` — The device token for API authentication
+- `zeke_device_id` — The device identifier
+- `zeke_last_verified` — Timestamp of last successful backend verification
+
+**Offline Authentication**:
+- Cached authentication is trusted for 7 days without requiring backend verification
+- If network is unavailable at startup but cached auth is valid, app enters "offline mode"
+- Auth state includes `isOfflineMode` flag to indicate when using cached credentials
+- Only clears credentials on explicit 401 (session expired) response from backend
+
+**Flow**:
+1. On app startup, checks for stored token
+2. Attempts to verify token with backend (2 retries with exponential backoff)
+3. If verification succeeds, updates `last_verified` timestamp
+4. If verification fails due to network issues but cached auth is valid (<7 days old), allows access in offline mode
+5. If verification fails with 401, clears all stored credentials and requires re-pairing
+
+**Key Files**:
+- `client/context/AuthContext.tsx` — Auth state management with persistence
+- `server/auth-middleware.ts` — Public routes for auth endpoints

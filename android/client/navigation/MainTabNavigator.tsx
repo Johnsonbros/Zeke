@@ -11,7 +11,7 @@ import CalendarStackNavigator from "@/navigation/CalendarStackNavigator";
 import GeoStackNavigator from "@/navigation/GeoStackNavigator";
 import TasksStackNavigator from "@/navigation/TasksStackNavigator";
 import { useTheme } from "@/hooks/useTheme";
-import { Colors } from "@/constants/theme";
+import { Spacing } from "@/constants/theme";
 
 export type MainTabParamList = {
   HomeTab: undefined;
@@ -24,19 +24,19 @@ export type MainTabParamList = {
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export default function MainTabNavigator() {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
 
   const androidBottomPadding = Math.max(insets.bottom, 16);
   const tabBarHeight =
-    Platform.OS === "android" ? 60 + androidBottomPadding : 80;
+    Platform.OS === "android" ? 80 + androidBottomPadding : 80;
 
   return (
     <View style={styles.container}>
       <Tab.Navigator
         initialRouteName="HomeTab"
         screenOptions={{
-          tabBarActiveTintColor: Colors.dark.primary,
+          tabBarActiveTintColor: theme.primary,
           tabBarInactiveTintColor: theme.tabIconDefault,
           tabBarStyle: {
             position: "absolute",
@@ -44,23 +44,32 @@ export default function MainTabNavigator() {
               ios: "transparent",
               android: theme.backgroundDefault,
             }),
-            borderTopWidth: 0,
-            elevation: 0,
+            borderTopWidth: Platform.OS === "android" ? 1 : 0,
+            borderTopColor: theme.border,
+            elevation: Platform.OS === "android" ? 8 : 0,
             height: tabBarHeight,
             paddingBottom: Platform.OS === "ios" ? 24 : androidBottomPadding,
+            paddingTop: Platform.OS === "android" ? Spacing.sm : 0,
           },
           tabBarBackground: () =>
             Platform.OS === "ios" ? (
               <BlurView
                 intensity={100}
-                tint="dark"
+                tint={isDark ? "dark" : "light"}
                 style={StyleSheet.absoluteFill}
               />
             ) : null,
           headerShown: false,
           tabBarLabelStyle: {
             fontSize: 12,
-            fontWeight: "500",
+            fontWeight: "600",
+            marginTop: Platform.OS === "android" ? 4 : 0,
+          },
+          tabBarIconStyle: {
+            marginBottom: Platform.OS === "android" ? -4 : 0,
+          },
+          tabBarItemStyle: {
+            paddingVertical: Platform.OS === "android" ? Spacing.xs : 0,
           },
         }}
       >

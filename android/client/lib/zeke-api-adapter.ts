@@ -1077,6 +1077,7 @@ export interface Geofence {
   isActive: boolean;
   actionType: "notification" | "grocery_prompt" | "custom";
   actionData?: any;
+  isHome?: boolean;
   createdAt: string;
 }
 

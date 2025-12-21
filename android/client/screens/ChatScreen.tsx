@@ -12,7 +12,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
@@ -68,7 +67,6 @@ function mapApiMessageToMessage(msg: ApiChatMessage): Message {
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
-  const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
   const flatListRef = useRef<FlatList>(null);
 
@@ -423,7 +421,7 @@ export default function ChatScreen() {
         style={styles.messagesList}
         contentContainerStyle={{
           paddingTop: headerHeight + Spacing.lg,
-          paddingBottom: Math.max(tabBarHeight, insets.bottom) + 80 + Spacing.lg,
+          paddingBottom: insets.bottom + 80 + Spacing.lg,
           paddingHorizontal: Spacing.lg,
           flexGrow: 1,
         }}
@@ -442,7 +440,7 @@ export default function ChatScreen() {
           styles.inputContainer,
           {
             backgroundColor: theme.backgroundDefault,
-            bottom: Math.max(tabBarHeight, insets.bottom),
+            bottom: insets.bottom,
             paddingBottom: Spacing.md,
           },
           Platform.OS !== "web" ? animatedInputContainerStyle : undefined,

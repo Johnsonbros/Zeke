@@ -82,7 +82,8 @@ module.exports = ({ config }) => {
     extra: {
       eas: {
         projectId: "fd634d5b-ef00-4215-a63a-1c962f8f4015"
-      }
+      },
+      localApiDomain: process.env.EXPO_PUBLIC_DOMAIN || process.env.REPLIT_INTERNAL_APP_DOMAIN || null
     },
     runtimeVersion: "1.0.0",
     updates: {

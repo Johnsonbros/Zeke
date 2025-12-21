@@ -7,6 +7,7 @@ import VoIPCallingScreen from "@/screens/VoIPCallingScreen";
 import ImportContactsScreen from "@/screens/ImportContactsScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { ZekeHeaderTitle, ZekeHeaderButtons } from "@/components/ZekeHeader";
+import { createZekeSubHeader } from "@/components/ZekeSubHeader";
 
 export type CommunicationStackParamList = {
   CommunicationsHub: undefined;
@@ -35,34 +36,36 @@ export default function CommunicationStackNavigator() {
           headerTitle: "",
           headerLeft: () => <ZekeHeaderTitle />,
           headerRight: () => <ZekeHeaderButtons />,
+          headerLeftContainerStyle: { paddingLeft: 12 },
+          headerRightContainerStyle: { paddingRight: 12 },
         }}
       />
       <Stack.Screen
         name="SmsConversation"
         component={SmsConversationScreen}
         options={{
-          headerTitle: "Conversation",
+          headerTitle: createZekeSubHeader("Conversation"),
         }}
       />
       <Stack.Screen
         name="ContactDetail"
         component={ContactDetailScreen}
         options={{
-          headerTitle: "Contact",
+          headerTitle: createZekeSubHeader("Contact"),
         }}
       />
       <Stack.Screen
         name="VoIPCalling"
         component={VoIPCallingScreen}
         options={{
-          headerTitle: "Call",
+          headerTitle: createZekeSubHeader("Call"),
         }}
       />
       <Stack.Screen
         name="ImportContacts"
         component={ImportContactsScreen}
         options={{
-          headerTitle: "Import Contacts",
+          headerTitle: createZekeSubHeader("Import Contacts"),
         }}
       />
     </Stack.Navigator>

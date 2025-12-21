@@ -9,6 +9,7 @@ import LocationScreen from "@/screens/LocationScreen";
 import DeviceFeaturesScreen from "@/screens/DeviceFeaturesScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { ZekeHeaderTitle, ZekeHeaderButtons } from "@/components/ZekeHeader";
+import { createZekeSubHeader } from "@/components/ZekeSubHeader";
 
 export type HomeStackParamList = {
   Home: undefined;
@@ -43,42 +44,42 @@ export default function HomeStackNavigator() {
         name="AudioUpload"
         component={AudioUploadScreen}
         options={{
-          headerTitle: "Upload Audio",
+          headerTitle: createZekeSubHeader("Upload Audio"),
         }}
       />
       <Stack.Screen
         name="Settings"
         component={SettingsScreen}
         options={{
-          headerTitle: "Settings",
+          headerTitle: createZekeSubHeader("Settings"),
         }}
       />
       <Stack.Screen
         name="NotificationSettings"
         component={NotificationSettingsScreen}
         options={{
-          headerTitle: "Notifications",
+          headerTitle: createZekeSubHeader("Notifications"),
         }}
       />
       <Stack.Screen
         name="BluetoothConnection"
         component={BluetoothConnectionScreen}
         options={{
-          headerTitle: "Pair Device",
+          headerTitle: createZekeSubHeader("Pair Device"),
         }}
       />
       <Stack.Screen
         name="Location"
         component={LocationScreen}
         options={{
-          headerTitle: "Location",
+          headerTitle: createZekeSubHeader("Location"),
         }}
       />
       <Stack.Screen
         name="DeviceFeatures"
         component={DeviceFeaturesScreen}
         options={{
-          headerTitle: "Device Features",
+          headerTitle: createZekeSubHeader("Device Features"),
         }}
       />
     </Stack.Navigator>

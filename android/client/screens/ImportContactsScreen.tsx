@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   Pressable,
+  TextInput,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -48,6 +49,7 @@ export default function ImportContactsScreen() {
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [selectAll, setSelectAll] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [, setImportResult] = useState<{
     imported: number;
     failed: number;
@@ -56,6 +58,20 @@ export default function ImportContactsScreen() {
 
   const isWeb = Platform.OS === "web";
   const selectedCount = contacts.filter((c) => c.selected).length;
+
+  const filteredContacts = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return contacts;
+    }
+    const query = searchQuery.toLowerCase().trim();
+    return contacts.filter(
+      (c) =>
+        c.name.toLowerCase().includes(query) ||
+        c.phoneNumber?.toLowerCase().includes(query) ||
+        c.email?.toLowerCase().includes(query) ||
+        c.company?.toLowerCase().includes(query),
+    );
+  }, [contacts, searchQuery]);
 
   const loadContacts = useCallback(async () => {
     if (isWeb) {
@@ -307,6 +323,36 @@ export default function ImportContactsScreen() {
   return (
     <ThemedView style={styles.container}>
       <View style={[styles.header, { paddingTop: headerHeight + Spacing.md }]}>
+        <View style={styles.searchContainer}>
+          <Feather
+            name="search"
+            size={18}
+            color={Colors.dark.textSecondary}
+            style={styles.searchIcon}
+          />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search contacts..."
+            placeholderTextColor={Colors.dark.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 ? (
+            <Pressable
+              onPress={() => setSearchQuery("")}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Feather
+                name="x-circle"
+                size={18}
+                color={Colors.dark.textSecondary}
+              />
+            </Pressable>
+          ) : null}
+        </View>
+
         <Card style={styles.selectionCard}>
           <View style={styles.selectionRow}>
             <Pressable onPress={toggleSelectAll} style={styles.selectAllButton}>
@@ -329,7 +375,7 @@ export default function ImportContactsScreen() {
       </View>
 
       <FlatList
-        data={contacts}
+        data={filteredContacts}
         renderItem={renderContact}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[
@@ -337,10 +383,14 @@ export default function ImportContactsScreen() {
           { paddingBottom: insets.bottom + 100 },
         ]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         ListEmptyComponent={
           <View style={styles.emptyList}>
             <ThemedText style={styles.emptyListText}>
-              No contacts found on device
+              {searchQuery.trim()
+                ? `No contacts matching "${searchQuery}"`
+                : "No contacts found on device"}
             </ThemedText>
           </View>
         }
@@ -391,6 +441,24 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.md,
+  },
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.dark.backgroundSecondary,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.md,
+    height: 44,
+  },
+  searchIcon: {
+    marginRight: Spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: Colors.dark.textPrimary,
+    height: "100%",
   },
   selectionCard: {
     padding: Spacing.md,

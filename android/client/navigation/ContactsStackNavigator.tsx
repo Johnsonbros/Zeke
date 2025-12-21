@@ -4,6 +4,7 @@ import ContactsScreen from "@/screens/ContactsScreen";
 import ContactDetailScreen from "@/screens/ContactDetailScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { ZekeHeaderTitle, ZekeHeaderButtons } from "@/components/ZekeHeader";
+import { createZekeSubHeader } from "@/components/ZekeSubHeader";
 
 export type ContactsStackParamList = {
   Contacts: undefined;
@@ -24,13 +25,15 @@ export default function ContactsStackNavigator() {
           headerTitle: "",
           headerLeft: () => <ZekeHeaderTitle />,
           headerRight: () => <ZekeHeaderButtons />,
+          headerLeftContainerStyle: { paddingLeft: 12 },
+          headerRightContainerStyle: { paddingRight: 12 },
         }}
       />
       <Stack.Screen
         name="ContactDetail"
         component={ContactDetailScreen}
         options={{
-          headerTitle: "Contact",
+          headerTitle: createZekeSubHeader("Contact"),
         }}
       />
     </Stack.Navigator>

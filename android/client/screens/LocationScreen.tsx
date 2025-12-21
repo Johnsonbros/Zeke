@@ -95,6 +95,7 @@ export default function LocationScreen() {
   const [selectedListId, setSelectedListId] = useState<string | undefined>(
     undefined,
   );
+  const [isHomeLocation, setIsHomeLocation] = useState(false);
   const [newListName, setNewListName] = useState("");
   const [newListRadius, setNewListRadius] = useState("500");
   const [newListActionType, setNewListActionType] =
@@ -255,6 +256,7 @@ export default function LocationScreen() {
     setManualLon("");
     setEditingGeofence(null);
     setSelectedListId(undefined);
+    setIsHomeLocation(false);
   }, []);
 
   const resetListForm = useCallback(() => {
@@ -276,6 +278,7 @@ export default function LocationScreen() {
     setGeofenceActionType("grocery_prompt");
     setGeofenceRadius("500");
     setGeofenceTriggerOn("enter");
+    setIsHomeLocation(false);
 
     const groceryList = locationLists.find((l) =>
       l.name.toLowerCase().includes("grocery"),
@@ -284,6 +287,16 @@ export default function LocationScreen() {
       setSelectedListId(groceryList.id);
     }
   }, [locationLists]);
+
+  const handleQuickSetAsHome = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setGeofenceName("Home");
+    setGeofenceActionType("custom");
+    setGeofenceRadius("200");
+    setGeofenceTriggerOn("both");
+    setIsHomeLocation(true);
+    setUseCurrentLocation(true);
+  }, []);
 
   const handleSaveLocationList = useCallback(async () => {
     if (!newListName.trim()) {
@@ -364,6 +377,7 @@ export default function LocationScreen() {
     setManualLat(geofence.latitude.toString());
     setManualLon(geofence.longitude.toString());
     setSelectedListId(geofence.listId);
+    setIsHomeLocation(!!geofence.isHome);
     setShowAddGeofenceModal(true);
   }, []);
 
@@ -413,6 +427,7 @@ export default function LocationScreen() {
           actionType: geofenceActionType,
           triggerOn: geofenceTriggerOn,
           listId: selectedListId,
+          isHome: isHomeLocation,
         });
         if (updated) {
           setGeofences((prev) =>
@@ -430,6 +445,7 @@ export default function LocationScreen() {
           isActive: true,
           actionType: geofenceActionType,
           listId: selectedListId,
+          isHome: isHomeLocation,
           createdAt: new Date().toISOString(),
         };
         await addGeofence(newGeofence);
@@ -453,6 +469,7 @@ export default function LocationScreen() {
     editingGeofence,
     resetGeofenceForm,
     selectedListId,
+    isHomeLocation,
   ]);
 
   const handleDeleteGeofence = useCallback(async (geofence: Geofence) => {
@@ -1497,40 +1514,148 @@ export default function LocationScreen() {
             contentContainerStyle={styles.modalContent}
           >
             {!editingGeofence && location ? (
-              <Pressable
-                onPress={handleQuickAddAsGroceryStore}
-                style={({ pressed }) => [
-                  {
-                    backgroundColor: `${Colors.dark.success}20`,
-                    paddingVertical: Spacing.md,
-                    paddingHorizontal: Spacing.lg,
-                    borderRadius: BorderRadius.md,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginBottom: Spacing.lg,
-                    borderWidth: 1,
-                    borderColor: Colors.dark.success,
-                    opacity: pressed ? 0.7 : 1,
-                  },
+              <View style={{ marginBottom: Spacing.lg }}>
+                <Pressable
+                  onPress={handleQuickSetAsHome}
+                  style={({ pressed }) => [
+                    {
+                      backgroundColor: isHomeLocation
+                        ? `${Colors.dark.primary}30`
+                        : `${Colors.dark.primary}15`,
+                      paddingVertical: Spacing.md,
+                      paddingHorizontal: Spacing.lg,
+                      borderRadius: BorderRadius.md,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: Spacing.sm,
+                      borderWidth: isHomeLocation ? 2 : 1,
+                      borderColor: Colors.dark.primary,
+                      opacity: pressed ? 0.7 : 1,
+                    },
+                  ]}
+                >
+                  <Feather
+                    name="home"
+                    size={18}
+                    color={Colors.dark.primary}
+                  />
+                  <ThemedText
+                    type="body"
+                    style={{
+                      marginLeft: Spacing.sm,
+                      color: Colors.dark.primary,
+                      fontWeight: "600",
+                    }}
+                  >
+                    {isHomeLocation ? "Home Location Selected" : "Set as Home"}
+                  </ThemedText>
+                </Pressable>
+
+                <Pressable
+                  onPress={handleQuickAddAsGroceryStore}
+                  style={({ pressed }) => [
+                    {
+                      backgroundColor: `${Colors.dark.success}20`,
+                      paddingVertical: Spacing.md,
+                      paddingHorizontal: Spacing.lg,
+                      borderRadius: BorderRadius.md,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderWidth: 1,
+                      borderColor: Colors.dark.success,
+                      opacity: pressed ? 0.7 : 1,
+                    },
+                  ]}
+                >
+                  <Feather
+                    name="shopping-cart"
+                    size={18}
+                    color={Colors.dark.success}
+                  />
+                  <ThemedText
+                    type="body"
+                    style={{
+                      marginLeft: Spacing.sm,
+                      color: Colors.dark.success,
+                      fontWeight: "600",
+                    }}
+                  >
+                    Add as Grocery Store
+                  </ThemedText>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {isHomeLocation ? (
+              <View
+                style={[
+                  styles.homeAutomationsCard,
+                  { backgroundColor: `${Colors.dark.primary}10` },
                 ]}
               >
-                <Feather
-                  name="shopping-cart"
-                  size={18}
-                  color={Colors.dark.success}
-                />
+                <View style={styles.homeAutomationsHeader}>
+                  <Feather name="zap" size={16} color={Colors.dark.primary} />
+                  <ThemedText
+                    type="small"
+                    style={{
+                      marginLeft: Spacing.xs,
+                      color: Colors.dark.primary,
+                      fontWeight: "600",
+                    }}
+                  >
+                    Home Automations
+                  </ThemedText>
+                </View>
                 <ThemedText
-                  type="body"
-                  style={{
-                    marginLeft: Spacing.sm,
-                    color: Colors.dark.success,
-                    fontWeight: "600",
-                  }}
+                  type="caption"
+                  secondary
+                  style={{ marginBottom: Spacing.sm }}
                 >
-                  Add as Grocery Store
+                  When you arrive or leave home, ZEKE can:
                 </ThemedText>
-              </Pressable>
+                <View style={styles.automationItem}>
+                  <Feather
+                    name="check-square"
+                    size={14}
+                    color={Colors.dark.success}
+                  />
+                  <ThemedText type="small" style={{ marginLeft: Spacing.xs }}>
+                    Show HOME-tagged tasks and reminders
+                  </ThemedText>
+                </View>
+                <View style={styles.automationItem}>
+                  <Feather
+                    name="calendar"
+                    size={14}
+                    color={Colors.dark.success}
+                  />
+                  <ThemedText type="small" style={{ marginLeft: Spacing.xs }}>
+                    Display family events and activities
+                  </ThemedText>
+                </View>
+                <View style={styles.automationItem}>
+                  <Feather
+                    name="message-circle"
+                    size={14}
+                    color={Colors.dark.success}
+                  />
+                  <ThemedText type="small" style={{ marginLeft: Spacing.xs }}>
+                    Notify contacts when you arrive home
+                  </ThemedText>
+                </View>
+                <View style={styles.automationItem}>
+                  <Feather
+                    name="bell"
+                    size={14}
+                    color={Colors.dark.success}
+                  />
+                  <ThemedText type="small" style={{ marginLeft: Spacing.xs }}>
+                    Send departure reminders
+                  </ThemedText>
+                </View>
+              </View>
             ) : null}
 
             <View style={styles.formGroup}>
@@ -1818,6 +1943,25 @@ export default function LocationScreen() {
                 </View>
               </View>
             ) : null}
+
+            <Pressable onPress={handleSaveGeofence} style={{ marginTop: Spacing.lg }}>
+              <LinearGradient
+                colors={Gradients.primary}
+                style={styles.saveButton}
+              >
+                <Feather name="check" size={20} color="#FFFFFF" />
+                <ThemedText
+                  type="body"
+                  style={{
+                    marginLeft: Spacing.sm,
+                    color: "#FFFFFF",
+                    fontWeight: "600",
+                  }}
+                >
+                  {editingGeofence ? "Update Geofence" : "Save Geofence"}
+                </ThemedText>
+              </LinearGradient>
+            </Pressable>
           </KeyboardAwareScrollViewCompat>
         </View>
       </Modal>
@@ -2250,5 +2394,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: Spacing.xs,
+  },
+  homeAutomationsCard: {
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: `${Colors.dark.primary}30`,
+  },
+  homeAutomationsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: Spacing.sm,
+  },
+  automationItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: Spacing.xs,
+  },
+  saveButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
   },
 });

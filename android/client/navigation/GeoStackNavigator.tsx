@@ -4,6 +4,7 @@ import LocationScreen from "@/screens/LocationScreen";
 import MapScreen from "@/screens/MapScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { ZekeHeaderTitle, ZekeHeaderButtons } from "@/components/ZekeHeader";
+import { createZekeSubHeader } from "@/components/ZekeSubHeader";
 
 export type GeoStackParamList = {
   Location: undefined;
@@ -24,13 +25,15 @@ export default function GeoStackNavigator() {
           headerTitle: "",
           headerLeft: () => <ZekeHeaderTitle />,
           headerRight: () => <ZekeHeaderButtons />,
+          headerLeftContainerStyle: { paddingLeft: 12 },
+          headerRightContainerStyle: { paddingRight: 12 },
         }}
       />
       <Stack.Screen
         name="Map"
         component={MapScreen}
         options={{
-          headerTitle: "Map",
+          headerTitle: createZekeSubHeader("Map"),
         }}
       />
     </Stack.Navigator>

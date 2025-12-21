@@ -47,6 +47,11 @@ import {
   type DashboardSummary,
   type ActivityItem,
 } from "@/lib/zeke-api-adapter";
+import {
+  bluetoothService,
+  type ConnectionState,
+  type BLEDevice,
+} from "@/lib/bluetooth";
 
 interface ApiDevice {
   id: string;
@@ -186,6 +191,10 @@ export default function HomeScreen() {
   const [batteryState, setBatteryState] = useState<Battery.BatteryState | null>(
     null,
   );
+  const [bleConnectionState, setBleConnectionState] =
+    useState<ConnectionState>("disconnected");
+  const [connectedBleDevice, setConnectedBleDevice] =
+    useState<BLEDevice | null>(null);
 
   useEffect(() => {
     let batteryLevelSubscription: { remove: () => void } | null = null;
@@ -225,6 +234,30 @@ export default function HomeScreen() {
       batteryStateSubscription?.remove();
     };
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = bluetoothService.onConnectionStateChange(
+      (state, device) => {
+        setBleConnectionState(state);
+        setConnectedBleDevice(device);
+      },
+    );
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  const handleSettingsPress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigation.navigate("Settings");
+  };
+
+  const getDeviceDisplayName = () => {
+    if (!connectedBleDevice) return null;
+    if (connectedBleDevice.type === "omi") return "Omi DevKit2";
+    if (connectedBleDevice.type === "limitless") return "Limitless Pendant";
+    return connectedBleDevice.name;
+  };
 
   const getBatteryColor = () => {
     if (batteryLevel === null) return theme.textSecondary;
@@ -388,6 +421,65 @@ export default function HomeScreen() {
             onPress={handleMessagePress}
           />
         </View>
+
+        <Pressable
+          style={[
+            styles.settingsCard,
+            { backgroundColor: theme.backgroundDefault },
+          ]}
+          onPress={handleSettingsPress}
+        >
+          <View style={styles.settingsCardContent}>
+            <View style={styles.settingsIconContainer}>
+              <Feather name="settings" size={22} color={Colors.dark.primary} />
+            </View>
+            <View style={styles.settingsTextContainer}>
+              <ThemedText type="h4">Settings</ThemedText>
+              <View style={styles.deviceIndicator}>
+                {bleConnectionState === "connected" && connectedBleDevice ? (
+                  <>
+                    <PulsingDot color={Colors.dark.success} size={8} />
+                    <ThemedText
+                      type="caption"
+                      style={{
+                        marginLeft: Spacing.xs,
+                        color: Colors.dark.success,
+                      }}
+                    >
+                      {getDeviceDisplayName()} Connected
+                    </ThemedText>
+                  </>
+                ) : bleConnectionState === "connecting" ? (
+                  <>
+                    <ActivityIndicator
+                      size="small"
+                      color={Colors.dark.warning}
+                      style={{ transform: [{ scale: 0.6 }] }}
+                    />
+                    <ThemedText
+                      type="caption"
+                      style={{
+                        marginLeft: Spacing.xs,
+                        color: Colors.dark.warning,
+                      }}
+                    >
+                      Connecting...
+                    </ThemedText>
+                  </>
+                ) : (
+                  <ThemedText type="caption" secondary>
+                    No wearable connected
+                  </ThemedText>
+                )}
+              </View>
+            </View>
+            <Feather
+              name="chevron-right"
+              size={20}
+              color={theme.textSecondary}
+            />
+          </View>
+        </Pressable>
 
         <Pressable
           style={[
@@ -1083,6 +1175,32 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     padding: Spacing.lg,
     marginBottom: Spacing.lg,
+  },
+  settingsCard: {
+    borderRadius: BorderRadius.md,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  settingsCardContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  settingsIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: `${Colors.dark.primary}20`,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: Spacing.md,
+  },
+  settingsTextContainer: {
+    flex: 1,
+  },
+  deviceIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: Spacing.xs,
   },
   uploadCard: {
     flexDirection: "row",

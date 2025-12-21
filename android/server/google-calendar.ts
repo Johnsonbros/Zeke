@@ -3,6 +3,68 @@ import { google, calendar_v3 } from 'googleapis';
 
 let connectionSettings: any;
 
+export interface CalendarConnectionStatus {
+  connected: boolean;
+  email?: string;
+  error?: string;
+}
+
+export async function checkCalendarConnection(): Promise<CalendarConnectionStatus> {
+  try {
+    const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+    const xReplitToken = process.env.REPL_IDENTITY 
+      ? 'repl ' + process.env.REPL_IDENTITY 
+      : process.env.WEB_REPL_RENEWAL 
+      ? 'depl ' + process.env.WEB_REPL_RENEWAL 
+      : null;
+
+    if (!xReplitToken || !hostname) {
+      return { connected: false, error: 'Replit environment not available' };
+    }
+
+    const response = await fetch(
+      'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=google-calendar',
+      {
+        headers: {
+          'Accept': 'application/json',
+          'X_REPLIT_TOKEN': xReplitToken
+        }
+      }
+    );
+
+    const data = await response.json();
+    const connection = data.items?.[0];
+
+    if (!connection) {
+      return { connected: false };
+    }
+
+    const accessToken = connection?.settings?.access_token || connection?.settings?.oauth?.credentials?.access_token;
+
+    if (!accessToken) {
+      return { connected: false };
+    }
+
+    // Try to get email from connection settings
+    const email = connection?.settings?.oauth?.email || connection?.settings?.email;
+    
+    return { connected: true, email };
+  } catch (error: any) {
+    console.error('[Google Calendar] Error checking connection:', error);
+    return { connected: false, error: error.message };
+  }
+}
+
+export function getConnectorAuthUrl(): string {
+  // The connector auth URL is provided by Replit's connector system
+  // Users need to click "Connect" in the Replit tools panel, or we can redirect them
+  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+  if (hostname) {
+    return `https://${hostname}/oauth/connect/google-calendar`;
+  }
+  return '';
+}
+
 async function getAccessToken(): Promise<string> {
   if (connectionSettings && connectionSettings.settings.expires_at && new Date(connectionSettings.settings.expires_at).getTime() > Date.now()) {
     return connectionSettings.settings.access_token;

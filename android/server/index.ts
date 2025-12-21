@@ -273,6 +273,35 @@ function setupErrorHandler(app: express.Application) {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  // Runtime config endpoint (public) - provides the correct proxy origin to clients
+  // This allows published apps to discover the correct API URL at runtime
+  // instead of relying on baked-in env vars that may be stale
+  app.get("/api/runtime-config", (req, res) => {
+    const rawHost = req.headers.host || req.hostname;
+    const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    
+    // In development, the Express server runs on port 5000
+    // Replit's proxy may strip the port from the host header, so we need to add it back
+    // This ensures clients use the correct URL to reach the Express server
+    const isDev = process.env.NODE_ENV === 'development';
+    const hasPort = rawHost.includes(':');
+    
+    // If host doesn't have a port and we're in dev mode, add :5000
+    const host = (isDev && !hasPort && rawHost.includes('replit')) 
+      ? `${rawHost}:5000` 
+      : rawHost;
+    
+    const proxyOrigin = `${protocol}://${host}`;
+    
+    console.log(`[runtime-config] rawHost=${rawHost}, isDev=${isDev}, host=${host}, proxyOrigin=${proxyOrigin}`);
+    
+    res.json({
+      proxyOrigin,
+      zekeBackend: "https://zekeai.replit.app",
+      timestamp: new Date().toISOString()
+    });
+  });
+
   // Security status endpoints (public - for monitoring)
   app.get("/api/auth/status", (_req, res) => {
     res.json({

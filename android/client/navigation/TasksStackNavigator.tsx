@@ -7,8 +7,10 @@ import TasksScreen from "@/screens/TasksScreen";
 import GroceryScreen from "@/screens/GroceryScreen";
 import ListsScreen from "@/screens/ListsScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
+import { useTheme } from "@/hooks/useTheme";
 import { ZekeHeaderTitle, ZekeHeaderButtons } from "@/components/ZekeHeader";
-import { Colors, Spacing } from "@/constants/theme";
+import { createZekeSubHeader } from "@/components/ZekeSubHeader";
+import { Spacing } from "@/constants/theme";
 
 export type TasksStackParamList = {
   Tasks: undefined;
@@ -18,6 +20,7 @@ export type TasksStackParamList = {
 
 function TasksHeaderRight() {
   const navigation = useNavigation<any>();
+  const { theme } = useTheme();
   return (
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       <Pressable
@@ -25,14 +28,14 @@ function TasksHeaderRight() {
         style={{ marginRight: Spacing.md }}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        <Feather name="shopping-cart" size={22} color={Colors.dark.primary} />
+        <Feather name="shopping-cart" size={22} color={theme.primary} />
       </Pressable>
       <Pressable
         onPress={() => navigation.navigate("Lists")}
         style={{ marginRight: Spacing.md }}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        <Feather name="list" size={22} color={Colors.dark.primary} />
+        <Feather name="list" size={22} color={theme.primary} />
       </Pressable>
       <ZekeHeaderButtons />
     </View>
@@ -53,20 +56,22 @@ export default function TasksStackNavigator() {
           headerTitle: "",
           headerLeft: () => <ZekeHeaderTitle />,
           headerRight: () => <TasksHeaderRight />,
+          headerLeftContainerStyle: { paddingLeft: 12 },
+          headerRightContainerStyle: { paddingRight: 12 },
         }}
       />
       <Stack.Screen
         name="Grocery"
         component={GroceryScreen}
         options={{
-          headerTitle: "Grocery List",
+          headerTitle: createZekeSubHeader("Grocery List"),
         }}
       />
       <Stack.Screen
         name="Lists"
         component={ListsScreen}
         options={{
-          headerTitle: "Lists",
+          headerTitle: createZekeSubHeader("Lists"),
         }}
       />
     </Stack.Navigator>

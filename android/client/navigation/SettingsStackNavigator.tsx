@@ -6,6 +6,8 @@ import BluetoothConnectionScreen from "@/screens/BluetoothConnectionScreen";
 import DeviceFeaturesScreen from "@/screens/DeviceFeaturesScreen";
 import LimitlessSetupScreen from "@/screens/LimitlessSetupScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
+import { ZekeHeaderTitle, ZekeHeaderButtons } from "@/components/ZekeHeader";
+import { createZekeSubHeader } from "@/components/ZekeSubHeader";
 
 export type SettingsStackParamList = {
   Settings: undefined;
@@ -26,35 +28,39 @@ export default function SettingsStackNavigator() {
         name="Settings"
         component={SettingsScreen}
         options={{
-          headerTitle: "Settings",
+          headerTitle: "",
+          headerLeft: () => <ZekeHeaderTitle />,
+          headerRight: () => <ZekeHeaderButtons />,
+          headerLeftContainerStyle: { paddingLeft: 12 },
+          headerRightContainerStyle: { paddingRight: 12 },
         }}
       />
       <Stack.Screen
         name="NotificationSettings"
         component={NotificationSettingsScreen}
         options={{
-          headerTitle: "Notifications",
+          headerTitle: createZekeSubHeader("Notifications"),
         }}
       />
       <Stack.Screen
         name="BluetoothConnection"
         component={BluetoothConnectionScreen}
         options={{
-          headerTitle: "Pair Device",
+          headerTitle: createZekeSubHeader("Pair Device"),
         }}
       />
       <Stack.Screen
         name="DeviceFeatures"
         component={DeviceFeaturesScreen}
         options={{
-          headerTitle: "Device Features",
+          headerTitle: createZekeSubHeader("Device Features"),
         }}
       />
       <Stack.Screen
         name="LimitlessSetup"
         component={LimitlessSetupScreen}
         options={{
-          headerTitle: "Limitless Setup",
+          headerTitle: createZekeSubHeader("Limitless Setup"),
         }}
       />
     </Stack.Navigator>

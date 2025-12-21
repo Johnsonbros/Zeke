@@ -22,6 +22,8 @@ export default function CalendarStackNavigator() {
           headerTitle: "",
           headerLeft: () => <ZekeHeaderTitle />,
           headerRight: () => <ZekeHeaderButtons />,
+          headerLeftContainerStyle: { paddingLeft: 12 },
+          headerRightContainerStyle: { paddingRight: 12 },
         }}
       />
     </Stack.Navigator>

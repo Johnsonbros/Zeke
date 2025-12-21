@@ -6,6 +6,7 @@ import OpenAI from "openai";
 import multer from "multer";
 import { registerLocationRoutes } from "./location";
 import { registerZekeProxyRoutes } from "./zeke-proxy";
+import { requestPairingCode, verifyPairingCode, getPairingStatus } from "./sms-pairing";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -24,6 +25,72 @@ You have access to the user's memory transcripts and can help them navigate thei
 When referring to memories, be specific about dates, participants, and context when available. If you don't have enough information, ask clarifying questions.`;
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // SMS Pairing routes (public - no auth required)
+  app.post("/api/auth/request-sms-code", async (req, res) => {
+    try {
+      const { deviceName } = req.body;
+      if (!deviceName || typeof deviceName !== "string") {
+        return res.status(400).json({ error: "Device name is required" });
+      }
+
+      const result = await requestPairingCode(deviceName);
+      if (result.success) {
+        res.json({
+          success: true,
+          sessionId: result.sessionId,
+          expiresIn: result.expiresIn,
+          message: "Verification code sent to your phone",
+        });
+      } else {
+        res.status(400).json({ success: false, error: result.error });
+      }
+    } catch (error) {
+      console.error("Error requesting SMS code:", error);
+      res.status(500).json({ error: "Failed to send verification code" });
+    }
+  });
+
+  app.post("/api/auth/verify-sms-code", async (req, res) => {
+    try {
+      const { sessionId, code } = req.body;
+      if (!sessionId || typeof sessionId !== "string") {
+        return res.status(400).json({ error: "Session ID is required" });
+      }
+      if (!code || typeof code !== "string") {
+        return res.status(400).json({ error: "Verification code is required" });
+      }
+
+      const result = await verifyPairingCode(sessionId, code);
+      if (result.success) {
+        res.json({
+          success: true,
+          deviceToken: result.deviceToken,
+          deviceId: result.deviceId,
+          message: "Device paired successfully",
+        });
+      } else {
+        res.status(400).json({
+          success: false,
+          error: result.error,
+          attemptsRemaining: result.attemptsRemaining,
+        });
+      }
+    } catch (error) {
+      console.error("Error verifying SMS code:", error);
+      res.status(500).json({ error: "Failed to verify code" });
+    }
+  });
+
+  app.get("/api/auth/pairing-status", async (_req, res) => {
+    try {
+      const status = await getPairingStatus();
+      res.json(status);
+    } catch (error) {
+      console.error("Error getting pairing status:", error);
+      res.status(500).json({ error: "Failed to get pairing status" });
+    }
+  });
+
   // Device routes
   app.get("/api/devices", async (_req, res) => {
     try {
@@ -1193,6 +1260,18 @@ Return at most ${Math.min(limit, 10)} results. Only include memories with releva
   // =========================================
   // Google Calendar Routes
   // =========================================
+
+  app.get("/api/calendar/connection", async (_req, res) => {
+    try {
+      const { checkCalendarConnection, getConnectorAuthUrl } = await import("./google-calendar");
+      const status = await checkCalendarConnection();
+      const authUrl = getConnectorAuthUrl();
+      res.json({ ...status, authUrl });
+    } catch (error: any) {
+      console.error("[Google Calendar] Error checking connection:", error);
+      res.status(500).json({ connected: false, error: error.message });
+    }
+  });
 
   app.get("/api/calendar/today", async (_req, res) => {
     try {
