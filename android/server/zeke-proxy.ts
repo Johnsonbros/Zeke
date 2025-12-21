@@ -617,5 +617,40 @@ export function registerZekeProxyRoutes(app: Express): void {
     res.status(204).send();
   });
 
+  // Auth proxy routes - forward to ZEKE backend for device pairing
+  app.post("/api/zeke/auth/pair", async (req: Request, res: Response) => {
+    console.log("[ZEKE Proxy] Auth pair request received");
+    const headers = extractForwardHeaders(req.headers);
+    const result = await proxyToZeke("POST", "/api/auth/pair", req.body, headers);
+    if (!result.success) {
+      return res.status(result.status).json({ 
+        error: result.error || "Failed to pair device",
+        message: result.data?.message || result.error
+      });
+    }
+    res.json(result.data);
+  });
+
+  app.get("/api/zeke/auth/verify", async (req: Request, res: Response) => {
+    const headers = extractForwardHeaders(req.headers);
+    const result = await proxyToZeke("GET", "/api/auth/verify", undefined, headers);
+    if (!result.success) {
+      return res.status(result.status).json({ 
+        valid: false, 
+        error: result.error || "Token verification failed" 
+      });
+    }
+    res.json(result.data);
+  });
+
+  app.get("/api/zeke/auth/status", async (req: Request, res: Response) => {
+    const headers = extractForwardHeaders(req.headers);
+    const result = await proxyToZeke("GET", "/api/auth/status", undefined, headers);
+    if (!result.success) {
+      return res.status(result.status).json({ error: result.error || "Failed to get auth status" });
+    }
+    res.json(result.data);
+  });
+
   console.log("[ZEKE Proxy] Routes registered successfully");
 }

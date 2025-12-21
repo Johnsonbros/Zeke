@@ -43,13 +43,28 @@ export function isZekeSyncMode(): boolean {
  */
 export function getLocalApiUrl(): string {
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
+  
+  // Log the configuration for debugging
+  console.log(`[config] EXPO_PUBLIC_DOMAIN=${domain || 'NOT SET'}`);
+  
   if (domain) {
-    return `https://${domain}`;
+    const url = `https://${domain}`;
+    console.log(`[config] localApiUrl=${url}`);
+    return url;
   }
+  
   // Fallback for web: use current origin
   if (typeof window !== "undefined" && window.location) {
+    console.log(`[config] localApiUrl=${window.location.origin} (web fallback)`);
     return window.location.origin;
   }
+  
+  // CRITICAL: Never use zekeai.replit.app as fallback for local endpoints
+  // The auth endpoints only exist on the mobile app's Express server
+  console.error("[config] ERROR: EXPO_PUBLIC_DOMAIN not set! Auth will fail.");
+  console.error("[config] This app needs to be rebuilt with the correct domain.");
+  
+  // Return the main backend as last resort (auth will fail, but at least it's logged)
   return "https://zekeai.replit.app";
 }
 

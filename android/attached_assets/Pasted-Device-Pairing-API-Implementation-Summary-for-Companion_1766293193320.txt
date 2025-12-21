@@ -1,0 +1,59 @@
+Device Pairing API - Implementation Summary for Companion App
+Hey team! I've just implemented a new Device Pairing API for simpler mobile authentication. Here's what you need to know:
+
+What Was Created
+A token-based authentication system that gives your app an alternative to HMAC signatures. Instead of computing signatures on every request, devices can pair once with a shared secret and get a persistent token.
+
+How to Use It
+Step 1: Pair the Device (one-time setup)
+
+POST /api/auth/pair
+Content-Type: application/json
+{
+  "secret": "ZEKE_SHARED_SECRET",
+  "deviceName": "Nate's iPhone"
+}
+Response (200):
+{
+  "deviceToken": "64-character-hex-string",
+  "deviceId": "device_24chars",
+  "message": "Device paired successfully"
+}
+Store the deviceToken securely (Keychain on iOS, KeyStore on Android).
+
+Step 2: Use the Token for Requests
+
+GET /api/some/protected/endpoint
+X-ZEKE-Device-Token: <your-64-char-token>
+Response: Your data
+Step 3: Verify Token is Still Valid (optional)
+
+GET /api/auth/verify
+X-ZEKE-Device-Token: <your-token>
+Response (200):
+{
+  "valid": true,
+  "deviceId": "device_xxx"
+}
+Security Features
+Timing-safe comparison: We use crypto.timingSafeEqual to prevent timing attacks when validating the pairing secret
+Rate limiting: 5 failed pairing attempts from an IP locks out that IP for 15 minutes
+Secure tokens: 64-character hex strings generated with crypto.randomBytes(32)
+Auto-cleanup: Old pairing attempts are cleaned up automatically
+Important Notes for Implementation
+Token Storage: Never log or expose the device token. Store it in the device's secure storage.
+Fallback: If the token is rejected (401), regenerate it with a new pairing request using the shared secret.
+No Signature Needed: When using the device token, do NOT include the HMAC X-ZEKE-Signature header.
+Both Methods Work: The server still supports HMAC auth if you want to keep using that—just use whichever works best for your app.
+Feedback & Suggestions
+✅ What's good:
+
+Simpler than HMAC for repeated requests
+Token is reusable until explicitly invalidated
+Rate limiting protects against brute force pairing attempts
+💡 Suggestions for future:
+
+Consider adding token expiration (e.g., refresh tokens every 90 days for extra security)
+Add an endpoint to revoke tokens if a device is lost/stolen
+Log token issuance events for audit purposes
+The implementation is production-ready. Go ahead and integrate it into the companion app!

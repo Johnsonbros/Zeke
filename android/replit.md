@@ -139,3 +139,20 @@ Fixed connection issues where mobile devices couldn't directly reach the externa
 - `client/lib/zeke-api-adapter.ts` — Updated endpoint paths to use proxy routes
 - `client/lib/api-client.ts` — Cleaned up CORE_API_PREFIXES documentation
 - `server/zeke-proxy.ts` — Added new proxy route handlers
+
+### Auth Proxy Routing Fix (Dec 2025)
+Fixed device pairing failures in published app caused by `EXPO_PUBLIC_DOMAIN` being baked into static bundles at build time.
+
+**Root Cause**: Published app had incorrect/missing domain in static bundles, causing auth requests to fail on mobile devices.
+
+**Solution**: Auth endpoints now route through the local proxy to the ZEKE backend:
+- `/api/zeke/auth/pair` → `/api/auth/pair` (device pairing)
+- `/api/zeke/auth/verify` → `/api/auth/verify` (token verification)
+- `/api/zeke/auth/status` → `/api/auth/status` (auth status check)
+
+**Architecture Decision**: Auth is handled by the ZEKE backend (`zekeai.replit.app`) which has a `device_tokens` database table. The mobile app's local server proxies these requests to avoid CORS/network issues.
+
+**Files Changed**:
+- `client/lib/api-client.ts` — Removed `/api/auth/` from LOCAL_API_PREFIXES
+- `client/context/AuthContext.tsx` — Updated to use `/api/zeke/auth/*` proxy routes
+- `server/zeke-proxy.ts` — Added auth proxy route handlers

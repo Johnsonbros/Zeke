@@ -1,0 +1,30 @@
+Summary for Zeke Backend Team
+I've fixed a critical issue with device pairing in the published mobile app. Here's what was happening and what I changed:
+
+Problem
+The published ZEKE mobile app couldn't pair devices because the mobile app was trying to reach the ZEKE backend directly at https://zekeai.replit.app. However, in the static build bundles, the EXPO_PUBLIC_DOMAIN environment variable gets baked in at build time with the Replit development domain, causing the mobile clients to make auth requests to the wrong URL or experience CORS/network issues.
+
+Solution Implemented
+All authentication endpoints now route through the mobile app's local Express proxy server (running on port 5000), which then forwards the requests to your ZEKE backend. This is the same pattern already used for other API calls.
+
+New auth routing:
+
+Mobile app: POST /api/zeke/auth/pair → Local proxy → Your backend: POST /api/auth/pair
+Mobile app: GET /api/zeke/auth/verify → Local proxy → Your backend: GET /api/auth/verify
+Mobile app: GET /api/zeke/auth/status → Local proxy → Your backend: GET /api/auth/status
+Files Modified
+client/lib/api-client.ts - Removed /api/auth/ from the local API prefixes list so auth traffic routes through the proxy
+client/context/AuthContext.tsx - Updated to call /api/zeke/auth/pair and /api/zeke/auth/verify instead of /api/auth/*
+server/zeke-proxy.ts - Added three new route handlers that proxy auth requests to your backend
+Key Data Points for You
+The mobile proxy adds proper X-Zeke-Proxy-Id, X-ZEKE-Signature, and X-Zeke-Request-Id headers to all forwarded requests
+Your auth endpoints are still the source of truth - they validate tokens, rate-limit failed attempts, and store the device_tokens table
+Tested that invalid secrets return { error: "Authentication required", remainingAttempts: 4 } as expected
+Token verification returns 401 for invalid/expired tokens correctly
+Next Steps
+Users with the published app should:
+
+Clear their stored auth token (the app will show the pairing screen)
+Re-enter their access key (master secret from your backend)
+The pairing request will now succeed via the proxy
+No changes needed on your backend - the routing architecture remains unchanged, we're just avoiding the static bundle domain issue by going through the local proxy instead.
