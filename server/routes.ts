@@ -722,13 +722,14 @@ export async function registerRoutes(
   }
 
   httpServer.on("upgrade", (request: IncomingMessage, socket, head) => {
-    const url = new URL(request.url || "", `http://${request.headers.host}`);
+    const host = request.headers.host || "localhost:5000";
+    const url = new URL(request.url || "/", `http://${host}`);
     
     if (url.pathname === "/ws/audio") {
-      const deviceToken = request.headers["x-zeke-device-token"] as string;
+      const deviceToken = (request.headers["x-zeke-device-token"] as string) || url.searchParams.get("token");
       
       if (!deviceToken) {
-        console.log("[STT WS] Rejected: Missing X-ZEKE-Device-Token header");
+        console.log("[STT WS] Rejected: Missing X-ZEKE-Device-Token header or token query param");
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         socket.destroy();
         return;
