@@ -18,6 +18,8 @@ import {
   deletePairingCode, 
   cleanupExpiredPairingCodes,
   countPendingPairingCodes,
+  countPairingCodesForDevice,
+  deleteOldestPairingCodeForDevice,
   createDeviceToken
 } from './db';
 import { 
@@ -32,6 +34,7 @@ import {
 
 const CODE_EXPIRY_SECONDS = 300; // 5 minutes
 const MAX_ATTEMPTS = 3;
+const MAX_PENDING_CODES_PER_DEVICE = 3; // Limit codes to prevent flooding
 
 function getMasterPhone(): string | null {
   return process.env.ZEKE_MASTER_PHONE || null;
@@ -43,6 +46,20 @@ function generate4DigitCode(): string {
 
 function generateSessionId(): string {
   return crypto.randomBytes(24).toString('hex');
+}
+
+function timingSafeCodeCompare(a: string, b: string): boolean {
+  try {
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    if (bufA.length !== bufB.length) {
+      crypto.timingSafeEqual(bufA, bufA);
+      return false;
+    }
+    return crypto.timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
 }
 
 async function sendSmsCode(phoneNumber: string, code: string, deviceName: string): Promise<void> {
@@ -101,6 +118,12 @@ export function registerSmsPairingEndpoints(app: Express): void {
       }
       
       const { deviceName } = parseResult.data;
+      
+      // Limit pending codes per device to prevent flooding
+      const existingCount = countPairingCodesForDevice(deviceName);
+      if (existingCount >= MAX_PENDING_CODES_PER_DEVICE) {
+        deleteOldestPairingCodeForDevice(deviceName);
+      }
       
       // Generate code and session
       const code = generate4DigitCode();
@@ -187,8 +210,8 @@ export function registerSmsPairingEndpoints(app: Express): void {
         return;
       }
       
-      // Verify code
-      if (pairingCode.code !== code) {
+      // Verify code using timing-safe comparison
+      if (!timingSafeCodeCompare(pairingCode.code, code)) {
         const newAttempts = incrementPairingCodeAttempts(sessionId);
         const remaining = MAX_ATTEMPTS - newAttempts;
         

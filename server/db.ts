@@ -13618,4 +13618,22 @@ export function countPendingPairingCodes(): number {
   });
 }
 
+export function countPairingCodesForDevice(deviceName: string): number {
+  return wrapDbOperation("countPairingCodesForDevice", () => {
+    const now = getCurrentTimestamp();
+    const result = db.prepare(`SELECT COUNT(*) as count FROM pairing_codes WHERE device_name = ? AND expires_at > ?`).get(deviceName, now) as { count: number };
+    return result.count;
+  });
+}
+
+export function deleteOldestPairingCodeForDevice(deviceName: string): void {
+  wrapDbOperation("deleteOldestPairingCodeForDevice", () => {
+    db.prepare(`
+      DELETE FROM pairing_codes WHERE id = (
+        SELECT id FROM pairing_codes WHERE device_name = ? ORDER BY created_at ASC LIMIT 1
+      )
+    `).run(deviceName);
+  });
+}
+
 export { db };

@@ -88,9 +88,31 @@ import { Map, MapProvider, LocationMap } from '@/components/map';
 
 ## Mobile Device Pairing API
 
-An alternative authentication method for the companion mobile app that provides simpler token-based auth.
+Authentication methods for the companion mobile app.
 
-### Endpoints
+### SMS Pairing (Recommended)
+
+Secure pairing via 4-digit SMS code sent to the master phone number.
+
+**Endpoints:**
+- **POST /api/auth/request-sms-code**: Request a pairing code via SMS
+  - Request: `{ "deviceName": "iPhone 15 Pro" }`
+  - Success: `{ "success": true, "sessionId": "abc123...", "expiresIn": 300, "message": "Verification code sent to your phone" }`
+  - Error: `{ "success": false, "error": "SMS pairing not configured. Please set ZEKE_MASTER_PHONE." }`
+
+- **POST /api/auth/verify-sms-code**: Verify code and get device token
+  - Request: `{ "sessionId": "abc123...", "code": "1234" }`
+  - Success: `{ "success": true, "deviceToken": "64-char-hex", "deviceId": "device_xxx", "message": "Device paired successfully" }`
+  - Error: `{ "success": false, "error": "Invalid code. 2 attempts remaining.", "attemptsRemaining": 2 }`
+
+- **GET /api/auth/pairing-status**: Check pairing configuration status
+  - Response: `{ "configured": true, "pendingCodes": 0 }`
+
+**Environment Variables:**
+- `ZEKE_MASTER_PHONE`: Phone number to receive pairing codes (E.164 format, e.g., +1234567890)
+
+### Secret-Based Pairing (Legacy)
+
 - **POST /api/auth/pair**: Register a new device with the shared secret
   - Request: `{ "secret": "ZEKE_SHARED_SECRET", "deviceName": "Nate's iPhone" }`
   - Success Response: `{ "deviceToken": "64-char-hex", "deviceId": "device_xxx", "message": "Device paired successfully" }`
@@ -102,15 +124,17 @@ An alternative authentication method for the companion mobile app that provides 
   - Error: `{ "valid": false, "error": "Invalid or expired device token" }`
 
 ### Security Features
+- SMS codes expire after 5 minutes
+- Maximum 3 attempts per code before invalidation
 - Timing-safe secret comparison using `crypto.timingSafeEqual`
 - Secure 64-character hex tokens via `crypto.randomBytes(32)`
 - IP-based rate limiting: 5 failed attempts = 15-minute lockout
-- Automatic cleanup of old pairing attempts (60 minutes)
+- Automatic cleanup of expired pairing codes and attempts
 
 ### Authentication Flow
 Mobile apps can authenticate using either:
 1. **HMAC Signature**: `X-ZEKE-Signature` header (original method)
-2. **Device Token**: `X-ZEKE-Device-Token` header (new simpler method)
+2. **Device Token**: `X-ZEKE-Device-Token` header (simpler method after pairing)
 
 ## GitHub Repository Sync
 
