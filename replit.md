@@ -98,7 +98,7 @@ Secure pairing via 4-digit SMS code sent to the master phone number.
 - **POST /api/auth/request-sms-code**: Request a pairing code via SMS
   - Request: `{ "deviceName": "iPhone 15 Pro" }`
   - Success: `{ "success": true, "sessionId": "abc123...", "expiresIn": 300, "message": "Verification code sent to your phone" }`
-  - Error: `{ "success": false, "error": "SMS pairing not configured. Please set ZEKE_MASTER_PHONE." }`
+  - Error: `{ "success": false, "error": "SMS pairing not configured. MASTER_ADMIN_PHONE is not set." }`
 
 - **POST /api/auth/verify-sms-code**: Verify code and get device token
   - Request: `{ "sessionId": "abc123...", "code": "1234" }`
@@ -109,7 +109,8 @@ Secure pairing via 4-digit SMS code sent to the master phone number.
   - Response: `{ "configured": true, "pendingCodes": 0 }`
 
 **Environment Variables:**
-- `ZEKE_MASTER_PHONE`: Phone number to receive pairing codes (E.164 format, e.g., +1234567890)
+- Uses `MASTER_ADMIN_PHONE` constant from schema (hardcoded master phone)
+- `ZEKE_MASTER_PHONE`: Optional override for pairing codes (if different from MASTER_ADMIN_PHONE)
 
 ### Secret-Based Pairing (Legacy)
 

@@ -25,6 +25,7 @@ import {
 import { 
   smsCodeRequestSchema, 
   smsCodeVerifySchema,
+  MASTER_ADMIN_PHONE,
   type SmsCodeRequestSuccessResponse,
   type SmsCodeRequestErrorResponse,
   type SmsCodeVerifySuccessResponse,
@@ -37,7 +38,12 @@ const MAX_ATTEMPTS = 3;
 const MAX_PENDING_CODES_PER_DEVICE = 3; // Limit codes to prevent flooding
 
 function getMasterPhone(): string | null {
-  return process.env.ZEKE_MASTER_PHONE || null;
+  // Use ZEKE_MASTER_PHONE override if set, otherwise use MASTER_ADMIN_PHONE constant
+  const override = process.env.ZEKE_MASTER_PHONE;
+  if (override) return override;
+  
+  // Use the hardcoded master admin phone (consistent with rest of codebase)
+  return MASTER_ADMIN_PHONE ? `+1${MASTER_ADMIN_PHONE}` : null;
 }
 
 function generate4DigitCode(): string {
@@ -91,7 +97,7 @@ export function registerSmsPairingEndpoints(app: Express): void {
       if (!masterPhone) {
         const response: SmsCodeRequestErrorResponse = {
           success: false,
-          error: "SMS pairing not configured. Please set ZEKE_MASTER_PHONE."
+          error: "SMS pairing not configured. MASTER_ADMIN_PHONE is not set."
         };
         res.status(400).json(response);
         return;
