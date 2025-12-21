@@ -19,10 +19,12 @@ export function validateBody<T extends ZodSchema>(schema: T) {
             message: err.message,
           })),
         });
+        return; // Don't call next() after sending response
       } else {
         res.status(400).json({
           error: "Invalid request body",
         });
+        return; // Don't call next() after sending response
       }
     }
   };
@@ -46,10 +48,12 @@ export function validateQuery<T extends ZodSchema>(schema: T) {
             message: err.message,
           })),
         });
+        return; // Don't call next() after sending response
       } else {
         res.status(400).json({
           error: "Invalid query parameters",
         });
+        return; // Don't call next() after sending response
       }
     }
   };

@@ -1158,7 +1158,18 @@ export async function registerRoutes(
   });
 
   // Enhanced mobile status endpoint - provides comprehensive mobile app diagnostics
-  app.get("/api/mobile/status", (_req, res) => {
+  app.get("/api/mobile/status", async (_req, res) => {
+    // Check Twilio status dynamically
+    let smsAvailable = false;
+    try {
+      if (await isTwilioConfigured()) {
+        const fromNumber = await getTwilioFromPhoneNumber();
+        smsAvailable = !!fromNumber;
+      }
+    } catch {
+      smsAvailable = false;
+    }
+
     res.json({
       backend: {
         url: process.env.EXPO_PUBLIC_ZEKE_BACKEND_URL || "http://localhost:5000",
@@ -1176,7 +1187,7 @@ export async function registerRoutes(
         calendar: !!process.env.GOOGLE_CLIENT_ID,
         contacts: true,
         voice: !!process.env.OPENAI_API_KEY,
-        sms: !!twilioFromNumber,
+        sms: smsAvailable,
       },
       connectivity: {
         timestamp: new Date().toISOString(),
