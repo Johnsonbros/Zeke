@@ -2,6 +2,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { registerOmiRoutes } from "./omi-routes";
 import { createMobileAuthMiddleware, registerSecurityLogsEndpoint } from "./mobileAuth";
+import { z } from "zod";
+import { validateBody } from "./middleware/apiValidation";
 import { extractCardsFromResponse } from "./cardExtractor";
 import { syncGitHubRepo, pushToGitHub, createGitHubWebhook } from "./github";
 import { 
@@ -1154,6 +1156,93 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to get cache stats" });
     }
   });
+
+  // Enhanced mobile status endpoint - provides comprehensive mobile app diagnostics
+  app.get("/api/mobile/status", async (_req, res) => {
+    // Check Twilio status dynamically
+    let smsAvailable = false;
+    try {
+      if (await isTwilioConfigured()) {
+        const fromNumber = await getTwilioFromPhoneNumber();
+        smsAvailable = !!fromNumber;
+      }
+    } catch {
+      smsAvailable = false;
+    }
+
+    res.json({
+      backend: {
+        url: process.env.EXPO_PUBLIC_ZEKE_BACKEND_URL || "http://localhost:5000",
+        reachable: true,
+        version: "1.0.0",
+      },
+      authentication: {
+        configured: !!process.env.ZEKE_SHARED_SECRET,
+        hmacEnabled: !!process.env.ZEKE_SHARED_SECRET,
+      },
+      features: {
+        conversations: true,
+        tasks: true,
+        grocery: true,
+        calendar: !!process.env.GOOGLE_CLIENT_ID,
+        contacts: true,
+        voice: !!process.env.OPENAI_API_KEY,
+        sms: smsAvailable,
+      },
+      connectivity: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  });
+
+  // API routes documentation endpoint
+  app.get("/api/routes", (_req, res) => {
+    res.json({
+      title: "ZEKE API Routes",
+      description: "Available API endpoints for the ZEKE backend",
+      baseUrl: process.env.EXPO_PUBLIC_ZEKE_BACKEND_URL || "http://localhost:5000",
+      version: "1.0.0",
+      routes: {
+        health: {
+          "GET /api/health": "Basic health check",
+          "GET /api/health/detailed": "Detailed health check with service status",
+          "GET /api/mobile/status": "Mobile app specific status",
+          "GET /api/cache/stats": "Cache statistics",
+          "GET /api/routes": "This documentation",
+        },
+        conversations: {
+          "POST /api/conversations": "Create a new conversation",
+          "GET /api/conversations": "Get all conversations",
+          "GET /api/conversations/:id": "Get a specific conversation",
+          "DELETE /api/conversations/:id": "Delete a conversation",
+          "GET /api/conversations/:id/messages": "Get messages in a conversation",
+          "POST /api/conversations/:id/messages": "Send a message",
+        },
+        tasks: {
+          "POST /api/tasks": "Create a new task",
+          "GET /api/tasks": "Get all tasks",
+          "GET /api/tasks/:id": "Get a specific task",
+          "PATCH /api/tasks/:id": "Update a task",
+          "DELETE /api/tasks/:id": "Delete a task",
+          "POST /api/tasks/:id/toggle": "Toggle task completion",
+        },
+        grocery: {
+          "POST /api/grocery": "Add grocery item",
+          "GET /api/grocery": "Get all grocery items",
+          "PATCH /api/grocery/:id": "Update grocery item",
+          "DELETE /api/grocery/:id": "Delete grocery item",
+          "POST /api/grocery/:id/toggle": "Toggle purchased status",
+        },
+        contacts: {
+          "POST /api/contacts": "Create a contact",
+          "GET /api/contacts": "Get all contacts",
+          "GET /api/contacts/:id": "Get a specific contact",
+          "PATCH /api/contacts/:id": "Update a contact",
+          "DELETE /api/contacts/:id": "Delete a contact",
+        },
+      },
+    });
+  });
   
   // Voice transcription endpoint - converts audio to text using OpenAI Whisper
   app.post("/api/transcribe", async (req, res) => {
@@ -1389,9 +1478,15 @@ export async function registerRoutes(
   });
   
   // Create a new conversation (for mobile app and general use)
+  // Conversation creation validation schema
+  const createConversationSchema = z.object({
+    title: z.string().optional(),
+    forceNew: z.boolean().optional(),
+  });
+
   // By default, returns the unified conversation for admin/master admin
   // This ensures all of Nate's conversations (web, app, SMS, voice) share the same history
-  app.post("/api/conversations", async (req, res) => {
+  app.post("/api/conversations", validateBody(createConversationSchema), async (req, res) => {
     try {
       const { title, forceNew } = req.body || {};
       
@@ -1499,14 +1594,14 @@ export async function registerRoutes(
   });
   
   // Send message to a conversation (mobile app support)
-  app.post("/api/conversations/:id/messages", async (req, res) => {
+  const sendMessageSchema = z.object({
+    content: z.string().min(1, "Message content is required"),
+  });
+
+  app.post("/api/conversations/:id/messages", validateBody(sendMessageSchema), async (req, res) => {
     try {
       const { id } = req.params;
-      const { content } = req.body || {};
-      
-      if (!content) {
-        return res.status(400).json({ message: "Message content is required" });
-      }
+      const { content } = req.body;
       
       const conversation = getConversation(id);
       if (!conversation) {
