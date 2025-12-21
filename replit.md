@@ -29,7 +29,7 @@ Key architectural and feature implementations include:
 - **Batch-First Architecture**: All non-realtime AI work uses OpenAI Batch API for 50% cost savings. Three-lane processing: realtime (<2s for chat), nearline (minutes for context), batch (hours for narratives/insights). Orchestrator manages nightly (3am) and midday (12pm) batch windows.
 - **Self-Model V2**: Correlation discovery with verified evidence linking, measurable metrics (Coverage, Stability, Calibration), and AI-generated narrative explanations via batch processing.
 - **User Interface**: Structured Chat Cards for rich interactive responses, Mobile UI Enhancements (swipe gestures, Quick Menu), and Delta Sync System for efficient mobile app synchronization.
-- **Security & Authentication**: HMAC Authentication for the mobile app with replay protection and timing-safe comparisons.
+- **Security & Authentication**: HMAC Authentication for the mobile app with replay protection and timing-safe comparisons. Device Pairing API for simpler mobile auth flow.
 - **Unified Conversation System**: All direct communications with Nate (SMS, web, mobile, voice) share a single coherent conversation thread.
 - **Companion App Integration**: Location Ingestion for real-time tracking, Push Notification Infrastructure via Expo, and Calendar Proxy Routes for Android app support.
 - **Health Monitoring**: Sleep Tracking, Pendant Health Monitor for Omi device status, and Mobile Auth Health Endpoint for debugging.
@@ -85,6 +85,32 @@ import { Map, MapProvider, LocationMap } from '@/components/map';
   <Map ... />
 </MapProvider>
 ```
+
+## Mobile Device Pairing API
+
+An alternative authentication method for the companion mobile app that provides simpler token-based auth.
+
+### Endpoints
+- **POST /api/auth/pair**: Register a new device with the shared secret
+  - Request: `{ "secret": "ZEKE_SHARED_SECRET", "deviceName": "Nate's iPhone" }`
+  - Success Response: `{ "deviceToken": "64-char-hex", "deviceId": "device_xxx", "message": "Device paired successfully" }`
+  - Error: `{ "error": "Invalid pairing secret" }`
+
+- **GET /api/auth/verify**: Validate an existing device token
+  - Header: `X-ZEKE-Device-Token: <token>`
+  - Success: `{ "valid": true, "deviceId": "device_xxx" }`
+  - Error: `{ "valid": false, "error": "Invalid or expired device token" }`
+
+### Security Features
+- Timing-safe secret comparison using `crypto.timingSafeEqual`
+- Secure 64-character hex tokens via `crypto.randomBytes(32)`
+- IP-based rate limiting: 5 failed attempts = 15-minute lockout
+- Automatic cleanup of old pairing attempts (60 minutes)
+
+### Authentication Flow
+Mobile apps can authenticate using either:
+1. **HMAC Signature**: `X-ZEKE-Signature` header (original method)
+2. **Device Token**: `X-ZEKE-Device-Token` header (new simpler method)
 
 ## GitHub Repository Sync
 
