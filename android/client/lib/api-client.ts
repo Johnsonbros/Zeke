@@ -71,7 +71,7 @@ const LOCAL_API_PREFIXES = [
   "/api/twilio/",
   "/api/sms-log",
   "/api/conversations",
-  "/api/zeke/",
+  // REMOVED: "/api/zeke/" - Now handled specially in getBaseUrl()
 ];
 
 const CORE_API_PREFIXES: string[] = [
@@ -147,6 +147,40 @@ async function parseResponseBody<T>(response: Response): Promise<T> {
 }
 
 /**
+ * Determine the correct base URL for an endpoint
+ * Special handling for /api/zeke/auth/* endpoints:
+ * - These are proxied auth routes that need path rewriting
+ * - Strip /zeke prefix and send to ZEKE backend
+ * - Example: /api/zeke/auth/pair -> /api/auth/pair on zekeai.replit.app
+ */
+function getBaseUrl(endpoint: string): { baseUrl: string; rewrittenPath: string } {
+  // Special case: Auth endpoints need path rewriting
+  if (endpoint.startsWith("/api/zeke/auth/")) {
+    // Rewrite /api/zeke/auth/* -> /api/auth/* and send to ZEKE backend
+    const rewrittenPath = endpoint.replace("/api/zeke/auth/", "/api/auth/");
+    return {
+      baseUrl: "https://zekeai.replit.app",
+      rewrittenPath
+    };
+  }
+
+  // Other /api/zeke/* routes go to local proxy (which forwards to ZEKE backend)
+  if (endpoint.startsWith("/api/zeke/")) {
+    return {
+      baseUrl: getLocalApiUrl(),
+      rewrittenPath: endpoint
+    };
+  }
+
+  // Local API routes
+  const isLocal = isLocalEndpoint(endpoint);
+  return {
+    baseUrl: isLocal ? getLocalApiUrl() : getApiUrl(),
+    rewrittenPath: endpoint
+  };
+}
+
+/**
  * Centralized API client with singleton pattern
  * Handles:
  * - Timeout management (10s default, 25s for auth via AbortController)
@@ -191,12 +225,11 @@ class ZekeApiClient {
     } = options;
 
     // Determine base URL based on endpoint type
-    const isLocal = isLocalEndpoint(endpoint);
-    const baseUrl = isLocal ? getLocalApiUrl() : getApiUrl();
+    const { baseUrl, rewrittenPath } = getBaseUrl(endpoint);
 
     // Always log URL for auth endpoints (critical for debugging)
-    if (endpoint.startsWith("/api/auth/")) {
-      console.log(`[api] ${method} ${endpoint} → ${baseUrl} (isLocal: ${isLocal})`);
+    if (endpoint.startsWith("/api/auth/") || endpoint.startsWith("/api/zeke/auth/")) {
+      console.log(`[api] ${method} ${endpoint} → ${baseUrl}${rewrittenPath !== endpoint ? ` (rewritten: ${rewrittenPath})` : ""}`);
     }
 
     // DEV-only: Log routing decision
@@ -205,11 +238,11 @@ class ZekeApiClient {
         ? __DEV__
         : process.env.NODE_ENV === "development"
     ) {
-      console.log(`[api] ${method} ${endpoint} → ${baseUrl}`);
+      console.log(`[api] ${method} ${endpoint} → ${baseUrl}${rewrittenPath !== endpoint ? ` (rewritten: ${rewrittenPath})` : ""}`);
     }
 
     // Build URL with query parameters
-    const url = new URL(endpoint, baseUrl);
+    const url = new URL(rewrittenPath, baseUrl);
     if (query) {
       Object.entries(query).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
