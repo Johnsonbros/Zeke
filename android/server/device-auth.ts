@@ -1,3 +1,30 @@
+/**
+ * ============================================================================
+ * CRITICAL FILE - DEVICE AUTHENTICATION
+ * ============================================================================
+ * 
+ * This file handles device token management for ZEKE AI.
+ * 
+ * DO NOT MODIFY without explicit approval from the project owner.
+ * 
+ * Critical functions:
+ * - validateDeviceToken() - Verifies device tokens
+ * - generateDeviceToken() - Creates new device tokens
+ * - Token caching and persistence
+ * 
+ * Changes to this file can break:
+ * - Device authentication
+ * - Token validation
+ * - Security of the pairing flow
+ * 
+ * Related critical files:
+ * - client/screens/PairingScreen.tsx
+ * - client/context/AuthContext.tsx
+ * - server/routes.ts
+ * - server/sms-pairing.ts
+ * ============================================================================
+ */
+
 import crypto from 'crypto';
 import { db } from './db';
 import { deviceTokens } from '@shared/schema';

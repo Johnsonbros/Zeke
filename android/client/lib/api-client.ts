@@ -67,6 +67,7 @@ export type RequestOptions = {
  */
 
 const LOCAL_API_PREFIXES = [
+  "/api/auth/",
   "/api/calendar/",
   "/api/twilio/",
   "/api/sms-log",

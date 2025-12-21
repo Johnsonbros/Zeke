@@ -1,6 +1,13 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { WebSocketServer, WebSocket } from "ws";
+import type { IncomingMessage } from "http";
+import { v4 as uuidv4 } from "uuid";
 import { registerOmiRoutes } from "./omi-routes";
+import { createOpusDecoder, createDeepgramBridge, isDeepgramConfigured } from "./stt";
+import { createSttSession, endSttSession, createSttSegment, getSttSession } from "./db";
+import { getDeviceTokenByToken } from "./db";
+import type { TranscriptSegmentEvent } from "@shared/schema";
 import { createMobileAuthMiddleware, registerSecurityLogsEndpoint, registerPairingEndpoints } from "./mobileAuth";
 import { registerSmsPairingEndpoints } from "./sms-pairing";
 import { extractCardsFromResponse } from "./cardExtractor";
@@ -668,6 +675,262 @@ export async function registerRoutes(
   // Register device pairing endpoints for mobile companion app authentication
   registerPairingEndpoints(app);
   registerSmsPairingEndpoints(app);
+
+  // ============================================
+  // STT WebSocket Endpoint: /ws/audio
+  // ============================================
+  // Real-time audio streaming with Deepgram Live transcription
+  // Frame format: raw_opus_packets (individual Opus packets, not OGG)
+  // Required env: DEEPGRAM_API_KEY
+  
+  const audioWss = new WebSocketServer({ noServer: true });
+  const audioSessions = new Map<WebSocket, {
+    sessionId: string;
+    deviceId: string;
+    decoder: ReturnType<typeof createOpusDecoder>;
+    bridge: ReturnType<typeof createDeepgramBridge> | null;
+  }>();
+
+  const STT_RATE_LIMIT_WINDOW_MS = 60_000;
+  const STT_MAX_CONNECTIONS_PER_WINDOW = 10;
+  const STT_MAX_CONCURRENT_SESSIONS_PER_DEVICE = 2;
+  const sttConnectionAttempts = new Map<string, { count: number; windowStart: number }>();
+
+  function getSttSessionCountForDevice(deviceId: string): number {
+    let count = 0;
+    audioSessions.forEach((session) => {
+      if (session.deviceId === deviceId) count++;
+    });
+    return count;
+  }
+
+  function checkSttRateLimit(deviceId: string): { allowed: boolean; reason?: string } {
+    const now = Date.now();
+    const attempts = sttConnectionAttempts.get(deviceId);
+
+    if (!attempts || now - attempts.windowStart > STT_RATE_LIMIT_WINDOW_MS) {
+      sttConnectionAttempts.set(deviceId, { count: 1, windowStart: now });
+      return { allowed: true };
+    }
+
+    if (attempts.count >= STT_MAX_CONNECTIONS_PER_WINDOW) {
+      return { allowed: false, reason: `Rate limit exceeded: max ${STT_MAX_CONNECTIONS_PER_WINDOW} connections per minute` };
+    }
+
+    attempts.count++;
+    return { allowed: true };
+  }
+
+  httpServer.on("upgrade", (request: IncomingMessage, socket, head) => {
+    const url = new URL(request.url || "", `http://${request.headers.host}`);
+    
+    if (url.pathname === "/ws/audio") {
+      const deviceToken = request.headers["x-zeke-device-token"] as string;
+      
+      if (!deviceToken) {
+        console.log("[STT WS] Rejected: Missing X-ZEKE-Device-Token header");
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      const device = getDeviceTokenByToken(deviceToken);
+      if (!device) {
+        console.log("[STT WS] Rejected: Invalid device token");
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      if (device.revokedAt) {
+        console.log(`[STT WS] Rejected: Revoked device token for ${device.deviceId}`);
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      const rateCheck = checkSttRateLimit(device.deviceId);
+      if (!rateCheck.allowed) {
+        console.log(`[STT WS] Rejected: ${rateCheck.reason} for ${device.deviceId}`);
+        socket.write("HTTP/1.1 429 Too Many Requests\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      const currentSessions = getSttSessionCountForDevice(device.deviceId);
+      if (currentSessions >= STT_MAX_CONCURRENT_SESSIONS_PER_DEVICE) {
+        console.log(`[STT WS] Rejected: Max concurrent sessions (${STT_MAX_CONCURRENT_SESSIONS_PER_DEVICE}) for ${device.deviceId}`);
+        socket.write("HTTP/1.1 429 Too Many Requests\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      audioWss.handleUpgrade(request, socket, head, (ws) => {
+        audioWss.emit("connection", ws, request, device.deviceId);
+      });
+    }
+  });
+
+  audioWss.on("connection", (ws: WebSocket, _request: IncomingMessage, deviceId: string) => {
+    console.log(`[STT WS] New connection from device: ${deviceId}`);
+
+    ws.on("message", async (data: Buffer | string, isBinary: boolean) => {
+      const session = audioSessions.get(ws);
+
+      if (isBinary && session) {
+        const pcmData = session.decoder.decodePacket(data as Buffer);
+        if (pcmData && session.bridge?.isReady()) {
+          session.bridge.sendAudio(pcmData);
+        }
+        return;
+      }
+
+      try {
+        const message = JSON.parse(data.toString());
+        
+        if (message.type === "start_session" || message.session_id) {
+          const sessionId = message.session_id || uuidv4();
+          const codec = message.codec || "opus";
+          const sampleRate = message.sample_rate_hint || 16000;
+          const frameFormat = message.frame_format || "raw_opus_packets";
+
+          if (!isDeepgramConfigured()) {
+            ws.send(JSON.stringify({ 
+              type: "error", 
+              message: "DEEPGRAM_API_KEY not configured" 
+            }));
+            return;
+          }
+
+          const dbSession = createSttSession({
+            id: sessionId,
+            deviceId: message.device_id || deviceId,
+            codec,
+            sampleRate,
+            provider: "deepgram",
+            frameFormat,
+            startedAt: new Date().toISOString(),
+          });
+
+          const decoder = createOpusDecoder({ sampleRate, channels: 1 });
+          
+          const bridge = createDeepgramBridge(sessionId, {
+            onTranscript: (segment: TranscriptSegmentEvent) => {
+              createSttSegment({
+                sessionId: segment.sessionId,
+                speaker: segment.speaker,
+                startMs: segment.startMs,
+                endMs: segment.endMs,
+                text: segment.text,
+                confidence: segment.confidence,
+                isFinal: segment.isFinal,
+              });
+
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(segment));
+              }
+            },
+            onError: (error: Error) => {
+              console.error(`[STT WS] Deepgram error: ${error.message}`);
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "error", message: error.message }));
+              }
+            },
+            onClose: () => {
+              console.log(`[STT WS] Deepgram connection closed for session ${sessionId}`);
+              decoder.setDownstreamReady(false);
+            },
+            onOpen: () => {
+              console.log(`[STT WS] Deepgram connection opened for session ${sessionId}`);
+              decoder.setDownstreamReady(true);
+            },
+          }, { sampleRate });
+
+          audioSessions.set(ws, { sessionId, deviceId, decoder, bridge });
+
+          const connected = await bridge.connect();
+          
+          ws.send(JSON.stringify({
+            type: "session_started",
+            session_id: sessionId,
+            deepgram_connected: connected,
+            frame_format: frameFormat,
+          }));
+
+          console.log(`[STT WS] Session ${sessionId} started, Deepgram connected: ${connected}`);
+        }
+
+        if (message.type === "end_session") {
+          const session = audioSessions.get(ws);
+          if (session) {
+            const flushed = session.decoder.flushBuffer();
+            if (flushed && session.bridge?.isReady()) {
+              session.bridge.sendAudio(flushed);
+            }
+
+            await session.bridge?.close();
+            session.decoder.destroy();
+            
+            endSttSession(session.sessionId);
+            audioSessions.delete(ws);
+
+            ws.send(JSON.stringify({
+              type: "session_ended",
+              session_id: session.sessionId,
+              stats: session.decoder.getStats(),
+            }));
+
+            console.log(`[STT WS] Session ${session.sessionId} ended`);
+          }
+        }
+
+        if (message.type === "resume_session" && message.session_id) {
+          const existingSession = getSttSession(message.session_id);
+          if (existingSession && !existingSession.endedAt) {
+            ws.send(JSON.stringify({
+              type: "session_resumed",
+              session_id: message.session_id,
+            }));
+          } else {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Session not found or already ended",
+            }));
+          }
+        }
+
+      } catch (error: any) {
+        console.error(`[STT WS] Message parse error: ${error.message}`);
+      }
+    });
+
+    ws.on("close", async () => {
+      const session = audioSessions.get(ws);
+      if (session) {
+        await session.bridge?.close();
+        session.decoder.destroy();
+        endSttSession(session.sessionId);
+        audioSessions.delete(ws);
+        console.log(`[STT WS] Connection closed, session ${session.sessionId} ended`);
+      }
+    });
+
+    ws.on("error", (error: Error) => {
+      console.error(`[STT WS] WebSocket error: ${error.message}`);
+    });
+  });
+
+  app.get("/api/stt/status", (_req, res) => {
+    res.json({
+      configured: isDeepgramConfigured(),
+      activeSessions: audioSessions.size,
+      wsEndpoint: "/ws/audio",
+      frameFormat: "raw_opus_packets",
+      requiredEnv: "DEEPGRAM_API_KEY",
+    });
+  });
+
+  console.log("[STT] WebSocket endpoint /ws/audio registered");
   
   // Set up SMS callback for tools (reminders and send_sms tool)
   setSendSmsCallback(async (phone: string, message: string, source?: string) => {

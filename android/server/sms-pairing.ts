@@ -1,3 +1,30 @@
+/**
+ * ============================================================================
+ * CRITICAL FILE - SMS PAIRING SERVICE
+ * ============================================================================
+ * 
+ * This file handles SMS code generation and verification for ZEKE AI.
+ * 
+ * DO NOT MODIFY without explicit approval from the project owner.
+ * 
+ * Critical functions:
+ * - requestPairingCode() - Generates and sends SMS code
+ * - verifyPairingCode() - Validates code and issues device token
+ * - getPairingStatus() - Checks SMS pairing configuration
+ * 
+ * Changes to this file can break:
+ * - SMS code delivery
+ * - Code verification
+ * - Device registration
+ * 
+ * Related critical files:
+ * - client/screens/PairingScreen.tsx
+ * - client/context/AuthContext.tsx
+ * - server/routes.ts
+ * - server/device-auth.ts
+ * ============================================================================
+ */
+
 import crypto from "crypto";
 import { sendSms } from "./twilio";
 import { registerDevice } from "./device-auth";

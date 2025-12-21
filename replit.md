@@ -39,6 +39,7 @@ Key architectural and feature implementations include:
 - **OpenAI API**: AI responses, agent logic, and text embeddings.
 - **Twilio**: SMS messaging and voice calling.
 - **ElevenLabs**: Custom voice synthesis.
+- **Deepgram API**: Real-time speech-to-text transcription with speaker diarization (requires `DEEPGRAM_API_KEY`).
 - **better-sqlite3**: Node.js SQLite client.
 - **Perplexity API**: Enhanced AI-powered web search.
 - **Google Calendar API**: Calendar integration.
@@ -151,3 +152,54 @@ This project has a two-way sync with GitHub:
 - **Sync Destination**: `android/` folder in this project
 - Commits made to the ZEKEapp repo automatically sync to the `android/` folder
 - The Android/React Native mobile app shares the same PostgreSQL database as the main web app
+
+## Real-Time STT Pipeline
+
+Real-time speech-to-text transcription pipeline for processing audio from the mobile companion app.
+
+### Architecture
+- **WebSocket Endpoint**: `/ws/audio`
+- **Audio Input**: Opus-encoded audio from Limitless/Omi BLE devices
+- **Frame Format**: `raw_opus_packets` (individual Opus packets, not OGG container)
+- **Transcription**: Deepgram Live API with speaker diarization
+- **Storage**: SQLite database (`stt_sessions`, `stt_segments` tables)
+
+### Environment Variables
+- `DEEPGRAM_API_KEY`: Required for Deepgram Live transcription
+
+### Protocol
+
+**Authentication**: Connect with `X-ZEKE-Device-Token` header (same as mobile API)
+
+**Session Start**:
+```json
+{ "type": "start_session", "codec": "opus", "sample_rate_hint": 16000, "frame_format": "raw_opus_packets" }
+```
+
+**Response**:
+```json
+{ "type": "session_started", "session_id": "uuid", "deepgram_connected": true, "frame_format": "raw_opus_packets" }
+```
+
+**Audio Streaming**: Send binary Opus packets directly
+
+**Transcript Events** (emitted by server):
+```json
+{ "type": "transcript_segment", "sessionId": "uuid", "speaker": 0, "text": "Hello world", "startMs": 0, "endMs": 1500, "confidence": 0.95, "isFinal": true }
+```
+
+**Session End**:
+```json
+{ "type": "end_session" }
+```
+
+### Key Files
+- `server/stt/opus_decoder.ts`: Opus to PCM16LE decoder with bounded buffering
+- `server/stt/deepgram_live.ts`: Deepgram WebSocket bridge with diarization
+- `server/stt/index.ts`: Module exports
+- `server/routes.ts`: WebSocket endpoint registration
+- `script/test-stt-pipeline.ts`: Test harness
+
+### Status Endpoint
+- **GET /api/stt/status**: Check STT configuration
+  - Response: `{ "configured": true, "activeSessions": 0, "wsEndpoint": "/ws/audio", "frameFormat": "raw_opus_packets" }`

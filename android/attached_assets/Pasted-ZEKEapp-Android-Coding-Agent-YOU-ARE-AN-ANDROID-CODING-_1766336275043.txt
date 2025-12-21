@@ -1,0 +1,83 @@
+ZEKEapp (Android Coding Agent)
+
+YOU ARE AN ANDROID CODING AGENT WORKING INSIDE THE ZEKEapp REPO.
+
+NON-NEGOTIABLE RULE: Use ONLY code present in this repo. Cite file paths and symbols for every change. No speculation.
+
+GOAL
+Stream pendant/devkit audio over BLE to ZEKE backend /ws/audio as:
+	•	JSON control messages (start/end)
+	•	Binary Opus packets (no decoding in app)
+Receive transcript_segment events and display them.
+
+PHASE 0 — REPO DISCOVERY (REQUIRED)
+Before changes, locate and report:
+	1.	BLE layer:
+
+	•	Search for: "BLE", "Gatt", "Characteristic", "notify", "UUID"
+	•	Identify where audio notifications are handled and whether packets are fragmented / sequenced.
+
+	2.	Existing backend API client / WS client:
+
+	•	Search for: "WebSocket", "OkHttp WebSocket", "ws://", "wss://"
+	•	Identify any existing client used for chat or realtime and reuse that style.
+
+	3.	Auth token storage:
+
+	•	Search for: "device token", "X-ZEKE-Device-Token", "Authorization"
+	•	Identify how the app stores/sends the device token.
+
+OUTPUT a short "DISCOVERY REPORT":
+	•	BLE audio ingest path: <path + symbol>
+	•	WS client path: <path + symbol>
+	•	Auth token retrieval: <path + symbol>
+
+IMPLEMENTATION REQUIREMENTS
+A) BLE -> Opus packet reassembly (EXPLICIT REQUIREMENT)
+If BLE delivers fragments:
+	•	Implement a reassembly buffer that outputs valid Opus packets
+	•	Must handle sequence numbers if present
+	•	Must not output partial packets
+	•	MUST prove reassembly works with logs showing:
+		- Fragment receipt (seq number, fragment size)
+		- Reassembly completion (full packet size, packet count)
+		- Valid Opus packet output confirmation
+If BLE already outputs full Opus packets:
+	•	confirm with evidence from code and logs
+
+B) WebSocket uplink to ZEKE (BINARY WS REQUIREMENT - EXPLICIT)
+CRITICAL: Audio MUST be sent as binary WebSocket frames. Never send audio as JSON or base64-encoded data.
+Create or extend an AudioStreamClient consistent with existing repo style:
+	•	Connect to: wss://<ZEKE_BASE>/ws/audio
+	•	Send JSON start_session (control message only):
+{ session_id(UUID), codec:"opus", sample_rate_hint:16000, frame_format:"raw_opus_packets", device_id }
+	•	Stream binary WebSocket frames: each frame = one Opus packet (raw bytes, NOT JSON, NOT base64)
+	•	Use WebSocket.send(ByteString) or equivalent binary send method - never wrap in JSON
+	•	Reconnect logic:
+	•	session_id remains constant until user stops
+	•	on reconnect, resend start_session with same session_id and resume:true
+
+C) Downlink transcripts
+Receive transcript_segment JSON events over the WS and update UI:
+	•	Show live transcript
+	•	Display speaker labels
+
+D) No decoding, no Deepgram SDK, no API keys
+Absolutely forbidden:
+	•	Opus decoding on Android
+	•	Deepgram keys or SDK
+	•	base64 audio
+
+VALIDATION
+Add a debug screen:
+	•	Start Streaming / Stop Streaming
+	•	Show: WS connected, bytes/sec sent, last transcript text, last speaker label
+	•	Log session_id and reconnect events
+
+DELIVERABLES
+	1.	Discovery Report (paths + symbols)
+	2.	List of changed files
+	3.	Steps to run and test on device
+
+STOP CONDITION
+Stop once streaming + transcript display works and reconnect is stable. No refactors.

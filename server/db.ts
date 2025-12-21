@@ -167,6 +167,10 @@ import type {
   InsertBatchArtifact,
   BatchArtifactType,
   BatchJobStats,
+  SttSession,
+  SttSegment,
+  SttCodec,
+  SttProvider,
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -13633,6 +13637,211 @@ export function deleteOldestPairingCodeForDevice(deviceName: string): void {
         SELECT id FROM pairing_codes WHERE device_name = ? ORDER BY created_at ASC LIMIT 1
       )
     `).run(deviceName);
+  });
+}
+
+// ============================================
+// STT (Speech-to-Text) Pipeline Tables
+// ============================================
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS stt_sessions (
+    id TEXT PRIMARY KEY,
+    device_id TEXT NOT NULL,
+    codec TEXT NOT NULL DEFAULT 'opus',
+    sample_rate INTEGER NOT NULL DEFAULT 16000,
+    provider TEXT NOT NULL DEFAULT 'deepgram',
+    frame_format TEXT NOT NULL DEFAULT 'raw_opus_packets',
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_stt_sessions_device ON stt_sessions(device_id);
+  CREATE INDEX IF NOT EXISTS idx_stt_sessions_started ON stt_sessions(started_at);
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS stt_segments (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    speaker TEXT NOT NULL DEFAULT 'SPEAKER_0',
+    start_ms INTEGER NOT NULL,
+    end_ms INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    confidence TEXT DEFAULT '0.0',
+    is_final INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_stt_segments_session ON stt_segments(session_id);
+  CREATE INDEX IF NOT EXISTS idx_stt_segments_final ON stt_segments(is_final);
+`);
+
+interface SttSessionRow {
+  id: string;
+  device_id: string;
+  codec: string;
+  sample_rate: number;
+  provider: string;
+  frame_format: string;
+  started_at: string;
+  ended_at: string | null;
+  created_at: string;
+}
+
+interface SttSegmentRow {
+  id: string;
+  session_id: string;
+  speaker: string;
+  start_ms: number;
+  end_ms: number;
+  text: string;
+  confidence: string;
+  is_final: number;
+  created_at: string;
+}
+
+function mapSttSessionRow(row: SttSessionRow): SttSession {
+  return {
+    id: row.id,
+    deviceId: row.device_id,
+    codec: row.codec as SttCodec,
+    sampleRate: row.sample_rate,
+    provider: row.provider as SttProvider,
+    frameFormat: row.frame_format,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    createdAt: row.created_at,
+  };
+}
+
+function mapSttSegmentRow(row: SttSegmentRow): SttSegment {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    speaker: row.speaker,
+    startMs: row.start_ms,
+    endMs: row.end_ms,
+    text: row.text,
+    confidence: row.confidence,
+    isFinal: row.is_final === 1,
+    createdAt: row.created_at,
+  };
+}
+
+export function createSttSession(data: {
+  id: string;
+  deviceId: string;
+  codec?: string;
+  sampleRate?: number;
+  provider?: string;
+  frameFormat?: string;
+  startedAt: string;
+}): SttSession {
+  return wrapDbOperation("createSttSession", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      INSERT INTO stt_sessions (id, device_id, codec, sample_rate, provider, frame_format, started_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      data.id,
+      data.deviceId,
+      data.codec || "opus",
+      data.sampleRate || 16000,
+      data.provider || "deepgram",
+      data.frameFormat || "raw_opus_packets",
+      data.startedAt,
+      now
+    );
+    const row = db.prepare(`SELECT * FROM stt_sessions WHERE id = ?`).get(data.id) as SttSessionRow;
+    return mapSttSessionRow(row);
+  });
+}
+
+export function getSttSession(id: string): SttSession | null {
+  return wrapDbOperation("getSttSession", () => {
+    const row = db.prepare(`SELECT * FROM stt_sessions WHERE id = ?`).get(id) as SttSessionRow | undefined;
+    return row ? mapSttSessionRow(row) : null;
+  });
+}
+
+export function endSttSession(id: string): SttSession | null {
+  return wrapDbOperation("endSttSession", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`UPDATE stt_sessions SET ended_at = ? WHERE id = ?`).run(now, id);
+    const row = db.prepare(`SELECT * FROM stt_sessions WHERE id = ?`).get(id) as SttSessionRow | undefined;
+    return row ? mapSttSessionRow(row) : null;
+  });
+}
+
+export function getSttSessionsByDevice(deviceId: string, limit: number = 50): SttSession[] {
+  return wrapDbOperation("getSttSessionsByDevice", () => {
+    const rows = db.prepare(`
+      SELECT * FROM stt_sessions WHERE device_id = ? ORDER BY started_at DESC LIMIT ?
+    `).all(deviceId, limit) as SttSessionRow[];
+    return rows.map(mapSttSessionRow);
+  });
+}
+
+export function createSttSegment(data: {
+  sessionId: string;
+  speaker: string;
+  startMs: number;
+  endMs: number;
+  text: string;
+  confidence?: number;
+  isFinal: boolean;
+}): SttSegment {
+  return wrapDbOperation("createSttSegment", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      INSERT INTO stt_segments (id, session_id, speaker, start_ms, end_ms, text, confidence, is_final, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.sessionId,
+      data.speaker,
+      data.startMs,
+      data.endMs,
+      data.text,
+      (data.confidence ?? 0).toString(),
+      data.isFinal ? 1 : 0,
+      now
+    );
+    const row = db.prepare(`SELECT * FROM stt_segments WHERE id = ?`).get(id) as SttSegmentRow;
+    return mapSttSegmentRow(row);
+  });
+}
+
+export function getSttSegmentsBySession(sessionId: string): SttSegment[] {
+  return wrapDbOperation("getSttSegmentsBySession", () => {
+    const rows = db.prepare(`
+      SELECT * FROM stt_segments WHERE session_id = ? ORDER BY start_ms ASC
+    `).all(sessionId) as SttSegmentRow[];
+    return rows.map(mapSttSegmentRow);
+  });
+}
+
+export function getFinalSttSegmentsBySession(sessionId: string): SttSegment[] {
+  return wrapDbOperation("getFinalSttSegmentsBySession", () => {
+    const rows = db.prepare(`
+      SELECT * FROM stt_segments WHERE session_id = ? AND is_final = 1 ORDER BY start_ms ASC
+    `).all(sessionId) as SttSegmentRow[];
+    return rows.map(mapSttSegmentRow);
+  });
+}
+
+export function deleteSttSegmentsBySession(sessionId: string): number {
+  return wrapDbOperation("deleteSttSegmentsBySession", () => {
+    const result = db.prepare(`DELETE FROM stt_segments WHERE session_id = ?`).run(sessionId);
+    return result.changes;
+  });
+}
+
+export function deleteSttSession(id: string): void {
+  wrapDbOperation("deleteSttSession", () => {
+    db.prepare(`DELETE FROM stt_segments WHERE session_id = ?`).run(id);
+    db.prepare(`DELETE FROM stt_sessions WHERE id = ?`).run(id);
   });
 }
 

@@ -1,3 +1,28 @@
+/**
+ * ============================================================================
+ * CRITICAL FILE - SERVER ROUTES (SMS PAIRING ENDPOINTS)
+ * ============================================================================
+ * 
+ * This file contains the SMS pairing API endpoints for ZEKE AI.
+ * 
+ * DO NOT MODIFY the following routes without explicit approval:
+ * - POST /api/auth/request-sms-code
+ * - POST /api/auth/verify-sms-code
+ * - GET /api/auth/pairing-status
+ * 
+ * Changes to these endpoints can break:
+ * - Device authentication
+ * - SMS code verification
+ * - Mobile app pairing flow
+ * 
+ * Related critical files:
+ * - client/screens/PairingScreen.tsx
+ * - client/context/AuthContext.tsx
+ * - server/device-auth.ts
+ * - server/sms-pairing.ts
+ * ============================================================================
+ */
+
 import type { Express } from "express";
 import { createServer, type Server } from "node:http";
 import { storage } from "./storage";

@@ -1,3 +1,27 @@
+/**
+ * ============================================================================
+ * CRITICAL FILE - SMS PAIRING HANDSHAKE
+ * ============================================================================
+ * 
+ * This file contains the device pairing flow for ZEKE AI.
+ * 
+ * DO NOT MODIFY without explicit approval from the project owner.
+ * 
+ * Changes to this file can break:
+ * - Device authentication
+ * - SMS code verification
+ * - User onboarding flow
+ * 
+ * If changes are required, ensure thorough testing on both iOS and Android
+ * before deployment.
+ * 
+ * Related critical files:
+ * - client/context/AuthContext.tsx
+ * - server/routes.ts (SMS pairing endpoints)
+ * - server/device-auth.ts
+ * ============================================================================
+ */
+
 import React, { useState, useRef, useEffect } from "react";
 import {
   View,
@@ -29,6 +53,7 @@ export function PairingScreen() {
   const [countdown, setCountdown] = useState<number>(0);
   const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
   const [legacySecret, setLegacySecret] = useState("");
+  const [codeSentSuccess, setCodeSentSuccess] = useState(false);
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
   useEffect(() => {
@@ -53,6 +78,17 @@ export function PairingScreen() {
     }
   }, [smsPairingState.attemptsRemaining]);
 
+  useEffect(() => {
+    if (smsPairingState.sessionId && smsPairingState.expiresIn && smsPairingState.expiresIn > 0) {
+      console.log("[Pairing] Restoring session from context:", smsPairingState.sessionId);
+      setSessionId(smsPairingState.sessionId);
+      setCountdown(smsPairingState.expiresIn);
+      setCodeSentSuccess(true);
+      setStep("verify");
+      setTimeout(() => inputRefs.current[0]?.focus(), 100);
+    }
+  }, []);
+
   const getDeviceName = (): string => {
     if (Platform.OS === "web") {
       return "Web Browser";
@@ -69,21 +105,36 @@ export function PairingScreen() {
   const handleRequestCode = async () => {
     setLocalError(null);
     setAttemptsRemaining(null);
+    setCodeSentSuccess(false);
     const deviceName = getDeviceName();
     const result = await requestSmsCode(deviceName);
     if (result.success && result.sessionId) {
       setSessionId(result.sessionId);
       setCountdown(result.expiresIn || 300);
+      setCodeSentSuccess(true);
       setStep("verify");
+      setTimeout(() => inputRefs.current[0]?.focus(), 100);
     }
   };
 
   const handleCodeChange = (index: number, value: string) => {
-    if (value.length > 1) {
-      value = value.slice(-1);
+    if (!/^\d*$/.test(value)) {
+      return;
     }
 
-    if (!/^\d*$/.test(value)) {
+    if (value.length > 1) {
+      const digits = value.replace(/\D/g, '').slice(0, 4).split('');
+      const newCode = ["", "", "", ""];
+      digits.forEach((digit, i) => {
+        newCode[i] = digit;
+      });
+      setCode(newCode);
+      setLocalError(null);
+      if (digits.length === 4) {
+        inputRefs.current[3]?.focus();
+      } else if (digits.length > 0) {
+        inputRefs.current[Math.min(digits.length, 3)]?.focus();
+      }
       return;
     }
 
@@ -156,6 +207,7 @@ export function PairingScreen() {
     setCountdown(0);
     setAttemptsRemaining(null);
     setLegacySecret("");
+    setCodeSentSuccess(false);
   };
 
   const handleSwitchToLegacy = () => {
@@ -249,8 +301,17 @@ export function PairingScreen() {
           </View>
         ) : step === "verify" ? (
           <View style={styles.form}>
+            {codeSentSuccess ? (
+              <View style={styles.successContainer}>
+                <Feather name="check-circle" size={18} color="#10B981" />
+                <ThemedText style={styles.successText}>
+                  Code sent! Check your phone for the SMS
+                </ThemedText>
+              </View>
+            ) : null}
+
             <ThemedText style={styles.label}>
-              Enter the 4-digit code sent to your phone
+              Enter the 4-digit code below
             </ThemedText>
 
             <View style={styles.codeContainer}>
@@ -268,7 +329,9 @@ export function PairingScreen() {
                     handleKeyPress(index, nativeEvent.key)
                   }
                   keyboardType="number-pad"
-                  maxLength={1}
+                  maxLength={index === 0 ? 4 : 1}
+                  textContentType={index === 0 ? "oneTimeCode" : "none"}
+                  autoComplete={index === 0 ? "one-time-code" : "off"}
                   selectTextOnFocus
                   editable={!isLoading}
                   autoFocus={index === 0}
@@ -516,6 +579,22 @@ const styles = StyleSheet.create({
   legacyLinkText: {
     fontSize: 14,
     color: Colors.dark.textSecondary,
+  },
+  successContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    borderRadius: BorderRadius.md,
+    justifyContent: "center",
+  },
+  successText: {
+    fontSize: 14,
+    color: "#10B981",
+    fontWeight: "600",
   },
   errorContainer: {
     flexDirection: "row",

@@ -3741,3 +3741,69 @@ export interface PairingStatusResponse {
   configured: boolean;
   pendingCodes: number;
 }
+
+// ============================================
+// SPEECH-TO-TEXT (STT) PIPELINE
+// ============================================
+
+// STT codec types supported by the audio pipeline
+export const sttCodecs = ["opus", "pcm16"] as const;
+export type SttCodec = typeof sttCodecs[number];
+
+// STT providers
+export const sttProviders = ["deepgram", "whisper"] as const;
+export type SttProvider = typeof sttProviders[number];
+
+// STT sessions table - tracks audio streaming sessions
+export const sttSessions = sqliteTable("stt_sessions", {
+  id: text("id").primaryKey(),
+  deviceId: text("device_id").notNull(),
+  codec: text("codec", { enum: sttCodecs }).notNull().default("opus"),
+  sampleRate: integer("sample_rate").notNull().default(16000),
+  provider: text("provider", { enum: sttProviders }).notNull().default("deepgram"),
+  frameFormat: text("frame_format").notNull().default("raw_opus_packets"),
+  startedAt: text("started_at").notNull(),
+  endedAt: text("ended_at"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertSttSessionSchema = createInsertSchema(sttSessions).omit({
+  createdAt: true,
+});
+
+export type InsertSttSession = z.infer<typeof insertSttSessionSchema>;
+export type SttSession = typeof sttSessions.$inferSelect;
+
+// STT segments table - stores transcript segments with speaker diarization
+export const sttSegments = sqliteTable("stt_segments", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  speaker: text("speaker").notNull().default("SPEAKER_0"),
+  startMs: integer("start_ms").notNull(),
+  endMs: integer("end_ms").notNull(),
+  text: text("text").notNull(),
+  confidence: text("confidence").default("0.0"),
+  isFinal: integer("is_final", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertSttSegmentSchema = createInsertSchema(sttSegments).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSttSegment = z.infer<typeof insertSttSegmentSchema>;
+export type SttSegment = typeof sttSegments.$inferSelect;
+
+// Normalized transcript segment event sent to clients
+export interface TranscriptSegmentEvent {
+  type: "transcript_segment";
+  sessionId: string;
+  speaker: string;
+  startMs: number;
+  endMs: number;
+  text: string;
+  confidence: number;
+  isFinal: boolean;
+  provider: SttProvider;
+}
