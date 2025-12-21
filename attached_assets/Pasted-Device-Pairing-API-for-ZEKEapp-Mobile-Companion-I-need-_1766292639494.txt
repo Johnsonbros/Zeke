@@ -1,0 +1,74 @@
+Device Pairing API for ZEKEapp Mobile Companion
+I need to add mobile device authentication endpoints to the ZEKE backend so the ZEKEapp mobile companion can pair and authenticate with the server.
+
+Overview
+The mobile app needs to authenticate using a pairing flow:
+
+User enters a master secret on the mobile app
+App sends the secret + device name to /api/auth/pair
+Server validates the secret and returns a unique device token
+App stores the token and uses it for all future API requests via X-ZEKE-Device-Token header
+Required Endpoints
+1. POST /api/auth/pair
+Registers a new mobile device and returns a unique token.
+
+Request:
+
+{
+  "secret": "the-master-secret-user-enters",
+  "deviceName": "John's iPhone"
+}
+Response (200):
+
+{
+  "deviceToken": "64-character-hex-token",
+  "deviceId": "device_abc123def456",
+  "message": "Device paired successfully"
+}
+Response (401 - Invalid secret):
+
+{
+  "error": "Invalid pairing secret"
+}
+2. GET /api/auth/verify
+Validates an existing device token (called on app startup).
+
+Headers: X-ZEKE-Device-Token: <token>
+
+Response (200):
+
+{
+  "valid": true,
+  "deviceId": "device_abc123def456"
+}
+Response (401):
+
+{
+  "valid": false,
+  "error": "Invalid or expired device token"
+}
+Database Schema
+Add a device_tokens table:
+
+CREATE TABLE device_tokens (
+  id SERIAL PRIMARY KEY,
+  token VARCHAR(64) UNIQUE NOT NULL,
+  device_id VARCHAR(32) UNIQUE NOT NULL,
+  device_name VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  last_used_at TIMESTAMP DEFAULT NOW()
+);
+Authentication Middleware Updates
+Modify your existing auth middleware to accept the X-ZEKE-Device-Token header:
+
+Check for X-ZEKE-Device-Token header
+Validate token against the device_tokens table
+Update last_used_at on successful validation
+Allow request to proceed if token is valid
+Security Requirements
+Master Secret Validation: Use timing-safe comparison (crypto.timingSafeEqual) to prevent timing attacks
+Token Generation: Use crypto.randomBytes(32).toString('hex') for 64-character tokens
+Rate Limiting: Implement lockout after 5 failed pairing attempts (15-minute cooldown)
+These endpoints should be public (no auth required): /api/auth/pair, /api/auth/verify
+Environment Variable
+Use ZEKE_SHARED_SECRET (or similar) as the master pairing secret. It should be at least 32 characters.
