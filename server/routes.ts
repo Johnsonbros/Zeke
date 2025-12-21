@@ -2510,6 +2510,16 @@ export async function registerRoutes(
         console.log(`[SECURITY] Export access granted via same-origin check - IP: ${clientIp}`);
       }
       
+      // Export limits for data with potentially large volumes
+      const EXPORT_LIMITS = {
+        TWILIO_MESSAGES: 1000,
+        JOURNAL_ENTRIES: 1000,
+        MEETINGS: 100,
+        LIFELOG_ACTION_ITEMS: 500,
+        PREDICTIONS: 500,
+        INSIGHTS: 1000,
+      };
+      
       // Gather all data from the database
       const conversations = getAllConversations();
       const memories = getAllMemoryNotes(true); // Include superseded memories
@@ -2520,27 +2530,29 @@ export async function registerRoutes(
       const reminders = getAllReminders();
       const automations = getAllAutomations();
       const profileSections = getAllProfileSections();
-      const twilioMessages = getAllTwilioMessages(1000); // Last 1000 messages
+      const twilioMessages = getAllTwilioMessages(EXPORT_LIMITS.TWILIO_MESSAGES);
       const savedPlaces = getAllSavedPlaces();
       const placeLists = getAllPlaceLists();
       const folders = getAllFolders();
       const documents = getAllDocuments();
       const uploadedFiles = getAllUploadedFiles();
-      const journalEntries = getJournalEntries(1000); // Last 1000 entries
+      const journalEntries = getJournalEntries(EXPORT_LIMITS.JOURNAL_ENTRIES);
       const customLists = getAllCustomLists();
-      const meetings = getAllMeetings(100);
-      const lifelogActionItems = getAllLifelogActionItems(500);
-      const predictions = getAllPredictions({ limit: 500 });
+      const meetings = getAllMeetings(EXPORT_LIMITS.MEETINGS);
+      const lifelogActionItems = getAllLifelogActionItems(EXPORT_LIMITS.LIFELOG_ACTION_ITEMS);
+      const predictions = getAllPredictions({ limit: EXPORT_LIMITS.PREDICTIONS });
       const patterns = getAllPatterns({});
       const entities = getAllEntities();
-      const insights = getAllInsights({ limit: 1000 });
+      const insights = getAllInsights({ limit: EXPORT_LIMITS.INSIGHTS });
       const nlAutomations = getAllNLAutomations();
       
-      // Get messages for all conversations
+      // Get messages for all conversations in parallel
       const allMessages: Record<string, any[]> = {};
-      for (const conversation of conversations) {
-        allMessages[conversation.id] = getMessagesByConversation(conversation.id);
-      }
+      await Promise.all(
+        conversations.map(async (conversation) => {
+          allMessages[conversation.id] = getMessagesByConversation(conversation.id);
+        })
+      );
       
       const exportData = {
         exportedAt: new Date().toISOString(),
