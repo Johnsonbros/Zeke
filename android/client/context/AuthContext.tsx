@@ -21,10 +21,20 @@ interface AuthState {
   error: string | null;
 }
 
+interface SmsPairingState {
+  sessionId: string | null;
+  expiresIn: number | null;
+  attemptsRemaining: number;
+}
+
 interface AuthContextType extends AuthState {
   pairDevice: (secret: string, deviceName: string) => Promise<boolean>;
+  requestSmsCode: (deviceName: string) => Promise<{ success: boolean; sessionId?: string; expiresIn?: number; error?: string }>;
+  verifySmsCode: (sessionId: string, code: string) => Promise<boolean>;
+  smsPairingState: SmsPairingState;
   unpairDevice: () => Promise<void>;
   checkAuth: () => Promise<boolean>;
+  checkSmsPairingStatus: () => Promise<{ configured: boolean; pendingCodes: number }>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -58,6 +68,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: true,
     deviceId: null,
     error: null,
+  });
+  
+  const [smsPairingState, setSmsPairingState] = useState<SmsPairingState>({
+    sessionId: null,
+    expiresIn: null,
+    attemptsRemaining: 3,
   });
 
   const checkAuth = useCallback(async (): Promise<boolean> => {
@@ -208,7 +224,130 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       deviceId: null,
       error: null,
     });
+    setSmsPairingState({
+      sessionId: null,
+      expiresIn: null,
+      attemptsRemaining: 3,
+    });
   }, []);
+
+  const checkSmsPairingStatus = useCallback(async (): Promise<{ configured: boolean; pendingCodes: number }> => {
+    try {
+      const data = await apiClient.get<{ configured: boolean; pendingCodes: number }>(
+        "/api/zeke/auth/pairing-status"
+      );
+      return data;
+    } catch (error) {
+      console.error("[Auth] Pairing status check error:", error);
+      return { configured: false, pendingCodes: 0 };
+    }
+  }, []);
+
+  const requestSmsCode = useCallback(
+    async (deviceName: string): Promise<{ success: boolean; sessionId?: string; expiresIn?: number; error?: string }> => {
+      setState((prev) => ({ ...prev, isLoading: true, error: null }));
+      
+      try {
+        const data = await apiClient.authPost<{
+          success: boolean;
+          sessionId?: string;
+          expiresIn?: number;
+          message?: string;
+          error?: string;
+        }>("/api/zeke/auth/request-sms-code", { deviceName });
+
+        if (data.success && data.sessionId) {
+          setSmsPairingState({
+            sessionId: data.sessionId,
+            expiresIn: data.expiresIn || 300,
+            attemptsRemaining: 3,
+          });
+          setState((prev) => ({ ...prev, isLoading: false }));
+          return { success: true, sessionId: data.sessionId, expiresIn: data.expiresIn };
+        } else {
+          setState((prev) => ({
+            ...prev,
+            isLoading: false,
+            error: data.error || "Failed to request code",
+          }));
+          return { success: false, error: data.error || "Failed to request code" };
+        }
+      } catch (error) {
+        console.error("[Auth] Request SMS code error:", error);
+        const errorMessage =
+          error instanceof ApiError
+            ? error.message
+            : "Connection error. Check your network.";
+        setState((prev) => ({
+          ...prev,
+          isLoading: false,
+          error: errorMessage,
+        }));
+        return { success: false, error: errorMessage };
+      }
+    },
+    [],
+  );
+
+  const verifySmsCode = useCallback(
+    async (sessionId: string, code: string): Promise<boolean> => {
+      setState((prev) => ({ ...prev, isLoading: true, error: null }));
+      
+      try {
+        const data = await apiClient.authPost<{
+          success: boolean;
+          deviceToken?: string;
+          deviceId?: string;
+          message?: string;
+          error?: string;
+          attemptsRemaining?: number;
+        }>("/api/zeke/auth/verify-sms-code", { sessionId, code });
+
+        if (data.success && data.deviceToken) {
+          await setStoredValue(DEVICE_TOKEN_KEY, data.deviceToken);
+          await setStoredValue(DEVICE_ID_KEY, data.deviceId || "");
+          setDeviceToken(data.deviceToken);
+
+          setState({
+            isAuthenticated: true,
+            isLoading: false,
+            deviceId: data.deviceId || null,
+            error: null,
+          });
+          setSmsPairingState({
+            sessionId: null,
+            expiresIn: null,
+            attemptsRemaining: 3,
+          });
+          return true;
+        } else {
+          setSmsPairingState((prev) => ({
+            ...prev,
+            attemptsRemaining: data.attemptsRemaining ?? prev.attemptsRemaining - 1,
+          }));
+          setState((prev) => ({
+            ...prev,
+            isLoading: false,
+            error: data.error || "Invalid code",
+          }));
+          return false;
+        }
+      } catch (error) {
+        console.error("[Auth] Verify SMS code error:", error);
+        const errorMessage =
+          error instanceof ApiError
+            ? error.message
+            : "Connection error. Check your network.";
+        setState((prev) => ({
+          ...prev,
+          isLoading: false,
+          error: errorMessage,
+        }));
+        return false;
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     checkAuth();
@@ -216,7 +355,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ ...state, pairDevice, unpairDevice, checkAuth }}
+      value={{ 
+        ...state, 
+        pairDevice, 
+        requestSmsCode, 
+        verifySmsCode, 
+        smsPairingState, 
+        unpairDevice, 
+        checkAuth, 
+        checkSmsPairingStatus 
+      }}
     >
       {children}
     </AuthContext.Provider>
