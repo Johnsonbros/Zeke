@@ -13413,6 +13413,21 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_pairing_attempts_at ON pairing_attempts(attempted_at);
 `);
 
+// Create pairing_codes table for SMS-based device pairing
+db.exec(`
+  CREATE TABLE IF NOT EXISTS pairing_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT UNIQUE NOT NULL,
+    code TEXT NOT NULL,
+    device_name TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_pairing_codes_session ON pairing_codes(session_id);
+  CREATE INDEX IF NOT EXISTS idx_pairing_codes_expires ON pairing_codes(expires_at);
+`);
+
 interface DeviceTokenRow {
   id: number;
   token: string;
@@ -13429,7 +13444,7 @@ interface PairingAttemptRow {
   success: number;
 }
 
-import type { DeviceToken, PairingAttempt } from "@shared/schema";
+import type { DeviceToken, PairingAttempt, PairingCode } from "@shared/schema";
 
 function mapDeviceTokenRow(row: DeviceTokenRow): DeviceToken {
   return {
@@ -13524,6 +13539,82 @@ export function cleanupOldPairingAttempts(olderThanMinutes: number = 60): number
     const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000).toISOString();
     const result = db.prepare(`DELETE FROM pairing_attempts WHERE attempted_at < ?`).run(cutoff);
     return result.changes;
+  });
+}
+
+// ============================================
+// SMS PAIRING CODES
+// ============================================
+
+interface PairingCodeRow {
+  id: number;
+  session_id: string;
+  code: string;
+  device_name: string;
+  attempts: number;
+  expires_at: string;
+  created_at: string;
+}
+
+function mapPairingCodeRow(row: PairingCodeRow): PairingCode {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    code: row.code,
+    deviceName: row.device_name,
+    attempts: row.attempts,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+  };
+}
+
+export function createPairingCode(sessionId: string, code: string, deviceName: string, expiresAt: string): PairingCode {
+  return wrapDbOperation("createPairingCode", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      INSERT INTO pairing_codes (session_id, code, device_name, attempts, expires_at, created_at)
+      VALUES (?, ?, ?, 0, ?, ?)
+    `).run(sessionId, code, deviceName, expiresAt, now);
+    
+    const row = db.prepare(`SELECT * FROM pairing_codes WHERE session_id = ?`).get(sessionId) as PairingCodeRow;
+    return mapPairingCodeRow(row);
+  });
+}
+
+export function getPairingCodeBySessionId(sessionId: string): PairingCode | null {
+  return wrapDbOperation("getPairingCodeBySessionId", () => {
+    const row = db.prepare(`SELECT * FROM pairing_codes WHERE session_id = ?`).get(sessionId) as PairingCodeRow | undefined;
+    return row ? mapPairingCodeRow(row) : null;
+  });
+}
+
+export function incrementPairingCodeAttempts(sessionId: string): number {
+  return wrapDbOperation("incrementPairingCodeAttempts", () => {
+    db.prepare(`UPDATE pairing_codes SET attempts = attempts + 1 WHERE session_id = ?`).run(sessionId);
+    const row = db.prepare(`SELECT attempts FROM pairing_codes WHERE session_id = ?`).get(sessionId) as { attempts: number } | undefined;
+    return row?.attempts ?? 0;
+  });
+}
+
+export function deletePairingCode(sessionId: string): void {
+  wrapDbOperation("deletePairingCode", () => {
+    db.prepare(`DELETE FROM pairing_codes WHERE session_id = ?`).run(sessionId);
+  });
+}
+
+export function cleanupExpiredPairingCodes(): number {
+  return wrapDbOperation("cleanupExpiredPairingCodes", () => {
+    const now = getCurrentTimestamp();
+    const result = db.prepare(`DELETE FROM pairing_codes WHERE expires_at < ?`).run(now);
+    return result.changes;
+  });
+}
+
+export function countPendingPairingCodes(): number {
+  return wrapDbOperation("countPendingPairingCodes", () => {
+    const now = getCurrentTimestamp();
+    const result = db.prepare(`SELECT COUNT(*) as count FROM pairing_codes WHERE expires_at > ?`).get(now) as { count: number };
+    return result.count;
   });
 }
 

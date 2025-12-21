@@ -3673,3 +3673,71 @@ export interface VerifyErrorResponse {
   valid: false;
   error: string;
 }
+
+// ============================================
+// SMS PAIRING CODES
+// ============================================
+
+// SMS pairing codes for mobile device authentication
+export const pairingCodes = sqliteTable("pairing_codes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sessionId: text("session_id").notNull().unique(),
+  code: text("code").notNull(),
+  deviceName: text("device_name").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  expiresAt: text("expires_at").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertPairingCodeSchema = createInsertSchema(pairingCodes).omit({
+  id: true,
+});
+
+export type InsertPairingCode = z.infer<typeof insertPairingCodeSchema>;
+export type PairingCode = typeof pairingCodes.$inferSelect;
+
+// SMS pairing request schema
+export const smsCodeRequestSchema = z.object({
+  deviceName: z.string().min(1, "Device name is required").max(255),
+});
+
+export type SmsCodeRequest = z.infer<typeof smsCodeRequestSchema>;
+
+// SMS code verification request schema
+export const smsCodeVerifySchema = z.object({
+  sessionId: z.string().min(1, "Session ID is required"),
+  code: z.string().length(4, "Code must be 4 digits").regex(/^\d{4}$/, "Code must be 4 digits"),
+});
+
+export type SmsCodeVerifyRequest = z.infer<typeof smsCodeVerifySchema>;
+
+// SMS pairing response types
+export interface SmsCodeRequestSuccessResponse {
+  success: true;
+  sessionId: string;
+  expiresIn: number;
+  message: string;
+}
+
+export interface SmsCodeRequestErrorResponse {
+  success: false;
+  error: string;
+}
+
+export interface SmsCodeVerifySuccessResponse {
+  success: true;
+  deviceToken: string;
+  deviceId: string;
+  message: string;
+}
+
+export interface SmsCodeVerifyErrorResponse {
+  success: false;
+  error: string;
+  attemptsRemaining?: number;
+}
+
+export interface PairingStatusResponse {
+  configured: boolean;
+  pendingCodes: number;
+}
