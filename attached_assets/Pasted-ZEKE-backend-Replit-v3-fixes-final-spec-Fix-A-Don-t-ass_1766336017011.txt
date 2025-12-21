@@ -1,0 +1,70 @@
+ZEKE backend (Replit v3) — fixes + final spec
+
+✅ Fix A: Don’t assume Deepgram can take “any PCM”
+
+Deepgram Live wants Linear16 PCM with correct query params. Your bridge must set these explicitly:
+	•	encoding=linear16
+	•	sample_rate=16000
+	•	channels=1
+	•	diarize=true
+	•	punctuate=true
+	•	endpointing=300 (tunable)
+
+Also: Deepgram expects raw PCM bytes over the WS (binary frames). No base64.
+
+✅ Fix B: Opus decoding detail (this is the big one)
+
+“Opus frames” from BLE are usually raw Opus packets, not an OGG container. That means:
+	•	Use an Opus decoder that supports raw packets, not “file decode.”
+	•	Opus may decode to 48k depending on encoder settings. Even if your mic is 16k, Opus can still be configured differently.
+
+So the backend must:
+	1.	Decode Opus packets → PCM
+	2.	If PCM sample rate ≠ 16k, resample to 16k (mandatory guard)
+
+Required interface
+	•	decodeOpusPacket(packet: Buffer) -> { pcm16le: Buffer, sampleRate: number }
+	•	ensure16k(pcm, sr) -> pcm16le16k
+
+If you skip the resample guard, you’ll get “it works sometimes” bugs.
+
+✅ Fix C: WS protocol must include framing and backpressure
+
+You need a minimal protocol so the server never guesses:
+
+Client → ZEKE control messages (text JSON):
+	•	start_session: includes session_id, codec:"opus", sample_rate_hint:16000, device_id
+	•	end_session
+
+Client → ZEKE audio frames (binary):
+	•	Each binary message = exactly one Opus packet OR a concatenation with a tiny prefix framing.
+	•	If it’s concatenated, include a 2-byte length prefix per packet (like Omi).
+
+Backpressure rule
+If Deepgram WS is not ready, buffer only up to N packets (example: 2–5 seconds), then drop oldest with a warning log. Otherwise memory spikes kill the process.
+
+✅ Fix D: Session resume rules
+
+On reconnect:
+	•	If session_id already exists and is “active”, treat new connection as resume.
+	•	Do not create a new DB row.
+	•	Close the old socket if it’s still open (single-owner).
+
+✅ Fix E: Add auth on /ws/audio
+
+Even if it’s internal, require your existing device token header (you already have X-ZEKE-Device-Token patterns). Without this, /ws/audio becomes an easy abuse vector.
+
+✅ Fix F: Storage schema tweaks
+
+For start_ms/end_ms use integer ms fields (bigint if your DB needs it). Store:
+	•	provider_msg_id (optional)
+	•	speaker string
+	•	is_final boolean
+	•	confidence float nullable
+
+✅ Final backend “done” criteria
+	•	Audio arrives, transcript events return
+	•	diarization labels appear
+	•	reconnect works
+	•	PCM is always 16k linear16 before sending to Deepgram
+	•	no raw audio persisted unless an explicit flag is enabled

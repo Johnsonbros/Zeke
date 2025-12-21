@@ -1,0 +1,113 @@
+ZEKE Backend (Replit v3 Coding Agent)
+
+YOU ARE A REPLIT V3 CODING AGENT WORKING INSIDE THE ZEKE BACKEND REPO.
+
+NON-NEGOTIABLE RULE: You must ONLY make claims and modifications based on code you can point to in this repo. Every decision must cite file paths and key symbols you found (functions, routes, schema). No speculation.
+
+GOAL
+Implement a real-time audio ingestion pipeline where:
+	•	ZEKE owns Deepgram Live connection + API key
+	•	App streams Opus packets to ZEKE over WebSocket
+	•	ZEKE decodes Opus -> PCM16 LE 16kHz mono
+	•	ZEKE streams PCM to Deepgram Live with diarization enabled
+	•	ZEKE emits normalized transcript events to the client
+	•	ZEKE stores transcript segments and sessions in DB
+
+PHASE 0 — REPO DISCOVERY (REQUIRED, DO FIRST)
+Run repo searches and report results (file paths + symbols) BEFORE editing anything:
+	1.	Find existing WebSocket server implementation and routing:
+
+	•	Search for: “ws”, “WebSocket”, “upgrade”, “socket”, “wss”, “/ws”
+	•	Identify the central WS router file(s) and how auth is enforced (device token header etc).
+
+	2.	Find DB layer and existing schema patterns:
+
+	•	Search for: “drizzle”, “schema”, “migrations”, “tables”, “createTable”
+	•	Identify the correct place to add new tables and migrations.
+
+	3.	Find existing auth header conventions:
+
+	•	Search for: “X-ZEKE-Device-Token”, “Authorization”, “Bearer”, “device token”
+	•	Identify exactly how requests are authenticated.
+
+OUTPUT a short “DISCOVERY REPORT”:
+	•	WS entry file(s): <path + symbol>
+	•	Auth mechanism: <path + symbol + header name>
+	•	DB schema folder and migration process: 
+
+IMPLEMENTATION REQUIREMENTS
+A) WebSocket endpoint
+Add a WS endpoint consistent with repo conventions, preferably under existing WS routing:
+	•	Route: /ws/audio (or whatever naming fits existing patterns; must be consistent)
+	•	Must require existing device auth (same header/token mechanism used elsewhere)
+
+Protocol:
+	•	Client sends JSON text control messages:
+	•	start_session: { session_id, codec:“opus”, sample_rate_hint:16000, frame_format:“raw_opus_packets”, device_id }
+	•	end_session: { session_id }
+	•	resume_session: { session_id } (optional)
+	•	Client sends binary frames representing Opus packets (or length-prefixed packets if required by discovered BLE framing)
+
+B) Opus decoding
+Implement server-side Opus packet decoding (raw packets, not OGG):
+	•	Create module: server/stt/opus_decoder.(ts/js)
+	•	Decoder must output PCM16LE mono
+	•	Add a mandatory guard:
+	•	if decoded sample rate != 16000, resample to 16000 (implement or use a safe library)
+	•	Add bounded buffering/backpressure:
+	•	If downstream (Deepgram) is not ready, buffer max N packets (~2–5 seconds) then drop oldest and log warning.
+
+C) Deepgram Live bridge
+Implement Deepgram streaming owned by ZEKE:
+	•	Create module: server/stt/deepgram_live.(ts/js)
+	•	API key must be read from env used in repo (discover existing env conventions)
+	•	Connect to Deepgram Live WebSocket and set params:
+	•	diarize=true
+	•	punctuate=true
+	•	endpointing=300 (configurable)
+	•	encoding=linear16
+	•	sample_rate=16000
+	•	channels=1
+	•	Send binary PCM frames (no base64)
+	•	Parse Deepgram events and normalize into:
+{
+type:“transcript_segment”,
+session_id,
+speaker:“SPEAKER_0”,
+start_ms,
+end_ms,
+text,
+confidence,
+is_final,
+provider:“deepgram”
+}
+
+D) Persistence
+Add tables consistent with repo DB style:
+	•	stt_sessions: id, user_id/device_id, codec, started_at, ended_at, provider, created_at
+	•	stt_segments: id, session_id, speaker, start_ms, end_ms, text, confidence, is_final, created_at
+Use existing migration approach; do not invent a new one.
+
+E) Downlink
+Send transcript_segment events back to the client:
+	•	Either over the same /ws/audio socket (bidirectional) or a consistent existing WS channel
+	•	Must match the repo’s client event conventions if they exist (discover them first)
+
+VALIDATION / TESTING (REQUIRED)
+Add a dev-only test harness that:
+	•	Starts a WS session locally
+	•	Feeds a small known Opus test packet sequence (or mock decoder output if needed)
+	•	Verifies:
+	•	Deepgram connection established
+	•	At least one transcript_segment emitted
+	•	Segments persisted to DB
+	•	speaker labels present when two voices exist (manual test acceptable if automated is hard)
+
+DELIVERABLES
+	1.	Discovery Report (paths + symbols)
+	2.	List of changed files
+	3.	How to run the test / how to verify in logs
+	4.	Any config/env keys needed (names must match repo conventions)
+
+STOP CONDITION
+When all requirements and validation steps are satisfied, stop. Do not refactor unrelated code.
