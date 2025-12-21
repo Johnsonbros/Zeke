@@ -140,7 +140,7 @@ export default function MemoryPage() {
       
       toast({
         title: "Export successful",
-        description: `Your data has been exported to ${filename}`,
+        description: `Complete backup exported to ${filename} - includes all conversations, memories, tasks, documents, and more.`,
       });
     } catch (error) {
       toast({
@@ -195,9 +195,10 @@ export default function MemoryPage() {
             onClick={handleExport}
             disabled={isExporting}
             data-testid="button-export-data"
+            title="Download complete backup of all your ZEKE data"
           >
             <Download className="h-4 w-4 mr-2" />
-            {isExporting ? "Exporting..." : "Export Data"}
+            {isExporting ? "Exporting..." : "Export All Data"}
           </Button>
         </header>
 
