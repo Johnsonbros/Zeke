@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { registerOmiRoutes } from "./omi-routes";
-import { createMobileAuthMiddleware, registerSecurityLogsEndpoint } from "./mobileAuth";
+import { createMobileAuthMiddleware, registerSecurityLogsEndpoint, registerPairingEndpoints } from "./mobileAuth";
 import { extractCardsFromResponse } from "./cardExtractor";
 import { syncGitHubRepo, pushToGitHub, createGitHubWebhook } from "./github";
 import { 
@@ -663,6 +663,9 @@ export async function registerRoutes(
   // Register ZEKE mobile app HMAC authentication middleware for protected routes
   app.use(createMobileAuthMiddleware());
   registerSecurityLogsEndpoint(app);
+  
+  // Register device pairing endpoints for mobile companion app authentication
+  registerPairingEndpoints(app);
   
   // Set up SMS callback for tools (reminders and send_sms tool)
   setSendSmsCallback(async (phone: string, message: string, source?: string) => {
