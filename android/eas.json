@@ -14,7 +14,7 @@
       },
       "env": {
         "EXPO_PUBLIC_ZEKE_BACKEND_URL": "https://zekeai.replit.app",
-        "EXPO_PUBLIC_DOMAIN": "zekeai.replit.app:5000"
+        "EXPO_PUBLIC_DOMAIN": "ZEKEapp.replit.app"
       }
     },
     "preview": {
@@ -25,7 +25,7 @@
       "channel": "preview",
       "env": {
         "EXPO_PUBLIC_ZEKE_BACKEND_URL": "https://zekeai.replit.app",
-        "EXPO_PUBLIC_DOMAIN": "zekeai.replit.app:5000"
+        "EXPO_PUBLIC_DOMAIN": "ZEKEapp.replit.app"
       }
     },
     "apk": {
@@ -36,7 +36,7 @@
       "channel": "preview",
       "env": {
         "EXPO_PUBLIC_ZEKE_BACKEND_URL": "https://zekeai.replit.app",
-        "EXPO_PUBLIC_DOMAIN": "zekeai.replit.app:5000"
+        "EXPO_PUBLIC_DOMAIN": "ZEKEapp.replit.app"
       }
     },
     "production": {
@@ -46,7 +46,7 @@
       "channel": "production",
       "env": {
         "EXPO_PUBLIC_ZEKE_BACKEND_URL": "https://zekeai.replit.app",
-        "EXPO_PUBLIC_DOMAIN": "zekeai.replit.app:5000"
+        "EXPO_PUBLIC_DOMAIN": "ZEKEapp.replit.app"
       }
     }
   },
