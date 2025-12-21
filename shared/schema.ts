@@ -3607,3 +3607,69 @@ export const deltaQuerySchema = z.object({
   since: z.string().datetime().optional(),
   limit: z.coerce.number().min(1).max(500).optional().default(100),
 });
+
+// ============================================
+// DEVICE PAIRING / TOKEN AUTHENTICATION
+// ============================================
+
+// Device tokens table for mobile companion app authentication
+export const deviceTokens = sqliteTable("device_tokens", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  token: text("token").notNull().unique(),
+  deviceId: text("device_id").notNull().unique(),
+  deviceName: text("device_name").notNull(),
+  createdAt: text("created_at").notNull(),
+  lastUsedAt: text("last_used_at").notNull(),
+});
+
+export const insertDeviceTokenSchema = createInsertSchema(deviceTokens).omit({
+  id: true,
+});
+
+export type InsertDeviceToken = z.infer<typeof insertDeviceTokenSchema>;
+export type DeviceToken = typeof deviceTokens.$inferSelect;
+
+// Pairing attempts table for rate limiting
+export const pairingAttempts = sqliteTable("pairing_attempts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  ipAddress: text("ip_address").notNull(),
+  attemptedAt: text("attempted_at").notNull(),
+  success: integer("success", { mode: "boolean" }).notNull().default(false),
+});
+
+export const insertPairingAttemptSchema = createInsertSchema(pairingAttempts).omit({
+  id: true,
+});
+
+export type InsertPairingAttempt = z.infer<typeof insertPairingAttemptSchema>;
+export type PairingAttempt = typeof pairingAttempts.$inferSelect;
+
+// Pairing request schema
+export const pairingRequestSchema = z.object({
+  secret: z.string().min(1, "Secret is required"),
+  deviceName: z.string().min(1, "Device name is required").max(255),
+});
+
+export type PairingRequest = z.infer<typeof pairingRequestSchema>;
+
+// Pairing response types
+export interface PairingSuccessResponse {
+  deviceToken: string;
+  deviceId: string;
+  message: string;
+}
+
+export interface PairingErrorResponse {
+  error: string;
+}
+
+// Verify response types
+export interface VerifySuccessResponse {
+  valid: true;
+  deviceId: string;
+}
+
+export interface VerifyErrorResponse {
+  valid: false;
+  error: string;
+}

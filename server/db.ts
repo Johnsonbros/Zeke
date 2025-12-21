@@ -13383,4 +13383,148 @@ export function getSavedPlacesSince(since: string, limit: number = 100): SavedPl
   });
 }
 
+// ============================================
+// DEVICE PAIRING / TOKEN AUTHENTICATION
+// ============================================
+
+// Create device_tokens table for mobile companion app authentication
+db.exec(`
+  CREATE TABLE IF NOT EXISTS device_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT UNIQUE NOT NULL,
+    device_id TEXT UNIQUE NOT NULL,
+    device_name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_used_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_device_tokens_token ON device_tokens(token);
+  CREATE INDEX IF NOT EXISTS idx_device_tokens_device_id ON device_tokens(device_id);
+`);
+
+// Create pairing_attempts table for rate limiting
+db.exec(`
+  CREATE TABLE IF NOT EXISTS pairing_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip_address TEXT NOT NULL,
+    attempted_at TEXT NOT NULL,
+    success INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_pairing_attempts_ip ON pairing_attempts(ip_address);
+  CREATE INDEX IF NOT EXISTS idx_pairing_attempts_at ON pairing_attempts(attempted_at);
+`);
+
+interface DeviceTokenRow {
+  id: number;
+  token: string;
+  device_id: string;
+  device_name: string;
+  created_at: string;
+  last_used_at: string;
+}
+
+interface PairingAttemptRow {
+  id: number;
+  ip_address: string;
+  attempted_at: string;
+  success: number;
+}
+
+import type { DeviceToken, PairingAttempt } from "@shared/schema";
+
+function mapDeviceTokenRow(row: DeviceTokenRow): DeviceToken {
+  return {
+    id: row.id,
+    token: row.token,
+    deviceId: row.device_id,
+    deviceName: row.device_name,
+    createdAt: row.created_at,
+    lastUsedAt: row.last_used_at,
+  };
+}
+
+function mapPairingAttemptRow(row: PairingAttemptRow): PairingAttempt {
+  return {
+    id: row.id,
+    ipAddress: row.ip_address,
+    attemptedAt: row.attempted_at,
+    success: row.success === 1,
+  };
+}
+
+export function createDeviceToken(token: string, deviceId: string, deviceName: string): DeviceToken {
+  return wrapDbOperation("createDeviceToken", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      INSERT INTO device_tokens (token, device_id, device_name, created_at, last_used_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(token, deviceId, deviceName, now, now);
+    
+    const row = db.prepare(`SELECT * FROM device_tokens WHERE token = ?`).get(token) as DeviceTokenRow;
+    return mapDeviceTokenRow(row);
+  });
+}
+
+export function getDeviceTokenByToken(token: string): DeviceToken | null {
+  return wrapDbOperation("getDeviceTokenByToken", () => {
+    const row = db.prepare(`SELECT * FROM device_tokens WHERE token = ?`).get(token) as DeviceTokenRow | undefined;
+    return row ? mapDeviceTokenRow(row) : null;
+  });
+}
+
+export function getDeviceTokenByDeviceId(deviceId: string): DeviceToken | null {
+  return wrapDbOperation("getDeviceTokenByDeviceId", () => {
+    const row = db.prepare(`SELECT * FROM device_tokens WHERE device_id = ?`).get(deviceId) as DeviceTokenRow | undefined;
+    return row ? mapDeviceTokenRow(row) : null;
+  });
+}
+
+export function updateDeviceTokenLastUsed(token: string): void {
+  wrapDbOperation("updateDeviceTokenLastUsed", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`UPDATE device_tokens SET last_used_at = ? WHERE token = ?`).run(now, token);
+  });
+}
+
+export function deleteDeviceToken(token: string): void {
+  wrapDbOperation("deleteDeviceToken", () => {
+    db.prepare(`DELETE FROM device_tokens WHERE token = ?`).run(token);
+  });
+}
+
+export function getAllDeviceTokens(): DeviceToken[] {
+  return wrapDbOperation("getAllDeviceTokens", () => {
+    const rows = db.prepare(`SELECT * FROM device_tokens ORDER BY last_used_at DESC`).all() as DeviceTokenRow[];
+    return rows.map(mapDeviceTokenRow);
+  });
+}
+
+export function recordPairingAttempt(ipAddress: string, success: boolean): void {
+  wrapDbOperation("recordPairingAttempt", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      INSERT INTO pairing_attempts (ip_address, attempted_at, success)
+      VALUES (?, ?, ?)
+    `).run(ipAddress, now, success ? 1 : 0);
+  });
+}
+
+export function getRecentFailedPairingAttempts(ipAddress: string, windowMinutes: number = 15): number {
+  return wrapDbOperation("getRecentFailedPairingAttempts", () => {
+    const cutoff = new Date(Date.now() - windowMinutes * 60 * 1000).toISOString();
+    const result = db.prepare(`
+      SELECT COUNT(*) as count FROM pairing_attempts 
+      WHERE ip_address = ? AND success = 0 AND attempted_at > ?
+    `).get(ipAddress, cutoff) as { count: number };
+    return result.count;
+  });
+}
+
+export function cleanupOldPairingAttempts(olderThanMinutes: number = 60): number {
+  return wrapDbOperation("cleanupOldPairingAttempts", () => {
+    const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000).toISOString();
+    const result = db.prepare(`DELETE FROM pairing_attempts WHERE attempted_at < ?`).run(cutoff);
+    return result.changes;
+  });
+}
+
 export { db };
