@@ -3101,6 +3101,55 @@ export interface DocumentWithEntities extends Document {
 }
 
 // ============================================
+// STORED IMAGES (MMS/Object Storage)
+// ============================================
+
+export const imageCategories = [
+  "selfie",
+  "people_photo",
+  "screenshot",
+  "document",
+  "receipt",
+  "business_card",
+  "location",
+  "meme",
+  "casual",
+  "unknown",
+] as const;
+export type ImageCategory = typeof imageCategories[number];
+
+export const storedImages = sqliteTable("stored_images", {
+  id: text("id").primaryKey(),
+  objectPath: text("object_path").notNull(),
+  originalUrl: text("original_url"),
+  contentType: text("content_type").notNull(),
+  size: integer("size").notNull(),
+  hash: text("hash").notNull(),
+  relevanceScore: integer("relevance_score").notNull(),
+  category: text("category", { enum: imageCategories }).notNull(),
+  senderPhone: text("sender_phone"),
+  senderName: text("sender_name"),
+  conversationId: text("conversation_id"),
+  messageText: text("message_text"),
+  detectedPeople: integer("detected_people"),
+  detectedObjects: text("detected_objects"),
+  extractedText: text("extracted_text"),
+  isMemoryWorthy: integer("is_memory_worthy", { mode: "boolean" }),
+  linkedMemoryId: text("linked_memory_id"),
+  linkedContactId: text("linked_contact_id"),
+  createdAt: text("created_at").notNull(),
+  expiresAt: text("expires_at"),
+});
+
+export const insertStoredImageSchema = createInsertSchema(storedImages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertStoredImage = z.infer<typeof insertStoredImageSchema>;
+export type StoredImage = typeof storedImages.$inferSelect;
+
+// ============================================
 // UPLOADED FILES SYSTEM
 // ============================================
 

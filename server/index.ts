@@ -25,6 +25,7 @@ import { startContextAgent } from "./zekeContextAgent";
 import { startPeopleProcessor } from "./peopleProcessor";
 import { startPendantHealthMonitor, setMorningBriefingCallback } from "./pendantHealthMonitor";
 import { sendWakeTriggeredBriefing } from "./morningBriefingService";
+import { startImageCleanupJob } from "./jobs/imageCleanupJob";
 
 export { log };
 
@@ -228,6 +229,10 @@ app.use((req, res, next) => {
     startPendantHealthMonitor();
     log("Pendant health monitor started", "startup");
   }
+  
+  // Start image cleanup job (daily at 3 AM)
+  startImageCleanupJob();
+  log("Image cleanup job started", "startup");
   
   log("=== ZEKE cold start complete - all services operational ===", "startup");
 

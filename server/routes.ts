@@ -10,6 +10,7 @@ import { getDeviceTokenByToken } from "./db";
 import type { TranscriptSegmentEvent } from "@shared/schema";
 import { createMobileAuthMiddleware, registerSecurityLogsEndpoint, registerPairingEndpoints } from "./mobileAuth";
 import { registerSmsPairingEndpoints } from "./sms-pairing";
+import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { extractCardsFromResponse } from "./cardExtractor";
 import { syncGitHubRepo, pushToGitHub, createGitHubWebhook } from "./github";
 import { 
@@ -459,7 +460,8 @@ import {
   buildIdempotencyKeyFromPayload,
   getProcessedKeysCount,
 } from "./idempotency";
-import { analyzeMmsImage, type ImageAnalysisResult, type PersonPhotoAnalysisResult } from "./services/fileProcessor";
+import { analyzeMmsImage, downloadMmsImage, type ImageAnalysisResult, type PersonPhotoAnalysisResult } from "./services/fileProcessor";
+import { processAndStoreMmsImage } from "./services/imageStorageService";
 import { setPendingPlaceSave, hasPendingPlaceSave, completePendingPlaceSave, cleanupExpiredPendingPlaces } from "./pendingPlaceSave";
 import { verifyPlace, manuallyVerifyPlace } from "./locationVerifier";
 import { recordSleepQuality, shouldAskSleepQuality, markSleepQualityAsked } from "./sleepTracker";
@@ -675,6 +677,9 @@ export async function registerRoutes(
   // Register device pairing endpoints for mobile companion app authentication
   registerPairingEndpoints(app);
   registerSmsPairingEndpoints(app);
+  
+  // Register object storage routes for file uploads
+  registerObjectStorageRoutes(app);
 
   // ============================================
   // STT WebSocket Endpoint: /ws/audio
@@ -1971,6 +1976,28 @@ export async function registerRoutes(
                 });
                 imageAnalysisResults.push(analysis);
                 console.log(`[MMS] Image analyzed: ${analysis.description?.substring(0, 100)}...`);
+                
+                // Store worthy images to object storage before Twilio deletes them
+                try {
+                  const { buffer, contentType } = await downloadMmsImage(media.url);
+                  const storedImage = await processAndStoreMmsImage(
+                    buffer,
+                    contentType,
+                    media.url,
+                    analysis,
+                    {
+                      senderPhone: fromNumber,
+                      senderName,
+                      conversationId: conversation.id,
+                      messageText: message,
+                    }
+                  );
+                  if (storedImage) {
+                    console.log(`[MMS] Image stored: ${storedImage.objectPath} (score: ${storedImage.relevanceScore})`);
+                  }
+                } catch (storageError: any) {
+                  console.warn(`[MMS] Failed to store image (non-fatal): ${storageError.message}`);
+                }
               } catch (error: any) {
                 console.error(`[MMS] Failed to analyze image: ${error.message}`);
                 imageAnalysisResults.push({
@@ -11369,6 +11396,100 @@ export async function registerRoutes(
   });
 
   console.log("[SelfModelV2] V2 endpoints registered (signals, findings, expectations, correlations, model health, understanding)");
+  
+  // ============================================
+  // IMAGE STORAGE MANAGEMENT
+  // ============================================
+  
+  const { 
+    getAllStoredImages, 
+    getStoredImage,
+    getExpiredImages,
+    deleteStoredImage 
+  } = await import("./services/imageStorageService");
+  
+  const {
+    cleanupExpiredImages,
+    getImageStorageStats,
+  } = await import("./jobs/imageCleanupJob");
+  
+  // GET /api/images/stats - Get image storage statistics
+  app.get("/api/images/stats", async (req, res) => {
+    try {
+      const stats = getImageStorageStats();
+      res.json(stats);
+    } catch (error: any) {
+      console.error("Get image stats error:", error);
+      res.status(500).json({ error: error.message || "Failed to get image stats" });
+    }
+  });
+  
+  // GET /api/images - List all stored images
+  app.get("/api/images", async (req, res) => {
+    try {
+      const images = getAllStoredImages();
+      res.json({ images, count: images.length });
+    } catch (error: any) {
+      console.error("List images error:", error);
+      res.status(500).json({ error: error.message || "Failed to list images" });
+    }
+  });
+  
+  // GET /api/images/:id - Get a specific image record
+  app.get("/api/images/:id", async (req, res) => {
+    try {
+      const image = getStoredImage(req.params.id);
+      if (!image) {
+        return res.status(404).json({ error: "Image not found" });
+      }
+      res.json(image);
+    } catch (error: any) {
+      console.error("Get image error:", error);
+      res.status(500).json({ error: error.message || "Failed to get image" });
+    }
+  });
+  
+  // POST /api/images/cleanup - Trigger manual cleanup of expired images
+  app.post("/api/images/cleanup", async (req, res) => {
+    try {
+      console.log(`[AUDIT] [${new Date().toISOString()}] Manual image cleanup triggered`);
+      const result = await cleanupExpiredImages();
+      res.json({ success: true, ...result });
+    } catch (error: any) {
+      console.error("Image cleanup error:", error);
+      res.status(500).json({ error: error.message || "Failed to cleanup images" });
+    }
+  });
+  
+  // DELETE /api/images/:id - Delete a specific image
+  app.delete("/api/images/:id", async (req, res) => {
+    try {
+      const image = getStoredImage(req.params.id);
+      if (!image) {
+        return res.status(404).json({ error: "Image not found" });
+      }
+      
+      const { ObjectStorageService } = await import("./replit_integrations/object_storage");
+      const objectStorage = new ObjectStorageService();
+      
+      try {
+        const objectFile = await objectStorage.getObjectEntityFile(image.objectPath);
+        await objectFile.delete();
+      } catch (deleteError: any) {
+        console.warn(`[ImageStorage] Failed to delete from storage (may already be deleted):`, deleteError.message);
+      }
+      
+      deleteStoredImage(req.params.id);
+      console.log(`[AUDIT] [${new Date().toISOString()}] Image deleted: ${req.params.id}`);
+      
+      res.json({ success: true, deleted: req.params.id });
+    } catch (error: any) {
+      console.error("Delete image error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete image" });
+    }
+  });
+  
+  console.log("[ImageStorage] API endpoints registered");
   
   return httpServer;
 }

@@ -12167,6 +12167,39 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_uploaded_files_type ON uploaded_files(file_type);
 `);
 
+// ============================================
+// STORED IMAGES (MMS/Object Storage)
+// ============================================
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS stored_images (
+    id TEXT PRIMARY KEY,
+    object_path TEXT NOT NULL,
+    original_url TEXT,
+    content_type TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    hash TEXT NOT NULL,
+    relevance_score INTEGER NOT NULL,
+    category TEXT NOT NULL,
+    sender_phone TEXT,
+    sender_name TEXT,
+    conversation_id TEXT,
+    message_text TEXT,
+    detected_people INTEGER,
+    detected_objects TEXT,
+    extracted_text TEXT,
+    is_memory_worthy INTEGER DEFAULT 0,
+    linked_memory_id TEXT,
+    linked_contact_id TEXT,
+    created_at TEXT NOT NULL,
+    expires_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_stored_images_hash ON stored_images(hash);
+  CREATE INDEX IF NOT EXISTS idx_stored_images_category ON stored_images(category);
+  CREATE INDEX IF NOT EXISTS idx_stored_images_expires ON stored_images(expires_at);
+  CREATE INDEX IF NOT EXISTS idx_stored_images_conversation ON stored_images(conversation_id);
+`);
+
 // Create journal_entries table for daily summaries
 db.exec(`
   CREATE TABLE IF NOT EXISTS journal_entries (
