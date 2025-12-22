@@ -16,11 +16,15 @@ import {
   getLocationHistoryInRange,
   createJournalEntry,
   getJournalEntryByDate,
+  createBatchJob,
 } from "../db";
-import type { MemoryNote } from "@shared/schema";
+import { buildBatchRequestLine, submitBatchJob, generateIdempotencyKey } from "../services/batchService";
+import { getModelConfig } from "../services/modelConfigService";
+import type { MemoryNote, BatchJobType } from "@shared/schema";
 import type { JournalEntry, InsertJournalEntry } from "@shared/schema";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const BATCH_JOB_TYPE: BatchJobType = "DAILY_SUMMARY";
 
 let scheduledTask: cron.ScheduledTask | null = null;
 let lastRunTime: Date | null = null;
@@ -300,31 +304,154 @@ async function runDailySummaryJob(): Promise<void> {
   }
 }
 
-export function startDailySummaryScheduler(options?: Partial<DailySummaryConfig>): void {
-  if (options) {
-    config = { ...config, ...options };
+// ============================================
+// BATCH API INTEGRATION
+// ============================================
+
+const DAILY_SUMMARY_SYSTEM_PROMPT = `You are ZEKE, a personal AI assistant generating a journal entry. Output valid JSON only.`;
+
+/**
+ * Queue daily summary as a batch job for nightly processing (50% cost savings)
+ * Called by the batch orchestrator at 3 AM
+ */
+export async function queueDailySummaryBatch(targetDate?: string): Promise<string | null> {
+  const date = targetDate || new Date().toISOString().split("T")[0];
+  console.log(`[DailySummaryAgent] Preparing batch job for ${date}...`);
+  
+  const existing = getJournalEntryByDate(date);
+  if (existing) {
+    console.log(`[DailySummaryAgent] Entry already exists for ${date} - skipping batch`);
+    return null;
   }
   
-  if (scheduledTask) {
-    scheduledTask.stop();
-  }
+  const context = await gatherDailyContext(date);
   
-  if (!config.enabled) {
-    console.log("[DailySummaryAgent] Scheduler is disabled");
-    return;
-  }
+  const userPrompt = `Generate a comprehensive daily journal summary for ${context.date}.
+
+## Today's Activity Data:
+
+### Conversations (${context.conversations.length} total)
+${context.conversations.map(c => `- "${c.title}" (${c.messageCount} messages): ${c.topics.slice(0, 2).join(", ")}`).join("\n") || "No conversations today"}
+
+### Tasks Completed (${context.tasksCompleted.length})
+${context.tasksCompleted.map(t => `- ${t.title} [${t.priority} priority, ${t.category}]`).join("\n") || "No tasks completed"}
+
+### Tasks Created (${context.tasksCreated.length})
+${context.tasksCreated.map(t => `- ${t.title} [${t.priority} priority, ${t.category}]`).join("\n") || "No new tasks"}
+
+### Memories Created (${context.memoriesCreated.length})
+${context.memoriesCreated.map(m => `- [${m.type}] ${m.content}`).join("\n") || "No new memories"}
+
+Generate a response in the following JSON format:
+{
+  "title": "A creative, descriptive title for this day",
+  "summary": "A 2-4 paragraph narrative summary of the day, written in first person from Nate's perspective.",
+  "mood": "One word describing the overall mood/tone of the day",
+  "insights": ["Key insight or learning 1", "Key insight 2"],
+  "keyEvents": [{"time": "approximate time", "event": "description", "category": "work|personal|family|health|social"}],
+  "highlights": ["Notable moment 1", "Achievement 2"]
+}`;
+
+  const now = new Date();
+  const windowStart = `${date}T00:00:00.000Z`;
+  const windowEnd = `${date}T23:59:59.999Z`;
   
-  scheduledTask = cron.schedule(
-    config.cronSchedule,
-    () => {
-      runDailySummaryJob();
-    },
-    {
-      timezone: config.timezone,
-    }
+  const idempotencyKey = generateIdempotencyKey(BATCH_JOB_TYPE, windowStart, windowEnd);
+  const modelConfig = getModelConfig(BATCH_JOB_TYPE);
+  
+  const batchJob = createBatchJob({
+    type: BATCH_JOB_TYPE,
+    status: "QUEUED",
+    inputWindowStart: windowStart,
+    inputWindowEnd: windowEnd,
+    idempotencyKey,
+    inputItemCount: 1,
+    model: modelConfig.model,
+  });
+  
+  const customId = `DAILY_SUMMARY_REPORT:${date}`;
+  const jsonlContent = buildBatchRequestLine(
+    customId,
+    DAILY_SUMMARY_SYSTEM_PROMPT,
+    userPrompt,
+    BATCH_JOB_TYPE
   );
   
-  console.log(`[DailySummaryAgent] Scheduled at "${config.cronSchedule}" (${config.timezone})`);
+  try {
+    const openAiBatchId = await submitBatchJob(batchJob.id, jsonlContent);
+    console.log(`[DailySummaryAgent] Batch job submitted: ${openAiBatchId}`);
+    return batchJob.id;
+  } catch (error) {
+    console.error("[DailySummaryAgent] Failed to submit batch:", error);
+    throw error;
+  }
+}
+
+/**
+ * Process batch results and store journal entry
+ * Called by the artifact consumer when batch job completes
+ * 
+ * @param batchJobId - The batch job ID for logging
+ * @param responseContent - Raw JSON string from OpenAI (already parsed from artifact.payloadJson)
+ * @param sourceRef - The date from custom_id (format: YYYY-MM-DD)
+ */
+export async function processDailySummaryBatchResult(
+  batchJobId: string,
+  responseContent: string,
+  sourceRef: string
+): Promise<JournalEntry | null> {
+  console.log(`[DailySummaryAgent] Processing batch result for job ${batchJobId}, date ${sourceRef}...`);
+  
+  try {
+    // responseContent is the raw GPT output (JSON string from OpenAI)
+    const parsed = JSON.parse(responseContent);
+    const date = sourceRef; // sourceRef is the date extracted from custom_id
+    
+    const existing = getJournalEntryByDate(date);
+    if (existing) {
+      console.log(`[DailySummaryAgent] Entry already exists for ${date}`);
+      return existing;
+    }
+    
+    // Gather context again for metrics (context may have changed slightly, but metrics are important)
+    const context = await gatherDailyContext(date);
+    
+    const entry = createJournalEntry({
+      date,
+      title: parsed.title || `Summary for ${date}`,
+      summary: parsed.summary || "No summary generated.",
+      mood: parsed.mood || null,
+      insights: JSON.stringify(parsed.insights || []),
+      keyEvents: JSON.stringify(parsed.keyEvents || []),
+      highlights: JSON.stringify(parsed.highlights || []),
+      metrics: JSON.stringify({
+        conversationCount: context.conversations.length,
+        messageCount: context.conversations.reduce((sum, c) => sum + c.messageCount, 0),
+        calendarEventCount: context.calendarEvents.length,
+      }),
+      conversationCount: context.conversations.length,
+      taskCompletedCount: context.tasksCompleted.length,
+      taskCreatedCount: context.tasksCreated.length,
+      memoryCreatedCount: context.memoriesCreated.length,
+    });
+    
+    // Note: The artifact was already created by batchService.processJobResults()
+    // when it downloaded batch results from OpenAI. We don't create another artifact here.
+    
+    console.log(`[DailySummaryAgent] Created journal entry: ${entry.title}`);
+    return entry;
+  } catch (error) {
+    console.error("[DailySummaryAgent] Error processing batch result:", error);
+    throw error;
+  }
+}
+
+// ============================================
+// SCHEDULER (DEPRECATED - Use batch orchestrator for AI work)
+// ============================================
+
+export function startDailySummaryScheduler(options?: Partial<DailySummaryConfig>): void {
+  console.log("[DailySummaryAgent] Standalone scheduler disabled - using batch orchestrator for AI work");
 }
 
 export function stopDailySummaryScheduler(): void {

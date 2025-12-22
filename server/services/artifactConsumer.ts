@@ -17,6 +17,7 @@ import {
   getEntityByLabel,
 } from "../db";
 import { processConceptReflectionBatchResult } from "../jobs/conceptReflection";
+import { processDailySummaryBatchResult } from "../jobs/dailySummaryAgent";
 import type { 
   BatchArtifact,
   EntityType,
@@ -396,6 +397,41 @@ export async function consumeCoreConceptArtifacts(): Promise<{ processed: number
 }
 
 /**
+ * Consume DAILY_SUMMARY_REPORT artifacts and create journal entries
+ */
+export async function consumeDailySummaryArtifacts(): Promise<{ processed: number; entriesCreated: number; errors: number }> {
+  const artifacts = getUnprocessedArtifactsByType("DAILY_SUMMARY_REPORT");
+  let processed = 0;
+  let entriesCreated = 0;
+  let errors = 0;
+
+  for (const artifact of artifacts) {
+    try {
+      const result = await processDailySummaryBatchResult(
+        artifact.batchJobId,
+        artifact.payloadJson,
+        artifact.sourceRef
+      );
+      
+      if (result) {
+        entriesCreated++;
+      }
+      markArtifactProcessed(artifact.id);
+      processed++;
+    } catch (error) {
+      console.error(`[ArtifactConsumer] Error processing DAILY_SUMMARY_REPORT artifact ${artifact.id}:`, error);
+      errors++;
+    }
+  }
+
+  if (processed > 0 || errors > 0) {
+    console.log(`[ArtifactConsumer] DAILY_SUMMARY_REPORT: processed=${processed}, errors=${errors}, entriesCreated=${entriesCreated}`);
+  }
+
+  return { processed, entriesCreated, errors };
+}
+
+/**
  * Consume all unprocessed artifacts
  */
 export async function consumeAllArtifacts(): Promise<{
@@ -403,6 +439,7 @@ export async function consumeAllArtifacts(): Promise<{
   kgEdges: { processed: number; entities: number; edges: number; errors: number; entitiesFailed: number; edgesFailed: number };
   feedbackFixes: { processed: number; fixes: number; errors: number; fixesFailed: number };
   coreConcepts: { processed: number; conceptsCreated: number; conceptsUpdated: number; errors: number };
+  dailySummaries: { processed: number; entriesCreated: number; errors: number };
 }> {
   console.log("[ArtifactConsumer] Consuming all unprocessed artifacts...");
   
@@ -410,8 +447,9 @@ export async function consumeAllArtifacts(): Promise<{
   const kgEdges = await consumeKgEdgesArtifacts();
   const feedbackFixes = await consumeFeedbackFixArtifacts();
   const coreConcepts = await consumeCoreConceptArtifacts();
+  const dailySummaries = await consumeDailySummaryArtifacts();
   
-  return { memorySummaries, kgEdges, feedbackFixes, coreConcepts };
+  return { memorySummaries, kgEdges, feedbackFixes, coreConcepts, dailySummaries };
 }
 
 export const ArtifactConsumer = {
@@ -419,5 +457,6 @@ export const ArtifactConsumer = {
   consumeKgEdgesArtifacts,
   consumeFeedbackFixArtifacts,
   consumeCoreConceptArtifacts,
+  consumeDailySummaryArtifacts,
   consumeAllArtifacts,
 };
