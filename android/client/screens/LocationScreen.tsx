@@ -1483,7 +1483,7 @@ export default function LocationScreen() {
           ]}
         >
           <View
-            style={[styles.modalHeader, { borderBottomColor: theme.border }]}
+            style={[styles.modalHeader, { borderBottomColor: theme.border, paddingTop: insets.top + Spacing.md }]}
           >
             <Pressable
               onPress={() => {
@@ -1982,7 +1982,7 @@ export default function LocationScreen() {
           ]}
         >
           <View
-            style={[styles.modalHeader, { borderBottomColor: theme.border }]}
+            style={[styles.modalHeader, { borderBottomColor: theme.border, paddingTop: insets.top + Spacing.md }]}
           >
             <Pressable
               onPress={() => {

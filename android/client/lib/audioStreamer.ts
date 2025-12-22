@@ -1,11 +1,7 @@
-import { bluetoothService, type OpusFrame } from "./bluetooth";
-import { getApiUrl, getDeviceToken } from "./query-client";
+import { bluetoothService, type AudioChunk } from "./bluetooth";
+import { getApiUrl } from "./query-client";
 
-export type TranscriptionCallback = (
-  text: string,
-  isFinal: boolean,
-  speaker?: number,
-) => void;
+export type TranscriptionCallback = (text: string, isFinal: boolean) => void;
 
 export interface AudioStreamer {
   start(
@@ -16,56 +12,43 @@ export interface AudioStreamer {
   isStreaming(): boolean;
 }
 
-interface SessionStartedMessage {
-  type: "session_started";
-  session_id: string;
-  deepgram_connected: boolean;
-  frame_format: string;
+interface ServerMessage {
+  type: "TRANSCRIPTION" | "ERROR";
+  text?: string;
+  isFinal?: boolean;
+  message?: string;
 }
 
-interface TranscriptSegmentMessage {
-  type: "transcript_segment";
-  sessionId: string;
-  speaker: number;
-  text: string;
-  startMs: number;
-  endMs: number;
-  confidence: number;
-  isFinal: boolean;
+const SEND_INTERVAL_MS = 5000;
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(bytes).toString("base64");
+  }
+  let binary = "";
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
 }
 
-interface ErrorMessage {
-  type: "error";
-  error: string;
-  code?: string;
-}
-
-interface SessionEndedMessage {
-  type: "session_ended";
-  session_id: string;
-  total_segments: number;
-}
-
-type ServerMessage =
-  | SessionStartedMessage
-  | TranscriptSegmentMessage
-  | ErrorMessage
-  | SessionEndedMessage;
-
-function getWebSocketUrl(token: string): string {
+function getWebSocketUrl(): string {
   const apiUrl = getApiUrl();
   const wsProtocol = apiUrl.startsWith("https") ? "wss" : "ws";
   const host = apiUrl.replace(/^https?:\/\//, "");
-  return `${wsProtocol}://${host}/ws/audio?token=${encodeURIComponent(token)}`;
+  return `${wsProtocol}://${host}/ws/audio`;
 }
 
 class AudioStreamerImpl implements AudioStreamer {
   private ws: WebSocket | null = null;
-  private unsubscribeOpusFrame: (() => void) | null = null;
+  private audioChunkBuffer: Uint8Array[] = [];
+  private sendInterval: ReturnType<typeof setInterval> | null = null;
+  private unsubscribeAudioChunk: (() => void) | null = null;
   private transcriptionCallback: TranscriptionCallback | null = null;
   private fullTranscript: string = "";
   private streaming: boolean = false;
-  private sessionId: string | null = null;
+  private deviceId: string = "";
   private resolveStop: ((value: string) => void) | null = null;
 
   public async start(
@@ -77,53 +60,59 @@ class AudioStreamerImpl implements AudioStreamer {
       return;
     }
 
+    this.deviceId = deviceId;
     this.transcriptionCallback = onTranscription;
     this.fullTranscript = "";
-    this.sessionId = null;
-
-    const deviceToken = getDeviceToken();
-    if (!deviceToken) {
-      throw new Error("No device token available for STT authentication");
-    }
+    this.audioChunkBuffer = [];
 
     return new Promise((resolve, reject) => {
-      const wsUrl = getWebSocketUrl(deviceToken);
-      console.log("STT: Connecting to WebSocket:", wsUrl.replace(/token=.*/, "token=***"));
+      const wsUrl = getWebSocketUrl();
+      console.log("Connecting to WebSocket:", wsUrl);
 
       this.ws = new WebSocket(wsUrl);
-      this.ws.binaryType = "arraybuffer";
 
       this.ws.onopen = () => {
-        console.log("STT: WebSocket connected, sending start_session");
+        console.log("WebSocket connected");
 
         this.ws?.send(
           JSON.stringify({
-            type: "start_session",
-            codec: "opus",
-            sample_rate_hint: 16000,
-            frame_format: "raw_opus_packets",
+            type: "START",
+            deviceId: this.deviceId,
           }),
         );
+
+        this.unsubscribeAudioChunk = bluetoothService.onAudioChunk(
+          (chunk: AudioChunk) => {
+            this.audioChunkBuffer.push(chunk.data);
+          },
+        );
+
+        this.sendInterval = setInterval(() => {
+          this.sendBufferedAudio();
+        }, SEND_INTERVAL_MS);
+
+        this.streaming = true;
+        resolve();
       };
 
       this.ws.onmessage = (event) => {
         try {
           const message: ServerMessage = JSON.parse(event.data);
-          this.handleServerMessage(message, resolve, reject);
+          this.handleServerMessage(message);
         } catch (error) {
-          console.error("STT: Failed to parse WebSocket message:", error);
+          console.error("Failed to parse WebSocket message:", error);
         }
       };
 
       this.ws.onerror = (error) => {
-        console.error("STT: WebSocket error:", error);
+        console.error("WebSocket error:", error);
         if (!this.streaming) {
           reject(new Error("WebSocket connection failed"));
         }
       };
 
-      this.ws.onclose = (event) => {
-        console.log("STT: WebSocket closed", event.code, event.reason);
+      this.ws.onclose = () => {
+        console.log("WebSocket closed");
         this.cleanup();
       };
     });
@@ -137,9 +126,10 @@ class AudioStreamerImpl implements AudioStreamer {
     return new Promise((resolve) => {
       this.resolveStop = resolve;
 
+      this.sendBufferedAudio();
+
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        console.log("STT: Sending end_session");
-        this.ws.send(JSON.stringify({ type: "end_session" }));
+        this.ws.send(JSON.stringify({ type: "STOP" }));
       }
 
       setTimeout(() => {
@@ -156,74 +146,74 @@ class AudioStreamerImpl implements AudioStreamer {
     return this.streaming;
   }
 
-  private startOpusForwarding(): void {
-    this.unsubscribeOpusFrame = bluetoothService.onOpusFrame(
-      (frame: OpusFrame) => {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          const opusPacket = new Uint8Array(frame.data);
-          this.ws.send(opusPacket);
-        }
-      },
+  private sendBufferedAudio(): void {
+    if (this.audioChunkBuffer.length === 0) {
+      return;
+    }
+
+    const totalLength = this.audioChunkBuffer.reduce(
+      (sum, chunk) => sum + chunk.length,
+      0,
     );
-    console.log("STT: Opus frame forwarding started");
+    if (totalLength === 0) {
+      this.audioChunkBuffer = [];
+      return;
+    }
+
+    const pcmData = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of this.audioChunkBuffer) {
+      pcmData.set(chunk, offset);
+      offset += chunk.length;
+    }
+    this.audioChunkBuffer = [];
+
+    const base64Data = uint8ArrayToBase64(pcmData);
+
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(
+        JSON.stringify({
+          type: "AUDIO_CHUNK",
+          data: base64Data,
+        }),
+      );
+    }
   }
 
-  private handleServerMessage(
-    message: ServerMessage,
-    resolve?: (value: void | PromiseLike<void>) => void,
-    reject?: (reason?: any) => void,
-  ): void {
+  private handleServerMessage(message: ServerMessage): void {
     switch (message.type) {
-      case "session_started":
-        console.log("STT: Session started:", message.session_id);
-        this.sessionId = message.session_id;
-        this.streaming = true;
-        this.startOpusForwarding();
-        resolve?.();
-        break;
-
-      case "transcript_segment":
+      case "TRANSCRIPTION":
         if (message.text) {
-          if (message.isFinal) {
-            this.fullTranscript +=
-              (this.fullTranscript ? " " : "") + message.text;
-          }
-          this.transcriptionCallback?.(
-            message.text,
-            message.isFinal,
-            message.speaker,
-          );
+          this.fullTranscript +=
+            (this.fullTranscript ? " " : "") + message.text;
+          this.transcriptionCallback?.(message.text, message.isFinal || false);
         }
-        break;
 
-      case "session_ended":
-        console.log(
-          "STT: Session ended, total segments:",
-          message.total_segments,
-        );
-        if (this.resolveStop) {
+        if (message.isFinal && this.resolveStop) {
           this.resolveStop(this.fullTranscript);
           this.resolveStop = null;
+          this.cleanup();
         }
-        this.cleanup();
         break;
 
-      case "error":
-        console.error("STT: Server error:", message.error, message.code);
-        if (!this.streaming && reject) {
-          reject(new Error(message.error));
-        }
+      case "ERROR":
+        console.error("Server error:", message.message);
         break;
 
       default:
-        console.warn("STT: Unknown message type:", (message as any).type);
+        console.warn("Unknown message type:", (message as any).type);
     }
   }
 
   private cleanup(): void {
-    if (this.unsubscribeOpusFrame) {
-      this.unsubscribeOpusFrame();
-      this.unsubscribeOpusFrame = null;
+    if (this.sendInterval) {
+      clearInterval(this.sendInterval);
+      this.sendInterval = null;
+    }
+
+    if (this.unsubscribeAudioChunk) {
+      this.unsubscribeAudioChunk();
+      this.unsubscribeAudioChunk = null;
     }
 
     if (this.ws) {
@@ -237,7 +227,7 @@ class AudioStreamerImpl implements AudioStreamer {
     }
 
     this.streaming = false;
-    this.sessionId = null;
+    this.audioChunkBuffer = [];
     this.transcriptionCallback = null;
   }
 }

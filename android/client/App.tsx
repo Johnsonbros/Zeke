@@ -20,6 +20,8 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Colors } from "@/constants/theme";
 import { AuthProvider, useAuth, loadTokenSync } from "@/context/AuthContext";
 import { PairingScreen } from "@/screens/PairingScreen";
+import { ConnectivityService } from "@/lib/connectivity";
+import { SyncTrigger } from "@/lib/sync-trigger";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -101,18 +103,44 @@ export default function App() {
   const [isProxyReady, setIsProxyReady] = useState(false);
 
   // Gate app until proxy origin is initialized (prevents stale URL issues in published apps)
+  // Also initialize connectivity monitoring and sync trigger
   useEffect(() => {
     // Load token synchronously on web before any queries start
     loadTokenSync();
     
+    // Initialize connectivity monitoring
+    ConnectivityService.initialize({
+      debounceMs: 500,
+      onOnline: () => {
+        console.log("[App] Device came online - triggering sync");
+        SyncTrigger.triggerSync();
+      },
+      onOffline: () => {
+        console.log("[App] Device went offline");
+      },
+    });
+    
     initializeProxyOrigin()
       .then(() => {
-        console.log("[config] apiUrl=" + getApiUrl());
-        console.log("[config] localApiUrl=" + getLocalApiUrl());
+        const apiUrl = getApiUrl();
+        const localApiUrl = getLocalApiUrl();
+        
+        console.log("[config] ========== BOOT-TIME CONFIG ==========");
+        console.log(`[config] Platform: ${Platform.OS}`);
+        console.log(`[config] Environment: ${__DEV__ ? "development" : "production"}`);
+        console.log(`[config] EXPO_PUBLIC_DOMAIN: ${process.env.EXPO_PUBLIC_DOMAIN || "(not set)"}`);
+        console.log(`[config] Resolved apiUrl: ${apiUrl}`);
+        console.log(`[config] Resolved localApiUrl: ${localApiUrl}`);
+        console.log(`[config] URLs match: ${apiUrl === localApiUrl ? "YES" : "NO"}`);
+        console.log("[config] ======================================");
       })
       .finally(() => {
         setIsProxyReady(true);
       });
+
+    return () => {
+      ConnectivityService.cleanup();
+    };
   }, []);
 
   // Don't render QueryClientProvider until proxy is ready

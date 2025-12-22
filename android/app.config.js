@@ -83,7 +83,9 @@ module.exports = ({ config }) => {
       eas: {
         projectId: "fd634d5b-ef00-4215-a63a-1c962f8f4015"
       },
-      localApiDomain: process.env.EXPO_PUBLIC_DOMAIN || process.env.REPLIT_INTERNAL_APP_DOMAIN || null
+      // For production Android/iOS builds, set EXPO_PUBLIC_DOMAIN at build time
+      // This bakes the deployed server URL into the app bundle for offline URL resolution
+      localApiDomain: process.env.EXPO_PUBLIC_DOMAIN || process.env.REPLIT_INTERNAL_APP_DOMAIN || "https://zekeai.replit.app"
     },
     runtimeVersion: "1.0.0",
     updates: {

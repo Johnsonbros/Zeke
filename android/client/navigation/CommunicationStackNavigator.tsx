@@ -10,7 +10,7 @@ import { ZekeHeaderTitle, ZekeHeaderButtons } from "@/components/ZekeHeader";
 import { createZekeSubHeader } from "@/components/ZekeSubHeader";
 
 export type CommunicationStackParamList = {
-  CommunicationsHub: undefined;
+  CommunicationsHub: { initialTab?: "sms" | "voice" | "chat" | "contacts" } | undefined;
   SmsConversation: {
     conversationId?: string;
     contactId?: string;

@@ -5,6 +5,7 @@ import { registerRoutes } from "./routes";
 import { setupWebSocketServer } from "./websocket";
 import { authMiddleware, getAuthStatus, getLockedIPs, unlockIP, clearAllLockouts } from "./auth-middleware";
 import { validateMasterSecret, registerDevice, listDevices, revokeAllDeviceTokens, isSecretConfigured } from "./device-auth";
+import { registerOmiWebhooks } from "./omi-webhooks";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -20,6 +21,9 @@ declare module "http" {
 function setupCors(app: express.Application) {
   app.use((req, res, next) => {
     const origins = new Set<string>();
+
+    origins.add("http://localhost:8081");
+    origins.add("http://127.0.0.1:8081");
 
     if (process.env.REPLIT_DEV_DOMAIN) {
       origins.add(`https://${process.env.REPLIT_DEV_DOMAIN}`);
@@ -422,6 +426,8 @@ function setupErrorHandler(app: express.Application) {
   });
 
   configureExpoAndLanding(app);
+
+  registerOmiWebhooks(app);
 
   const server = await registerRoutes(app);
 

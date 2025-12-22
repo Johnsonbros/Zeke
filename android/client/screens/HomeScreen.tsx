@@ -30,6 +30,10 @@ import { ThemedText } from "@/components/ThemedText";
 import { GradientText } from "@/components/GradientText";
 import { DeviceCard, DeviceInfo } from "@/components/DeviceCard";
 import { PulsingDot } from "@/components/PulsingDot";
+import { SyncStatusBar } from "@/components/SyncStatusBar";
+import { SpeakerTagList } from "@/components/SpeakerTag";
+import { QuickActionsMenu, QuickAction } from "@/components/QuickActionsMenu";
+import { getSpeakerColor } from "@/lib/speaker-matcher";
 import { useTheme } from "@/hooks/useTheme";
 import { useLocation } from "@/hooks/useLocation";
 import { Spacing, Colors, BorderRadius, Gradients } from "@/constants/theme";
@@ -373,54 +377,94 @@ export default function HomeScreen() {
     (item) => !item.isPurchased,
   );
 
-  return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: theme.backgroundRoot }}
-      contentContainerStyle={{
-        paddingTop: headerHeight + Spacing.xl,
-        paddingBottom: tabBarHeight + Spacing.xl + 40,
-        paddingHorizontal: Spacing.lg,
-      }}
-      scrollIndicatorInsets={{ bottom: insets.bottom }}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={onRefresh}
-          tintColor={Colors.dark.primary}
-        />
-      }
-    >
-      <View style={styles.headerSection}>
-        <View style={styles.greetingSection}>
-          <GradientText type="h2" colors={Gradients.primary}>
-            {getGreeting()}
-            {isSyncMode && dashboardSummary?.userName
-              ? `, ${dashboardSummary.userName}`
-              : ""}
-          </GradientText>
-          <ThemedText type="body" secondary style={{ marginTop: Spacing.xs }}>
-            ZEKE Command Center
-          </ThemedText>
-        </View>
+  const quickActions: QuickAction[] = [
+    {
+      id: "upload",
+      icon: "upload-cloud",
+      label: "Upload",
+      gradientColors: Gradients.accent,
+      onPress: handleUploadPress,
+    },
+    {
+      id: "call",
+      icon: "phone",
+      label: "Call",
+      gradientColors: ["#6366F1", "#8B5CF6"],
+      onPress: handleCallPress,
+    },
+    {
+      id: "message",
+      icon: "message-circle",
+      label: "Message",
+      gradientColors: ["#8B5CF6", "#A855F7"],
+      onPress: handleMessagePress,
+    },
+    {
+      id: "calendar",
+      icon: "calendar",
+      label: "Calendar",
+      gradientColors: ["#10B981", "#059669"],
+      onPress: () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        navigation.navigate("CalendarTab");
+      },
+    },
+    {
+      id: "tasks",
+      icon: "check-square",
+      label: "Tasks",
+      gradientColors: ["#F59E0B", "#D97706"],
+      onPress: () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        navigation.navigate("TasksTab");
+      },
+    },
+    {
+      id: "location",
+      icon: "map-pin",
+      label: "Location",
+      gradientColors: ["#EF4444", "#DC2626"],
+      onPress: () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        navigation.navigate("Location");
+      },
+    },
+  ];
 
-        <View style={styles.sectionHeader}>
-          <ThemedText type="h4">Quick Actions</ThemedText>
-        </View>
-        <View style={styles.quickActionsGrid}>
-          <QuickActionButton
-            icon="phone"
-            label="Call"
-            gradientColors={["#6366F1", "#8B5CF6"]}
-            onPress={handleCallPress}
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.backgroundRoot }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingTop: headerHeight + Spacing.xl,
+          paddingBottom: tabBarHeight + Spacing.xl + 80,
+          paddingHorizontal: Spacing.lg,
+        }}
+        scrollIndicatorInsets={{ bottom: insets.bottom }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.dark.primary}
           />
-          <QuickActionButton
-            icon="message-circle"
-            label="Message"
-            gradientColors={["#8B5CF6", "#A855F7"]}
-            onPress={handleMessagePress}
-          />
-        </View>
+        }
+      >
+        {/* Sync Status Bar - shows offline/pending/failed status */}
+        <SyncStatusBar />
+
+        <View style={styles.headerSection}>
+          <View style={styles.greetingSection}>
+            <GradientText type="h2" colors={Gradients.primary}>
+              {getGreeting()}
+              {isSyncMode && dashboardSummary?.userName
+                ? `, ${dashboardSummary.userName}`
+                : ""}
+            </GradientText>
+            <ThemedText type="body" secondary style={{ marginTop: Spacing.xs }}>
+              ZEKE Command Center
+            </ThemedText>
+          </View>
 
         <Pressable
           style={[
@@ -653,6 +697,17 @@ export default function HomeScreen() {
                   <ThemedText type="caption" secondary>
                     {activity.timestamp}
                   </ThemedText>
+                  {activity.speakers && activity.speakers.length > 0 ? (
+                    <View style={styles.activitySpeakers}>
+                      <SpeakerTagList
+                        speakers={activity.speakers.map((name, i) => ({
+                          label: name,
+                          color: getSpeakerColor(i),
+                        }))}
+                        size="small"
+                      />
+                    </View>
+                  ) : null}
                 </View>
               </View>
             ))
@@ -1017,8 +1072,10 @@ export default function HomeScreen() {
             <Feather name="chevron-right" size={24} color="#FFFFFF" />
           </LinearGradient>
         </Pressable>
-      </View>
-    </ScrollView>
+        </View>
+      </ScrollView>
+      <QuickActionsMenu actions={quickActions} />
+    </View>
   );
 }
 
@@ -1128,6 +1185,9 @@ const styles = StyleSheet.create({
   },
   activityContent: {
     flex: 1,
+  },
+  activitySpeakers: {
+    marginTop: Spacing.xs,
   },
   statsGrid: {
     flexDirection: "row",

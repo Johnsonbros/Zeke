@@ -243,13 +243,15 @@ export async function initializeProxyOrigin(): Promise<void> {
 
 /**
  * Gets the base URL for the Express API server
- * Uses ZEKE_BACKEND_URL if set (for syncing with main ZEKE deployment)
- * Otherwise falls back to EXPO_PUBLIC_DOMAIN (local backend)
+ * For native/mobile: Uses the same resolution as getLocalApiUrl() to ensure
+ * production builds always connect to the deployed server, never localhost.
+ * For web: Uses EXPO_PUBLIC_DOMAIN or window.location
  * @returns {string} The API base URL
  */
 export function getApiUrl(): string {
-  // TEMPORARY: Force to zekeai.replit.app for config lock testing
-  return "https://zekeai.replit.app";
+  // Native apps must use getLocalApiUrl() which properly resolves production domains
+  // This ensures Android builds never fall back to localhost
+  return getLocalApiUrl();
 }
 
 /**

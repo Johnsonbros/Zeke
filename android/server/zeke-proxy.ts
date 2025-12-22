@@ -12,6 +12,33 @@ import {
 
 const ZEKE_BACKEND_URL = process.env.EXPO_PUBLIC_ZEKE_BACKEND_URL || "https://zekeai.replit.app";
 
+// Stale-while-revalidate cache for slow endpoints
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+  isRefreshing: boolean;
+}
+
+const CACHE_TTL_MS = 60000; // 60 seconds
+const proxyCache: Map<string, CacheEntry> = new Map();
+
+function getCacheKey(endpoint: string, deviceToken?: string): string {
+  return `${endpoint}:${deviceToken || 'anonymous'}`;
+}
+
+function isCacheValid(entry: CacheEntry | undefined): boolean {
+  if (!entry) return false;
+  return Date.now() - entry.timestamp < CACHE_TTL_MS;
+}
+
+function invalidateCache(endpointPrefix: string): void {
+  for (const key of proxyCache.keys()) {
+    if (key.startsWith(endpointPrefix)) {
+      proxyCache.delete(key);
+    }
+  }
+}
+
 const FORWARD_HEADERS = [
   "cookie",
   "authorization",
@@ -233,11 +260,55 @@ export function registerZekeProxyRoutes(app: Express): void {
 
   app.get("/api/zeke/grocery", async (req: Request, res: Response) => {
     const headers = extractForwardHeaders(req.headers);
+    const deviceToken = headers["x-zeke-device-token"] || "";
+    const cacheKey = getCacheKey("/api/grocery", deviceToken);
+    const cached = proxyCache.get(cacheKey);
+    
+    // Return cached data immediately if available (stale-while-revalidate)
+    if (cached) {
+      // If cache is still valid, return it
+      if (isCacheValid(cached)) {
+        console.log("[ZEKE Cache] HIT for /api/grocery, age:", Math.round((Date.now() - cached.timestamp) / 1000), "s");
+        return res.json({ items: cached.data, source: "cache" });
+      }
+      
+      // Cache is stale but we have data - return stale and refresh in background
+      if (!cached.isRefreshing) {
+        console.log("[ZEKE Cache] STALE for /api/grocery, returning cached + background refresh");
+        cached.isRefreshing = true;
+        
+        // Background refresh (don't await)
+        proxyToZeke("GET", "/api/grocery", undefined, headers)
+          .then((result) => {
+            if (result.success) {
+              const items = result.data?.items || result.data || [];
+              proxyCache.set(cacheKey, { data: items, timestamp: Date.now(), isRefreshing: false });
+              console.log("[ZEKE Cache] Background refresh complete for /api/grocery");
+            } else {
+              cached.isRefreshing = false;
+            }
+          })
+          .catch(() => { cached.isRefreshing = false; });
+        
+        return res.json({ items: cached.data, source: "cache-stale" });
+      }
+      
+      // Already refreshing, return stale data
+      return res.json({ items: cached.data, source: "cache-refreshing" });
+    }
+    
+    // No cache - must fetch synchronously
+    console.log("[ZEKE Cache] MISS for /api/grocery, fetching from backend...");
     const result = await proxyToZeke("GET", "/api/grocery", undefined, headers);
     if (!result.success) {
       return res.status(result.status).json({ error: result.error || "Failed to fetch grocery items", items: [] });
     }
     const items = result.data?.items || result.data || [];
+    
+    // Store in cache
+    proxyCache.set(cacheKey, { data: items, timestamp: Date.now(), isRefreshing: false });
+    console.log("[ZEKE Cache] Stored /api/grocery in cache");
+    
     res.json({ items, source: "zeke-backend" });
   });
 
@@ -248,6 +319,9 @@ export function registerZekeProxyRoutes(app: Express): void {
       const errorMsg = result.data?.error || result.data?.message || result.error || "Failed to create grocery item";
       return res.status(result.status).json({ error: errorMsg, details: result.data });
     }
+    // Invalidate grocery cache on create
+    invalidateCache("/api/grocery");
+    console.log("[ZEKE Cache] Invalidated grocery cache after POST");
     res.status(201).json(result.data);
   });
 
@@ -257,6 +331,9 @@ export function registerZekeProxyRoutes(app: Express): void {
     if (!result.success) {
       return res.status(result.status).json({ error: result.error || "Failed to update grocery item" });
     }
+    // Invalidate grocery cache on update
+    invalidateCache("/api/grocery");
+    console.log("[ZEKE Cache] Invalidated grocery cache after PATCH");
     res.json(result.data);
   });
 
@@ -266,6 +343,9 @@ export function registerZekeProxyRoutes(app: Express): void {
     if (!result.success) {
       return res.status(result.status).json({ error: result.error || "Failed to delete grocery item" });
     }
+    // Invalidate grocery cache on delete
+    invalidateCache("/api/grocery");
+    console.log("[ZEKE Cache] Invalidated grocery cache after DELETE");
     res.status(204).send();
   });
 

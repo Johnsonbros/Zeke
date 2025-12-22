@@ -1,10 +1,21 @@
 import { getApiUrl } from "./query-client";
 import { bluetoothService } from "./bluetooth";
 
+export interface SpeakerSegment {
+  speaker: number;
+  text: string;
+  startTime: number;
+  endTime: number;
+  confidence: number;
+  isFinal: boolean;
+}
+
 export type TranscriptionCallback = (
   transcript: string,
   isFinal: boolean,
+  speakerSegments?: SpeakerSegment[],
 ) => void;
+export type SpeakerSegmentCallback = (segments: SpeakerSegment[]) => void;
 export type ConnectionStateCallback = (state: DeepgramConnectionState) => void;
 export type ErrorCallback = (error: string) => void;
 
@@ -19,6 +30,8 @@ interface DeepgramWord {
   start: number;
   end: number;
   confidence: number;
+  speaker?: number;
+  speaker_confidence?: number;
 }
 
 interface DeepgramAlternative {
@@ -68,11 +81,13 @@ class DeepgramService {
   private reconnectDelay = 1000;
 
   private transcriptionCallbacks: TranscriptionCallback[] = [];
+  private speakerSegmentCallbacks: SpeakerSegmentCallback[] = [];
   private connectionStateCallbacks: ConnectionStateCallback[] = [];
   private errorCallbacks: ErrorCallback[] = [];
 
   private fullTranscript: string = "";
   private transcriptSegments: TranscriptSegment[] = [];
+  private speakerSegments: SpeakerSegment[] = [];
   private isStreaming = false;
   private unsubscribeBluetooth: (() => void) | null = null;
   private audioBuffer: Uint8Array[] = [];
@@ -122,6 +137,10 @@ class DeepgramService {
     return [...this.transcriptSegments];
   }
 
+  public getSpeakerSegments(): SpeakerSegment[] {
+    return [...this.speakerSegments];
+  }
+
   public onTranscription(callback: TranscriptionCallback): () => void {
     this.transcriptionCallbacks.push(callback);
     return () => {
@@ -150,8 +169,27 @@ class DeepgramService {
     };
   }
 
-  private notifyTranscription(transcript: string, isFinal: boolean): void {
-    this.transcriptionCallbacks.forEach((cb) => cb(transcript, isFinal));
+  public onSpeakerSegment(callback: SpeakerSegmentCallback): () => void {
+    this.speakerSegmentCallbacks.push(callback);
+    return () => {
+      this.speakerSegmentCallbacks = this.speakerSegmentCallbacks.filter(
+        (cb) => cb !== callback,
+      );
+    };
+  }
+
+  private notifyTranscription(
+    transcript: string,
+    isFinal: boolean,
+    speakerSegments?: SpeakerSegment[],
+  ): void {
+    this.transcriptionCallbacks.forEach((cb) =>
+      cb(transcript, isFinal, speakerSegments),
+    );
+  }
+
+  private notifySpeakerSegments(segments: SpeakerSegment[]): void {
+    this.speakerSegmentCallbacks.forEach((cb) => cb(segments));
   }
 
   private notifyConnectionStateChange(): void {
@@ -283,21 +321,107 @@ class DeepgramService {
     if (data.type === "Results" && data.channel?.alternatives?.[0]) {
       const alternative = data.channel.alternatives[0];
       const transcript = alternative.transcript;
+      const words = alternative.words || [];
       const isFinal = data.is_final === true;
 
       if (transcript) {
+        const newSpeakerSegments = this.extractSpeakerSegments(
+          words,
+          isFinal,
+          data.start || 0,
+        );
+
         if (isFinal) {
           this.fullTranscript += (this.fullTranscript ? " " : "") + transcript;
           this.transcriptSegments.push({
             text: transcript,
             timestamp: Date.now(),
             isFinal: true,
+            speaker: newSpeakerSegments[0]?.speaker !== undefined
+              ? `Speaker ${newSpeakerSegments[0].speaker + 1}`
+              : undefined,
+          });
+
+          if (newSpeakerSegments.length > 0) {
+            this.speakerSegments.push(...newSpeakerSegments);
+            this.notifySpeakerSegments(newSpeakerSegments);
+          }
+        }
+
+        this.notifyTranscription(transcript, isFinal, newSpeakerSegments);
+      }
+    }
+  }
+
+  private extractSpeakerSegments(
+    words: DeepgramWord[],
+    isFinal: boolean,
+    startOffset: number,
+  ): SpeakerSegment[] {
+    if (!words || words.length === 0) {
+      return [];
+    }
+
+    const segments: SpeakerSegment[] = [];
+    let currentSpeaker: number | undefined = undefined;
+    let currentWords: string[] = [];
+    let segmentStart = 0;
+    let segmentEnd = 0;
+    let totalConfidence = 0;
+    let wordCount = 0;
+
+    for (const word of words) {
+      const speaker = word.speaker ?? 0;
+
+      if (currentSpeaker === undefined) {
+        currentSpeaker = speaker;
+        segmentStart = word.start;
+      }
+
+      if (speaker !== currentSpeaker) {
+        if (currentWords.length > 0) {
+          segments.push({
+            speaker: currentSpeaker,
+            text: currentWords.join(" "),
+            startTime: startOffset + segmentStart,
+            endTime: startOffset + segmentEnd,
+            confidence: wordCount > 0 ? totalConfidence / wordCount : 0,
+            isFinal,
           });
         }
 
-        this.notifyTranscription(transcript, isFinal);
+        currentSpeaker = speaker;
+        currentWords = [];
+        segmentStart = word.start;
+        totalConfidence = 0;
+        wordCount = 0;
       }
+
+      currentWords.push(word.word);
+      segmentEnd = word.end;
+      totalConfidence += word.confidence;
+      wordCount++;
     }
+
+    if (currentWords.length > 0 && currentSpeaker !== undefined) {
+      segments.push({
+        speaker: currentSpeaker,
+        text: currentWords.join(" "),
+        startTime: startOffset + segmentStart,
+        endTime: startOffset + segmentEnd,
+        confidence: wordCount > 0 ? totalConfidence / wordCount : 0,
+        isFinal,
+      });
+    }
+
+    if (segments.length > 0) {
+      console.log(
+        `[Deepgram] Extracted ${segments.length} speaker segment(s):`,
+        segments.map((s) => `Speaker ${s.speaker + 1}: "${s.text.substring(0, 30)}..."`),
+      );
+    }
+
+    return segments;
   }
 
   public disconnect(): void {
@@ -367,6 +491,7 @@ class DeepgramService {
   public clearSession(): void {
     this.fullTranscript = "";
     this.transcriptSegments = [];
+    this.speakerSegments = [];
     this.audioBuffer = [];
     this.sessionId = null;
   }

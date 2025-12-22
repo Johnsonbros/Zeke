@@ -1,0 +1,57 @@
+PHASE 1 — ANDROID CALENDAR VERIFICATION — TESTING PROMPT (COPY/PASTE)
+
+ROLE: You are a ruthless QA engineer. Your job is to prove Phase 1 is either correct or broken. No assumptions. No “seems fine.” Produce hard evidence from logs, network traces, and UI state.
+
+CONTEXT
+	•	Target: ZEKEapp (native Android build) + ZEKE backend
+	•	Phase 1 scope: 3.1 API base URL config, 3.2 calendar auth flow, 3.3 connection status UI
+
+WHAT TO DELIVER
+	1.	A short PASS/FAIL verdict for each: 3.1, 3.2, 3.3
+	2.	A table of evidence (Log excerpt + Screen state + API response)
+	3.	If FAIL: exact root cause hypothesis + the ONE most likely file/line area to fix + a minimal patch suggestion
+
+TEST PREP
+	•	Build a release-like Android build (NOT Expo Go).
+	•	Ensure the device has working internet.
+	•	Ensure you can view device logs (adb logcat or Expo dev build logs).
+	•	Backend deployed URL is known and reachable.
+
+TEST 3.1 — API BASE URL LOCK (NO LOCALHOST EVER)
+A. BOOT LOG PROOF
+	•	Launch app fresh (force stop first).
+	•	Capture the very first boot log line that prints the resolved API base URL.
+	•	REQUIREMENT: the base URL must be https:// (or your exact expected prod URL).
+	•	FAIL if it contains localhost, 127.0.0.1, 10.0.2.2, or a blank/undefined domain.
+
+B. ROUTING PROOF (REAL REQUESTS)
+	•	Navigate to any screen that triggers API calls (Home/Tasks/Calendar).
+	•	Capture log lines showing METHOD + ENDPOINT + final resolved URL (or base URL + path).
+	•	REQUIREMENT: every request uses the same deployed base URL.
+
+C. ENV VAR PROOF
+	•	In logs (or debug screen), print the values used to decide URL (EXPO_PUBLIC_DOMAIN / build env flags).
+	•	REQUIREMENT: production build reads correct domain and does not fall back to local.
+
+TEST 3.2 — CALENDAR AUTH FLOW (NO 401 SURPRISES)
+A. CONNECTION ENDPOINT AUTH
+	•	On Calendar screen open, confirm a request is made: GET /api/calendar/connection
+	•	Capture:
+	•	request headers presence of device token header (e.g. Authorization: Bearer … or X-ZEKE-Device-Token …)
+	•	response status code + body snippet
+	•	REQUIREMENT:
+	•	If token valid: response is 200 with connected true/false payload.
+	•	FAIL if 401/403 with a valid device token present OR token missing.
+
+B. AUTH MIDDLEWARE COMPATIBILITY
+	•	If any 401/403 occurs:
+	•	Confirm whether device token header is missing OR backend rejects it.
+	•	Identify if auth-middleware logic differs for mobile vs web.
+	•	REQUIREMENT: mobile request path is accepted by backend auth.
+
+C. CONNECT CALENDAR BUTTON
+	•	If connection says not connected:
+	•	Tap “Connect Calendar”
+	•	Verify it opens a web auth flow (browser or in-app webview).
+	•	After completing auth, return to app and re-check /api/calendar/connection.
+	•	REQUIREMENT: connection status flips to connected without requiring reinstall.

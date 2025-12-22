@@ -28,7 +28,10 @@ export function ZekeHeaderButtons() {
 
   const handleChatPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate("Chat");
+    navigation.navigate("CommsTab", {
+      screen: "CommunicationsHub",
+      params: { initialTab: "chat" },
+    });
   };
 
   const handleSettingsPress = () => {

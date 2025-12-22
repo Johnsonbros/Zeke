@@ -1003,6 +1003,9 @@ class BluetoothService {
       if (device.type === "limitless") {
         console.log("Setting up Limitless RX notifications...");
         await this.setupLimitlessNotifications();
+      } else if (device.type === "omi") {
+        console.log("Setting up Omi audio notifications...");
+        await this.setupOmiNotifications();
       }
 
       this.connectedDevice = device;
@@ -1013,6 +1016,10 @@ class BluetoothService {
 
       if (device.type === "limitless") {
         await this.initializeLimitlessDevice();
+      } else if (device.type === "omi") {
+        console.log("Omi device ready for audio streaming");
+        this.audioStreamState = "streaming";
+        this.notifyAudioStreamStateChange();
       }
 
       return true;
@@ -1052,6 +1059,47 @@ class BluetoothService {
       console.log("Limitless RX notifications enabled");
     } catch (error) {
       console.error("Failed to setup notifications:", error);
+      throw error;
+    }
+  }
+
+  private omiSequenceNumber: number = 0;
+
+  private async setupOmiNotifications(): Promise<void> {
+    if (!this.connectedBleDevice) {
+      throw new Error("No connected device");
+    }
+
+    try {
+      this.connectedBleDevice.monitorCharacteristicForService(
+        OMI_SERVICE_UUID,
+        OMI_AUDIO_DATA_UUID,
+        (error, characteristic) => {
+          if (error) {
+            console.error("Omi notification error:", error);
+            return;
+          }
+
+          if (characteristic?.value) {
+            const base64Data = characteristic.value;
+            const buffer = Buffer.from(base64Data, "base64");
+            const audioData = new Uint8Array(buffer);
+            
+            console.log("[Omi Audio] Received audio chunk:", audioData.length, "bytes");
+            
+            const chunk: AudioChunk = {
+              data: audioData,
+              timestamp: Date.now(),
+              sequenceNumber: this.omiSequenceNumber++,
+            };
+            
+            this.notifyAudioChunk(chunk);
+          }
+        },
+      );
+      console.log("Omi audio notifications enabled on characteristic:", OMI_AUDIO_DATA_UUID);
+    } catch (error) {
+      console.error("Failed to setup Omi notifications:", error);
       throw error;
     }
   }

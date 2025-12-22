@@ -161,7 +161,7 @@ function GroceryItemRow({
 }
 
 export default function GroceryScreen() {
-  useSafeAreaInsets();
+  const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
@@ -490,7 +490,7 @@ export default function GroceryScreen() {
           ]}
         >
           <View
-            style={[styles.modalHeader, { borderBottomColor: theme.border }]}
+            style={[styles.modalHeader, { borderBottomColor: theme.border, paddingTop: insets.top + Spacing.md }]}
           >
             <Pressable onPress={() => setIsAddModalVisible(false)}>
               <ThemedText style={{ color: Colors.dark.primary }}>

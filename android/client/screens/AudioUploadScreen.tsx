@@ -20,9 +20,14 @@ import { useQuery } from "@tanstack/react-query";
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
+import { SpeakerAssignmentModal } from "@/components/SpeakerAssignmentModal";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius, Colors, Gradients } from "@/constants/theme";
 import { queryClient, getApiUrl, getAuthHeaders } from "@/lib/query-client";
+import {
+  type SpeakerMapping,
+  saveSpeakerMappings,
+} from "@/lib/speaker-matcher";
 
 interface SelectedFile {
   uri: string;
@@ -58,6 +63,12 @@ export default function AudioUploadScreen() {
   const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [showSpeakerModal, setShowSpeakerModal] = useState(false);
+  const [transcriptionResult, setTranscriptionResult] = useState<{
+    memoryId: string;
+    speakerCount: number;
+    title: string;
+  } | null>(null);
 
   const { data: devicesData } = useQuery<ApiDevice[]>({
     queryKey: ["/api/devices"],
@@ -188,23 +199,32 @@ export default function AudioUploadScreen() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      Alert.alert(
-        "Audio Uploaded",
-        `Your audio has been sent to ZEKE for processing: "${result.title || 'Audio recording'}"`,
-        [
-          {
-            text: "Done",
-            onPress: () => {
-              setSelectedFile(null);
-              navigation.goBack();
+      if (result.speakerCount && result.speakerCount > 0) {
+        setTranscriptionResult({
+          memoryId: result.id || result.memoryId,
+          speakerCount: result.speakerCount,
+          title: result.title || "Audio recording",
+        });
+        setShowSpeakerModal(true);
+      } else {
+        Alert.alert(
+          "Audio Uploaded",
+          `Your audio has been sent to ZEKE for processing: "${result.title || 'Audio recording'}"`,
+          [
+            {
+              text: "Done",
+              onPress: () => {
+                setSelectedFile(null);
+                navigation.goBack();
+              },
             },
-          },
-          {
-            text: "Upload Another",
-            onPress: () => setSelectedFile(null),
-          },
-        ],
-      );
+            {
+              text: "Upload Another",
+              onPress: () => setSelectedFile(null),
+            },
+          ],
+        );
+      }
     } catch (error) {
       console.error("Upload error:", error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -395,6 +415,48 @@ export default function AudioUploadScreen() {
           </ThemedText>
         </View>
       </View>
+
+      <SpeakerAssignmentModal
+        visible={showSpeakerModal}
+        onClose={() => {
+          setShowSpeakerModal(false);
+          setTranscriptionResult(null);
+          setSelectedFile(null);
+          navigation.goBack();
+        }}
+        onComplete={async (mappings, speakerNames) => {
+          if (transcriptionResult) {
+            await saveSpeakerMappings(transcriptionResult.memoryId, mappings);
+            
+            try {
+              const baseUrl = getApiUrl();
+              const patchUrl = new URL(`/api/memories/${transcriptionResult.memoryId}`, baseUrl);
+              await fetch(patchUrl.toString(), {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                  ...getAuthHeaders(),
+                },
+                body: JSON.stringify({ speakers: speakerNames }),
+                credentials: "include",
+              });
+              queryClient.invalidateQueries({ queryKey: ["/api/memories"] });
+            } catch (err) {
+              console.error("Failed to save speakers to memory:", err);
+            }
+          }
+          setShowSpeakerModal(false);
+          setTranscriptionResult(null);
+          setSelectedFile(null);
+          Alert.alert(
+            "Speakers Labeled",
+            `Recording saved with ${speakerNames.length} identified speaker${speakerNames.length !== 1 ? "s" : ""}.`,
+            [{ text: "Done", onPress: () => navigation.goBack() }]
+          );
+        }}
+        speakerCount={transcriptionResult?.speakerCount || 0}
+        sessionId={transcriptionResult?.memoryId}
+      />
     </ScrollView>
   );
 }

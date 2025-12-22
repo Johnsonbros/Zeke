@@ -6,7 +6,6 @@ import {
   TextInput,
   Pressable,
   Platform,
-  KeyboardAvoidingView,
   ActivityIndicator,
   Alert,
 } from "react-native";
@@ -16,7 +15,7 @@ import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
-import Animated, { useAnimatedStyle } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useDerivedValue } from "react-native-reanimated";
 import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -81,11 +80,13 @@ export default function ChatScreen() {
 
   const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
 
+  const keyboardOffset = useDerivedValue(() => {
+    return -keyboardHeight.value;
+  });
+
   const animatedInputContainerStyle = useAnimatedStyle(() => {
-    // Only apply negative translation (moving up) when keyboard is open
-    const translateY = Math.min(0, keyboardHeight.value);
     return {
-      transform: [{ translateY }],
+      bottom: insets.bottom + keyboardOffset.value,
     };
   });
 
@@ -411,17 +412,13 @@ export default function ChatScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: theme.backgroundRoot }]}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={headerHeight}
-    >
+    <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
       <FlatList
         ref={flatListRef}
         style={styles.messagesList}
         contentContainerStyle={{
           paddingTop: headerHeight + Spacing.lg,
-          paddingBottom: insets.bottom + 80 + Spacing.lg,
+          paddingBottom: insets.bottom + 100 + Spacing.lg,
           paddingHorizontal: Spacing.lg,
           flexGrow: 1,
         }}
@@ -433,6 +430,7 @@ export default function ChatScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
       />
 
       <Animated.View
@@ -440,10 +438,9 @@ export default function ChatScreen() {
           styles.inputContainer,
           {
             backgroundColor: theme.backgroundDefault,
-            bottom: insets.bottom,
             paddingBottom: Spacing.md,
           },
-          Platform.OS !== "web" ? animatedInputContainerStyle : undefined,
+          Platform.OS !== "web" ? animatedInputContainerStyle : { bottom: insets.bottom },
         ]}
       >
         <View
@@ -505,7 +502,7 @@ export default function ChatScreen() {
           </View>
         </View>
       </Animated.View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

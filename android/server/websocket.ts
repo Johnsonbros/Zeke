@@ -212,6 +212,7 @@ function handleAudioChunk(ws: WebSocket, base64Data: string): void {
   try {
     const audioBuffer = Buffer.from(base64Data, "base64");
     session.audioChunks.push(audioBuffer);
+    console.log(`[Audio] Received chunk: ${audioBuffer.length} bytes from device ${session.deviceId} (total chunks: ${session.audioChunks.length})`);
   } catch (error) {
     sendMessage(ws, {
       type: "ERROR",
@@ -327,8 +328,8 @@ function setupAudioWebSocket(server: Server): WebSocketServer {
 
   console.log("Audio WebSocket server initialized at /ws/audio");
 
-  wss.on("connection", (ws: WebSocket) => {
-    console.log("Audio WebSocket client connected");
+  wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
+    console.log("[Audio] WebSocket client connected from:", req.socket.remoteAddress);
 
     ws.on("message", async (data: Buffer | string) => {
       try {

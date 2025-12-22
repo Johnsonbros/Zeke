@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   FlatList,
@@ -17,7 +17,9 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import {
   useNavigation,
+  useRoute,
   CompositeNavigationProp,
+  RouteProp,
 } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
@@ -588,8 +590,17 @@ export default function CommunicationsHubScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
   const navigation = useNavigation<CommunicationNavigationProp>();
+  const route = useRoute<RouteProp<CommunicationStackParamList, "CommunicationsHub">>();
 
-  const [activeTab, setActiveTab] = useState<TabType>("sms");
+  const initialTab = route.params?.initialTab ?? "sms";
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
+
+  useEffect(() => {
+    if (route.params?.initialTab) {
+      setActiveTab(route.params.initialTab);
+    }
+  }, [route.params?.initialTab]);
+
   const [modalType, setModalType] = useState<ModalType>("none");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [smsMessage, setSmsMessage] = useState("");

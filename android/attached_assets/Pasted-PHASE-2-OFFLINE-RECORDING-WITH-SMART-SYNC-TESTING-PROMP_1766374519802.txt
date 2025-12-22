@@ -1,0 +1,106 @@
+PHASE 2 — OFFLINE RECORDING WITH SMART SYNC — TESTING PROMPT (COPY/PASTE)
+
+ROLE: You are QA for a “record in the field, sync later” system. Try to break it. Assume intermittent connectivity, app kills, and partial uploads.
+
+CONTEXT
+	•	Phase 2 scope: 1.1 local storage, 1.2 net detection + trigger, 1.3 upload queue + retries, 1.4 sync UI
+
+WHAT TO DELIVER
+	1.	PASS/FAIL for 1.1–1.4
+	2.	Evidence bundle:
+	•	local file existence proof
+	•	AsyncStorage metadata proof (queue entries + statuses + attempts)
+	•	upload request proof
+	•	UI status proof
+	3.	If FAIL: identify whether the bug is storage, queue state machine, or NetInfo trigger; give the smallest fix.
+
+TEST MATRIX (RUN ALL)
+You will run the same recording flow under:
+	•	M1: Fully offline (airplane mode ON)
+	•	M2: Flaky network (toggle airplane mode during upload)
+	•	M3: App interrupted (force close mid-upload)
+	•	M4: Backend failure (return 500 / bad token)
+
+TEST 1.1 — LOCAL STORAGE + METADATA
+A. OFFLINE SAVE
+	•	Enable airplane mode.
+	•	Record audio for 10–20 seconds.
+	•	Stop recording.
+	•	REQUIREMENT:
+	•	File saved to app directory (confirm via FileSystem readDir or debug log)
+	•	Metadata saved in AsyncStorage with duration, timestamp, deviceId, path, status=pending
+
+B. PERSISTENCE AFTER RESTART
+	•	Force close app.
+	•	Relaunch.
+	•	REQUIREMENT:
+	•	Recording still listed in UI with correct timestamp/duration
+	•	Queue entry still exists
+
+TEST 1.2 — CONNECTIVITY DETECTION + SYNC TRIGGER
+A. ONLINE RESTORE TRIGGER
+	•	With at least 2 pending recordings, disable airplane mode.
+	•	REQUIREMENT:
+	•	Sync process starts automatically once
+	•	No duplicate “uploading” transitions for same item
+	•	UI shows online state change
+
+B. DUPLICATE PREVENTION
+	•	Toggle network rapidly (on/off twice).
+	•	REQUIREMENT:
+	•	Each recording uploads at most once concurrently
+	•	No multiple inflight uploads for same file
+
+TEST 1.3 — UPLOAD QUEUE (FIFO + RETRIES + CLEANUP)
+A. FIFO ORDER
+	•	Create 3 recordings in offline mode.
+	•	Turn online.
+	•	REQUIREMENT:
+	•	Upload order matches creation order (oldest first)
+	•	Log should show queue pop in FIFO
+
+B. FAILURE + BACKOFF
+	•	Force backend to fail (simulate 500 or invalid token).
+	•	REQUIREMENT:
+	•	Attempts increment (1→2→3)
+	•	Wait times approximately 1s, 2s, 4s between retries
+	•	After max attempts: status=failed and stops hammering
+
+C. SUCCESS CLEANUP
+	•	Restore valid backend.
+	•	Tap “Retry Sync” (or automatic).
+	•	REQUIREMENT:
+	•	status transitions: failed/pending → uploading → synced
+	•	local file deleted after successful upload
+	•	AsyncStorage entry marked synced or removed (depending on design)
+	•	UI updates immediately (React Query invalidation evidence)
+
+D. APP KILL MID-UPLOAD
+	•	Start upload then force close app.
+	•	Relaunch.
+	•	REQUIREMENT:
+	•	The in-progress item does not get stuck forever in “uploading”
+	•	It returns to pending/failed cleanly and can retry
+
+TEST 1.4 — SYNC UI
+A. PER-ITEM ICONS
+	•	Verify each status renders correctly:
+	•	pending (cloud/arrow)
+	•	uploading (spinner/progress)
+	•	synced (check)
+	•	failed (x) + retry button
+
+B. HEADER PENDING COUNT
+	•	Create 2 pending recordings.
+	•	REQUIREMENT: header shows “2 pending” (or equivalent), decrements as uploads complete.
+
+C. OFFLINE BADGE
+	•	Airplane mode ON
+	•	REQUIREMENT: “Offline” badge visible and accurate.
+
+FINAL REPORT FORMAT
+	•	1.1 PASS/FAIL + evidence
+	•	1.2 PASS/FAIL + evidence
+	•	1.3 PASS/FAIL + evidence
+	•	1.4 PASS/FAIL + evidence
+	•	If FAIL: smallest patch + where

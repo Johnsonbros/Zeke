@@ -27,13 +27,8 @@ import { clearAllData } from "@/lib/storage";
 import { getZekeDevices, ZekeDevice } from "@/lib/zeke-api-adapter";
 import { SettingsStackParamList } from "@/navigation/SettingsStackNavigator";
 import { useAuth } from "@/context/AuthContext";
-
-interface CalendarConnectionStatus {
-  connected: boolean;
-  email?: string;
-  authUrl?: string;
-  error?: string;
-}
+import { checkCalendarConnection, type CalendarConnectionStatus } from "@/lib/zeke-api-adapter";
+import * as Linking from "expo-linking";
 
 function mapZekeDeviceToDeviceInfo(zekeDevice: ZekeDevice): DeviceInfo {
   const deviceType = zekeDevice.type === "limitless" ? "limitless" : "omi";
@@ -85,8 +80,9 @@ export default function SettingsScreen() {
     staleTime: 30000,
   });
 
-  const { data: calendarConnection, isLoading: isLoadingCalendar } = useQuery<CalendarConnectionStatus>({
+  const { data: calendarConnection, isLoading: isLoadingCalendar, refetch: refetchCalendarConnection } = useQuery<CalendarConnectionStatus>({
     queryKey: ["/api/calendar/connection"],
+    queryFn: checkCalendarConnection,
     staleTime: 30000,
   });
 
@@ -308,6 +304,13 @@ export default function SettingsScreen() {
                   <ActivityIndicator size="small" color={Colors.dark.primary} />
                   <ThemedText type="small" secondary style={{ marginLeft: Spacing.xs }}>
                     {isConnectingCalendar ? "Connecting..." : "Checking..."}
+                  </ThemedText>
+                </View>
+              ) : calendarConnection?.error ? (
+                <View style={styles.integrationStatusRow}>
+                  <View style={[styles.statusDot, { backgroundColor: Colors.dark.error }]} />
+                  <ThemedText type="small" style={{ color: Colors.dark.error }}>
+                    Error - tap to retry
                   </ThemedText>
                 </View>
               ) : calendarConnection?.connected ? (

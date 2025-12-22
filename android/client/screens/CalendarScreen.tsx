@@ -15,6 +15,7 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Linking from "expo-linking";
 import { useQuery, useMutation } from "@tanstack/react-query";
 
 import { ThemedText } from "@/components/ThemedText";
@@ -31,8 +32,10 @@ import {
   deleteCalendarEvent,
   getCalendarList,
   getZekeCalendar,
+  checkCalendarConnection,
   type ZekeEvent,
   type ZekeCalendar,
+  type CalendarConnectionStatus,
 } from "@/lib/zeke-api-adapter";
 
 type CalendarViewType = "day" | "week" | "month";
@@ -478,6 +481,12 @@ export default function CalendarScreen() {
     queryFn: getZekeCalendar,
   });
 
+  const { data: calendarConnection, isLoading: connectionLoading, refetch: refetchConnection } = useQuery<CalendarConnectionStatus>({
+    queryKey: ["calendar-connection"],
+    queryFn: checkCalendarConnection,
+    staleTime: 30000, // 30 seconds
+  });
+
   const addMutation = useMutation({
     mutationFn: (data: {
       title: string;
@@ -688,6 +697,110 @@ export default function CalendarScreen() {
 
   const timelineHeight =
     (TIMELINE_END_HOUR - TIMELINE_START_HOUR + 1) * HOUR_HEIGHT;
+
+  const handleOpenCalendarAuth = useCallback(async () => {
+    if (calendarConnection?.authUrl) {
+      try {
+        await Linking.openURL(calendarConnection.authUrl);
+      } catch (error) {
+        Alert.alert("Error", "Failed to open calendar connection. Please try again.");
+      }
+    }
+  }, [calendarConnection?.authUrl]);
+
+  // Show error state if connection check failed
+  if (!connectionLoading && calendarConnection?.error && !calendarConnection?.connected) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
+        <View
+          style={[
+            styles.headerControls,
+            {
+              marginTop: headerHeight + Spacing.md,
+            },
+          ]}
+        >
+          <View style={styles.dateHeader}>
+            <ThemedText type="h3" style={styles.dateText}>
+              Calendar
+            </ThemedText>
+          </View>
+        </View>
+
+        <View
+          style={[
+            styles.emptyContainer,
+            { paddingBottom: tabBarHeight + Spacing.xl },
+          ]}
+        >
+          <EmptyState
+            icon="alert-circle"
+            title="Unable to Load Calendar"
+            description="There was a problem connecting to your calendar. Please try again."
+          />
+          <Pressable
+            onPress={() => refetchConnection()}
+            style={[
+              styles.connectButton,
+              { backgroundColor: Colors.dark.primary },
+            ]}
+          >
+            <Feather name="refresh-cw" size={20} color="#fff" />
+            <ThemedText style={styles.connectButtonText}>
+              Retry
+            </ThemedText>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  // Show not connected state
+  if (!calendarConnection?.connected && !connectionLoading) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
+        <View
+          style={[
+            styles.headerControls,
+            {
+              marginTop: headerHeight + Spacing.md,
+            },
+          ]}
+        >
+          <View style={styles.dateHeader}>
+            <ThemedText type="h3" style={styles.dateText}>
+              Calendar
+            </ThemedText>
+          </View>
+        </View>
+
+        <View
+          style={[
+            styles.emptyContainer,
+            { paddingBottom: tabBarHeight + Spacing.xl },
+          ]}
+        >
+          <EmptyState
+            icon="lock"
+            title="Calendar Not Connected"
+            description="Connect your Google Calendar to sync events, add reminders, and manage your schedule."
+          />
+          <Pressable
+            onPress={handleOpenCalendarAuth}
+            style={[
+              styles.connectButton,
+              { backgroundColor: Colors.dark.primary },
+            ]}
+          >
+            <Feather name="lock-open" size={20} color="#fff" />
+            <ThemedText style={styles.connectButtonText}>
+              Connect Google Calendar
+            </ThemedText>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
@@ -1356,7 +1469,7 @@ export default function CalendarScreen() {
           ]}
         >
           <View
-            style={[styles.modalHeader, { borderBottomColor: theme.border }]}
+            style={[styles.modalHeader, { borderBottomColor: theme.border, paddingTop: insets.top + Spacing.md }]}
           >
             <Pressable onPress={closeModal}>
               <ThemedText style={{ color: Colors.dark.primary }}>
@@ -1904,6 +2017,22 @@ const styles = StyleSheet.create({
   weekEventCount: {
     fontSize: 11,
     fontWeight: "500",
+  },
+  connectButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.xl,
+  },
+  connectButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 16,
   },
   weekEventIndicators: {
     flexDirection: "row",

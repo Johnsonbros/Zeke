@@ -140,11 +140,19 @@ export default function BluetoothConnectionScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const getDisplayName = useCallback((device: BLEDevice): string => {
+    if (device.type === "omi") {
+      return device.name === "Friend" ? "Omi DevKit" : `Omi ${device.name}`;
+    }
+    return device.name;
+  }, []);
+
   const handleConnectDevice = useCallback(
     (device: BLEDevice) => {
+      const displayName = getDisplayName(device);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       Alert.alert(
-        `Connect to ${device.name}?`,
+        `Connect to ${displayName}?`,
         isMockMode
           ? "This is a simulated connection. In a production build with BLE support, the device would pair here."
           : "ZEKE will pair with this device.",
@@ -161,7 +169,7 @@ export default function BluetoothConnectionScreen() {
                 );
                 Alert.alert(
                   "Connected!",
-                  `Successfully connected to ${device.name}${isMockMode ? " (simulated)" : ""}.`,
+                  `Successfully connected to ${displayName}${isMockMode ? " (simulated)" : ""}.`,
                   [
                     {
                       text: "OK",
@@ -184,7 +192,7 @@ export default function BluetoothConnectionScreen() {
         ],
       );
     },
-    [isMockMode, navigation],
+    [isMockMode, navigation, getDisplayName],
   );
 
   const getSignalIcon = (strength: number): keyof typeof Feather.glyphMap => {
@@ -302,16 +310,22 @@ export default function BluetoothConnectionScreen() {
           <ThemedText type="h4" style={styles.sectionTitle}>
             Nearby Devices ({nearbyDevices.length})
           </ThemedText>
-          {nearbyDevices.map((device) => (
-            <Pressable
-              key={device.id}
-              onPress={() => handleConnectDevice(device)}
-              disabled={connectingDeviceId === device.id}
-              style={({ pressed }) => ({
-                opacity: pressed || connectingDeviceId === device.id ? 0.6 : 1,
-              })}
-            >
-              <Card elevation={1} style={styles.deviceCard}>
+          {nearbyDevices.map((device) => {
+            const displayName = getDisplayName(device);
+            return (
+              <Card
+                key={device.id}
+                elevation={1}
+                style={[
+                  styles.deviceCard,
+                  connectingDeviceId === device.id ? { opacity: 0.6 } : undefined,
+                ]}
+                onPress={
+                  connectingDeviceId === device.id
+                    ? undefined
+                    : () => handleConnectDevice(device)
+                }
+              >
                 <View style={styles.deviceRow}>
                   <View
                     style={[
@@ -332,7 +346,7 @@ export default function BluetoothConnectionScreen() {
                   </View>
                   <View style={styles.deviceInfo}>
                     <ThemedText type="body" style={{ fontWeight: "600" }}>
-                      {device.name}
+                      {displayName}
                     </ThemedText>
                     <View style={styles.deviceMeta}>
                       <Feather
@@ -382,8 +396,8 @@ export default function BluetoothConnectionScreen() {
                   )}
                 </View>
               </Card>
-            </Pressable>
-          ))}
+            );
+          })}
         </View>
       ) : null}
 

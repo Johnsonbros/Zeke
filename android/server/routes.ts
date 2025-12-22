@@ -26,15 +26,35 @@
 import type { Express } from "express";
 import { createServer, type Server } from "node:http";
 import { storage } from "./storage";
-import { insertDeviceSchema, insertMemorySchema, insertChatSessionSchema, insertChatMessageSchema } from "@shared/schema";
+import { insertDeviceSchema, insertMemorySchema, insertChatSessionSchema, insertChatMessageSchema, insertSpeakerProfileSchema } from "@shared/schema";
 import OpenAI from "openai";
 import multer from "multer";
 import { registerLocationRoutes } from "./location";
 import { registerZekeProxyRoutes } from "./zeke-proxy";
 import { requestPairingCode, verifyPairingCode, getPairingStatus } from "./sms-pairing";
+import { validateDeviceToken } from "./device-auth";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+function estimateSpeakerCount(transcript: string): number {
+  const patterns = [
+    /\bspeaker\s*\d+\b/gi,
+    /\b(I|me|my|we|you|they|he|she|it)\b/gi,
+    /\b(said|says|asked|replied|responded|mentioned|noted)\b/gi,
+    /[?].*[?]/g,
+  ];
+  
+  const dialogueIndicators = (transcript.match(patterns[2]) || []).length;
+  const questionMarks = (transcript.match(/\?/g) || []).length;
+  const wordCount = transcript.split(/\s+/).length;
+  
+  if (dialogueIndicators > 5 || questionMarks > 3) {
+    return wordCount > 500 ? 3 : 2;
+  }
+  
+  return 1;
+}
 
 const ZEKE_SYSTEM_PROMPT = `You are ZEKE, an intelligent AI companion designed to help users recall and search their memories captured by wearable devices like Omi and Limitless.
 
@@ -113,6 +133,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error getting pairing status:", error);
       res.status(500).json({ error: "Failed to get pairing status" });
+    }
+  });
+
+  // Local device token verification (for tokens created via SMS pairing)
+  app.get("/api/auth/verify-device", async (req, res) => {
+    try {
+      const deviceToken = req.headers["x-zeke-device-token"] as string;
+      if (!deviceToken) {
+        return res.status(401).json({ valid: false, error: "No device token provided" });
+      }
+
+      const device = validateDeviceToken(deviceToken);
+      if (device) {
+        console.log("[LocalAuth] Device token verified:", device.deviceId);
+        return res.json({
+          valid: true,
+          deviceId: device.deviceId,
+          deviceName: device.deviceName,
+        });
+      } else {
+        console.log("[LocalAuth] Invalid device token");
+        return res.status(401).json({ valid: false, error: "Invalid or expired device token" });
+      }
+    } catch (error) {
+      console.error("[LocalAuth] Error verifying device:", error);
+      res.status(500).json({ error: "Failed to verify device" });
     }
   });
 
@@ -378,6 +424,8 @@ Respond in JSON format:
         };
       }
 
+      const speakerCount = estimateSpeakerCount(transcript);
+
       const memoryData = {
         deviceId,
         transcript,
@@ -394,7 +442,10 @@ Respond in JSON format:
       }
       
       const memory = await storage.createMemory(parsed.data);
-      res.status(201).json(memory);
+      res.status(201).json({
+        ...memory,
+        speakerCount
+      });
     } catch (error) {
       console.error("Error transcribing and creating memory:", error);
       res.status(500).json({ error: "Failed to transcribe and create memory" });
@@ -403,7 +454,7 @@ Respond in JSON format:
 
   app.patch("/api/memories/:id", async (req, res) => {
     try {
-      const allowedFields = ["title", "summary", "isStarred"];
+      const allowedFields = ["title", "summary", "isStarred", "speakers"];
       const updates: Record<string, any> = {};
       
       for (const field of allowedFields) {
@@ -1653,6 +1704,69 @@ Return at most ${Math.min(limit, 10)} results. Only include memories with releva
       }
     });
   }
+
+  // Speaker routes
+  app.get("/api/speakers", async (req, res) => {
+    try {
+      const deviceId = req.query.deviceId as string;
+      const speakers = await storage.getSpeakerProfiles(deviceId);
+      res.json(speakers);
+    } catch (error) {
+      console.error("Error fetching speakers:", error);
+      res.status(500).json({ error: "Failed to fetch speakers" });
+    }
+  });
+
+  app.post("/api/speakers", async (req, res) => {
+    try {
+      const { deviceId, name } = req.body;
+      if (!deviceId || !name) {
+        return res.status(400).json({ error: "deviceId and name are required" });
+      }
+
+      const parsed = insertSpeakerProfileSchema.safeParse({ deviceId, name });
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid speaker data" });
+      }
+
+      const speaker = await storage.createSpeakerProfile(parsed.data);
+      res.status(201).json(speaker);
+    } catch (error) {
+      console.error("Error creating speaker:", error);
+      res.status(500).json({ error: "Failed to create speaker" });
+    }
+  });
+
+  app.patch("/api/speakers/:id", async (req, res) => {
+    try {
+      const { name } = req.body;
+      if (!name) {
+        return res.status(400).json({ error: "name is required" });
+      }
+
+      const speaker = await storage.updateSpeakerProfile(req.params.id, { name });
+      if (!speaker) {
+        return res.status(404).json({ error: "Speaker not found" });
+      }
+      res.json(speaker);
+    } catch (error) {
+      console.error("Error updating speaker:", error);
+      res.status(500).json({ error: "Failed to update speaker" });
+    }
+  });
+
+  app.delete("/api/speakers/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteSpeakerProfile(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Speaker not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting speaker:", error);
+      res.status(500).json({ error: "Failed to delete speaker" });
+    }
+  });
 
   registerLocationRoutes(app);
   registerZekeProxyRoutes(app);

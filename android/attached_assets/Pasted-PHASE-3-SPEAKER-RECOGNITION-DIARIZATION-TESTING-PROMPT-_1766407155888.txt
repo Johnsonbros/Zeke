@@ -1,0 +1,88 @@
+PHASE 3 — SPEAKER RECOGNITION / DIARIZATION — TESTING PROMPT (COPY/PASTE)
+
+ROLE: You are QA for diarization + speaker profiles. Validate data integrity end-to-end: Deepgram → client parsing → backend storage → UI labeling.
+
+CONTEXT
+	•	Phase 3 scope: 2.1 diarization in Deepgram WS, 2.2 speakers schema + CRUD, 2.3 management UI, 2.4 auto-label + assignment
+
+WHAT TO DELIVER
+	1.	PASS/FAIL for 2.1–2.4
+	2.	Evidence:
+	•	raw Deepgram diarization output snippet (speaker ids)
+	•	parsed segment structure in client
+	•	stored speaker profiles in DB via API
+	•	memory showing named speakers
+	3.	If FAIL: classify as “provider output”, “client parse”, “schema/API”, or “UI mapping” and propose minimal fix.
+
+TEST DATA SETUP
+	•	Make 2 people speak clearly, alternating every 3–6 seconds.
+	•	Record 45–90 seconds.
+	•	Use quiet background to help diarization.
+
+TEST 2.1 — DEEPGRAM DIARIZATION ENABLED + PARSED
+A. CONFIRM DIARIZATION FLAG
+	•	In client/lib/deepgram.ts connection options, confirm diarization param is actually set.
+	•	Log or capture the connection config used at runtime.
+
+B. RAW OUTPUT PROOF
+	•	Capture a snippet of received transcription data showing speaker identifiers.
+	•	REQUIREMENT: at least 2 distinct speakers appear (speaker 0/1 etc.)
+
+C. PARSED STRUCTURE PROOF
+	•	Confirm the app converts results into segments:
+	•	[{speakerId, start, end, text, confidence?}, …]
+	•	REQUIREMENT: segments appear in transcript UI grouped by speaker.
+
+TEST 2.2 — SPEAKERS SCHEMA + CRUD API
+A. CRUD SMOKE TEST
+	•	POST /api/speakers (create “Nate”, “Nick”)
+	•	GET /api/speakers (returns both)
+	•	PATCH rename one
+	•	DELETE one with confirmation
+	•	REQUIREMENT: all return expected status codes and persisted state.
+
+B. NO RAW AUDIO STORED
+	•	Verify stored speaker fields do NOT contain raw audio blobs.
+	•	REQUIREMENT: only metadata / voice characteristics.
+
+C. LINK TO MEMORIES
+	•	Confirm a memory/transcript stores segment speakerId and can map to a speaker profile.
+	•	REQUIREMENT: memory retrieval includes segments + speaker mapping.
+
+TEST 2.3 — SPEAKER MANAGEMENT SCREEN
+A. NAV + LIST
+	•	Open Settings → Speaker Profiles
+	•	REQUIREMENT: list loads from API, shows labels + last-seen date.
+
+B. RENAME
+	•	Tap label → edit → save
+	•	REQUIREMENT: PATCH fired, list updates without refresh.
+
+C. DELETE
+	•	Swipe delete → confirm
+	•	REQUIREMENT: profile removed + cannot be referenced incorrectly in UI (graceful fallback).
+
+TEST 2.4 — AUTO-LABEL + ASSIGNMENT
+A. AUTO-REPLACE GENERIC LABELS
+	•	After creating profiles, record again.
+	•	REQUIREMENT: “Speaker 1/2” replaced with “Nate/Nick” where mapping exists.
+
+B. TAP UNKNOWN SPEAKER TO ASSIGN
+	•	If diarization yields a new unknown speakerId:
+	•	Tap label → assign existing profile
+	•	REQUIREMENT: assignment persists and updates transcript immediately + future memories.
+
+C. POST-RECORD SAVE PROMPT
+	•	After recording ends, app prompts to save new speakers.
+	•	REQUIREMENT: prompt appears only when unknown speakers exist.
+
+D. HOME MEMORY CARDS
+	•	HomeScreen memory cards show speaker names (if any).
+	•	REQUIREMENT: visible and consistent.
+
+FINAL REPORT FORMAT
+	•	2.1 PASS/FAIL + evidence
+	•	2.2 PASS/FAIL + evidence
+	•	2.3 PASS/FAIL + evidence
+	•	2.4 PASS/FAIL + evidence
+	•	If FAIL: minimal patch + location

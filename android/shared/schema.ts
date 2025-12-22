@@ -71,6 +71,7 @@ export const devicesRelations = relations(devices, ({ one, many }) => ({
     references: [users.id],
   }),
   memories: many(memories),
+  speakers: many(speakerProfiles),
 }));
 
 export const memoriesRelations = relations(memories, ({ one }) => ({
@@ -241,3 +242,101 @@ export type DeviceToken = typeof deviceTokens.$inferSelect;
 
 export type InsertPairingCode = z.infer<typeof insertPairingCodeSchema>;
 export type PairingCode = typeof pairingCodes.$inferSelect;
+
+export const userLists = pgTable("user_lists", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  listType: text("list_type").notNull(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const listItems = pgTable("list_items", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  listId: varchar("list_id").references(() => userLists.id).notNull(),
+  content: text("content").notNull(),
+  isCompleted: boolean("is_completed").default(false).notNull(),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const transcriptSessions = pgTable("transcript_sessions", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  sessionId: text("session_id").notNull(),
+  segments: jsonb("segments").default([]).notNull(),
+  lastProcessedAt: timestamp("last_processed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const speakerProfiles = pgTable("speaker_profiles", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  deviceId: varchar("device_id").references(() => devices.id).notNull(),
+  name: text("name").notNull(),
+  voiceCharacteristics: jsonb("voice_characteristics"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const userListsRelations = relations(userLists, ({ many }) => ({
+  items: many(listItems),
+}));
+
+export const listItemsRelations = relations(listItems, ({ one }) => ({
+  list: one(userLists, {
+    fields: [listItems.listId],
+    references: [userLists.id],
+  }),
+}));
+
+export const speakerProfilesRelations = relations(speakerProfiles, ({ one }) => ({
+  device: one(devices, {
+    fields: [speakerProfiles.deviceId],
+    references: [devices.id],
+  }),
+}));
+
+export const insertUserListSchema = createInsertSchema(userLists).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertListItemSchema = createInsertSchema(listItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertTranscriptSessionSchema = createInsertSchema(transcriptSessions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertSpeakerProfileSchema = createInsertSchema(speakerProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertUserList = z.infer<typeof insertUserListSchema>;
+export type UserList = typeof userLists.$inferSelect;
+
+export type InsertListItem = z.infer<typeof insertListItemSchema>;
+export type ListItem = typeof listItems.$inferSelect;
+
+export type InsertTranscriptSession = z.infer<typeof insertTranscriptSessionSchema>;
+export type TranscriptSession = typeof transcriptSessions.$inferSelect;
+
+export type InsertSpeakerProfile = z.infer<typeof insertSpeakerProfileSchema>;
+export type SpeakerProfile = typeof speakerProfiles.$inferSelect;
