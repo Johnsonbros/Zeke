@@ -15,6 +15,7 @@ import {
   getMeetingsInRange,
   getImportantMeetings,
   getAllContacts,
+  createBatchJob,
 } from "../db";
 import { getRecentMemories } from "../omi";
 import {
@@ -22,8 +23,12 @@ import {
   getOverdueCommitments,
   type TrackedCommitment,
 } from "./specializedWorkers";
+import { buildBatchRequestLine, submitBatchJob, generateIdempotencyKey } from "../services/batchService";
+import { getModelConfig } from "../services/modelConfigService";
+import type { BatchJobType } from "@shared/schema";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const BATCH_JOB_TYPE: BatchJobType = "MORNING_BRIEFING";
 
 export interface MorningBriefing {
   id: string;
@@ -452,4 +457,125 @@ export function getAnticipationEngineStatus(): {
     briefingDate: cachedBriefing?.briefingDate || null,
     cacheAge: cacheTime ? Date.now() - cacheTime.getTime() : null,
   };
+}
+
+// ============================================
+// BATCH API INTEGRATION
+// ============================================
+
+const MORNING_BRIEFING_SYSTEM_PROMPT = `You are ZEKE, a thoughtful personal AI assistant. Generate a warm, concise morning briefing.
+Keep it conversational but actionable. Be encouraging but honest about what needs attention.
+Format: Start with a brief greeting, then prioritize what matters most today.
+Use clear paragraphs. Maximum 3-4 short paragraphs. Be specific but concise.
+Output valid JSON only.`;
+
+/**
+ * Queue morning briefing as a batch job for nightly processing (50% cost savings)
+ * Called by the batch orchestrator at 3 AM to prepare briefing for same-day 6 AM delivery
+ */
+export async function queueMorningBriefingBatch(): Promise<string | null> {
+  // Use current date - batch runs at 3 AM and delivery happens at 6 AM same day
+  const date = new Date().toISOString().split("T")[0];
+  console.log(`[AnticipationEngine] Preparing batch job for morning briefing on ${date}...`);
+  
+  const context = await gatherBriefingContext();
+  const sections = buildBriefingSections(context);
+  const urgentItems = extractUrgentItems(context);
+  const peopleToFollowUp = extractPeopleToFollowUp(context);
+  
+  const contextSummary = {
+    overdueTasks: context.overdueTasks.length,
+    tasksDueToday: context.tasksDueToday.length,
+    tasksDueTomorrow: context.tasksDueTomorrow.length,
+    meetings: context.todaysMeetings.length,
+    pendingCommitments: context.pendingCommitments.length,
+    overdueCommitments: context.overdueCommitments.length,
+    sections: sections.map(s => ({ title: s.title, itemCount: s.itemCount })),
+    urgentItems: urgentItems.slice(0, 5),
+    recentHighlights: context.recentMemoryHighlights.slice(0, 3),
+    peopleToFollowUp: peopleToFollowUp.slice(0, 3),
+  };
+  
+  const userPrompt = `Generate a morning briefing for ${date} based on this context:
+${JSON.stringify(contextSummary, null, 2)}
+
+Respond with JSON in this format:
+{
+  "summary": "A warm, conversational 2-3 paragraph briefing for Nate",
+  "urgentItems": [{"type": "task|commitment|meeting|overdue", "title": "...", "description": "...", "deadline": "...or null"}],
+  "sections": [{"title": "...", "content": "...", "priority": "high|medium|low", "itemCount": 0}],
+  "peopleToFollowUp": [{"name": "...", "reason": "..."}],
+  "estimatedReadTimeSeconds": 60
+}`;
+
+  const windowStart = `${date}T00:00:00.000Z`;
+  const windowEnd = `${date}T23:59:59.999Z`;
+  
+  const idempotencyKey = generateIdempotencyKey(BATCH_JOB_TYPE, windowStart, windowEnd);
+  const modelConfig = getModelConfig(BATCH_JOB_TYPE);
+  
+  const batchJob = createBatchJob({
+    type: BATCH_JOB_TYPE,
+    status: "QUEUED",
+    inputWindowStart: windowStart,
+    inputWindowEnd: windowEnd,
+    idempotencyKey,
+    inputItemCount: 1,
+    model: modelConfig.model,
+  });
+  
+  const customId = `MORNING_BRIEFING_REPORT:${date}`;
+  const jsonlContent = buildBatchRequestLine(
+    customId,
+    MORNING_BRIEFING_SYSTEM_PROMPT,
+    userPrompt,
+    BATCH_JOB_TYPE
+  );
+  
+  try {
+    const openAiBatchId = await submitBatchJob(batchJob.id, jsonlContent);
+    console.log(`[AnticipationEngine] Batch job submitted: ${openAiBatchId}`);
+    return batchJob.id;
+  } catch (error) {
+    console.error("[AnticipationEngine] Failed to submit batch:", error);
+    throw error;
+  }
+}
+
+/**
+ * Process batch results and cache morning briefing
+ * Called by the artifact consumer when batch job completes
+ */
+export async function processMorningBriefingBatchResult(
+  batchJobId: string,
+  responseContent: string,
+  sourceRef: string
+): Promise<MorningBriefing | null> {
+  console.log(`[AnticipationEngine] Processing batch result for job ${batchJobId}, date ${sourceRef}...`);
+  
+  try {
+    const parsed = JSON.parse(responseContent);
+    const date = sourceRef;
+    
+    const briefing: MorningBriefing = {
+      id: `briefing-batch-${Date.now()}`,
+      generatedAt: new Date().toISOString(),
+      briefingDate: date,
+      summary: parsed.summary || "Good morning! Your schedule is ready.",
+      sections: parsed.sections || [],
+      urgentItems: parsed.urgentItems || [],
+      peopleToFollowUp: parsed.peopleToFollowUp || [],
+      estimatedReadTimeSeconds: parsed.estimatedReadTimeSeconds || 60,
+    };
+    
+    // Cache the batch-generated briefing
+    cachedBriefing = briefing;
+    cacheTime = new Date();
+    
+    console.log(`[AnticipationEngine] Cached morning briefing for ${date}`);
+    return briefing;
+  } catch (error) {
+    console.error("[AnticipationEngine] Error processing batch result:", error);
+    throw error;
+  }
 }

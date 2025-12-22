@@ -6,7 +6,7 @@
  */
 
 import * as cron from "node-cron";
-import { generateMorningBriefing, formatBriefingForSMS } from "./anticipationEngine";
+import { getTodaysBriefing, formatBriefingForSMS } from "./anticipationEngine";
 import { detectPatterns, getPatternSummary } from "./patternDetection";
 import { getTwilioClient, getTwilioFromPhoneNumber, isTwilioConfigured } from "../twilioClient";
 
@@ -62,7 +62,9 @@ async function deliverMorningBriefing(): Promise<void> {
   lastDeliveryError = null;
 
   try {
-    const briefing = await generateMorningBriefing();
+    // Use cached briefing from batch processing if available, otherwise generate in real-time
+    // Batch processing at 3 AM populates the cache, so this should hit cache at 6 AM delivery
+    const briefing = await getTodaysBriefing();
     let smsContent = formatBriefingForSMS(briefing);
 
     if (config.includePatterns) {

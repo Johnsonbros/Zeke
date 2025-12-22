@@ -18,6 +18,7 @@ import {
 } from "../db";
 import { processConceptReflectionBatchResult } from "../jobs/conceptReflection";
 import { processDailySummaryBatchResult } from "../jobs/dailySummaryAgent";
+import { processMorningBriefingBatchResult } from "../jobs/anticipationEngine";
 import type { 
   BatchArtifact,
   EntityType,
@@ -432,6 +433,41 @@ export async function consumeDailySummaryArtifacts(): Promise<{ processed: numbe
 }
 
 /**
+ * Consume MORNING_BRIEFING_REPORT artifacts and cache briefings
+ */
+export async function consumeMorningBriefingArtifacts(): Promise<{ processed: number; briefingsCached: number; errors: number }> {
+  const artifacts = getUnprocessedArtifactsByType("MORNING_BRIEFING_REPORT");
+  let processed = 0;
+  let briefingsCached = 0;
+  let errors = 0;
+
+  for (const artifact of artifacts) {
+    try {
+      const result = await processMorningBriefingBatchResult(
+        artifact.batchJobId,
+        artifact.payloadJson,
+        artifact.sourceRef
+      );
+      
+      if (result) {
+        briefingsCached++;
+      }
+      markArtifactProcessed(artifact.id);
+      processed++;
+    } catch (error) {
+      console.error(`[ArtifactConsumer] Error processing MORNING_BRIEFING_REPORT artifact ${artifact.id}:`, error);
+      errors++;
+    }
+  }
+
+  if (processed > 0 || errors > 0) {
+    console.log(`[ArtifactConsumer] MORNING_BRIEFING_REPORT: processed=${processed}, errors=${errors}, briefingsCached=${briefingsCached}`);
+  }
+
+  return { processed, briefingsCached, errors };
+}
+
+/**
  * Consume all unprocessed artifacts
  */
 export async function consumeAllArtifacts(): Promise<{
@@ -440,6 +476,7 @@ export async function consumeAllArtifacts(): Promise<{
   feedbackFixes: { processed: number; fixes: number; errors: number; fixesFailed: number };
   coreConcepts: { processed: number; conceptsCreated: number; conceptsUpdated: number; errors: number };
   dailySummaries: { processed: number; entriesCreated: number; errors: number };
+  morningBriefings: { processed: number; briefingsCached: number; errors: number };
 }> {
   console.log("[ArtifactConsumer] Consuming all unprocessed artifacts...");
   
@@ -448,8 +485,9 @@ export async function consumeAllArtifacts(): Promise<{
   const feedbackFixes = await consumeFeedbackFixArtifacts();
   const coreConcepts = await consumeCoreConceptArtifacts();
   const dailySummaries = await consumeDailySummaryArtifacts();
+  const morningBriefings = await consumeMorningBriefingArtifacts();
   
-  return { memorySummaries, kgEdges, feedbackFixes, coreConcepts, dailySummaries };
+  return { memorySummaries, kgEdges, feedbackFixes, coreConcepts, dailySummaries, morningBriefings };
 }
 
 export const ArtifactConsumer = {
@@ -458,5 +496,6 @@ export const ArtifactConsumer = {
   consumeFeedbackFixArtifacts,
   consumeCoreConceptArtifacts,
   consumeDailySummaryArtifacts,
+  consumeMorningBriefingArtifacts,
   consumeAllArtifacts,
 };
