@@ -16,6 +16,7 @@ import {
   createEntityLink,
   getEntityByLabel,
 } from "../db";
+import { processConceptReflectionBatchResult } from "../jobs/conceptReflection";
 import type { 
   BatchArtifact,
   EntityType,
@@ -361,25 +362,62 @@ export async function consumeFeedbackFixArtifacts(): Promise<{ processed: number
 }
 
 /**
+ * Consume CORE_CONCEPT artifacts and extract/update concepts
+ */
+export async function consumeCoreConceptArtifacts(): Promise<{ processed: number; conceptsCreated: number; conceptsUpdated: number; errors: number }> {
+  const artifacts = getUnprocessedArtifactsByType("CORE_CONCEPT");
+  let processed = 0;
+  let totalConceptsCreated = 0;
+  let totalConceptsUpdated = 0;
+  let errors = 0;
+
+  for (const artifact of artifacts) {
+    try {
+      const result = await processConceptReflectionBatchResult(
+        artifact.batchJobId,
+        artifact.payloadJson
+      );
+      
+      totalConceptsCreated += result.conceptsCreated;
+      totalConceptsUpdated += result.conceptsUpdated;
+      markArtifactProcessed(artifact.id);
+      processed++;
+    } catch (error) {
+      console.error(`[ArtifactConsumer] Error processing CORE_CONCEPT artifact ${artifact.id}:`, error);
+      errors++;
+    }
+  }
+
+  if (processed > 0 || errors > 0) {
+    console.log(`[ArtifactConsumer] CORE_CONCEPT: processed=${processed}, errors=${errors}, created=${totalConceptsCreated}, updated=${totalConceptsUpdated}`);
+  }
+
+  return { processed, conceptsCreated: totalConceptsCreated, conceptsUpdated: totalConceptsUpdated, errors };
+}
+
+/**
  * Consume all unprocessed artifacts
  */
 export async function consumeAllArtifacts(): Promise<{
   memorySummaries: { processed: number; errors: number; itemsCreated: number; itemsFailed: number };
   kgEdges: { processed: number; entities: number; edges: number; errors: number; entitiesFailed: number; edgesFailed: number };
   feedbackFixes: { processed: number; fixes: number; errors: number; fixesFailed: number };
+  coreConcepts: { processed: number; conceptsCreated: number; conceptsUpdated: number; errors: number };
 }> {
   console.log("[ArtifactConsumer] Consuming all unprocessed artifacts...");
   
   const memorySummaries = await consumeMemorySummaryArtifacts();
   const kgEdges = await consumeKgEdgesArtifacts();
   const feedbackFixes = await consumeFeedbackFixArtifacts();
+  const coreConcepts = await consumeCoreConceptArtifacts();
   
-  return { memorySummaries, kgEdges, feedbackFixes };
+  return { memorySummaries, kgEdges, feedbackFixes, coreConcepts };
 }
 
 export const ArtifactConsumer = {
   consumeMemorySummaryArtifacts,
   consumeKgEdgesArtifacts,
   consumeFeedbackFixArtifacts,
+  consumeCoreConceptArtifacts,
   consumeAllArtifacts,
 };

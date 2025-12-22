@@ -18,6 +18,7 @@ import OpenAI from "openai";
 import { v4 as uuidv4 } from "uuid";
 import { getAllMemoryNotes, createBatchJob, createBatchArtifact } from "../db";
 import { buildBatchRequestLine, submitBatchJob, generateIdempotencyKey } from "../services/batchService";
+import { getModelConfig } from "../services/modelConfigService";
 import type { MemoryNote, CoreConcept, InsertCoreConcept, ConceptType, BatchJobType } from "@shared/schema";
 
 let openai: OpenAI | null = null;
@@ -398,6 +399,8 @@ export async function queueConceptReflectionBatch(): Promise<string | null> {
   
   const idempotencyKey = generateIdempotencyKey(BATCH_JOB_TYPE, windowStart, windowEnd);
   
+  const modelConfig = getModelConfig(BATCH_JOB_TYPE);
+  
   const batchJob = createBatchJob({
     type: BATCH_JOB_TYPE,
     status: "QUEUED",
@@ -405,10 +408,10 @@ export async function queueConceptReflectionBatch(): Promise<string | null> {
     inputWindowEnd: windowEnd,
     idempotencyKey,
     inputItemCount: 1,
-    model: "gpt-5.2-2025-12-11",
+    model: modelConfig.model,
   });
   
-  const customId = `concept_reflection_${today}`;
+  const customId = `CORE_CONCEPT:reflection_${today}`;
   const userContent = `Reflect on these memories and extract core concepts:\n\n${memoryContent}`;
   
   const jsonlContent = buildBatchRequestLine(
