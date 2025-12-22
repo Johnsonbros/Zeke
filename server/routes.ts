@@ -469,6 +469,18 @@ import { analyzeMmsImage, downloadMmsImage, type ImageAnalysisResult, type Perso
 import { processAndStoreMmsImage } from "./services/imageStorageService";
 import { processMmsImages, type MmsProcessingResult } from "./services/mmsProcessor";
 import { setPendingPlaceSave, hasPendingPlaceSave, completePendingPlaceSave, cleanupExpiredPendingPlaces } from "./pendingPlaceSave";
+import { 
+  setPendingMemory, 
+  hasPendingMemory, 
+  confirmPendingMemory, 
+  rejectPendingMemory, 
+  generateMemoryConfirmationMessage,
+  cleanupExpiredPendingMemories 
+} from "./pendingMemorySave";
+import { 
+  enhanceContextWithRelatedInfo, 
+  formatEnhancedContextForAI 
+} from "./services/contextEnhancer";
 import { verifyPlace, manuallyVerifyPlace } from "./locationVerifier";
 import { recordSleepQuality, shouldAskSleepQuality, markSleepQualityAsked } from "./sleepTracker";
 import { parseSmsReaction, buildFeedbackEvent, generateFeedbackTwimlResponse } from "./feedback/parseSmsReaction";
@@ -2015,7 +2027,8 @@ export async function registerRoutes(
           // Build context string for AI
           if (imageAnalysisResults.length > 0) {
             imageAnalysisContext = "\n\n[IMAGE ANALYSIS]\n";
-            imageAnalysisResults.forEach((result, idx) => {
+            for (let idx = 0; idx < imageAnalysisResults.length; idx++) {
+              const result = imageAnalysisResults[idx];
               const category = mmsProcessingResults[idx]?.category || "unknown";
               const matchedFaces = mmsProcessingResults[idx]?.matchedFaces || [];
               
@@ -2073,7 +2086,58 @@ export async function registerRoutes(
               if (result.objects?.length) {
                 imageAnalysisContext += `- Objects: ${result.objects.join(", ")}\n`;
               }
-            });
+              
+              // Enhance with related memories for detected people/locations
+              if (matchedFaces.length > 0 || result.personAnalysis?.setting) {
+                try {
+                  const enhanced = await enhanceContextWithRelatedInfo(
+                    matchedFaces,
+                    undefined,
+                    result.personAnalysis?.setting
+                  );
+                  const enhancedText = formatEnhancedContextForAI(enhanced);
+                  if (enhancedText) {
+                    imageAnalysisContext += enhancedText + "\n";
+                  }
+                } catch (enhanceErr: any) {
+                  console.warn(`[MMS] Context enhancement failed: ${enhanceErr.message}`);
+                }
+              }
+            }
+            
+            // Check for memory-worthy images and create pending memory
+            const memoryWorthyResult = mmsProcessingResults.find(r => r.isMemoryWorthy && r.suggestedMemory);
+            if (memoryWorthyResult && memoryWorthyResult.suggestedMemory) {
+              const matchedNames = memoryWorthyResult.matchedFaces?.map(f => f.contactName) || [];
+              
+              setPendingMemory(fromNumber, memoryWorthyResult.suggestedMemory, {
+                imageId: memoryWorthyResult.storedImageId,
+                senderName,
+                context: memoryWorthyResult.category,
+                matchedContactNames: matchedNames,
+              });
+              
+              // Queue SMS confirmation (will be sent after normal response)
+              const memoryPrompt = generateMemoryConfirmationMessage(memoryWorthyResult.suggestedMemory);
+              
+              // Send confirmation prompt asynchronously after a short delay
+              setTimeout(async () => {
+                try {
+                  const replyFromNumber = await getTwilioFromPhoneNumber();
+                  if (replyFromNumber) {
+                    const client = await getTwilioClient();
+                    await client.messages.create({
+                      body: memoryPrompt,
+                      from: replyFromNumber,
+                      to: fromNumber,
+                    });
+                    console.log(`[ProactiveMemory] Sent memory confirmation prompt to ${fromNumber}`);
+                  }
+                } catch (err: any) {
+                  console.error(`[ProactiveMemory] Failed to send prompt:`, err.message);
+                }
+              }, 2000); // 2 second delay after main response
+            }
           }
         }
         
@@ -2081,6 +2145,87 @@ export async function registerRoutes(
         const fullMessage = message 
           ? (imageAnalysisContext ? `${message}${imageAnalysisContext}` : message)
           : (imageAnalysisContext ? `[User sent an image]${imageAnalysisContext}` : "[User sent empty message]");
+        
+        // Check for pending memory confirmation (Y/N reply)
+        if (hasPendingMemory(fromNumber) && message) {
+          const trimmedMsg = message.trim().toUpperCase();
+          
+          if (trimmedMsg === "Y" || trimmedMsg === "YES") {
+            const savedContent = await confirmPendingMemory(fromNumber);
+            
+            if (savedContent) {
+              const confirmationMsg = `Memory saved!`;
+              
+              logTwilioMessage({
+                direction: "inbound",
+                source: "webhook",
+                fromNumber: fromNumber,
+                toNumber: twilioFromNumber,
+                body: `[Memory confirm] Y`,
+                twilioSid: messageSid,
+                status: "received",
+              });
+              
+              createMessage({
+                conversationId: conversation.id,
+                role: "user",
+                content: `[Memory confirm] Y`,
+                source: "sms",
+              });
+              
+              createMessage({
+                conversationId: conversation.id,
+                role: "assistant",
+                content: confirmationMsg,
+                source: "sms",
+              });
+              
+              try {
+                const replyFromNumber = await getTwilioFromPhoneNumber();
+                if (replyFromNumber) {
+                  const client = await getTwilioClient();
+                  await client.messages.create({
+                    body: confirmationMsg,
+                    from: replyFromNumber,
+                    to: fromNumber,
+                  });
+                  console.log(`[PendingMemory] Confirmed memory for ${fromNumber}`);
+                }
+              } catch (sendErr: any) {
+                console.error(`[PendingMemory] Failed to send confirmation:`, sendErr);
+              }
+              
+              res.type("text/xml");
+              res.send(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+              return;
+            }
+          } else if (trimmedMsg === "N" || trimmedMsg === "NO") {
+            rejectPendingMemory(fromNumber);
+            
+            logTwilioMessage({
+              direction: "inbound",
+              source: "webhook",
+              fromNumber: fromNumber,
+              toNumber: twilioFromNumber,
+              body: `[Memory reject] N`,
+              twilioSid: messageSid,
+              status: "received",
+            });
+            
+            createMessage({
+              conversationId: conversation.id,
+              role: "user",
+              content: `[Memory reject] N`,
+              source: "sms",
+            });
+            
+            console.log(`[PendingMemory] User rejected memory for ${fromNumber}`);
+            
+            res.type("text/xml");
+            res.send(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+            return;
+          }
+        }
         
         // Check if user is responding to a pending place save request BEFORE storing message
         if (hasPendingPlaceSave(fromNumber) && message && message.trim().length > 0 && message.trim().length < 100) {

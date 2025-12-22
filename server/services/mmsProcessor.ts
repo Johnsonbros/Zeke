@@ -37,6 +37,8 @@ export interface MmsProcessingResult {
   category: ImageCategory;
   processingTimeMs: number;
   matchedFaces?: FaceMatch[];
+  suggestedMemory?: string;
+  isMemoryWorthy?: boolean;
 }
 
 const VALID_CATEGORIES: ImageCategory[] = [
@@ -315,6 +317,91 @@ async function analyzeWithOptimizedPrompt(
   }
 }
 
+const MEMORY_WORTHY_CATEGORIES: ImageCategory[] = [
+  "selfie", "people_photo", "location", "business_card"
+];
+
+function detectMemoryWorthiness(
+  category: ImageCategory,
+  analysis: ImageAnalysisResult & { personAnalysis?: PersonPhotoAnalysisResult },
+  matchedFaces?: FaceMatch[]
+): boolean {
+  if (MEMORY_WORTHY_CATEGORIES.includes(category)) {
+    return true;
+  }
+  
+  if (matchedFaces && matchedFaces.length > 0) {
+    return true;
+  }
+  
+  if (analysis.personAnalysis?.suggestedMemory) {
+    return true;
+  }
+  
+  if (analysis.personAnalysis?.occasion && 
+      !["unknown", "casual", "everyday"].includes(analysis.personAnalysis.occasion.toLowerCase())) {
+    return true;
+  }
+  
+  return false;
+}
+
+function generateSuggestedMemory(
+  category: ImageCategory,
+  analysis: ImageAnalysisResult & { personAnalysis?: PersonPhotoAnalysisResult },
+  matchedFaces?: FaceMatch[],
+  context?: MmsContext
+): string | undefined {
+  if (analysis.personAnalysis?.suggestedMemory) {
+    return analysis.personAnalysis.suggestedMemory;
+  }
+  
+  const parts: string[] = [];
+  
+  if (matchedFaces && matchedFaces.length > 0) {
+    const names = matchedFaces.map(f => f.contactName);
+    const uniqueNames = [...new Set(names)];
+    
+    if (uniqueNames.length === 1) {
+      parts.push(`Photo with ${uniqueNames[0]}`);
+    } else if (uniqueNames.length <= 3) {
+      parts.push(`Photo with ${uniqueNames.slice(0, -1).join(", ")} and ${uniqueNames.slice(-1)}`);
+    } else {
+      parts.push(`Group photo with ${uniqueNames.slice(0, 2).join(", ")} and ${uniqueNames.length - 2} others`);
+    }
+  } else if (category === "selfie" || category === "people_photo") {
+    const peopleCount = analysis.personAnalysis?.peopleCount || 1;
+    if (peopleCount === 1) {
+      parts.push("Photo of someone");
+    } else {
+      parts.push(`Group photo with ${peopleCount} people`);
+    }
+  }
+  
+  if (analysis.personAnalysis?.setting) {
+    parts.push(`at ${analysis.personAnalysis.setting}`);
+  }
+  
+  if (analysis.personAnalysis?.occasion && 
+      !["unknown", "casual", "everyday"].includes(analysis.personAnalysis.occasion.toLowerCase())) {
+    parts.push(`(${analysis.personAnalysis.occasion})`);
+  }
+  
+  if (category === "location" && analysis.description) {
+    return `Visited: ${analysis.description}`;
+  }
+  
+  if (category === "business_card" && analysis.contactInfo?.names?.length) {
+    return `Received business card from ${analysis.contactInfo.names.join(", ")}`;
+  }
+  
+  if (parts.length === 0) {
+    return undefined;
+  }
+  
+  return parts.join(" ");
+}
+
 async function processImageWithContext(
   mediaUrl: string,
   context: MmsContext,
@@ -386,6 +473,13 @@ async function processImageWithContext(
   const processingTimeMs = Date.now() - startTime;
   console.log(`[MMS] Complete: ${category} in ${processingTimeMs}ms`);
   
+  const isMemoryWorthy = detectMemoryWorthiness(category, analysis, matchedFaces);
+  const suggestedMemory = generateSuggestedMemory(category, analysis, matchedFaces, context);
+  
+  if (isMemoryWorthy && suggestedMemory) {
+    console.log(`[MMS] Memory-worthy image detected: "${suggestedMemory.substring(0, 50)}..."`);
+  }
+  
   return {
     analysis,
     storedImageId,
@@ -393,6 +487,8 @@ async function processImageWithContext(
     category,
     processingTimeMs,
     matchedFaces,
+    suggestedMemory,
+    isMemoryWorthy,
   };
 }
 

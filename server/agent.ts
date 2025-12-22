@@ -29,6 +29,7 @@ import {
   createMemoryWithEmbedding,
   getSmartMemoryContext,
 } from "./semanticMemory";
+import { selectRelevantMessages } from "./services/contextEnhancer";
 import {
   detectMemoryConflict,
   formatConflictQuestion,
@@ -998,9 +999,26 @@ export async function chat(
   userPhoneNumber?: string,
   permissions?: UserPermissions,
 ): Promise<string> {
-  // Get conversation and history
+  // Get conversation and history with smart context selection
   const conversation = getConversation(conversationId);
-  const history = getRecentMessages(conversationId, 20);
+  const rawHistory = getRecentMessages(conversationId, 30); // Fetch more, then filter
+  
+  // Extract potential names from user message (capitalized words that could be people/places)
+  // This helps prioritize messages mentioning the same entities
+  const potentialNames = userMessage
+    .match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/g) || [];
+  const stopWords = new Set(['I', 'The', 'This', 'That', 'What', 'When', 'Where', 'Why', 'How', 'Is', 'Are', 'Do', 'Does', 'Can', 'Could', 'Would', 'Should', 'Yes', 'No', 'Hey', 'Hi', 'Hello', 'Thanks', 'Please', 'Just', 'Also', 'But', 'And', 'Or', 'So', 'Now', 'Then', 'Here', 'There']);
+  const matchedNames = potentialNames.filter(n => !stopWords.has(n));
+  
+  // Use relevance-based selection to pick the most relevant messages
+  // This prioritizes messages mentioning the same people/topics and recent messages
+  const history = selectRelevantMessages(
+    rawHistory,
+    userMessage,
+    matchedNames,
+    20  // Return top 20 most relevant messages
+  );
+  
   const isGettingToKnowMode = conversation?.mode === "getting_to_know";
   
   // Check for retry pattern (user repeating a similar question)
