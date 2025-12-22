@@ -17,9 +17,17 @@ function getOpenAIClient(): OpenAI {
   return openai;
 }
 
+export interface ContactInfo {
+  phoneNumbers?: string[];
+  emails?: string[];
+  addresses?: string[];
+  names?: string[];
+}
+
 export interface ImageAnalysisResult {
   description: string;
   extractedText?: string;
+  contactInfo?: ContactInfo;
   objects?: string[];
   tags?: string[];
   colors?: string[];
@@ -261,23 +269,37 @@ export async function analyzeImageFromUrl(
             type: "text",
             text: `Analyze this image in detail. ${contextInfo}
 
-Provide comprehensive analysis including:
+CRITICAL: Your #1 priority is to extract ALL text, numbers, and contact information visible in the image with 100% accuracy. This includes:
+- Phone numbers (in any format: xxx-xxx-xxxx, (xxx) xxx-xxxx, +1xxxxxxxxxx, etc.)
+- Email addresses
+- Physical addresses (street, city, state, zip)
+- Names of people or businesses
+- Any other alphanumeric text
+
+Transcribe ALL visible text EXACTLY as shown - do not paraphrase or summarize text content.
+
+Additionally provide:
 1. A detailed description of what you see
-2. Any text visible in the image (OCR)
-3. Key objects or elements identified
-4. If there are people in the image, describe each person in detail:
+2. Key objects or elements identified
+3. If there are people in the image, describe each person in detail:
    - Their position in the photo (left, right, center, etc.)
    - Physical description (don't try to identify them unless the sender mentioned names)
    - Clothing and any distinguishing features
    - What they appear to be doing
-5. The setting/location and any apparent occasion (holiday, celebration, etc.)
-6. Suggest what memory could be created from this photo
-7. If the sender mentioned who is in the photo, note that for contact updates
+4. The setting/location and any apparent occasion (holiday, celebration, etc.)
+5. Suggest what memory could be created from this photo
+6. If the sender mentioned who is in the photo, note that for contact updates
 
 Respond in JSON format:
 {
   "description": "detailed description of the entire image",
-  "extractedText": "any text found in the image or null",
+  "extractedText": "ALL text found in the image, transcribed exactly - never null if any text is visible",
+  "contactInfo": {
+    "phoneNumbers": ["array of all phone numbers found"],
+    "emails": ["array of all email addresses found"],
+    "addresses": ["array of all physical addresses found"],
+    "names": ["array of all person/business names found"]
+  },
   "objects": ["list", "of", "key objects"],
   "tags": ["relevant", "tags"],
   "colors": ["dominant", "colors"],

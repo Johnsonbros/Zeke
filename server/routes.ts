@@ -1987,6 +1987,29 @@ export async function registerRoutes(
             imageAnalysisResults.forEach((result, idx) => {
               imageAnalysisContext += `Image ${idx + 1}:\n`;
               imageAnalysisContext += `- Description: ${result.description}\n`;
+              
+              // PRIORITY: Include extracted contact information prominently
+              if (result.contactInfo) {
+                const { phoneNumbers, emails, addresses, names } = result.contactInfo;
+                if (phoneNumbers?.length) {
+                  imageAnalysisContext += `- PHONE NUMBERS FOUND: ${phoneNumbers.join(", ")}\n`;
+                }
+                if (emails?.length) {
+                  imageAnalysisContext += `- EMAILS FOUND: ${emails.join(", ")}\n`;
+                }
+                if (addresses?.length) {
+                  imageAnalysisContext += `- ADDRESSES FOUND: ${addresses.join("; ")}\n`;
+                }
+                if (names?.length) {
+                  imageAnalysisContext += `- NAMES FOUND: ${names.join(", ")}\n`;
+                }
+              }
+              
+              // Include raw extracted text for additional context
+              if (result.extractedText) {
+                imageAnalysisContext += `- Extracted Text: ${result.extractedText}\n`;
+              }
+              
               if (result.personAnalysis?.hasPeople) {
                 imageAnalysisContext += `- People: ${result.personAnalysis.peopleCount} person(s) detected\n`;
                 result.personAnalysis.peopleDescriptions.forEach((person, pIdx) => {
