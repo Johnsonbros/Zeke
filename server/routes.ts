@@ -11028,6 +11028,49 @@ export async function registerRoutes(
     }
   });
 
+  // POST /api/concepts/test-memories - Create test memories for concept reflection testing
+  app.post("/api/concepts/test-memories", async (_req, res) => {
+    try {
+      console.log("[ConceptReflection] Creating test Freemasonry memories for reflection testing");
+      const { v4: testUuidv4 } = await import("uuid");
+      const { getDb } = await import("./db");
+      const testDb = getDb();
+      
+      const testMemories = [
+        { type: "fact", content: "Going to Lodge tonight to see the brothers. Should be a good meeting.", context: "Freemasonry, Lodge attendance, social" },
+        { type: "fact", content: "My brother Dave is serving as Senior Warden this year at our Lodge.", context: "Freemasonry, Lodge officers, relationships" },
+        { type: "fact", content: "Working on memorizing my Fellow Craft degree work. The ritual is challenging.", context: "Freemasonry, degree work, learning" },
+        { type: "fact", content: "Had dinner with some brothers after the stated meeting last night.", context: "Freemasonry, social, dining" },
+        { type: "fact", content: "The Worshipful Master asked me to help with the upcoming degree ceremony.", context: "Freemasonry, Lodge activities, responsibilities" },
+        { type: "preference", content: "I prefer attending the Thursday night Lodge meetings over the Saturday morning ones.", context: "Freemasonry, scheduling preferences" },
+        { type: "fact", content: "Need to pay my annual Lodge dues before the end of the month.", context: "Freemasonry, membership, finances" },
+        { type: "fact", content: "Brother Tom is going through some health issues. Should check in on him this week.", context: "Freemasonry, relationships, care" }
+      ];
+      
+      const now = new Date().toISOString();
+      const createdMemories = [];
+      
+      for (const memory of testMemories) {
+        const id = testUuidv4();
+        testDb.prepare(`
+          INSERT INTO memory_notes (id, type, content, context, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(id, memory.type, memory.content, memory.context, now, now);
+        createdMemories.push({ id, content: memory.content });
+      }
+      
+      console.log(`[ConceptReflection] Created ${createdMemories.length} test memories`);
+      res.json({
+        success: true,
+        memoriesCreated: createdMemories.length,
+        memories: createdMemories
+      });
+    } catch (error: any) {
+      console.error("[ConceptReflection] Failed to create test memories:", error);
+      res.status(500).json({ error: error.message || "Failed to create test memories" });
+    }
+  });
+
   // Start concept reflection scheduler (3:30 AM daily - deep understanding through reflection)
   const { startConceptReflectionScheduler } = await import("./jobs/conceptReflection");
   startConceptReflectionScheduler();

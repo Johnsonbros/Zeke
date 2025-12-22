@@ -209,6 +209,11 @@ function invalidateProfileCache() {
 const db = new Database("zeke.db");
 db.pragma("foreign_keys = ON");
 
+// Export function to get database instance for direct queries
+export function getDb() {
+  return db;
+}
+
 // Database error class for typed error handling
 export class DatabaseError extends Error {
   constructor(message: string, public readonly operation: string, public readonly cause?: unknown) {
@@ -2073,6 +2078,7 @@ interface MemoryNoteRow {
   source_id: string | null;
   scope: string | null;
   expires_at: string | null;
+  is_active: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -2501,6 +2507,7 @@ function mapMemoryNote(row: MemoryNoteRow): MemoryNote {
     sourceId: row.source_id || null,
     scope: (row.scope as "transient" | "session" | "long_term") || "long_term",
     expiresAt: row.expires_at || null,
+    isActive: row.is_active === null ? true : Boolean(row.is_active),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
