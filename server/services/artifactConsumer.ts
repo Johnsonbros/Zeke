@@ -19,6 +19,9 @@ import {
 import { processConceptReflectionBatchResult } from "../jobs/conceptReflection";
 import { processDailySummaryBatchResult } from "../jobs/dailySummaryAgent";
 import { processMorningBriefingBatchResult } from "../jobs/anticipationEngine";
+import { processOmiMeetingsBatchResult } from "../jobs/omiMeetings";
+import { processOmiActionItemsBatchResult } from "../jobs/omiActionItems";
+import { processOmiDigestBatchResult } from "../jobs/omiDigest";
 import type { 
   BatchArtifact,
   EntityType,
@@ -468,6 +471,95 @@ export async function consumeMorningBriefingArtifacts(): Promise<{ processed: nu
 }
 
 /**
+ * Consume OMI_MEETING_EXTRACTION artifacts and create meeting records
+ */
+export async function consumeOmiMeetingArtifacts(): Promise<{ processed: number; meetingsCreated: number; errors: number }> {
+  const artifacts = getUnprocessedArtifactsByType("OMI_MEETING_EXTRACTION");
+  let processed = 0;
+  let meetingsCreated = 0;
+  let errors = 0;
+
+  for (const artifact of artifacts) {
+    try {
+      // sourceRef contains the memory ID
+      await processOmiMeetingsBatchResult(artifact.sourceRef, artifact.payloadJson);
+      meetingsCreated++;
+      markArtifactProcessed(artifact.id);
+      processed++;
+    } catch (error) {
+      console.error(`[ArtifactConsumer] Error processing OMI_MEETING_EXTRACTION artifact ${artifact.id}:`, error);
+      errors++;
+    }
+  }
+
+  if (processed > 0 || errors > 0) {
+    console.log(`[ArtifactConsumer] OMI_MEETING_EXTRACTION: processed=${processed}, errors=${errors}, meetingsCreated=${meetingsCreated}`);
+  }
+
+  return { processed, meetingsCreated, errors };
+}
+
+/**
+ * Consume OMI_ACTION_ITEM artifacts and create action item/task records
+ */
+export async function consumeOmiActionItemArtifacts(): Promise<{ processed: number; itemsCreated: number; errors: number }> {
+  const artifacts = getUnprocessedArtifactsByType("OMI_ACTION_ITEM");
+  let processed = 0;
+  let itemsCreated = 0;
+  let errors = 0;
+
+  for (const artifact of artifacts) {
+    try {
+      // sourceRef contains the memory ID
+      await processOmiActionItemsBatchResult(artifact.sourceRef, artifact.payloadJson);
+      itemsCreated++;
+      markArtifactProcessed(artifact.id);
+      processed++;
+    } catch (error) {
+      console.error(`[ArtifactConsumer] Error processing OMI_ACTION_ITEM artifact ${artifact.id}:`, error);
+      errors++;
+    }
+  }
+
+  if (processed > 0 || errors > 0) {
+    console.log(`[ArtifactConsumer] OMI_ACTION_ITEM: processed=${processed}, errors=${errors}, itemsCreated=${itemsCreated}`);
+  }
+
+  return { processed, itemsCreated, errors };
+}
+
+/**
+ * Consume OMI_DIGEST_REPORT artifacts and cache digests
+ */
+export async function consumeOmiDigestArtifacts(): Promise<{ processed: number; digestsCached: number; errors: number }> {
+  const artifacts = getUnprocessedArtifactsByType("OMI_DIGEST_REPORT");
+  let processed = 0;
+  let digestsCached = 0;
+  let errors = 0;
+
+  for (const artifact of artifacts) {
+    try {
+      // sourceRef contains the date
+      const result = await processOmiDigestBatchResult(artifact.sourceRef, artifact.payloadJson);
+      if (result) {
+        digestsCached++;
+      }
+      markArtifactProcessed(artifact.id);
+      processed++;
+    } catch (error) {
+      console.error(`[ArtifactConsumer] Error processing OMI_DIGEST_REPORT artifact ${artifact.id}:`, error);
+      errors++;
+    }
+  }
+
+  if (processed > 0 || errors > 0) {
+    console.log(`[ArtifactConsumer] OMI_DIGEST_REPORT: processed=${processed}, errors=${errors}, digestsCached=${digestsCached}`);
+  }
+
+  return { processed, digestsCached, errors };
+}
+
+/**
  * Consume all unprocessed artifacts
  */
 export async function consumeAllArtifacts(): Promise<{
@@ -477,6 +569,9 @@ export async function consumeAllArtifacts(): Promise<{
   coreConcepts: { processed: number; conceptsCreated: number; conceptsUpdated: number; errors: number };
   dailySummaries: { processed: number; entriesCreated: number; errors: number };
   morningBriefings: { processed: number; briefingsCached: number; errors: number };
+  omiMeetings: { processed: number; meetingsCreated: number; errors: number };
+  omiActionItems: { processed: number; itemsCreated: number; errors: number };
+  omiDigests: { processed: number; digestsCached: number; errors: number };
 }> {
   console.log("[ArtifactConsumer] Consuming all unprocessed artifacts...");
   
@@ -486,8 +581,11 @@ export async function consumeAllArtifacts(): Promise<{
   const coreConcepts = await consumeCoreConceptArtifacts();
   const dailySummaries = await consumeDailySummaryArtifacts();
   const morningBriefings = await consumeMorningBriefingArtifacts();
+  const omiMeetings = await consumeOmiMeetingArtifacts();
+  const omiActionItems = await consumeOmiActionItemArtifacts();
+  const omiDigests = await consumeOmiDigestArtifacts();
   
-  return { memorySummaries, kgEdges, feedbackFixes, coreConcepts, dailySummaries, morningBriefings };
+  return { memorySummaries, kgEdges, feedbackFixes, coreConcepts, dailySummaries, morningBriefings, omiMeetings, omiActionItems, omiDigests };
 }
 
 export const ArtifactConsumer = {
@@ -497,5 +595,8 @@ export const ArtifactConsumer = {
   consumeCoreConceptArtifacts,
   consumeDailySummaryArtifacts,
   consumeMorningBriefingArtifacts,
+  consumeOmiMeetingArtifacts,
+  consumeOmiActionItemArtifacts,
+  consumeOmiDigestArtifacts,
   consumeAllArtifacts,
 };
