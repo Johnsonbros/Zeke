@@ -10986,6 +10986,53 @@ export async function registerRoutes(
   startFeedbackTrainer("30 2 * * *");
   console.log("[FeedbackTrainer] Started on app initialization");
 
+  // ============================================
+  // CONCEPT REFLECTION API (Deep Understanding)
+  // ============================================
+
+  // GET /api/concepts - Get all core concepts
+  app.get("/api/concepts", async (_req, res) => {
+    try {
+      const { getAllCoreConcepts } = await import("./jobs/conceptReflection");
+      const concepts = getAllCoreConcepts();
+      res.json({ concepts, count: concepts.length });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to get concepts" });
+    }
+  });
+
+  // GET /api/concepts/status - Get concept reflection scheduler status
+  app.get("/api/concepts/status", async (_req, res) => {
+    try {
+      const { getConceptReflectionStatus } = await import("./jobs/conceptReflection");
+      const status = getConceptReflectionStatus();
+      res.json(status);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to get status" });
+    }
+  });
+
+  // POST /api/concepts/reflect-now - Manually trigger concept reflection
+  app.post("/api/concepts/reflect-now", async (_req, res) => {
+    try {
+      console.log("[ConceptReflection] Manually triggering reflection");
+      const { runConceptReflection } = await import("./jobs/conceptReflection");
+      const result = await runConceptReflection();
+      res.json({
+        success: true,
+        ...result,
+      });
+    } catch (error: any) {
+      console.error("[ConceptReflection] Manual trigger failed:", error);
+      res.status(500).json({ error: error.message || "Failed to run reflection" });
+    }
+  });
+
+  // Start concept reflection scheduler (3:30 AM daily - deep understanding through reflection)
+  const { startConceptReflectionScheduler } = await import("./jobs/conceptReflection");
+  startConceptReflectionScheduler();
+  console.log("[ConceptReflection] Started on app initialization");
+
   // Start memory prune scheduler (weekly, Sunday 3 AM)
   startMemoryPruneScheduler("0 3 * * 0");
   console.log("[MemoryPrune] Prune scheduler started on app initialization");

@@ -744,6 +744,28 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_feedback_events_source ON feedback_events(source);
 `);
 
+// Create core_concepts table for deep understanding through reflection
+db.exec(`
+  CREATE TABLE IF NOT EXISTS core_concepts (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    concept TEXT NOT NULL,
+    description TEXT NOT NULL,
+    examples TEXT,
+    source_memory_ids TEXT,
+    confidence_score TEXT DEFAULT '0.7',
+    usage_count INTEGER DEFAULT 0,
+    last_used_at TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_core_concepts_type ON core_concepts(type);
+  CREATE INDEX IF NOT EXISTS idx_core_concepts_active ON core_concepts(is_active);
+  CREATE INDEX IF NOT EXISTS idx_core_concepts_confidence ON core_concepts(confidence_score);
+`);
+console.log("Core concepts table initialized");
+
 // ============================================
 // LOCATION INTELLIGENCE SYSTEM TABLES
 // ============================================

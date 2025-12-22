@@ -55,6 +55,7 @@ import {
   detectRetry,
   detectFollowUpNeeded,
 } from "./metricsCollector";
+import { getCoreConceptsContext } from "./jobs/conceptReflection";
 
 export interface PendingMemory {
   id: string;
@@ -764,6 +765,9 @@ DIGITAL TWIN (Draft-as-Nate) MODE:
 
 === ACCESS CONTROL (AUTHORITATIVE) ===
 ${accessControlSection}
+
+=== DEEP UNDERSTANDING (Core Concepts) ===
+${getCoreConceptsContext()}
 
 === CONTEXT (READ-ONLY, MAY BE PARTIAL) ===
 ${dynamicContext}

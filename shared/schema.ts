@@ -88,6 +88,46 @@ export type InsertMemoryNote = z.infer<typeof insertMemoryNoteSchema>;
 export type MemoryNote = typeof memoryNotes.$inferSelect;
 
 // ============================================
+// CORE CONCEPTS SYSTEM (Deep Understanding)
+// ============================================
+
+export const conceptTypes = [
+  "terminology",
+  "relationship_pattern", 
+  "identity",
+  "value",
+  "routine",
+  "preference_pattern",
+  "social_context",
+  "domain_knowledge"
+] as const;
+export type ConceptType = typeof conceptTypes[number];
+
+export const coreConcepts = sqliteTable("core_concepts", {
+  id: text("id").primaryKey(),
+  type: text("type", { enum: conceptTypes }).notNull(),
+  concept: text("concept").notNull(),
+  description: text("description").notNull(),
+  examples: text("examples"),
+  sourceMemoryIds: text("source_memory_ids"),
+  confidenceScore: text("confidence_score").default("0.7"),
+  usageCount: integer("usage_count").default(0),
+  lastUsedAt: text("last_used_at"),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertCoreConceptSchema = createInsertSchema(coreConcepts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCoreConcept = z.infer<typeof insertCoreConceptSchema>;
+export type CoreConcept = typeof coreConcepts.$inferSelect;
+
+// ============================================
 // CONVERSATION QUALITY METRICS SYSTEM
 // ============================================
 
