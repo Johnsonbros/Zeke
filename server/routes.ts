@@ -176,6 +176,11 @@ import {
   getContactNotesByType,
   deleteContactNote,
   deleteAllContactNotes,
+  createContactFace,
+  getContactFaces,
+  getPrimaryContactFace,
+  deleteContactFace,
+  deleteAllContactFaces,
   createOutboundMessage,
   updateOutboundMessageSid,
   getLifelogsAtPlace,
@@ -2012,8 +2017,15 @@ export async function registerRoutes(
             imageAnalysisContext = "\n\n[IMAGE ANALYSIS]\n";
             imageAnalysisResults.forEach((result, idx) => {
               const category = mmsProcessingResults[idx]?.category || "unknown";
+              const matchedFaces = mmsProcessingResults[idx]?.matchedFaces || [];
+              
               imageAnalysisContext += `Image ${idx + 1} (${category}):\n`;
               imageAnalysisContext += `- Description: ${result.description}\n`;
+              
+              // PRIORITY: Include matched faces with contact names prominently
+              if (matchedFaces.length > 0) {
+                imageAnalysisContext += `- IDENTIFIED PEOPLE: ${matchedFaces.map(f => `${f.contactName} (${Math.round(f.confidence * 100)}% confidence)`).join(", ")}\n`;
+              }
               
               // PRIORITY: Include extracted contact information prominently
               if (result.contactInfo) {
@@ -2038,13 +2050,16 @@ export async function registerRoutes(
               }
               
               if (result.personAnalysis?.hasPeople) {
-                imageAnalysisContext += `- People: ${result.personAnalysis.peopleCount} person(s) detected\n`;
-                result.personAnalysis.peopleDescriptions?.forEach((person, pIdx) => {
-                  imageAnalysisContext += `  Person ${pIdx + 1} (${person.position}): ${person.description}`;
-                  if (person.clothing) imageAnalysisContext += `, wearing ${person.clothing}`;
-                  if (person.distinguishingFeatures) imageAnalysisContext += `, ${person.distinguishingFeatures}`;
-                  imageAnalysisContext += "\n";
-                });
+                // Only show generic descriptions if no faces were matched
+                if (matchedFaces.length === 0) {
+                  imageAnalysisContext += `- People: ${result.personAnalysis.peopleCount} person(s) detected\n`;
+                  result.personAnalysis.peopleDescriptions?.forEach((person, pIdx) => {
+                    imageAnalysisContext += `  Person ${pIdx + 1} (${person.position}): ${person.description}`;
+                    if (person.clothing) imageAnalysisContext += `, wearing ${person.clothing}`;
+                    if (person.distinguishingFeatures) imageAnalysisContext += `, ${person.distinguishingFeatures}`;
+                    imageAnalysisContext += "\n";
+                  });
+                }
                 if (result.personAnalysis.setting) {
                   imageAnalysisContext += `- Setting: ${result.personAnalysis.setting}\n`;
                 }
@@ -4247,6 +4262,121 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Delete all contact notes error:", error);
       res.status(500).json({ message: "Failed to delete contact notes" });
+    }
+  });
+
+  // ==================== CONTACT FACES API (Face Recognition) ====================
+  
+  // Get all face references for a contact
+  app.get("/api/contacts/:id/faces", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const contact = getContact(id);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      const faces = getContactFaces(id);
+      res.json(faces);
+    } catch (error: any) {
+      console.error("Get contact faces error:", error);
+      res.status(500).json({ message: "Failed to get contact faces" });
+    }
+  });
+  
+  // Get primary face reference for a contact
+  app.get("/api/contacts/:id/faces/primary", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const contact = getContact(id);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      const face = getPrimaryContactFace(id);
+      if (!face) {
+        return res.status(404).json({ message: "No primary face found" });
+      }
+      
+      res.json(face);
+    } catch (error: any) {
+      console.error("Get primary contact face error:", error);
+      res.status(500).json({ message: "Failed to get primary contact face" });
+    }
+  });
+  
+  // Enroll a new face reference for a contact
+  app.post("/api/contacts/:id/faces", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const contact = getContact(id);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      const { faceDescription, distinguishingFeatures, estimatedAge, sourceImageId, facePosition, isPrimary } = req.body;
+      
+      if (!faceDescription) {
+        return res.status(400).json({ message: "faceDescription is required" });
+      }
+      
+      const face = createContactFace({
+        contactId: id,
+        faceDescription,
+        distinguishingFeatures: distinguishingFeatures ? JSON.stringify(distinguishingFeatures) : undefined,
+        estimatedAge,
+        sourceImageId,
+        facePosition,
+        isPrimary: isPrimary || false,
+      });
+      
+      res.status(201).json(face);
+    } catch (error: any) {
+      console.error("Create contact face error:", error);
+      res.status(500).json({ message: "Failed to create contact face" });
+    }
+  });
+  
+  // Delete a specific face reference
+  app.delete("/api/contacts/:id/faces/:faceId", async (req, res) => {
+    try {
+      const { id, faceId } = req.params;
+      const contact = getContact(id);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      const deleted = deleteContactFace(faceId);
+      if (!deleted) {
+        return res.status(404).json({ message: "Face not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete contact face error:", error);
+      res.status(500).json({ message: "Failed to delete contact face" });
+    }
+  });
+  
+  // Delete all face references for a contact
+  app.delete("/api/contacts/:id/faces", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const contact = getContact(id);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      const deletedCount = deleteAllContactFaces(id);
+      res.json({ success: true, deletedCount });
+    } catch (error: any) {
+      console.error("Delete all contact faces error:", error);
+      res.status(500).json({ message: "Failed to delete contact faces" });
     }
   });
   

@@ -483,6 +483,30 @@ export const insertContactNoteSchema = createInsertSchema(contactNotes).omit({
 export type InsertContactNote = z.infer<typeof insertContactNoteSchema>;
 export type ContactNote = typeof contactNotes.$inferSelect;
 
+// Contact faces table for face recognition
+export const contactFaces = sqliteTable("contact_faces", {
+  id: text("id").primaryKey(),
+  contactId: text("contact_id").notNull(),
+  sourceImageId: text("source_image_id"), // Reference to stored_images
+  facePosition: text("face_position"), // left/center/right in source image
+  faceDescription: text("face_description").notNull(), // AI-generated description
+  distinguishingFeatures: text("distinguishing_features"), // JSON array of notable features
+  estimatedAge: text("estimated_age"),
+  isPrimary: integer("is_primary", { mode: "boolean" }).notNull().default(false),
+  confidence: text("confidence").default("0.8"), // Enrollment confidence
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertContactFaceSchema = createInsertSchema(contactFaces).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertContactFace = z.infer<typeof insertContactFaceSchema>;
+export type ContactFace = typeof contactFaces.$inferSelect;
+
 export const insertContactSchema = createInsertSchema(contacts).omit({
   id: true,
   createdAt: true,

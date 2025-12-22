@@ -23,6 +23,8 @@ import type {
   ContactNote,
   InsertContactNote,
   ContactNoteType,
+  ContactFace,
+  InsertContactFace,
   Automation,
   InsertAutomation,
   TwilioMessage,
@@ -625,6 +627,25 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_contact_notes_contact ON contact_notes(contact_id);
   CREATE INDEX IF NOT EXISTS idx_contact_notes_type ON contact_notes(note_type);
   CREATE INDEX IF NOT EXISTS idx_contact_notes_created ON contact_notes(created_at);
+`);
+
+// Create contact_faces table for face recognition
+db.exec(`
+  CREATE TABLE IF NOT EXISTS contact_faces (
+    id TEXT PRIMARY KEY,
+    contact_id TEXT NOT NULL,
+    source_image_id TEXT,
+    face_position TEXT,
+    face_description TEXT NOT NULL,
+    distinguishing_features TEXT,
+    estimated_age TEXT,
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    confidence TEXT DEFAULT '0.8',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_contact_faces_contact ON contact_faces(contact_id);
+  CREATE INDEX IF NOT EXISTS idx_contact_faces_primary ON contact_faces(is_primary);
 `);
 
 // Create automations table if it doesn't exist
@@ -4115,6 +4136,114 @@ export function deleteContactNote(id: string): boolean {
 export function deleteAllContactNotes(contactId: string): number {
   return wrapDbOperation("deleteAllContactNotes", () => {
     const result = db.prepare(`DELETE FROM contact_notes WHERE contact_id = ?`).run(contactId);
+    return result.changes;
+  });
+}
+
+// Contact Faces CRUD operations for face recognition
+interface ContactFaceRow {
+  id: string;
+  contact_id: string;
+  source_image_id: string | null;
+  face_position: string | null;
+  face_description: string;
+  distinguishing_features: string | null;
+  estimated_age: string | null;
+  is_primary: number;
+  confidence: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapContactFace(row: ContactFaceRow): ContactFace {
+  return {
+    id: row.id,
+    contactId: row.contact_id,
+    sourceImageId: row.source_image_id,
+    facePosition: row.face_position,
+    faceDescription: row.face_description,
+    distinguishingFeatures: row.distinguishing_features,
+    estimatedAge: row.estimated_age,
+    isPrimary: row.is_primary === 1,
+    confidence: row.confidence,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function createContactFace(data: InsertContactFace): ContactFace {
+  return wrapDbOperation("createContactFace", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    
+    // If setting as primary, unset other primary faces for this contact
+    if (data.isPrimary) {
+      db.prepare(`UPDATE contact_faces SET is_primary = 0 WHERE contact_id = ?`).run(data.contactId);
+    }
+    
+    db.prepare(`
+      INSERT INTO contact_faces (id, contact_id, source_image_id, face_position, face_description, 
+        distinguishing_features, estimated_age, is_primary, confidence, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, data.contactId, data.sourceImageId || null, data.facePosition || null, data.faceDescription,
+      data.distinguishingFeatures || null, data.estimatedAge || null, data.isPrimary ? 1 : 0,
+      data.confidence || "0.8", now, now
+    );
+    
+    return {
+      id,
+      contactId: data.contactId,
+      sourceImageId: data.sourceImageId || null,
+      facePosition: data.facePosition || null,
+      faceDescription: data.faceDescription,
+      distinguishingFeatures: data.distinguishingFeatures || null,
+      estimatedAge: data.estimatedAge || null,
+      isPrimary: data.isPrimary || false,
+      confidence: data.confidence || "0.8",
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+}
+
+export function getContactFaces(contactId: string): ContactFace[] {
+  return wrapDbOperation("getContactFaces", () => {
+    const rows = db.prepare(`
+      SELECT * FROM contact_faces WHERE contact_id = ? ORDER BY is_primary DESC, created_at DESC
+    `).all(contactId) as ContactFaceRow[];
+    return rows.map(mapContactFace);
+  });
+}
+
+export function getPrimaryContactFace(contactId: string): ContactFace | undefined {
+  return wrapDbOperation("getPrimaryContactFace", () => {
+    const row = db.prepare(`
+      SELECT * FROM contact_faces WHERE contact_id = ? AND is_primary = 1 LIMIT 1
+    `).get(contactId) as ContactFaceRow | undefined;
+    return row ? mapContactFace(row) : undefined;
+  });
+}
+
+export function getAllContactFaces(): ContactFace[] {
+  return wrapDbOperation("getAllContactFaces", () => {
+    const rows = db.prepare(`
+      SELECT * FROM contact_faces ORDER BY created_at DESC
+    `).all() as ContactFaceRow[];
+    return rows.map(mapContactFace);
+  });
+}
+
+export function deleteContactFace(id: string): boolean {
+  return wrapDbOperation("deleteContactFace", () => {
+    const result = db.prepare(`DELETE FROM contact_faces WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+export function deleteAllContactFaces(contactId: string): number {
+  return wrapDbOperation("deleteAllContactFaces", () => {
+    const result = db.prepare(`DELETE FROM contact_faces WHERE contact_id = ?`).run(contactId);
     return result.changes;
   });
 }

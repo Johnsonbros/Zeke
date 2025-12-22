@@ -3,6 +3,7 @@ import { ImageAnalysisResult, PersonPhotoAnalysisResult, downloadMmsImage } from
 import { processAndStoreMmsImage, ImageCategory } from "./imageStorageService";
 import { getContactByPhone, getContactFullName, getRecentMessages } from "../db";
 import { logAiEvent } from "../aiLogger";
+import { matchFaceToContacts, extractFaceDescriptions, FaceMatch } from "./faceRecognitionService";
 
 let openai: OpenAI | null = null;
 
@@ -35,6 +36,7 @@ export interface MmsProcessingResult {
   storedImagePath?: string;
   category: ImageCategory;
   processingTimeMs: number;
+  matchedFaces?: FaceMatch[];
 }
 
 const VALID_CATEGORIES: ImageCategory[] = [
@@ -330,6 +332,30 @@ async function processImageWithContext(
   
   const analysis = await analyzeWithOptimizedPrompt(dataUrl, category, context);
   
+  let matchedFaces: FaceMatch[] | undefined;
+  
+  if ((category === "selfie" || category === "people_photo") && analysis.personAnalysis) {
+    try {
+      const faceDescriptions = extractFaceDescriptions(analysis.personAnalysis);
+      
+      if (faceDescriptions.length > 0) {
+        const allMatches: FaceMatch[] = [];
+        
+        for (const faceDesc of faceDescriptions) {
+          const matches = await matchFaceToContacts(faceDesc);
+          allMatches.push(...matches);
+        }
+        
+        if (allMatches.length > 0) {
+          matchedFaces = allMatches;
+          console.log(`[MMS] Matched ${allMatches.length} face(s) to contacts`);
+        }
+      }
+    } catch (faceError: any) {
+      console.warn(`[MMS] Face matching failed (non-fatal): ${faceError.message}`);
+    }
+  }
+  
   let storedImageId: string | undefined;
   let storedImagePath: string | undefined;
   
@@ -366,6 +392,7 @@ async function processImageWithContext(
     storedImagePath,
     category,
     processingTimeMs,
+    matchedFaces,
   };
 }
 
