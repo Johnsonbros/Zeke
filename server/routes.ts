@@ -462,6 +462,7 @@ import {
 } from "./idempotency";
 import { analyzeMmsImage, downloadMmsImage, type ImageAnalysisResult, type PersonPhotoAnalysisResult } from "./services/fileProcessor";
 import { processAndStoreMmsImage } from "./services/imageStorageService";
+import { processMmsImages, type MmsProcessingResult } from "./services/mmsProcessor";
 import { setPendingPlaceSave, hasPendingPlaceSave, completePendingPlaceSave, cleanupExpiredPendingPlaces } from "./pendingPlaceSave";
 import { verifyPlace, manuallyVerifyPlace } from "./locationVerifier";
 import { recordSleepQuality, shouldAskSleepQuality, markSleepQualityAsked } from "./sleepTracker";
@@ -1959,51 +1960,49 @@ export async function registerRoutes(
         const contact = getContactByPhone(fromNumber);
         const senderName = contact ? getContactFullName(contact) : undefined;
         
-        // Process MMS images if present
+        // Process MMS images with optimized parallel processing
         let imageAnalysisContext = "";
         let imageAnalysisResults: Array<ImageAnalysisResult & { personAnalysis?: PersonPhotoAnalysisResult }> = [];
+        let mmsProcessingResults: MmsProcessingResult[] = [];
         
         if (mediaUrls.length > 0) {
           console.log(`[MMS] Processing ${mediaUrls.length} media attachment(s) from ${fromNumber}`);
           
-          for (const media of mediaUrls) {
-            if (media.contentType.startsWith("image/")) {
-              try {
-                const analysis = await analyzeMmsImage(media.url, {
-                  senderName,
-                  senderPhone: fromNumber,
-                  messageText: message,
-                });
-                imageAnalysisResults.push(analysis);
-                console.log(`[MMS] Image analyzed: ${analysis.description?.substring(0, 100)}...`);
-                
-                // Store worthy images to object storage before Twilio deletes them
+          try {
+            // Use optimized parallel processor (downloads once, loads context in parallel, smart routing)
+            mmsProcessingResults = await processMmsImages(
+              mediaUrls,
+              fromNumber,
+              conversation.id,
+              message
+            );
+            
+            // Extract analysis results for AI context
+            imageAnalysisResults = mmsProcessingResults.map(r => r.analysis);
+            
+            // Log processing summary
+            const totalTime = mmsProcessingResults.reduce((sum, r) => sum + r.processingTimeMs, 0);
+            const categories = mmsProcessingResults.map(r => r.category).join(", ");
+            console.log(`[MMS] Processed ${mmsProcessingResults.length} image(s): [${categories}] in ${totalTime}ms total`);
+          } catch (error: any) {
+            console.error(`[MMS] Parallel processing failed: ${error.message}`);
+            // Fallback to basic analysis for each image
+            for (const media of mediaUrls) {
+              if (media.contentType.startsWith("image/")) {
                 try {
-                  const { buffer, contentType } = await downloadMmsImage(media.url);
-                  const storedImage = await processAndStoreMmsImage(
-                    buffer,
-                    contentType,
-                    media.url,
-                    analysis,
-                    {
-                      senderPhone: fromNumber,
-                      senderName,
-                      conversationId: conversation.id,
-                      messageText: message,
-                    }
-                  );
-                  if (storedImage) {
-                    console.log(`[MMS] Image stored: ${storedImage.objectPath} (score: ${storedImage.relevanceScore})`);
-                  }
-                } catch (storageError: any) {
-                  console.warn(`[MMS] Failed to store image (non-fatal): ${storageError.message}`);
+                  const analysis = await analyzeMmsImage(media.url, {
+                    senderName,
+                    senderPhone: fromNumber,
+                    messageText: message,
+                  });
+                  imageAnalysisResults.push(analysis);
+                } catch (fallbackError: any) {
+                  console.error(`[MMS] Fallback analysis failed: ${fallbackError.message}`);
+                  imageAnalysisResults.push({
+                    description: "Image could not be analyzed",
+                    confidence: 0,
+                  });
                 }
-              } catch (error: any) {
-                console.error(`[MMS] Failed to analyze image: ${error.message}`);
-                imageAnalysisResults.push({
-                  description: "Image could not be analyzed",
-                  confidence: 0,
-                });
               }
             }
           }
@@ -2012,7 +2011,8 @@ export async function registerRoutes(
           if (imageAnalysisResults.length > 0) {
             imageAnalysisContext = "\n\n[IMAGE ANALYSIS]\n";
             imageAnalysisResults.forEach((result, idx) => {
-              imageAnalysisContext += `Image ${idx + 1}:\n`;
+              const category = mmsProcessingResults[idx]?.category || "unknown";
+              imageAnalysisContext += `Image ${idx + 1} (${category}):\n`;
               imageAnalysisContext += `- Description: ${result.description}\n`;
               
               // PRIORITY: Include extracted contact information prominently
@@ -2039,7 +2039,7 @@ export async function registerRoutes(
               
               if (result.personAnalysis?.hasPeople) {
                 imageAnalysisContext += `- People: ${result.personAnalysis.peopleCount} person(s) detected\n`;
-                result.personAnalysis.peopleDescriptions.forEach((person, pIdx) => {
+                result.personAnalysis.peopleDescriptions?.forEach((person, pIdx) => {
                   imageAnalysisContext += `  Person ${pIdx + 1} (${person.position}): ${person.description}`;
                   if (person.clothing) imageAnalysisContext += `, wearing ${person.clothing}`;
                   if (person.distinguishingFeatures) imageAnalysisContext += `, ${person.distinguishingFeatures}`;
