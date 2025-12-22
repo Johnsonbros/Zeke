@@ -10942,6 +10942,114 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // MODEL CONFIG ADMIN API (Hot-Swappable Models)
+  // ============================================
+
+  // GET /api/admin/batch-models - Get all model configurations
+  app.get("/api/admin/batch-models", async (_req, res) => {
+    try {
+      const { getAllModelConfigs, getModelConfig } = await import("./services/modelConfigService");
+      const configs = getAllModelConfigs();
+      const globalDefault = getModelConfig("GLOBAL_DEFAULT");
+      res.json({ 
+        globalDefault,
+        configs,
+        count: configs.length 
+      });
+    } catch (error: any) {
+      console.error("[ModelConfig] Error getting configs:", error);
+      res.status(500).json({ error: error.message || "Failed to get model configs" });
+    }
+  });
+
+  // GET /api/admin/batch-models/:jobType - Get model config for specific job type
+  app.get("/api/admin/batch-models/:jobType", async (req, res) => {
+    try {
+      const { getModelConfig } = await import("./services/modelConfigService");
+      const config = getModelConfig(req.params.jobType);
+      res.json({ jobType: req.params.jobType, config });
+    } catch (error: any) {
+      console.error("[ModelConfig] Error getting config:", error);
+      res.status(500).json({ error: error.message || "Failed to get model config" });
+    }
+  });
+
+  // PUT /api/admin/batch-models/:jobType - Set model config for job type
+  app.put("/api/admin/batch-models/:jobType", async (req, res) => {
+    try {
+      const { setModelConfig } = await import("./services/modelConfigService");
+      const { model, maxTokens, temperature, reasoningEffort } = req.body;
+      
+      if (!model) {
+        return res.status(400).json({ error: "Model is required" });
+      }
+      
+      const config = setModelConfig(
+        req.params.jobType as any,
+        { model, maxTokens, temperature, reasoningEffort },
+        "admin_api"
+      );
+      
+      res.json({ 
+        success: true, 
+        message: `Model config updated for ${req.params.jobType}`,
+        config 
+      });
+    } catch (error: any) {
+      console.error("[ModelConfig] Error setting config:", error);
+      res.status(500).json({ error: error.message || "Failed to set model config" });
+    }
+  });
+
+  // PUT /api/admin/batch-models-global - Set global default model for all batch jobs
+  app.put("/api/admin/batch-models-global", async (req, res) => {
+    try {
+      const { setGlobalBatchModel } = await import("./services/modelConfigService");
+      const { model, maxTokens, temperature, reasoningEffort } = req.body;
+      
+      if (!model) {
+        return res.status(400).json({ error: "Model is required" });
+      }
+      
+      const config = setGlobalBatchModel(model, { 
+        maxTokens, 
+        temperature, 
+        reasoningEffort,
+        updatedBy: "admin_api" 
+      });
+      
+      res.json({ 
+        success: true, 
+        message: `Global batch model updated to ${model}`,
+        config 
+      });
+    } catch (error: any) {
+      console.error("[ModelConfig] Error setting global model:", error);
+      res.status(500).json({ error: error.message || "Failed to set global model" });
+    }
+  });
+
+  // DELETE /api/admin/batch-models/:jobType - Remove job-specific model override
+  app.delete("/api/admin/batch-models/:jobType", async (req, res) => {
+    try {
+      const { deleteModelConfig } = await import("./services/modelConfigService");
+      const deleted = deleteModelConfig(req.params.jobType);
+      
+      if (deleted) {
+        res.json({ 
+          success: true, 
+          message: `Model config removed for ${req.params.jobType}, will use global default` 
+        });
+      } else {
+        res.status(404).json({ error: "Model config not found" });
+      }
+    } catch (error: any) {
+      console.error("[ModelConfig] Error deleting config:", error);
+      res.status(500).json({ error: error.message || "Failed to delete model config" });
+    }
+  });
+
+  // ============================================
   // FEEDBACK TRAINER SCHEDULER API
   // ============================================
 

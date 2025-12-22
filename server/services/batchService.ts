@@ -36,11 +36,18 @@ import type {
   KgEdgesPayload,
   FeedbackFixPayload,
 } from "@shared/schema";
+import { getModelConfig, getEffectiveModelForJob, initializeDefaultModel } from "./modelConfigService";
 
 // Configuration from environment
 const BATCH_ENABLED = process.env.BATCH_ENABLED !== "false";
-const BATCH_MODEL = process.env.BATCH_MODEL || "gpt-4o";
 const BATCH_MAX_ITEMS = parseInt(process.env.BATCH_MAX_ITEMS_PER_RUN || "500", 10);
+
+// Initialize default model on module load
+try {
+  initializeDefaultModel();
+} catch (e) {
+  console.warn("[BatchService] Could not initialize default model config:", e);
+}
 
 let openai: OpenAI | null = null;
 
@@ -69,10 +76,14 @@ export function isBatchEnabled(): boolean {
 }
 
 /**
- * Get the configured batch model
+ * Get the configured batch model for a specific job type
+ * Falls back to global default if no job-specific config exists
  */
-export function getBatchModel(): string {
-  return BATCH_MODEL;
+export function getBatchModel(jobType?: BatchJobType): string {
+  if (jobType) {
+    return getEffectiveModelForJob(jobType);
+  }
+  return getModelConfig("GLOBAL_DEFAULT").model;
 }
 
 /**
@@ -96,14 +107,25 @@ interface BatchRequest {
 
 /**
  * Build a single JSONL line for batch submission
+ * @param customId - Unique identifier for this request
+ * @param systemPrompt - System message content
+ * @param userContent - User message content
+ * @param jobType - Optional job type for model lookup (uses global default if not provided)
  */
-export function buildBatchRequestLine(customId: string, systemPrompt: string, userContent: string): string {
+export function buildBatchRequestLine(
+  customId: string, 
+  systemPrompt: string, 
+  userContent: string,
+  jobType?: BatchJobType
+): string {
+  const config = jobType ? getModelConfig(jobType) : getModelConfig("GLOBAL_DEFAULT");
+  
   const request: BatchRequest = {
     custom_id: customId,
     method: "POST",
     url: "/v1/chat/completions",
     body: {
-      model: BATCH_MODEL,
+      model: config.model,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userContent }

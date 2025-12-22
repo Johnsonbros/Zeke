@@ -16,8 +16,9 @@
 import * as cron from "node-cron";
 import OpenAI from "openai";
 import { v4 as uuidv4 } from "uuid";
-import { getAllMemoryNotes } from "../db";
-import type { MemoryNote, CoreConcept, InsertCoreConcept, ConceptType } from "@shared/schema";
+import { getAllMemoryNotes, createBatchJob, createBatchArtifact } from "../db";
+import { buildBatchRequestLine, submitBatchJob, generateIdempotencyKey } from "../services/batchService";
+import type { MemoryNote, CoreConcept, InsertCoreConcept, ConceptType, BatchJobType } from "@shared/schema";
 
 let openai: OpenAI | null = null;
 
@@ -358,28 +359,145 @@ export function getCoreConceptsContext(): string {
   return sections.join("\n\n");
 }
 
-export function startConceptReflectionScheduler(): void {
-  if (scheduledTask) {
-    scheduledTask.stop();
+// ============================================
+// BATCH API INTEGRATION
+// ============================================
+
+const BATCH_JOB_TYPE: BatchJobType = "CONCEPT_REFLECTION";
+
+/**
+ * Queue concept reflection as a batch job for nightly processing (50% cost savings)
+ * Called by the batch orchestrator at 3 AM
+ */
+export async function queueConceptReflectionBatch(): Promise<string | null> {
+  console.log("[ConceptReflection] Preparing batch job...");
+  
+  const memories = getAllMemoryNotes().filter(m => 
+    !m.isSuperseded && 
+    m.isActive &&
+    (m.type === "fact" || m.type === "preference")
+  );
+  
+  if (memories.length === 0) {
+    console.log("[ConceptReflection] No memories to reflect on - skipping batch");
+    return null;
   }
   
-  if (!config.enabled) {
-    console.log("[ConceptReflection] Scheduler disabled");
-    return;
-  }
+  const recentMemories = memories
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 100);
   
-  scheduledTask = cron.schedule(config.cronSchedule, async () => {
-    console.log(`[ConceptReflection] Scheduled run at ${new Date().toISOString()}`);
-    try {
-      await runConceptReflection();
-    } catch (error) {
-      console.error("[ConceptReflection] Scheduled run failed:", error);
-    }
-  }, {
-    timezone: config.timezone,
+  const memoryContent = recentMemories.map(m => 
+    `[${m.id}] [${m.type}] ${m.content}${m.context ? ` (context: ${m.context})` : ""}`
+  ).join("\n");
+  
+  const now = new Date();
+  const today = now.toISOString().split("T")[0];
+  const windowStart = `${today}T00:00:00.000Z`;
+  const windowEnd = `${today}T23:59:59.999Z`;
+  
+  const idempotencyKey = generateIdempotencyKey(BATCH_JOB_TYPE, windowStart, windowEnd);
+  
+  const batchJob = createBatchJob({
+    type: BATCH_JOB_TYPE,
+    status: "QUEUED",
+    inputWindowStart: windowStart,
+    inputWindowEnd: windowEnd,
+    idempotencyKey,
+    inputItemCount: 1,
+    model: "gpt-5.2-2025-12-11",
   });
   
-  console.log(`[ConceptReflection] Scheduled at "${config.cronSchedule}" (${config.timezone})`);
+  const customId = `concept_reflection_${today}`;
+  const userContent = `Reflect on these memories and extract core concepts:\n\n${memoryContent}`;
+  
+  const jsonlContent = buildBatchRequestLine(
+    customId,
+    REFLECTION_PROMPT,
+    userContent,
+    BATCH_JOB_TYPE
+  );
+  
+  try {
+    const openAiBatchId = await submitBatchJob(batchJob.id, jsonlContent);
+    console.log(`[ConceptReflection] Batch job submitted: ${openAiBatchId}`);
+    return batchJob.id;
+  } catch (error) {
+    console.error("[ConceptReflection] Failed to submit batch:", error);
+    throw error;
+  }
+}
+
+/**
+ * Process batch results and store extracted concepts
+ * Called by the artifact consumer when batch job completes
+ */
+export async function processConceptReflectionBatchResult(
+  batchJobId: string,
+  responseContent: string
+): Promise<{ conceptsCreated: number; conceptsUpdated: number }> {
+  console.log(`[ConceptReflection] Processing batch result for job ${batchJobId}...`);
+  
+  try {
+    const result: ReflectionResult = JSON.parse(responseContent);
+    
+    let conceptsCreated = 0;
+    let conceptsUpdated = 0;
+    
+    for (const concept of result.concepts) {
+      const existing = await findExistingConcept(concept.concept);
+      
+      if (existing) {
+        await updateCoreConcept(existing.id, {
+          description: concept.description,
+          examples: JSON.stringify(concept.examples),
+          confidenceScore: String(concept.confidence),
+          sourceMemoryIds: JSON.stringify(concept.source_memory_ids),
+        });
+        conceptsUpdated++;
+        console.log(`[ConceptReflection] Updated concept: ${concept.concept}`);
+      } else {
+        await createCoreConcept({
+          type: concept.type,
+          concept: concept.concept,
+          description: concept.description,
+          examples: JSON.stringify(concept.examples),
+          confidenceScore: String(concept.confidence),
+          sourceMemoryIds: JSON.stringify(concept.source_memory_ids),
+        });
+        conceptsCreated++;
+        console.log(`[ConceptReflection] Created concept: ${concept.concept}`);
+      }
+    }
+    
+    createBatchArtifact({
+      batchJobId,
+      artifactType: "CORE_CONCEPT",
+      sourceRef: `reflection_${new Date().toISOString().split("T")[0]}`,
+      payloadJson: JSON.stringify({
+        conceptsCreated,
+        conceptsUpdated,
+        insights: result.insights,
+        concepts: result.concepts.map(c => ({ type: c.type, concept: c.concept })),
+      }),
+      isProcessed: true,
+      processedAt: new Date().toISOString(),
+    });
+    
+    console.log(`[ConceptReflection] Batch complete. Created: ${conceptsCreated}, Updated: ${conceptsUpdated}`);
+    return { conceptsCreated, conceptsUpdated };
+  } catch (error) {
+    console.error("[ConceptReflection] Error processing batch result:", error);
+    throw error;
+  }
+}
+
+// ============================================
+// SCHEDULER (DEPRECATED - Use batch orchestrator)
+// ============================================
+
+export function startConceptReflectionScheduler(): void {
+  console.log("[ConceptReflection] Standalone scheduler disabled - using batch orchestrator");
 }
 
 export function getConceptReflectionStatus(): {

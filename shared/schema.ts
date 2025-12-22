@@ -3455,6 +3455,17 @@ export const batchJobTypes = [
   "SYSTEM_HEALTH_REPORT",
   "PATTERN_NARRATIVE",
   "MIDDAY_INCREMENTAL",
+  "CONCEPT_REFLECTION",
+  "DAILY_SUMMARY",
+  "MORNING_BRIEFING",
+  "OMI_DIGEST",
+  "FEEDBACK_TRAINING",
+  "ANTICIPATION_ENGINE",
+  "KG_BACKFILL",
+  "OMI_ANALYTICS",
+  "OMI_MEETINGS",
+  "OMI_ACTION_ITEMS",
+  "SELF_UNDERSTANDING",
 ] as const;
 export type BatchJobType = typeof batchJobTypes[number];
 
@@ -3472,6 +3483,16 @@ export const batchArtifactTypes = [
   "CALIBRATION_INSIGHT",
   "HEALTH_REPORT",
   "PATTERN_INSIGHT",
+  "CORE_CONCEPT",
+  "DAILY_SUMMARY_REPORT",
+  "MORNING_BRIEFING_REPORT",
+  "OMI_DIGEST_REPORT",
+  "FEEDBACK_TRAINING_RESULT",
+  "ANTICIPATION_INSIGHT",
+  "OMI_ANALYTICS_REPORT",
+  "OMI_MEETING_EXTRACTION",
+  "OMI_ACTION_ITEM",
+  "SELF_MODEL_UPDATE",
 ] as const;
 export type BatchArtifactType = typeof batchArtifactTypes[number];
 
@@ -3540,6 +3561,29 @@ export const insertBatchArtifactSchema = createInsertSchema(batchArtifacts).omit
 
 export type InsertBatchArtifact = z.infer<typeof insertBatchArtifactSchema>;
 export type BatchArtifact = typeof batchArtifacts.$inferSelect;
+
+// Batch model configuration table - hot-swappable models per job type
+export const batchModelConfigs = sqliteTable("batch_model_configs", {
+  id: text("id").primaryKey(),
+  jobType: text("job_type").notNull().unique(), // BatchJobType or "GLOBAL_DEFAULT"
+  model: text("model").notNull(), // e.g., "gpt-5.2-2025-12-11"
+  maxTokens: integer("max_tokens").default(4096),
+  temperature: text("temperature").default("0.7"),
+  reasoningEffort: text("reasoning_effort"), // For reasoning models: low, medium, high
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  updatedBy: text("updated_by"), // Admin who made change
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertBatchModelConfigSchema = createInsertSchema(batchModelConfigs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertBatchModelConfig = z.infer<typeof insertBatchModelConfigSchema>;
+export type BatchModelConfig = typeof batchModelConfigs.$inferSelect;
 
 // Memory summary artifact payload structure
 export interface MemorySummaryPayload {
