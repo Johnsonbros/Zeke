@@ -3379,7 +3379,16 @@ export async function registerRoutes(
       message += `\n${items.length} item(s) total`;
 
       // Send via Twilio
-      await sendSMS(targetPhone, message);
+      const client = await getTwilioClient();
+      const fromNumber = await getTwilioFromPhoneNumber();
+      if (!fromNumber) {
+        return res.status(500).json({ message: "Twilio phone number not configured" });
+      }
+      await client.messages.create({
+        body: message,
+        from: fromNumber,
+        to: formatPhoneNumber(targetPhone),
+      });
       console.log(`[GrocerySMS] Sent list with ${items.length} items to ${targetName} (${targetPhone})`);
       
       res.json({ 

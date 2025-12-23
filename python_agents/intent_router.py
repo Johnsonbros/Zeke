@@ -316,6 +316,18 @@ INTENT_PATTERNS: list[PatternRule] = [
     ),
     PatternRule(
         patterns=[
+            r"\bsend\s+(the\s+)?(grocery|shopping)\s+list\s+(to|via)\b",
+            r"\btext\s+(the\s+)?(grocery|shopping)\s+list\s+(to)?\b",
+            r"\bsms\s+(the\s+)?(grocery|shopping)\s+list\b",
+            r"\bshare\s+(the\s+)?(grocery|shopping)\s+list\s+with\b",
+        ],
+        category=CapabilityCategory.GROCERY,
+        intent_type=IntentType.SEND_GROCERY_LIST,
+        confidence=0.9,
+        entity_extractors={"recipients": r"(?:to|with)\s+(.+)$"}
+    ),
+    PatternRule(
+        patterns=[
             r"\b(update|change|set)\s+(my\s+)?preference\b",
             r"\bi\s+(prefer|like|don'?t\s+like)\b",
         ],

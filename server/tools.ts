@@ -53,6 +53,7 @@ export interface ToolPermissions {
   canAccessGrocery: boolean;
   canSetReminders: boolean;
   canQueryMemory: boolean;
+  canSendMessages: boolean;
 }
 
 export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = allToolDefinitions;
@@ -88,6 +89,7 @@ export async function executeTool(
     canAccessGrocery: true,
     canSetReminders: true,
     canQueryMemory: true,
+    canSendMessages: true,
   };
   
   const permissionCheck = TOOL_PERMISSIONS[toolName];
@@ -117,7 +119,7 @@ export async function executeTool(
   } else if (calendarToolNames.includes(toolName)) {
     result = await executeCalendarTool(toolName, args);
   } else if (groceryToolNames.includes(toolName)) {
-    result = await executeGroceryTool(toolName, args);
+    result = await executeGroceryTool(toolName, args, options);
   } else if (searchToolNames.includes(toolName)) {
     result = await executeSearchTool(toolName, args, options);
   } else if (fileToolNames.includes(toolName)) {

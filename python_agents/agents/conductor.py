@@ -76,6 +76,7 @@ INTENT_TO_CATEGORY: dict[IntentType, CapabilityCategory] = {
     IntentType.MARK_PURCHASED: CapabilityCategory.GROCERY,
     IntentType.REMOVE_ITEM: CapabilityCategory.GROCERY,
     IntentType.CLEAR_LIST: CapabilityCategory.GROCERY,
+    IntentType.SEND_GROCERY_LIST: CapabilityCategory.GROCERY,
     IntentType.PREFERENCE_UPDATE: CapabilityCategory.PROFILE,
     IntentType.PROFILE_QUERY: CapabilityCategory.PROFILE,
     IntentType.READ_FILE: CapabilityCategory.DOCUMENTS,

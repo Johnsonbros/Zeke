@@ -7,8 +7,14 @@ import {
   deleteGroceryItem,
   clearPurchasedGroceryItems,
   clearAllGroceryItems,
+  findContactsByName,
 } from "../db";
 import { suggestRelatedGroceryItems, suggestRelatedGroceryItemsBulk } from "./workflows";
+import { MASTER_ADMIN_PHONE } from "@shared/schema";
+
+export interface GroceryToolOptions {
+  sendSmsCallback?: ((phone: string, message: string, source?: string) => Promise<void>) | null;
+}
 
 export const groceryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
@@ -134,6 +140,24 @@ export const groceryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "send_grocery_list",
+      description: "Send the grocery list via SMS to one or more people. Use when user says 'send the grocery list to...', 'text the list to...', or 'share the grocery list with...'. Parses recipient names like 'me', 'Shakita', 'me and Shakita' and looks up their phone numbers from contacts.",
+      parameters: {
+        type: "object",
+        properties: {
+          recipients: {
+            type: "array",
+            items: { type: "string" },
+            description: "List of recipient names to send the grocery list to. Examples: ['Nate'], ['Shakita'], ['Nate', 'Shakita']. Use 'Nate' when user says 'me' or 'myself'.",
+          },
+        },
+        required: ["recipients"],
+      },
+    },
+  },
 ];
 
 export const groceryToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
@@ -144,12 +168,15 @@ export const groceryToolPermissions: Record<string, (permissions: ToolPermission
   clear_purchased_groceries: (p) => p.canAccessGrocery,
   clear_all_groceries: (p) => p.canAccessGrocery,
   suggest_grocery_items: (p) => p.canAccessGrocery,
+  send_grocery_list: (p) => p.canAccessGrocery && p.canSendMessages,
 };
 
 export async function executeGroceryTool(
   toolName: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  options: GroceryToolOptions = {}
 ): Promise<string | null> {
+  const { sendSmsCallback } = options;
   switch (toolName) {
     case "add_grocery_item": {
       const { name, quantity, category, added_by } = args as {
@@ -393,6 +420,114 @@ export async function executeGroceryTool(
       }
     }
     
+    case "send_grocery_list": {
+      const { recipients } = args as { recipients: string[] };
+      
+      try {
+        if (!sendSmsCallback) {
+          return JSON.stringify({
+            success: false,
+            error: "SMS is not configured. Cannot send grocery list.",
+          });
+        }
+        
+        const groceryItems = getAllGroceryItems().filter(item => !item.purchased);
+        
+        if (groceryItems.length === 0) {
+          return JSON.stringify({
+            success: false,
+            error: "The grocery list is empty. Nothing to send.",
+          });
+        }
+        
+        if (!recipients || recipients.length === 0) {
+          return JSON.stringify({
+            success: false,
+            error: "No recipients specified. Please say who to send the list to.",
+          });
+        }
+        
+        // Build the grocery list message
+        const groupedItems: Record<string, typeof groceryItems> = {};
+        for (const item of groceryItems) {
+          const cat = item.category || "Other";
+          if (!groupedItems[cat]) groupedItems[cat] = [];
+          groupedItems[cat].push(item);
+        }
+        
+        let message = "Grocery List:\n";
+        for (const [category, categoryItems] of Object.entries(groupedItems)) {
+          message += `\n${category}:\n`;
+          for (const item of categoryItems) {
+            const qty = item.quantity && item.quantity !== "1" ? ` (${item.quantity})` : "";
+            message += `- ${item.name}${qty}\n`;
+          }
+        }
+        message += `\n${groceryItems.length} item(s) total`;
+        
+        // Send to each recipient
+        const sentTo: string[] = [];
+        const failed: string[] = [];
+        
+        for (const recipientName of recipients) {
+          let phone: string | null = null;
+          const normalizedName = recipientName.toLowerCase().trim();
+          
+          // Handle "me", "myself", "Nate" -> use master phone
+          if (normalizedName === "me" || normalizedName === "myself" || normalizedName === "nate") {
+            phone = MASTER_ADMIN_PHONE;
+          } else {
+            // Look up contact by name
+            const contacts = findContactsByName(recipientName);
+            if (contacts.length > 0 && contacts[0].phone) {
+              phone = contacts[0].phone;
+            }
+          }
+          
+          if (phone) {
+            try {
+              await sendSmsCallback(phone, message, "grocery_list");
+              sentTo.push(recipientName);
+              console.log(`[GrocerySMS] Sent list to ${recipientName} (${phone})`);
+            } catch (err) {
+              console.error(`[GrocerySMS] Failed to send to ${recipientName}:`, err);
+              failed.push(recipientName);
+            }
+          } else {
+            console.warn(`[GrocerySMS] No phone number found for ${recipientName}`);
+            failed.push(recipientName);
+          }
+        }
+        
+        if (sentTo.length === 0) {
+          return JSON.stringify({
+            success: false,
+            error: `Couldn't send the grocery list. No phone numbers found for: ${failed.join(", ")}`,
+          });
+        }
+        
+        const result: any = {
+          success: true,
+          message: `Sent the grocery list to ${sentTo.join(" and ")}`,
+          sentTo,
+          itemCount: groceryItems.length,
+        };
+        
+        if (failed.length > 0) {
+          result.warning = `Couldn't find phone numbers for: ${failed.join(", ")}`;
+          result.failed = failed;
+        }
+        
+        return JSON.stringify(result);
+      } catch (error) {
+        console.error("Error sending grocery list:", error);
+        return JSON.stringify({ 
+          success: false, 
+          error: "Failed to send the grocery list" 
+        });
+      }
+    }
+    
     default:
       return null;
   }
@@ -406,4 +541,5 @@ export const groceryToolNames = [
   "clear_purchased_groceries",
   "clear_all_groceries",
   "suggest_grocery_items",
+  "send_grocery_list",
 ];

@@ -172,6 +172,7 @@ class IntentType(str, Enum):
     MARK_PURCHASED = "mark_purchased"
     REMOVE_ITEM = "remove_item"
     CLEAR_LIST = "clear_list"
+    SEND_GROCERY_LIST = "send_grocery_list"
     PREFERENCE_UPDATE = "preference_update"
     PROFILE_QUERY = "profile_query"
     READ_FILE = "read_file"
