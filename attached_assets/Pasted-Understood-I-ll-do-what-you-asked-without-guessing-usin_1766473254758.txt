@@ -1,0 +1,182 @@
+Understood. I’ll do what you asked without guessing, using only information that’s already well-established from your history and what you’ve explicitly stated.
+Where something is intentionally left open-ended, I’ll mark it as such so the system knows it can be refined later rather than silently drifting.
+
+Below is a copy-paste-ready Knowledge Base designed to sit under your Personal AI Profile as the living memory layer.
+
+⸻
+
+Personal Knowledge Base — Nate Johnson
+
+(Evergreen, structured, refinement-friendly)
+
+⸻
+
+1. Current Projects & Priorities
+
+Work / Business (Primary)
+	•	Johnson Bros. Plumbing & Drain Cleaning
+	•	Running day-to-day operations (calls, scheduling, customer coordination)
+	•	Improving consistency of work volume and lead flow
+	•	Strengthening brand differentiation as a true local, family-owned company
+	•	Emphasizing high customer retention and service quality over aggressive upselling
+	•	Expanding long-form and short-form video content (YouTube, Facebook, Shorts)
+	•	Improving internal systems to reduce mental load and operational friction
+	•	AiSync Services (Founder)
+	•	Building an AI-first SaaS platform for service businesses
+	•	Core focus areas:
+	•	Hourly rate and pricebook calculation tools
+	•	Scenario modeling for business decisions
+	•	MCP servers for AI assistants
+	•	Housecall Pro API integrations
+	•	Designing the app to be modular, durable, and future-proof
+	•	Long-term vision: become an AI operating layer for service trades
+	•	ZEKE (Internal AI Assistant Ecosystem)
+	•	AI assistant for Johnson Bros. operations
+	•	SMS, voice, chat, booking, and automation via APIs
+	•	Focus on reducing cognitive load, not adding dashboards
+
+Personal / Family / Health (Highest Priority)
+	•	Being more present and emotionally available as:
+	•	A father
+	•	A husband
+	•	Managing ADHD more effectively through structure and externalized systems
+	•	Protecting energy, reducing overwhelm, and avoiding burnout
+	•	Maintaining health stability (metabolic awareness, medication adherence)
+	•	Creating a life rhythm that supports family first, business second
+
+⸻
+
+2. Important Recurring Dates
+
+Family Birthdays
+	•	Nate Johnson — January 13, 1989
+	•	Shakita Johnson — November 2, 1985
+	•	Carolina Johnson — August 31, 2009
+	•	Aurora Johnson — February 19, 2022
+
+Other Recurring Dates
+	•	Wedding anniversary: not yet specified
+	•	Membership renewals / subscriptions: tracked contextually, not fixed
+	•	Mortgage payment cycle: monthly
+	•	Business reporting cycles: monthly and yearly (informal, evolving)
+
+(Assistant should ask before assuming or adding anniversaries or renewals.)
+
+⸻
+
+3. Key People (Personal & Business)
+
+Family
+	•	Shakita Johnson — spouse
+	•	Carolina Johnson — daughter
+	•	Aurora Johnson — daughter
+
+Business — Johnson Bros.
+	•	Nick Johnson — brother, co-owner (financial responsibilities)
+	•	Jahz Malary — technician
+	•	Customers: ~5,000 served over past few years, majority repeat customers
+
+Business — Extended / Tools
+	•	Housecall Pro (primary CRM)
+	•	Ferguson (materials supplier, API interest)
+	•	Twilio (communications)
+	•	Replit (development platform)
+	•	OpenAI (AI infrastructure)
+
+(Assistant should treat people and tools differently—humans > systems.)
+
+⸻
+
+4. Routines & Habits
+
+Workday Reality (Non-Idealized)
+	•	Answers phones and schedules jobs personally
+	•	Context-switches frequently
+	•	Often pulled between urgent tasks and long-term planning
+	•	Best work happens when:
+	•	Focus is narrowed
+	•	One task is clearly defined
+	•	Interruptions are minimized
+
+Personal Routines
+	•	Family time in mornings/evenings is important
+	•	Bedtime routines with children matter emotionally
+	•	Exercise and health routines exist but benefit from external accountability
+	•	Creative work (writing, building, ideation) happens in bursts, not rigid schedules
+
+⸻
+
+5. Preferences
+
+Communication & Work Style
+	•	Direct, honest, structured
+	•	Dislikes fluff, hype, or vague advice
+	•	Prefers:
+	•	One task at a time
+	•	Clear “next action”
+	•	Big-picture framing before detail
+
+Food & Lifestyle
+	•	Enjoys good food but prioritizes health stability
+	•	Alcohol: social and moderate
+	•	Values experiences over material excess
+
+Travel
+	•	Enjoys regional trips (New England, Berkshires)
+	•	Family-friendly travel preferred
+	•	Convenience and low friction > luxury for its own sake
+
+⸻
+
+6. Goals
+
+Short-Term (Now → 12 months)
+	•	Stabilize work volume and reduce stress
+	•	Improve consistency in routines
+	•	Finish and ship core AiSync MVP
+	•	Increase presence and patience at home
+	•	Reduce mental clutter and unfinished loops
+
+Long-Term (Multi-Year)
+	•	Build durable businesses that don’t require constant firefighting
+	•	Create AI systems that genuinely help people, not distract them
+	•	Achieve financial and time flexibility
+	•	Be remembered by children as present, calm, and supportive
+	•	Leave behind systems, stories, and tools that outlast daily hustle
+
+⸻
+
+7. Additional Memory Rules & Notes
+	•	Nate has ADHD — assistance should compensate for executive function gaps
+	•	Overwhelm should trigger simplification, not expansion
+	•	Family wellbeing always outranks productivity metrics
+	•	The assistant should:
+	•	Help close loops
+	•	Remind without nagging
+	•	Suggest structure gently
+	•	Act as a second brain, not a boss
+
+⸻
+
+Knowledge Base Maintenance Rules
+	•	Prefer facts over assumptions
+	•	Ask before adding sensitive or time-bound data
+	•	Update through explicit confirmation
+	•	Avoid storing transient moods unless explicitly requested
+
+⸻
+
+Intent Summary
+
+This knowledge base exists so the assistant can:
+	•	Reduce friction in Nate’s life
+	•	Protect what matters most
+	•	Anticipate needs without overstepping
+	•	Grow toward an accurate, ethical digital twin
+
+⸻
+
+When you’re ready, the next powerful layer is:
+	•	“Signals & Triggers” (how the assistant knows you’re overloaded, drifting, or thriving)
+
+We’ll do that one clean question at a time.
