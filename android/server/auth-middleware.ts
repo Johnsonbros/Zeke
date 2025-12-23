@@ -27,7 +27,6 @@ const PUBLIC_ROUTES = [
   '/api/auth/verify-sms-code',
   '/api/calendar/connection',
   '/api/zeke/health',
-  '/api/zeke/security/status',
   '/api/zeke/auth/pair',
   '/api/zeke/auth/verify',
   '/api/zeke/auth/status',
@@ -101,7 +100,15 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
   }
 
   if (!ZEKE_SECRET) {
-    console.warn('[Auth] ZEKE_SHARED_SECRET not configured - allowing request (development mode)');
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (isProduction) {
+      console.error('[Auth] CRITICAL: ZEKE_SHARED_SECRET not configured in production - rejecting request');
+      return res.status(500).json({
+        error: 'Server configuration error',
+        message: 'Authentication system not properly configured'
+      });
+    }
+    console.warn('[Auth] ZEKE_SHARED_SECRET not configured - allowing request (development mode only)');
     return next();
   }
 

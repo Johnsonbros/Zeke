@@ -78,7 +78,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Device name is required" });
       }
 
-      const result = await requestPairingCode(deviceName);
+      const forwarded = req.headers['x-forwarded-for'];
+      const clientIP = forwarded 
+        ? (typeof forwarded === 'string' ? forwarded : forwarded[0]).split(',')[0].trim()
+        : req.socket?.remoteAddress || 'unknown';
+
+      const result = await requestPairingCode(deviceName, clientIP);
       if (result.success) {
         res.json({
           success: true,
@@ -87,6 +92,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: "Verification code sent to your phone",
         });
       } else {
+        if (result.retryAfterSeconds) {
+          res.setHeader('Retry-After', result.retryAfterSeconds.toString());
+          return res.status(429).json({ success: false, error: result.error, retryAfterSeconds: result.retryAfterSeconds });
+        }
         res.status(400).json({ success: false, error: result.error });
       }
     } catch (error) {
