@@ -1685,7 +1685,7 @@ export async function registerRoutes(
       } else if (useUnifiedConversation) {
         // Use the unified conversation for web chat (admin interface)
         // This ensures all of Nate's conversations share the same history
-        conversation = findOrCreateUnifiedConversation('web');
+        conversation = await findOrCreateUnifiedConversation('web');
         isNewConversation = false; // Unified conversation persists
       } else {
         conversation = createConversation({ source });
@@ -1846,7 +1846,7 @@ export async function registerRoutes(
       // Use unified conversation unless explicitly requesting a new one
       // Mobile app should use the unified conversation by default
       if (!forceNew) {
-        const conversation = findOrCreateUnifiedConversation(source === 'mobile' ? 'app' : 'web');
+        const conversation = await findOrCreateUnifiedConversation(source === 'mobile' ? 'app' : 'web');
         return res.status(200).json(conversation);
       }
       
@@ -2090,8 +2090,8 @@ export async function registerRoutes(
         // Use unified conversation for master admin, otherwise use per-phone SMS conversations
         // This ensures all of Nate's conversations (SMS, web, app) share the same history
         const conversation = isMasterAdminPhone(fromNumber) 
-          ? findOrCreateUnifiedConversation('sms')
-          : findOrCreateSmsConversation(fromNumber);
+          ? await findOrCreateUnifiedConversation('sms')
+          : await findOrCreateSmsConversation(fromNumber);
         
         // ============================================
         // CHECK FOR FEEDBACK REACTIONS FIRST
@@ -2742,8 +2742,8 @@ export async function registerRoutes(
       // Use unified conversation for master admin, otherwise use per-phone conversations
       // This ensures all of Nate's conversations (voice, SMS, web) share the same history
       const conversation = isMasterAdminPhone(fromNumber)
-        ? findOrCreateUnifiedConversation('voice')
-        : findOrCreateSmsConversation(fromNumber);
+        ? await findOrCreateUnifiedConversation('voice')
+        : await findOrCreateSmsConversation(fromNumber);
       
       // Store user message
       createMessage({

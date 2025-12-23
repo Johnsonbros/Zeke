@@ -495,8 +495,10 @@ You are speaking with ${permissions.contactName || 'an admin'}. Full access to a
     allowed.push("- Can set reminders");
   }
   
-  let accessSection = `## Access Level: ${permissions.accessLevel.toUpperCase()}
-You are speaking with ${permissions.contactName || 'an SMS user'} via ${permissions.source.toUpperCase()}.
+  const accessLevel = permissions.accessLevel || 'guest';
+  const source = permissions.source || 'sms';
+  let accessSection = `## Access Level: ${accessLevel.toUpperCase()}
+You are speaking with ${permissions.contactName || 'an SMS user'} via ${source.toUpperCase()}.
 
 ### ALLOWED:
 ${allowed.length > 0 ? allowed.join("\n") : "- Basic conversation only"}

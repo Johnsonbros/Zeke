@@ -121,9 +121,12 @@ export function isRepeatedRequest(
 /**
  * Get the most recent assistant message ID for a conversation
  */
-function getMostRecentAssistantMessageId(conversationId: string): string | undefined {
+async function getMostRecentAssistantMessageId(conversationId: string): Promise<string | undefined> {
   try {
-    const messages = getRecentMessages(conversationId, 5);
+    const messages = await getRecentMessages(conversationId, 5);
+    if (!messages || !Array.isArray(messages)) {
+      return undefined;
+    }
     for (const msg of messages) {
       if (msg.role === "assistant") {
         return msg.id;
@@ -145,7 +148,7 @@ export async function createImplicitFeedback(
 ): Promise<void> {
   try {
     // Find most recent outbound message to this phone
-    const assistantMessageId = getMostRecentAssistantMessageId(conversationId);
+    const assistantMessageId = await getMostRecentAssistantMessageId(conversationId);
 
     if (assistantMessageId) {
       const feedbackData: InsertFeedbackEvent = {

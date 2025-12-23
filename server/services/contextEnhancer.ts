@@ -145,6 +145,11 @@ export function selectRelevantMessages<T extends { content: string; createdAt: s
   matchedNames: string[],
   maxMessages: number = 15
 ): T[] {
+  // Handle null/undefined messages
+  if (!messages || !Array.isArray(messages)) {
+    return [];
+  }
+  
   const now = Date.now();
 
   const scored = messages.map(msg => {
