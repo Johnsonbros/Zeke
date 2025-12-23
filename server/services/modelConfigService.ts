@@ -104,4 +104,17 @@ export async function initializeDefaultModel(): Promise<void> {
     maxTokens: 4096,
     temperature: 0.7,
   });
+  
+  // Configure GPT-5.2 for knowledge graph batch jobs
+  configCache.set("KG_BACKFILL", {
+    model: "gpt-5.2",
+    maxTokens: 8192,
+    temperature: 0.3,
+  });
+  
+  configCache.set("KG_REBUILD", {
+    model: "gpt-5.2",
+    maxTokens: 8192,
+    temperature: 0.3,
+  });
 }
