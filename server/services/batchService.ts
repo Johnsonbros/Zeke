@@ -209,23 +209,55 @@ export async function pollBatchJob(jobId: string): Promise<{ status: string; out
   };
 }
 
+interface BatchResultItem {
+  customId: string;
+  content: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  model?: string;
+}
+
 /**
  * Download and parse batch results from OpenAI
+ * Now also extracts token usage information for cost tracking
  */
-export async function downloadBatchResults(jobId: string, outputFileId: string): Promise<Array<{ customId: string; content: string }>> {
+export async function downloadBatchResults(jobId: string, outputFileId: string): Promise<{
+  results: BatchResultItem[];
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  model?: string;
+}> {
   const client = getOpenAIClient();
   
   const response = await client.files.content(outputFileId);
   const text = await response.text();
   
-  const results: Array<{ customId: string; content: string }> = [];
+  const results: BatchResultItem[] = [];
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let detectedModel: string | undefined;
+  
   for (const line of text.split("\n").filter(l => l.trim())) {
     try {
       const parsed = JSON.parse(line);
       if (parsed.response?.body?.choices?.[0]?.message?.content) {
+        const usage = parsed.response?.body?.usage;
+        const inputTokens = usage?.prompt_tokens || 0;
+        const outputTokens = usage?.completion_tokens || 0;
+        const model = parsed.response?.body?.model;
+        
+        totalInputTokens += inputTokens;
+        totalOutputTokens += outputTokens;
+        if (model && !detectedModel) {
+          detectedModel = model;
+        }
+        
         results.push({
           customId: parsed.custom_id,
-          content: parsed.response.body.choices[0].message.content
+          content: parsed.response.body.choices[0].message.content,
+          inputTokens,
+          outputTokens,
+          model,
         });
       } else if (parsed.error) {
         console.error(`[BatchService] Batch item ${parsed.custom_id} failed:`, parsed.error);
@@ -235,11 +267,12 @@ export async function downloadBatchResults(jobId: string, outputFileId: string):
     }
   }
   
-  return results;
+  return { results, totalInputTokens, totalOutputTokens, model: detectedModel };
 }
 
 /**
  * Process completed batch and create artifacts
+ * Also logs token usage to the AI usage tracking system
  */
 export async function processBatchCompletion(jobId: string): Promise<number> {
   const job = getBatchJob(jobId);
@@ -252,13 +285,12 @@ export async function processBatchCompletion(jobId: string): Promise<number> {
     throw new Error(`Batch not ready: status=${pollResult.status}`);
   }
   
-  const results = await downloadBatchResults(jobId, pollResult.outputFileId);
+  const startTime = Date.now();
+  const { results, totalInputTokens, totalOutputTokens, model: detectedModel } = await downloadBatchResults(jobId, pollResult.outputFileId);
   let artifactsCreated = 0;
   
   for (const result of results) {
     try {
-      // Parse the custom_id to determine artifact type and source
-      // Format: ARTIFACT_TYPE:source_ref
       const colonIndex = result.customId.indexOf(":");
       const artifactType = colonIndex > 0 ? result.customId.substring(0, colonIndex) : result.customId;
       const sourceRef = colonIndex > 0 ? result.customId.substring(colonIndex + 1) : result.customId;
@@ -276,12 +308,49 @@ export async function processBatchCompletion(jobId: string): Promise<number> {
   }
   
   const finalStatus = artifactsCreated > 0 ? (artifactsCreated === results.length ? "COMPLETED" : "PARTIAL") : "FAILED";
-  updateBatchJobStatus(jobId, finalStatus, {
-    completedAt: new Date().toISOString(),
-    outputItemCount: artifactsCreated
-  });
   
-  console.log(`[BatchService] Job ${jobId} completed with ${artifactsCreated} artifacts`);
+  // Calculate latency from submission to completion
+  const latencyMs = job.submittedAt 
+    ? Date.now() - new Date(job.submittedAt).getTime()
+    : Date.now() - startTime;
+  
+  // Log batch usage to AI usage tracking
+  try {
+    const { logBatchEvent, calculateCost } = await import("../aiLogger");
+    const usedModel = detectedModel || job.model || "gpt-4o";
+    
+    // Calculate actual cost (batch API has 50% discount, applied in logBatchEvent)
+    const costs = calculateCost(usedModel, totalInputTokens, totalOutputTokens);
+    const actualCostCents = Math.round(costs.totalCostCents / 2); // 50% batch discount
+    
+    logBatchEvent({
+      model: usedModel,
+      batchJobId: jobId,
+      batchJobType: job.type,
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
+      inputItems: job.inputItemCount || results.length,
+      outputItems: artifactsCreated,
+      status: finalStatus === "COMPLETED" ? "ok" : "error",
+      latencyMs,
+    });
+    
+    // Update job with actual cost
+    updateBatchJobStatus(jobId, finalStatus, {
+      completedAt: new Date().toISOString(),
+      outputItemCount: artifactsCreated,
+      actualCostCents,
+    });
+    
+    console.log(`[BatchService] Job ${jobId} completed: ${artifactsCreated} artifacts, ${totalInputTokens} input tokens, ${totalOutputTokens} output tokens, cost: ${actualCostCents}c`);
+  } catch (e) {
+    console.error(`[BatchService] Failed to log batch usage:`, e);
+    updateBatchJobStatus(jobId, finalStatus, {
+      completedAt: new Date().toISOString(),
+      outputItemCount: artifactsCreated
+    });
+  }
+  
   return artifactsCreated;
 }
 

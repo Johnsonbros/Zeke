@@ -529,4 +529,233 @@ export function getAnomalyAlertConfig(): AnomalyAlertConfig {
   return { ...alertConfig };
 }
 
+// =============================================================================
+// Batch API Usage Tracking
+// =============================================================================
+
+interface BatchUsageStats {
+  periodStart: string;
+  periodEnd: string;
+  totalJobs: number;
+  completedJobs: number;
+  failedJobs: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCostCents: number;
+  byModel: Record<string, {
+    jobs: number;
+    inputTokens: number;
+    outputTokens: number;
+    costCents: number;
+  }>;
+  byType: Record<string, {
+    jobs: number;
+    costCents: number;
+  }>;
+}
+
+/**
+ * Log a batch API event to the ai_logs table
+ * Uses endpoint = "batch" to distinguish from real-time API calls
+ */
+export function logBatchEvent(event: {
+  model: string;
+  batchJobId: string;
+  batchJobType: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  inputItems?: number;
+  outputItems?: number;
+  status: AiLogStatus;
+  errorMessage?: string;
+  latencyMs?: number;
+}): string {
+  let costs = { inputCostCents: 0, outputCostCents: 0, totalCostCents: 0 };
+  if (event.inputTokens !== undefined || event.outputTokens !== undefined) {
+    // Batch API has 50% discount, so we divide by 2
+    const rawCosts = calculateCost(
+      event.model,
+      event.inputTokens || 0,
+      event.outputTokens || 0
+    );
+    costs = {
+      inputCostCents: Math.round(rawCosts.inputCostCents / 2),
+      outputCostCents: Math.round(rawCosts.outputCostCents / 2),
+      totalCostCents: Math.round(rawCosts.totalCostCents / 2),
+    };
+  }
+  
+  return logAiEvent({
+    model: event.model,
+    endpoint: "batch",
+    agentId: event.batchJobType,
+    conversationId: event.batchJobId,
+    inputTokens: event.inputTokens,
+    outputTokens: event.outputTokens,
+    inputCostCents: costs.inputCostCents,
+    outputCostCents: costs.outputCostCents,
+    totalCostCents: costs.totalCostCents,
+    status: event.status,
+    errorMessage: event.errorMessage,
+    latencyMs: event.latencyMs,
+  });
+}
+
+/**
+ * Get batch-specific usage stats (endpoint = "batch")
+ */
+export function getBatchUsageStats(
+  startDate: string,
+  endDate: string
+): BatchUsageStats {
+  const logs = db.prepare(`
+    SELECT * FROM ai_logs 
+    WHERE endpoint = 'batch' AND timestamp >= ? AND timestamp <= ?
+    ORDER BY timestamp ASC
+  `).all(startDate, endDate) as AiLog[];
+  
+  const stats: BatchUsageStats = {
+    periodStart: startDate,
+    periodEnd: endDate,
+    totalJobs: 0,
+    completedJobs: 0,
+    failedJobs: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    totalCostCents: 0,
+    byModel: {},
+    byType: {},
+  };
+  
+  // Group by conversationId (which stores batchJobId)
+  const jobIds = new Set<string>();
+  
+  for (const log of logs) {
+    if (log.conversationId) {
+      jobIds.add(log.conversationId);
+    }
+    
+    stats.totalInputTokens += log.inputTokens || 0;
+    stats.totalOutputTokens += log.outputTokens || 0;
+    stats.totalCostCents += log.totalCostCents || 0;
+    
+    if (log.status === "ok") {
+      stats.completedJobs++;
+    } else if (log.status === "error") {
+      stats.failedJobs++;
+    }
+    
+    // By model
+    if (!stats.byModel[log.model]) {
+      stats.byModel[log.model] = {
+        jobs: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        costCents: 0,
+      };
+    }
+    stats.byModel[log.model].jobs++;
+    stats.byModel[log.model].inputTokens += log.inputTokens || 0;
+    stats.byModel[log.model].outputTokens += log.outputTokens || 0;
+    stats.byModel[log.model].costCents += log.totalCostCents || 0;
+    
+    // By type (stored in agentId)
+    const jobType = log.agentId || "unknown";
+    if (!stats.byType[jobType]) {
+      stats.byType[jobType] = { jobs: 0, costCents: 0 };
+    }
+    stats.byType[jobType].jobs++;
+    stats.byType[jobType].costCents += log.totalCostCents || 0;
+  }
+  
+  stats.totalJobs = jobIds.size || logs.length;
+  
+  return stats;
+}
+
+/**
+ * Get today's batch usage stats
+ */
+export function getTodayBatchUsageStats(): BatchUsageStats {
+  const today = new Date();
+  const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const endOfDay = new Date(startOfDay);
+  endOfDay.setDate(endOfDay.getDate() + 1);
+  
+  return getBatchUsageStats(
+    startOfDay.toISOString(),
+    endOfDay.toISOString()
+  );
+}
+
+/**
+ * Get this week's batch usage stats
+ */
+export function getWeekBatchUsageStats(): BatchUsageStats {
+  const today = new Date();
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() - today.getDay());
+  startOfWeek.setHours(0, 0, 0, 0);
+  
+  return getBatchUsageStats(
+    startOfWeek.toISOString(),
+    new Date().toISOString()
+  );
+}
+
+/**
+ * Get combined stats (realtime + batch) with breakdown by source
+ */
+export function getCombinedAiUsageStats(
+  startDate: string,
+  endDate: string
+): {
+  realtime: AiUsageStats;
+  batch: BatchUsageStats;
+  combined: {
+    totalCostCents: number;
+    totalCalls: number;
+    byModel: Record<string, { calls: number; costCents: number; source: "realtime" | "batch" | "both" }>;
+  };
+} {
+  const realtimeStats = getAiUsageStats(startDate, endDate);
+  const batchStats = getBatchUsageStats(startDate, endDate);
+  
+  const combined: {
+    totalCostCents: number;
+    totalCalls: number;
+    byModel: Record<string, { calls: number; costCents: number; source: "realtime" | "batch" | "both" }>;
+  } = {
+    totalCostCents: realtimeStats.totalCostCents + batchStats.totalCostCents,
+    totalCalls: realtimeStats.totalCalls + batchStats.totalJobs,
+    byModel: {},
+  };
+  
+  // Merge realtime models
+  for (const [model, data] of Object.entries(realtimeStats.byModel)) {
+    combined.byModel[model] = {
+      calls: data.calls,
+      costCents: data.costCents,
+      source: "realtime",
+    };
+  }
+  
+  // Merge batch models
+  for (const [model, data] of Object.entries(batchStats.byModel)) {
+    if (combined.byModel[model]) {
+      combined.byModel[model].calls += data.jobs;
+      combined.byModel[model].costCents += data.costCents;
+      combined.byModel[model].source = "both";
+    } else {
+      combined.byModel[model] = {
+        calls: data.jobs,
+        costCents: data.costCents,
+        source: "batch",
+      };
+    }
+  }
+  
+  return { realtime: realtimeStats, batch: batchStats, combined };
+}
+
 console.log("[AiLogger] AI usage logging system loaded");

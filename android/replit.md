@@ -131,3 +131,31 @@ These improvements require changes to the main ZEKE backend:
 4. **Backend response caching**: Add Redis/in-memory caching on the ZEKE backend itself to serve repeated requests without hitting the database.
 
 5. **Pagination support**: For users with large grocery lists, implement cursor-based pagination to load items in chunks.
+
+## ZEKE Dashboard Features (December 2024)
+
+### Omi Pendant Health Monitoring
+- **Component**: `OmiHealthCard.tsx` displays real-time Omi pendant status
+- **Features**: Battery level, connection status, firmware info, storage metrics, recording/sync status
+- **API Endpoint**: `GET /api/zeke/omi/health` (proxied to ZEKE backend)
+- **Fallback**: Returns unknown status when backend doesn't support endpoint
+
+### News Briefing System
+- **Components**: `NewsBriefingCard.tsx` and `NewsBriefingSection.tsx`
+- **Features**: Premium horizontal scrollable cards, category badges, breaking news banners, source attribution
+- **Feedback System**: Thumbs up/down with required text input on thumbs down before sending to ZEKE
+- **API Endpoints**:
+  - `GET /api/zeke/news/briefing` - Fetch personalized news stories
+  - `POST /api/zeke/news/feedback` - Submit feedback (requires reason for thumbs-down)
+
+### ZEKE Notification System
+- **Components**: `ZekeAlertBanner.tsx` and `ZekeAlertStack.tsx`
+- **Features**: Gradient-styled banners, animated interactions, dismissal with swipe
+- **API Endpoints**:
+  - `GET /api/zeke/notifications` - Fetch notifications (supports limit/unreadOnly params)
+  - `POST /api/zeke/notifications/:id/dismiss` - Dismiss notification
+
+### Push Notification Infrastructure
+- **Registration**: `POST /api/zeke/push/register` - Register device push token with ZEKE backend
+- **Integration**: Uses Expo Notifications for token generation and handling
+- **Helper Functions**: `notifications.ts` provides registration and permission handling

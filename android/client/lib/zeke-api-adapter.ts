@@ -1661,3 +1661,173 @@ export async function deleteZekeSavedPlace(id: string): Promise<boolean> {
     return false;
   }
 }
+
+export interface OmiPendantHealth {
+  status: "healthy" | "warning" | "error" | "disconnected" | "unknown";
+  isConnected: boolean;
+  batteryLevel?: number;
+  lastSeenAt?: string;
+  firmwareVersion?: string;
+  firmwareUpdateAvailable?: boolean;
+  storageUsed?: number;
+  storageTotal?: number;
+  lastError?: string;
+  recordingStatus?: "idle" | "recording" | "processing";
+  syncStatus?: "synced" | "syncing" | "pending" | "error";
+}
+
+export async function getOmiPendantHealth(): Promise<OmiPendantHealth> {
+  try {
+    const data = await apiClient.get<OmiPendantHealth | { health?: OmiPendantHealth }>(
+      "/api/zeke/omi/health",
+      { timeoutMs: 5000 },
+    );
+    if ("health" in data && data.health) {
+      return data.health;
+    }
+    return data as OmiPendantHealth;
+  } catch {
+    return {
+      status: "unknown",
+      isConnected: false,
+    };
+  }
+}
+
+export interface NewsStory {
+  id: string;
+  headline: string;
+  summary: string;
+  source: string;
+  sourceUrl: string;
+  category: string;
+  publishedAt: string;
+  imageUrl?: string;
+  urgency?: "normal" | "breaking";
+}
+
+export interface NewsBriefing {
+  stories: NewsStory[];
+  generatedAt: string;
+  nextRefreshAt?: string;
+}
+
+export async function getNewsBriefing(): Promise<NewsBriefing> {
+  try {
+    const data = await apiClient.get<NewsBriefing | { briefing?: NewsBriefing }>(
+      "/api/zeke/news/briefing",
+      { timeoutMs: 10000 },
+    );
+    if ("briefing" in data && data.briefing) {
+      return data.briefing;
+    }
+    return data as NewsBriefing;
+  } catch {
+    return {
+      stories: [],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+}
+
+export async function submitNewsFeedback(
+  storyId: string,
+  feedback: "up" | "down",
+  reason?: string,
+): Promise<{ success: boolean }> {
+  try {
+    return await apiClient.post<{ success: boolean }>(
+      "/api/zeke/news/feedback",
+      { storyId, feedback, reason },
+      { timeoutMs: 5000 },
+    );
+  } catch {
+    return { success: false };
+  }
+}
+
+export interface ZekeNotification {
+  id: string;
+  type: "info" | "success" | "warning" | "error" | "reminder" | "news";
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  actionType?: string;
+  actionData?: Record<string, unknown>;
+}
+
+export async function getZekeNotifications(options?: {
+  limit?: number;
+  unreadOnly?: boolean;
+}): Promise<ZekeNotification[]> {
+  try {
+    const query: Record<string, string> = {};
+    if (options?.limit) query.limit = options.limit.toString();
+    if (options?.unreadOnly) query.unreadOnly = "true";
+
+    const data = await apiClient.get<{ notifications?: ZekeNotification[] }>(
+      "/api/zeke/notifications",
+      {
+        query: Object.keys(query).length > 0 ? query : undefined,
+        emptyArrayOn404: true,
+        timeoutMs: 5000,
+      },
+    );
+    return data.notifications || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function markNotificationRead(notificationId: string): Promise<boolean> {
+  try {
+    await apiClient.patch<void>(
+      `/api/zeke/notifications/${notificationId}`,
+      { read: true },
+      { timeoutMs: 5000 },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function markAllNotificationsRead(): Promise<boolean> {
+  try {
+    await apiClient.post<void>(
+      "/api/zeke/notifications/mark-all-read",
+      {},
+      { timeoutMs: 5000 },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function dismissNotification(notificationId: string): Promise<boolean> {
+  try {
+    await apiClient.post<void>(
+      `/api/zeke/notifications/${notificationId}/dismiss`,
+      {},
+      { timeoutMs: 5000 },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function registerPushToken(token: string): Promise<boolean> {
+  try {
+    await apiClient.post<void>(
+      "/api/zeke/push/register",
+      { token, platform: "expo" },
+      { timeoutMs: 5000 },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}

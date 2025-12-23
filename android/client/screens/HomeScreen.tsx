@@ -34,6 +34,9 @@ import { PulsingDot } from "@/components/PulsingDot";
 import { SyncStatusBar } from "@/components/SyncStatusBar";
 import { SpeakerTagList } from "@/components/SpeakerTag";
 import { QuickActionsMenu, QuickAction } from "@/components/QuickActionsMenu";
+import { OmiHealthCard } from "@/components/OmiHealthCard";
+import { NewsBriefingSection, type NewsStory } from "@/components/NewsBriefingCard";
+import { ZekeAlertStack, type ZekeAlert } from "@/components/ZekeAlertBanner";
 import { getSpeakerColor } from "@/lib/speaker-matcher";
 import { useTheme } from "@/hooks/useTheme";
 import { useLocation } from "@/hooks/useLocation";
@@ -46,11 +49,17 @@ import {
   getPendingTasks,
   getGroceryItems,
   getRecentActivities,
+  getNewsBriefing,
+  submitNewsFeedback,
+  getZekeNotifications,
+  dismissNotification,
   type ZekeEvent,
   type ZekeTask,
   type ZekeGroceryItem,
   type DashboardSummary,
   type ActivityItem,
+  type NewsBriefing,
+  type ZekeNotification,
 } from "@/lib/zeke-api-adapter";
 import {
   bluetoothService,
@@ -345,6 +354,53 @@ export default function HomeScreen() {
     refetchInterval: 60000,
   });
 
+  const {
+    data: newsBriefing,
+    isLoading: isLoadingNews,
+    error: newsError,
+    refetch: refetchNews,
+  } = useQuery<NewsBriefing>({
+    queryKey: ["zeke-news-briefing"],
+    queryFn: getNewsBriefing,
+    enabled: isSyncMode,
+    staleTime: 300000,
+    refetchInterval: 600000,
+  });
+
+  const { data: notifications = [] } = useQuery<ZekeNotification[]>({
+    queryKey: ["zeke-notifications"],
+    queryFn: () => getZekeNotifications({ limit: 5, unreadOnly: true }),
+    enabled: isSyncMode,
+    staleTime: 30000,
+    refetchInterval: 60000,
+  });
+
+  const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(new Set());
+
+  const zekeAlerts: ZekeAlert[] = notifications
+    .filter((n) => !dismissedAlertIds.has(n.id))
+    .map((n) => ({
+      id: n.id,
+      type: n.type,
+      title: n.title,
+      message: n.message,
+      timestamp: n.timestamp,
+      dismissable: true,
+    }));
+
+  const handleDismissAlert = useCallback(async (alertId: string) => {
+    setDismissedAlertIds((prev) => new Set([...prev, alertId]));
+    await dismissNotification(alertId);
+    queryClient.invalidateQueries({ queryKey: ["zeke-notifications"] });
+  }, []);
+
+  const handleNewsFeedback = useCallback(
+    async (storyId: string, feedback: "up" | "down", reason?: string) => {
+      await submitNewsFeedback(storyId, feedback, reason);
+    },
+    []
+  );
+
   const { data: devicesData, isLoading: isLoadingDevices } = useQuery<
     ApiDevice[]
   >({
@@ -372,6 +428,9 @@ export default function HomeScreen() {
         queryClient.invalidateQueries({ queryKey: ["zeke-today-events"] }),
         queryClient.invalidateQueries({ queryKey: ["zeke-pending-tasks"] }),
         queryClient.invalidateQueries({ queryKey: ["zeke-grocery-items"] }),
+        queryClient.invalidateQueries({ queryKey: ["zeke-news-briefing"] }),
+        queryClient.invalidateQueries({ queryKey: ["zeke-notifications"] }),
+        queryClient.invalidateQueries({ queryKey: ["omi-pendant-health"] }),
       ]);
     } else {
       await queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
@@ -460,6 +519,15 @@ export default function HomeScreen() {
           />
         }
       >
+        {/* ZEKE Alert Notifications Stack */}
+        {isSyncMode && zekeAlerts.length > 0 ? (
+          <ZekeAlertStack
+            alerts={zekeAlerts}
+            onDismiss={handleDismissAlert}
+            maxVisible={3}
+          />
+        ) : null}
+
         {/* Sync Status Bar - shows offline/pending/failed status */}
         <SyncStatusBar />
 
@@ -635,6 +703,22 @@ export default function HomeScreen() {
             )}
           </View>
         </Pressable>
+
+        {/* Omi Pendant Health Status */}
+        {isSyncMode ? (
+          <OmiHealthCard />
+        ) : null}
+
+        {/* Morning News Briefing */}
+        {isSyncMode ? (
+          <NewsBriefingSection
+            stories={newsBriefing?.stories || []}
+            onFeedback={handleNewsFeedback}
+            isLoading={isLoadingNews}
+            error={newsError ? "Unable to load news briefing" : null}
+            onRefresh={() => refetchNews()}
+          />
+        ) : null}
 
         <View
           style={[

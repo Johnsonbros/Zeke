@@ -732,5 +732,138 @@ export function registerZekeProxyRoutes(app: Express): void {
     res.json(result.data);
   });
 
+  // ============================================================================
+  // Omi Pendant Health Routes
+  // ============================================================================
+  app.get("/api/zeke/omi/health", async (req: Request, res: Response) => {
+    const headers = extractForwardHeaders(req.headers);
+    const result = await proxyToZeke("GET", "/api/omi/health", undefined, headers);
+    if (!result.success || typeof result.data === 'string') {
+      // Return fallback data matching OmiPendantHealth interface if backend doesn't support this endpoint
+      return res.json({
+        status: "disconnected",
+        isConnected: false,
+        batteryLevel: undefined,
+        lastSeenAt: undefined,
+        firmwareVersion: undefined,
+        firmwareUpdateAvailable: false,
+        storageUsed: undefined,
+        storageTotal: undefined,
+        lastError: undefined,
+        recordingStatus: "idle",
+        syncStatus: "synced",
+      });
+    }
+    res.json(result.data);
+  });
+
+  // ============================================================================
+  // News Briefing Routes
+  // ============================================================================
+  app.get("/api/zeke/news/briefing", async (req: Request, res: Response) => {
+    const headers = extractForwardHeaders(req.headers);
+    const result = await proxyToZeke("GET", "/api/news/briefing", undefined, headers);
+    if (!result.success || typeof result.data === 'string') {
+      // Return placeholder data if backend doesn't support this endpoint yet
+      return res.json({
+        generatedAt: new Date().toISOString(),
+        stories: [
+          {
+            id: "news-1",
+            headline: "AI Technology Advances in Healthcare",
+            summary: "New AI systems are helping doctors diagnose diseases earlier and more accurately than ever before.",
+            category: "Technology",
+            source: "Tech Daily",
+            sourceUrl: "https://example.com/ai-healthcare",
+            publishedAt: new Date().toISOString(),
+            urgency: "normal",
+          },
+          {
+            id: "news-2",
+            headline: "Market Update: Tech Stocks Rally",
+            summary: "Major technology companies see gains as investors remain optimistic about Q4 earnings.",
+            category: "Business",
+            source: "Financial Times",
+            sourceUrl: "https://example.com/market-update",
+            publishedAt: new Date(Date.now() - 3600000).toISOString(),
+            urgency: "normal",
+          },
+          {
+            id: "news-3",
+            headline: "Weather Alert: Storm System Approaching",
+            summary: "Meteorologists warn of severe weather conditions expected across the region this weekend.",
+            category: "World",
+            source: "Weather Service",
+            sourceUrl: "https://example.com/weather-alert",
+            publishedAt: new Date(Date.now() - 7200000).toISOString(),
+            urgency: "breaking",
+          },
+        ],
+      });
+    }
+    res.json(result.data);
+  });
+
+  app.post("/api/zeke/news/feedback", async (req: Request, res: Response) => {
+    const headers = extractForwardHeaders(req.headers);
+    const { storyId, feedback, reason } = req.body;
+    if (!storyId || !feedback) {
+      return res.status(400).json({ error: "storyId and feedback are required" });
+    }
+    if (feedback === "down" && (!reason || reason.trim().length === 0)) {
+      return res.status(400).json({ error: "reason is required for negative feedback" });
+    }
+    const result = await proxyToZeke("POST", "/api/news/feedback", req.body, headers);
+    if (!result.success || typeof result.data === 'string') {
+      // Accept feedback locally even if backend doesn't support it yet
+      console.log(`[News Feedback] storyId=${storyId}, feedback=${feedback}, reason=${reason || "none"}`);
+      return res.json({ success: true, message: "Feedback recorded" });
+    }
+    res.json(result.data);
+  });
+
+  // ============================================================================
+  // ZEKE Notifications Routes
+  // ============================================================================
+  app.get("/api/zeke/notifications", async (req: Request, res: Response) => {
+    const headers = extractForwardHeaders(req.headers);
+    const { limit, unreadOnly } = req.query;
+    let queryString = '';
+    if (limit) queryString += `limit=${encodeURIComponent(limit as string)}&`;
+    if (unreadOnly) queryString += `unreadOnly=${encodeURIComponent(unreadOnly as string)}`;
+    const result = await proxyToZeke("GET", `/api/notifications${queryString ? '?' + queryString : ''}`, undefined, headers);
+    if (!result.success || typeof result.data === 'string') {
+      // Return empty array if backend doesn't support this endpoint yet
+      return res.json([]);
+    }
+    res.json(result.data);
+  });
+
+  app.post("/api/zeke/notifications/:id/dismiss", async (req: Request, res: Response) => {
+    const headers = extractForwardHeaders(req.headers);
+    const result = await proxyToZeke("POST", `/api/notifications/${req.params.id}/dismiss`, undefined, headers);
+    if (!result.success) {
+      // Accept dismissal locally even if backend doesn't support it yet
+      console.log(`[Notification Dismissed] id=${req.params.id}`);
+      return res.json({ success: true });
+    }
+    res.json(result.data);
+  });
+
+  app.post("/api/zeke/push/register", async (req: Request, res: Response) => {
+    const headers = extractForwardHeaders(req.headers);
+    const { token, deviceId, platform } = req.body;
+    if (!token || !deviceId) {
+      return res.status(400).json({ error: "token and deviceId are required" });
+    }
+    const result = await proxyToZeke("POST", "/api/push/register", req.body, headers);
+    if (!result.success) {
+      // Accept registration locally even if backend doesn't support it yet
+      console.log(`[Push Token Registered] deviceId=${deviceId}, platform=${platform}`);
+      return res.json({ success: true, message: "Push token registered" });
+    }
+    res.json(result.data);
+  });
+
   console.log("[ZEKE Proxy] Routes registered successfully");
 }

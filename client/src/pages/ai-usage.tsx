@@ -34,6 +34,7 @@ import {
   Bot,
   Cpu,
   Calendar,
+  Layers,
 } from "lucide-react";
 import { format, parseISO, subDays } from "date-fns";
 import {
@@ -89,6 +90,37 @@ interface AiLog {
   latencyMs?: number;
   status: string;
   errorMessage?: string;
+}
+
+interface BatchUsageStats {
+  periodStart: string;
+  periodEnd: string;
+  totalJobs: number;
+  completedJobs: number;
+  failedJobs: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCostCents: number;
+  byModel: Record<string, {
+    jobs: number;
+    inputTokens: number;
+    outputTokens: number;
+    costCents: number;
+  }>;
+  byType: Record<string, {
+    jobs: number;
+    costCents: number;
+  }>;
+}
+
+interface CombinedStats {
+  realtime: AiUsageStats;
+  batch: BatchUsageStats;
+  combined: {
+    totalCostCents: number;
+    totalCalls: number;
+    byModel: Record<string, { calls: number; costCents: number; source: "realtime" | "batch" | "both" }>;
+  };
 }
 
 const COLORS = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#06b6d4", "#84cc16"];
@@ -181,10 +213,21 @@ export default function AiUsagePage() {
     queryKey: ["/api/ai-logs/agents"],
   });
 
+  const { data: combinedToday, refetch: refetchCombined } = useQuery<CombinedStats>({
+    queryKey: ["/api/ai-logs/combined/today"],
+    refetchInterval: autoRefresh ? 30000 : false,
+  });
+
+  const { data: batchWeek } = useQuery<BatchUsageStats>({
+    queryKey: ["/api/ai-logs/batch/stats/week"],
+    refetchInterval: autoRefresh ? 60000 : false,
+  });
+
   const handleRefresh = () => {
     refetchToday();
     refetchWeek();
     refetchDaily();
+    refetchCombined();
   };
 
   const isLoading = todayLoading || weekLoading || dailyLoading;
@@ -621,6 +664,160 @@ export default function AiUsagePage() {
                           <TableRow>
                             <TableCell colSpan={3} className="text-center text-muted-foreground">
                               No endpoint data for today
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="batch">
+                <AccordionTrigger className="text-base" data-testid="accordion-batch">
+                  <div className="flex items-center gap-2">
+                    <Layers className="h-4 w-4" />
+                    Batch API Usage (Today)
+                    {combinedToday?.batch?.totalCostCents ? (
+                      <Badge variant="secondary" className="ml-2 text-xs">
+                        {formatCost(combinedToday.batch.totalCostCents)}
+                      </Badge>
+                    ) : null}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  {combinedToday?.batch && (combinedToday.batch.totalJobs > 0 || Object.keys(combinedToday.batch.byModel).length > 0) ? (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="p-3 rounded-lg bg-muted/50">
+                          <p className="text-xs text-muted-foreground">Total Jobs</p>
+                          <p className="text-lg font-semibold">{combinedToday.batch.totalJobs}</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-muted/50">
+                          <p className="text-xs text-muted-foreground">Completed</p>
+                          <p className="text-lg font-semibold text-green-500">{combinedToday.batch.completedJobs}</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-muted/50">
+                          <p className="text-xs text-muted-foreground">Total Cost</p>
+                          <p className="text-lg font-semibold font-mono">{formatCost(combinedToday.batch.totalCostCents)}</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-muted/50">
+                          <p className="text-xs text-muted-foreground">Input Tokens</p>
+                          <p className="text-lg font-semibold">{formatTokens(combinedToday.batch.totalInputTokens || 0)}</p>
+                        </div>
+                      </div>
+                      {Object.keys(combinedToday.batch.byModel).length > 0 && (
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Model</TableHead>
+                                <TableHead className="text-right">Jobs</TableHead>
+                                <TableHead className="text-right">Input Tokens</TableHead>
+                                <TableHead className="text-right">Output Tokens</TableHead>
+                                <TableHead className="text-right">Cost</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {Object.entries(combinedToday.batch.byModel)
+                                .sort((a, b) => b[1].costCents - a[1].costCents)
+                                .map(([model, data]) => (
+                                  <TableRow key={model} data-testid={`row-batch-model-${model}`}>
+                                    <TableCell className="font-medium font-mono text-sm">{model}</TableCell>
+                                    <TableCell className="text-right">{data.jobs}</TableCell>
+                                    <TableCell className="text-right">{formatTokens(data.inputTokens || 0)}</TableCell>
+                                    <TableCell className="text-right">{formatTokens(data.outputTokens || 0)}</TableCell>
+                                    <TableCell className="text-right font-mono">{formatCost(data.costCents)}</TableCell>
+                                  </TableRow>
+                                ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                      {Object.keys(combinedToday.batch.byType).length > 0 && (
+                        <div className="overflow-x-auto">
+                          <p className="text-sm font-medium mb-2">By Job Type</p>
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Job Type</TableHead>
+                                <TableHead className="text-right">Jobs</TableHead>
+                                <TableHead className="text-right">Cost</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {Object.entries(combinedToday.batch.byType)
+                                .sort((a, b) => b[1].costCents - a[1].costCents)
+                                .map(([type, data]) => (
+                                  <TableRow key={type} data-testid={`row-batch-type-${type}`}>
+                                    <TableCell className="font-medium">{type}</TableCell>
+                                    <TableCell className="text-right">{data.jobs}</TableCell>
+                                    <TableCell className="text-right font-mono">{formatCost(data.costCents)}</TableCell>
+                                  </TableRow>
+                                ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center text-muted-foreground py-4">
+                      No batch API usage for today
+                    </div>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="combined-models">
+                <AccordionTrigger className="text-base" data-testid="accordion-combined-models">
+                  <div className="flex items-center gap-2">
+                    <Cpu className="h-4 w-4" />
+                    Combined Model Breakdown (Realtime + Batch)
+                    {combinedToday?.combined?.totalCostCents ? (
+                      <Badge variant="secondary" className="ml-2 text-xs">
+                        {formatCost(combinedToday.combined.totalCostCents)}
+                      </Badge>
+                    ) : null}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Model</TableHead>
+                          <TableHead className="text-right">Calls/Jobs</TableHead>
+                          <TableHead className="text-right">Cost</TableHead>
+                          <TableHead className="text-right">Source</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {combinedToday?.combined?.byModel && Object.entries(combinedToday.combined.byModel).length > 0 ? (
+                          Object.entries(combinedToday.combined.byModel)
+                            .sort((a, b) => b[1].costCents - a[1].costCents)
+                            .map(([model, data]) => (
+                              <TableRow key={model} data-testid={`row-combined-model-${model}`}>
+                                <TableCell className="font-medium font-mono text-sm">{model}</TableCell>
+                                <TableCell className="text-right">{data.calls}</TableCell>
+                                <TableCell className="text-right font-mono">{formatCost(data.costCents)}</TableCell>
+                                <TableCell className="text-right">
+                                  <Badge 
+                                    variant="outline" 
+                                    className={`text-xs ${
+                                      data.source === "batch" ? "bg-blue-500/10 text-blue-500" :
+                                      data.source === "realtime" ? "bg-green-500/10 text-green-500" :
+                                      "bg-purple-500/10 text-purple-500"
+                                    }`}
+                                  >
+                                    {data.source}
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center text-muted-foreground">
+                              No combined model data for today
                             </TableCell>
                           </TableRow>
                         )}

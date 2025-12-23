@@ -268,6 +268,10 @@ import {
   setAnomalyAlertCallback,
   checkAndAlertAnomalies,
   getAnomalyAlertConfig,
+  getBatchUsageStats,
+  getTodayBatchUsageStats,
+  getWeekBatchUsageStats,
+  getCombinedAiUsageStats,
 } from "./aiLogger";
 import { setAiLoggerFunction } from "../lib/reliability/client_wrap";
 import multer from "multer";
@@ -10997,6 +11001,56 @@ export async function registerRoutes(
       res.json({ id, success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Failed to log AI event' });
+    }
+  });
+
+  // GET /api/ai-logs/batch/stats/today - Get today's batch API usage stats
+  app.get("/api/ai-logs/batch/stats/today", (req: Request, res: Response) => {
+    try {
+      const stats = getTodayBatchUsageStats();
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get batch stats' });
+    }
+  });
+
+  // GET /api/ai-logs/batch/stats/week - Get this week's batch API usage stats
+  app.get("/api/ai-logs/batch/stats/week", (req: Request, res: Response) => {
+    try {
+      const stats = getWeekBatchUsageStats();
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get batch stats' });
+    }
+  });
+
+  // GET /api/ai-logs/combined/today - Get combined (realtime + batch) stats for today
+  app.get("/api/ai-logs/combined/today", (req: Request, res: Response) => {
+    try {
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const endOfDay = new Date(startOfDay);
+      endOfDay.setDate(endOfDay.getDate() + 1);
+      
+      const stats = getCombinedAiUsageStats(startOfDay.toISOString(), endOfDay.toISOString());
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get combined stats' });
+    }
+  });
+
+  // GET /api/ai-logs/combined/week - Get combined (realtime + batch) stats for this week
+  app.get("/api/ai-logs/combined/week", (req: Request, res: Response) => {
+    try {
+      const today = new Date();
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(today.getDate() - today.getDay());
+      startOfWeek.setHours(0, 0, 0, 0);
+      
+      const stats = getCombinedAiUsageStats(startOfWeek.toISOString(), new Date().toISOString());
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get combined stats' });
     }
   });
 
