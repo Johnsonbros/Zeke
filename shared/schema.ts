@@ -1746,6 +1746,10 @@ export type InsertSavedRecipe = z.infer<typeof insertSavedRecipeSchema>;
 export type UpdateSavedRecipe = z.infer<typeof updateSavedRecipeSchema>;
 export type SavedRecipe = typeof savedRecipes.$inferSelect;
 
+// Aliases for backwards compatibility
+export const recipes = savedRecipes;
+export type Recipe = SavedRecipe;
+
 // ============================================
 // OMI AI SUMMARY SYSTEM
 // ============================================

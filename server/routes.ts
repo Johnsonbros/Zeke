@@ -171,6 +171,7 @@ import {
   getDislikedIngredients,
   deleteDietaryRestriction,
   getSavedRecipes,
+  getAllSavedRecipes,
   createRecipe,
   updateRecipe,
   deleteRecipe,
@@ -3817,7 +3818,7 @@ export async function registerRoutes(
 
   app.get("/api/folders", async (req, res) => {
     try {
-      const folders = getAllFolders();
+      const folders = await getAllFolders();
       res.json(folders);
     } catch (error: any) {
       console.error("Get folders error:", error);
@@ -3827,7 +3828,7 @@ export async function registerRoutes(
 
   app.get("/api/folders/tree", async (req, res) => {
     try {
-      const tree = getFolderTree();
+      const tree = await getFolderTree();
       res.json(tree);
     } catch (error: any) {
       console.error("Get folder tree error:", error);
@@ -3837,7 +3838,7 @@ export async function registerRoutes(
 
   app.get("/api/folders/:id", async (req, res) => {
     try {
-      const folder = getFolder(req.params.id);
+      const folder = await getFolder(req.params.id);
       if (!folder) {
         return res.status(404).json({ message: "Folder not found" });
       }
@@ -3854,7 +3855,7 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid folder data" });
       }
-      const folder = createFolder(parsed.data);
+      const folder = await createFolder(parsed.data);
       res.status(201).json(folder);
     } catch (error: any) {
       console.error("Create folder error:", error);
@@ -3864,7 +3865,7 @@ export async function registerRoutes(
 
   app.patch("/api/folders/:id", async (req, res) => {
     try {
-      const existing = getFolder(req.params.id);
+      const existing = await getFolder(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Folder not found" });
       }
@@ -3872,7 +3873,7 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid update data" });
       }
-      const folder = updateFolder(req.params.id, parsed.data);
+      const folder = await updateFolder(req.params.id, parsed.data);
       res.json(folder);
     } catch (error: any) {
       console.error("Update folder error:", error);
@@ -3882,11 +3883,11 @@ export async function registerRoutes(
 
   app.delete("/api/folders/:id", async (req, res) => {
     try {
-      const existing = getFolder(req.params.id);
+      const existing = await getFolder(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Folder not found" });
       }
-      deleteFolder(req.params.id);
+      await deleteFolder(req.params.id);
       res.json({ success: true });
     } catch (error: any) {
       console.error("Delete folder error:", error);
@@ -3900,14 +3901,14 @@ export async function registerRoutes(
     try {
       const { folderId, search } = req.query;
       if (search && typeof search === "string") {
-        const documents = searchDocuments(search);
+        const documents = await searchDocuments(search);
         return res.json(documents);
       }
       if (folderId !== undefined) {
-        const documents = getDocumentsByFolder(folderId === "null" ? null : folderId as string);
+        const documents = await getDocumentsByFolder(folderId === "null" ? null : folderId as string);
         return res.json(documents);
       }
-      const documents = getAllDocuments();
+      const documents = await getAllDocuments();
       res.json(documents);
     } catch (error: any) {
       console.error("Get documents error:", error);
@@ -3917,7 +3918,7 @@ export async function registerRoutes(
 
   app.get("/api/documents/:id", async (req, res) => {
     try {
-      const document = getDocumentWithFolder(req.params.id);
+      const document = await getDocumentWithFolder(req.params.id);
       if (!document) {
         return res.status(404).json({ message: "Document not found" });
       }
@@ -3934,7 +3935,7 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid document data" });
       }
-      const document = createDocument(parsed.data);
+      const document = await createDocument(parsed.data);
       res.status(201).json(document);
     } catch (error: any) {
       console.error("Create document error:", error);
@@ -3944,7 +3945,7 @@ export async function registerRoutes(
 
   app.patch("/api/documents/:id", async (req, res) => {
     try {
-      const existing = getDocument(req.params.id);
+      const existing = await getDocument(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Document not found" });
       }
@@ -3952,7 +3953,7 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid update data" });
       }
-      const document = updateDocument(req.params.id, parsed.data);
+      const document = await updateDocument(req.params.id, parsed.data);
       res.json(document);
     } catch (error: any) {
       console.error("Update document error:", error);
@@ -3962,11 +3963,11 @@ export async function registerRoutes(
 
   app.delete("/api/documents/:id", async (req, res) => {
     try {
-      const existing = getDocument(req.params.id);
+      const existing = await getDocument(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Document not found" });
       }
-      deleteDocument(req.params.id);
+      await deleteDocument(req.params.id);
       res.json({ success: true });
     } catch (error: any) {
       console.error("Delete document error:", error);
@@ -7752,9 +7753,9 @@ export async function registerRoutes(
   // === Food Preferences & Recipes API Routes ===
 
   // GET /api/food/family - Get all family members
-  app.get("/api/food/family", (req, res) => {
+  app.get("/api/food/family", async (req, res) => {
     try {
-      const members = getActiveFamilyMembers();
+      const members = await getActiveFamilyMembers();
       res.json(members);
     } catch (error: any) {
       console.error("Get family members error:", error);
@@ -7763,10 +7764,10 @@ export async function registerRoutes(
   });
 
   // GET /api/food/preferences - Get all food preferences
-  app.get("/api/food/preferences", (req, res) => {
+  app.get("/api/food/preferences", async (req, res) => {
     try {
       const memberId = req.query.memberId as string | undefined;
-      const preferences = getFoodPreferences(memberId);
+      const preferences = await getFoodPreferences(memberId);
       res.json(preferences);
     } catch (error: any) {
       console.error("Get food preferences error:", error);
@@ -7807,12 +7808,13 @@ export async function registerRoutes(
   });
 
   // GET /api/food/preferences/summary - Get summary of preferences by member
-  app.get("/api/food/preferences/summary", (req, res) => {
+  app.get("/api/food/preferences/summary", async (req, res) => {
     try {
       console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching food preferences summary`);
-      const liked = getLikedIngredients();
-      const disliked = getDislikedIngredients();
-      const loved = getFoodPreferences().filter(p => p.preference === "love");
+      const liked = await getLikedIngredients();
+      const disliked = await getDislikedIngredients();
+      const allPrefs = await getFoodPreferences();
+      const loved = allPrefs.filter(p => p.preference === "love");
       res.json({ liked, disliked, loved });
     } catch (error: any) {
       console.error("Get food preferences summary error:", error);
@@ -7865,7 +7867,7 @@ export async function registerRoutes(
   });
 
   // GET /api/recipes - Get all recipes with optional filters
-  app.get("/api/recipes", (req, res) => {
+  app.get("/api/recipes", async (req, res) => {
     try {
       const search = req.query.search as string | undefined;
       const cuisine = req.query.cuisine as string | undefined;
@@ -7874,18 +7876,28 @@ export async function registerRoutes(
       
       console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching recipes with filters - search: ${search || 'none'}, cuisine: ${cuisine || 'none'}, mealType: ${mealType || 'none'}, isFavorite: ${isFavorite}`);
       
-      let recipes;
+      // Get all recipes (async)
+      const allRecipes = await getAllSavedRecipes();
+      
+      // Apply filters
+      let recipes = allRecipes;
       if (search) {
-        recipes = searchRecipes(search);
-      } else if (cuisine || mealType || isFavorite !== undefined) {
-        recipes = getSavedRecipes({
-          cuisine,
-          mealType: mealType as any,
-          isFavorite
-        });
-      } else {
-        recipes = getSavedRecipes();
+        const query = search.toLowerCase();
+        recipes = recipes.filter(r => 
+          r.name.toLowerCase().includes(query) || 
+          (r.description && r.description.toLowerCase().includes(query))
+        );
       }
+      if (cuisine) {
+        recipes = recipes.filter(r => r.cuisine === cuisine);
+      }
+      if (mealType) {
+        recipes = recipes.filter(r => r.mealType === mealType);
+      }
+      if (isFavorite !== undefined) {
+        recipes = recipes.filter(r => r.isFavorite === isFavorite);
+      }
+      
       res.json(recipes);
     } catch (error: any) {
       console.error("Get recipes error:", error);
@@ -8035,11 +8047,11 @@ export async function registerRoutes(
   });
 
   // GET /api/meals - Get meal history
-  app.get("/api/meals", (req, res) => {
+  app.get("/api/meals", async (req, res) => {
     try {
       const limit = parseInt(req.query.limit as string) || 20;
       console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching meal history with limit ${limit}`);
-      const meals = getMealHistory(limit);
+      const meals = await getMealHistory(limit);
       res.json(meals);
     } catch (error: any) {
       console.error("Get meal history error:", error);

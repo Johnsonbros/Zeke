@@ -2409,7 +2409,7 @@ export async function createMealHistory(data: InsertMealHistory): Promise<MealHi
 
 export async function getMealHistory(limit: number = 50): Promise<MealHistory[]> {
   return await db.select().from(schema.mealHistory)
-    .orderBy(desc(schema.mealHistory.date))
+    .orderBy(desc(schema.mealHistory.cookedAt))
     .limit(limit);
 }
 
@@ -5990,7 +5990,7 @@ export async function getSavedPlacesSince(since: string): Promise<SavedPlace[]> 
 
 export async function getSavedRecipes(): Promise<Recipe[]> {
   return await db.select().from(schema.recipes)
-    .where(eq(schema.recipes.isSaved, true))
+    .where(eq(schema.recipes.isFavorite, true))
     .orderBy(desc(schema.recipes.createdAt));
 }
 
@@ -5999,7 +5999,6 @@ export async function incrementRecipeCooked(id: string): Promise<void> {
   await db.update(schema.recipes)
     .set({ 
       timesCooked: sql`${schema.recipes.timesCooked} + 1`,
-      lastCookedAt: now,
       updatedAt: now 
     })
     .where(eq(schema.recipes.id, id));
