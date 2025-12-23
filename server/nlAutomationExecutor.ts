@@ -458,10 +458,10 @@ function matchesFilters(data: any, filters: Record<string, any>): boolean {
 let lastKnownLocationCheck: { latitude: number; longitude: number } | null = null;
 
 export async function evaluateLocationTriggers(): Promise<void> {
-  const locationAutomations = getNLAutomationsByTriggerType("location");
+  const locationAutomations = await getNLAutomationsByTriggerType("location");
   if (locationAutomations.length === 0) return;
 
-  const currentLocation = getLatestLocation();
+  const currentLocation = await getLatestLocation();
   if (!currentLocation) {
     console.log("[NLAutomationExecutor] No location data available for trigger evaluation");
     return;

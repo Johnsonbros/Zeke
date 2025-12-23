@@ -70,7 +70,8 @@ export async function createMemoryWithEmbedding(
     sourceTimestamp,
   } = options;
 
-  const existingNotes = getAllMemoryNotes().map(toSemanticMemory);
+  const allNotes = await getAllMemoryNotes();
+  const existingNotes = allNotes.map(toSemanticMemory);
 
   // Enrich with location context if requested
   let locationContext = enrichLocationContext(data, { lifelogId, sourceTimestamp });
@@ -103,7 +104,7 @@ export async function createMemoryWithEmbedding(
       }
     }
 
-    const note = createMemoryNote({ 
+    const note = await createMemoryNote({ 
       type: enrichedData.type,
       content: enrichedData.content,
       context: enrichedData.context,
@@ -115,9 +116,9 @@ export async function createMemoryWithEmbedding(
     });
 
     if (supersedesContentLike) {
-      const oldNote = findMemoryNoteByContent(supersedesContentLike);
+      const oldNote = await findMemoryNoteByContent(supersedesContentLike);
       if (oldNote && oldNote.id !== note.id) {
-        supersedeMemoryNote(oldNote.id, note.id);
+        await supersedeMemoryNote(oldNote.id, note.id);
         console.log(`Memory superseded: "${oldNote.content}" -> "${note.content}"`);
       }
     }
@@ -153,7 +154,7 @@ export async function createMemoryWithEmbedding(
       }
     }
     
-    const note = createMemoryNote({ 
+    const note = await createMemoryNote({ 
       type: enrichedData.type,
       content: enrichedData.content,
       context: enrichedData.context,
@@ -164,9 +165,9 @@ export async function createMemoryWithEmbedding(
     });
     
     if (supersedesContentLike) {
-      const oldNote = findMemoryNoteByContent(supersedesContentLike);
+      const oldNote = await findMemoryNoteByContent(supersedesContentLike);
       if (oldNote && oldNote.id !== note.id) {
-        supersedeMemoryNote(oldNote.id, note.id);
+        await supersedeMemoryNote(oldNote.id, note.id);
         console.log(`Memory superseded (fallback): "${oldNote.content}" -> "${note.content}"`);
       }
     }
@@ -380,7 +381,8 @@ export async function semanticSearch(
   try {
     const queryEmbedding = await generateEmbedding(query);
 
-    let allNotes = getAllMemoryNotes().map(toSemanticMemory);
+    const rawNotes = await getAllMemoryNotes();
+    let allNotes = rawNotes.map(toSemanticMemory);
 
     // Filter out superseded memories
     allNotes = allNotes.filter(n => !n.isSuperseded);
@@ -486,7 +488,8 @@ function formatMemoryWithConfidence(note: SemanticMemoryNote, relevanceScore?: n
 }
 
 export async function getSmartMemoryContext(userMessage: string): Promise<string> {
-  const allNotes = getAllMemoryNotes().map(toSemanticMemory);
+  const rawNotes = await getAllMemoryNotes();
+  const allNotes = rawNotes.map(toSemanticMemory);
   
   if (allNotes.length === 0) {
     return "";

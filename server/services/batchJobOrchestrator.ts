@@ -409,7 +409,7 @@ async function runJobFromTemplate(template: BatchJobTemplate): Promise<{
   
   const idempotencyKey = generateIdempotencyKey(template.type, windowStart, windowEnd);
   
-  const existing = getBatchJobByIdempotencyKey(idempotencyKey);
+  const existing = await getBatchJobByIdempotencyKey(idempotencyKey);
   if (existing) {
     console.log(`[BatchOrchestrator] ${template.type} already queued/running for this window`);
     return { submitted: false, estimatedCostCents: 0 };
@@ -457,7 +457,7 @@ async function runJobFromTemplate(template: BatchJobTemplate): Promise<{
   const estimatedCostCents = Math.ceil((estimatedTokens / 1000) * 0.5);
   
   const jobId = uuidv4();
-  createBatchJob({
+  await createBatchJob({
     type: template.type,
     status: "QUEUED",
     inputWindowStart: windowStart,

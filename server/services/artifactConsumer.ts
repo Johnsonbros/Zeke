@@ -82,7 +82,7 @@ type FeedbackFixPayload = z.infer<typeof feedbackFixPayloadSchema>;
  * Consume MEMORY_SUMMARY artifacts and create memory notes
  */
 export async function consumeMemorySummaryArtifacts(): Promise<{ processed: number; errors: number; itemsCreated: number; itemsFailed: number }> {
-  const artifacts = getUnprocessedArtifactsByType("MEMORY_SUMMARY");
+  const artifacts = await getUnprocessedArtifactsByType("MEMORY_SUMMARY");
   let processed = 0;
   let errors = 0;
   let itemsCreated = 0;
@@ -119,7 +119,7 @@ export async function consumeMemorySummaryArtifacts(): Promise<{ processed: numb
           const tags = summary.tags?.join(", ") || "";
           const content = summary.summary;
           
-          createMemoryNote({
+          await createMemoryNote({
             type: "fact",
             content,
             context: `Batch enrichment from ${payload.day_key}. Tags: ${tags}. Importance: ${summary.importance || 0.5}`,
@@ -137,7 +137,7 @@ export async function consumeMemorySummaryArtifacts(): Promise<{ processed: numb
       
       // Only mark as processed if ALL items succeeded
       if (allItemsSucceeded) {
-        markArtifactProcessed(artifact.id);
+        await markArtifactProcessed(artifact.id);
         processed++;
         itemsCreated += currentItemsCreated;
       } else {
@@ -161,7 +161,7 @@ export async function consumeMemorySummaryArtifacts(): Promise<{ processed: numb
  * Consume KG_EDGES artifacts and update knowledge graph
  */
 export async function consumeKgEdgesArtifacts(): Promise<{ processed: number; entities: number; edges: number; errors: number; entitiesFailed: number; edgesFailed: number }> {
-  const artifacts = getUnprocessedArtifactsByType("KG_EDGES");
+  const artifacts = await getUnprocessedArtifactsByType("KG_EDGES");
   let processed = 0;
   let entitiesCreated = 0;
   let edgesCreated = 0;
@@ -216,12 +216,12 @@ export async function consumeKgEdgesArtifacts(): Promise<{ processed: number; en
       // Process entities
       for (const entity of payload.entities) {
         try {
-          const existing = getEntityByLabel(entity.name);
+          const existing = await getEntityByLabel(entity.name);
           if (existing) {
             entityIdMap.set(entity.id, existing.id);
           } else {
             const entityType = entityTypeMap[entity.type] || "OTHER";
-            const created = createEntity({
+            const created = await createEntity({
               type: entityType,
               label: entity.name,
               canonicalId: entity.id,
@@ -246,7 +246,7 @@ export async function consumeKgEdgesArtifacts(): Promise<{ processed: number; en
           
           if (sourceId && targetId) {
             const relType = relationMap[edge.relation] || "RELATES_TO";
-            createEntityLink({
+            await createEntityLink({
               sourceEntityId: sourceId,
               targetEntityId: targetId,
               relationshipType: relType,
@@ -268,7 +268,7 @@ export async function consumeKgEdgesArtifacts(): Promise<{ processed: number; en
       
       // Only mark as processed if ALL items succeeded
       if (allItemsSucceeded) {
-        markArtifactProcessed(artifact.id);
+        await markArtifactProcessed(artifact.id);
         processed++;
         entitiesCreated += currentEntitiesCreated;
         edgesCreated += currentEdgesCreated;
@@ -293,7 +293,7 @@ export async function consumeKgEdgesArtifacts(): Promise<{ processed: number; en
  * Consume FEEDBACK_FIX artifacts and log improvements
  */
 export async function consumeFeedbackFixArtifacts(): Promise<{ processed: number; fixes: number; errors: number; fixesFailed: number }> {
-  const artifacts = getUnprocessedArtifactsByType("FEEDBACK_FIX");
+  const artifacts = await getUnprocessedArtifactsByType("FEEDBACK_FIX");
   let processed = 0;
   let fixesLogged = 0;
   let errors = 0;
@@ -346,7 +346,7 @@ export async function consumeFeedbackFixArtifacts(): Promise<{ processed: number
       
       // Only mark as processed if ALL items succeeded
       if (allItemsSucceeded) {
-        markArtifactProcessed(artifact.id);
+        await markArtifactProcessed(artifact.id);
         processed++;
         fixesLogged += currentFixesLogged;
       } else {
@@ -370,7 +370,7 @@ export async function consumeFeedbackFixArtifacts(): Promise<{ processed: number
  * Consume CORE_CONCEPT artifacts and extract/update concepts
  */
 export async function consumeCoreConceptArtifacts(): Promise<{ processed: number; conceptsCreated: number; conceptsUpdated: number; errors: number }> {
-  const artifacts = getUnprocessedArtifactsByType("CORE_CONCEPT");
+  const artifacts = await getUnprocessedArtifactsByType("CORE_CONCEPT");
   let processed = 0;
   let totalConceptsCreated = 0;
   let totalConceptsUpdated = 0;
@@ -385,7 +385,7 @@ export async function consumeCoreConceptArtifacts(): Promise<{ processed: number
       
       totalConceptsCreated += result.conceptsCreated;
       totalConceptsUpdated += result.conceptsUpdated;
-      markArtifactProcessed(artifact.id);
+      await markArtifactProcessed(artifact.id);
       processed++;
     } catch (error) {
       console.error(`[ArtifactConsumer] Error processing CORE_CONCEPT artifact ${artifact.id}:`, error);
@@ -404,7 +404,7 @@ export async function consumeCoreConceptArtifacts(): Promise<{ processed: number
  * Consume DAILY_SUMMARY_REPORT artifacts and create journal entries
  */
 export async function consumeDailySummaryArtifacts(): Promise<{ processed: number; entriesCreated: number; errors: number }> {
-  const artifacts = getUnprocessedArtifactsByType("DAILY_SUMMARY_REPORT");
+  const artifacts = await getUnprocessedArtifactsByType("DAILY_SUMMARY_REPORT");
   let processed = 0;
   let entriesCreated = 0;
   let errors = 0;
@@ -420,7 +420,7 @@ export async function consumeDailySummaryArtifacts(): Promise<{ processed: numbe
       if (result) {
         entriesCreated++;
       }
-      markArtifactProcessed(artifact.id);
+      await markArtifactProcessed(artifact.id);
       processed++;
     } catch (error) {
       console.error(`[ArtifactConsumer] Error processing DAILY_SUMMARY_REPORT artifact ${artifact.id}:`, error);
@@ -439,7 +439,7 @@ export async function consumeDailySummaryArtifacts(): Promise<{ processed: numbe
  * Consume MORNING_BRIEFING_REPORT artifacts and cache briefings
  */
 export async function consumeMorningBriefingArtifacts(): Promise<{ processed: number; briefingsCached: number; errors: number }> {
-  const artifacts = getUnprocessedArtifactsByType("MORNING_BRIEFING_REPORT");
+  const artifacts = await getUnprocessedArtifactsByType("MORNING_BRIEFING_REPORT");
   let processed = 0;
   let briefingsCached = 0;
   let errors = 0;
@@ -455,7 +455,7 @@ export async function consumeMorningBriefingArtifacts(): Promise<{ processed: nu
       if (result) {
         briefingsCached++;
       }
-      markArtifactProcessed(artifact.id);
+      await markArtifactProcessed(artifact.id);
       processed++;
     } catch (error) {
       console.error(`[ArtifactConsumer] Error processing MORNING_BRIEFING_REPORT artifact ${artifact.id}:`, error);
@@ -474,7 +474,7 @@ export async function consumeMorningBriefingArtifacts(): Promise<{ processed: nu
  * Consume OMI_MEETING_EXTRACTION artifacts and create meeting records
  */
 export async function consumeOmiMeetingArtifacts(): Promise<{ processed: number; meetingsCreated: number; errors: number }> {
-  const artifacts = getUnprocessedArtifactsByType("OMI_MEETING_EXTRACTION");
+  const artifacts = await getUnprocessedArtifactsByType("OMI_MEETING_EXTRACTION");
   let processed = 0;
   let meetingsCreated = 0;
   let errors = 0;
@@ -484,7 +484,7 @@ export async function consumeOmiMeetingArtifacts(): Promise<{ processed: number;
       // sourceRef contains the memory ID
       await processOmiMeetingsBatchResult(artifact.sourceRef, artifact.payloadJson);
       meetingsCreated++;
-      markArtifactProcessed(artifact.id);
+      await markArtifactProcessed(artifact.id);
       processed++;
     } catch (error) {
       console.error(`[ArtifactConsumer] Error processing OMI_MEETING_EXTRACTION artifact ${artifact.id}:`, error);
@@ -503,7 +503,7 @@ export async function consumeOmiMeetingArtifacts(): Promise<{ processed: number;
  * Consume OMI_ACTION_ITEM artifacts and create action item/task records
  */
 export async function consumeOmiActionItemArtifacts(): Promise<{ processed: number; itemsCreated: number; errors: number }> {
-  const artifacts = getUnprocessedArtifactsByType("OMI_ACTION_ITEM");
+  const artifacts = await getUnprocessedArtifactsByType("OMI_ACTION_ITEM");
   let processed = 0;
   let itemsCreated = 0;
   let errors = 0;
@@ -513,7 +513,7 @@ export async function consumeOmiActionItemArtifacts(): Promise<{ processed: numb
       // sourceRef contains the memory ID
       await processOmiActionItemsBatchResult(artifact.sourceRef, artifact.payloadJson);
       itemsCreated++;
-      markArtifactProcessed(artifact.id);
+      await markArtifactProcessed(artifact.id);
       processed++;
     } catch (error) {
       console.error(`[ArtifactConsumer] Error processing OMI_ACTION_ITEM artifact ${artifact.id}:`, error);
@@ -532,7 +532,7 @@ export async function consumeOmiActionItemArtifacts(): Promise<{ processed: numb
  * Consume OMI_DIGEST_REPORT artifacts and cache digests
  */
 export async function consumeOmiDigestArtifacts(): Promise<{ processed: number; digestsCached: number; errors: number }> {
-  const artifacts = getUnprocessedArtifactsByType("OMI_DIGEST_REPORT");
+  const artifacts = await getUnprocessedArtifactsByType("OMI_DIGEST_REPORT");
   let processed = 0;
   let digestsCached = 0;
   let errors = 0;
@@ -544,7 +544,7 @@ export async function consumeOmiDigestArtifacts(): Promise<{ processed: number; 
       if (result) {
         digestsCached++;
       }
-      markArtifactProcessed(artifact.id);
+      await markArtifactProcessed(artifact.id);
       processed++;
     } catch (error) {
       console.error(`[ArtifactConsumer] Error processing OMI_DIGEST_REPORT artifact ${artifact.id}:`, error);

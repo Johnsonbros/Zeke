@@ -252,7 +252,7 @@ export async function processPendingNotifications(recipientPhone: string): Promi
  * Process all pending notifications across all recipients
  */
 export async function processAllPendingNotifications(): Promise<number> {
-  const allPending = getAllPendingNotifications();
+  const allPending = await getAllPendingNotifications();
   if (allPending.length === 0) {
     return 0;
   }
