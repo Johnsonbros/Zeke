@@ -502,12 +502,11 @@ async function buildCorrelationNarrativeJob(): Promise<{ jsonl: string; count: n
   correlationV2.runCorrelationDiscovery();
   
   const findings = correlationV2.getCorrelationSummary();
-  if (!findings.correlations || findings.correlations.length === 0) {
+  if (!findings.strongestCorrelations || findings.strongestCorrelations.length === 0) {
     return { jsonl: "", count: 0 };
   }
   
-  const correlationsForNarrative = findings.correlations
-    .filter((c: any) => !c.hasNarrative)
+  const correlationsForNarrative = findings.strongestCorrelations
     .slice(0, 10);
   
   if (correlationsForNarrative.length === 0) {
@@ -515,15 +514,12 @@ async function buildCorrelationNarrativeJob(): Promise<{ jsonl: string; count: n
   }
   
   const userContent = JSON.stringify({
-    correlations: correlationsForNarrative.map((c: any) => ({
-      id: c.id,
+    correlations: correlationsForNarrative.map((c) => ({
       subject: c.subject,
-      predicate: c.predicate,
       object: c.object,
-      r: c.stats?.r,
-      n: c.stats?.n,
-      direction: c.stats?.r < 0 ? "inverse" : "positive",
-      strength: Math.abs(c.stats?.r || 0) >= 0.7 ? "strong" : Math.abs(c.stats?.r || 0) >= 0.4 ? "moderate" : "weak",
+      r: c.r,
+      direction: c.direction,
+      strength: Math.abs(c.r || 0) >= 0.7 ? "strong" : Math.abs(c.r || 0) >= 0.4 ? "moderate" : "weak",
     })),
   });
   
@@ -579,7 +575,7 @@ async function buildHealthReportJob(): Promise<{ jsonl: string; count: number }>
     calibration: health.calibration,
     overall: health.overall,
     findings: health.findings,
-    correlations: correlationSummary.correlations?.slice(0, 5) || [],
+    correlations: correlationSummary.strongestCorrelations?.slice(0, 5) || [],
   });
   
   const line = buildBatchRequestLine(
