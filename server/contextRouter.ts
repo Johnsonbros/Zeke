@@ -42,6 +42,8 @@ import {
   getRecentLifelogLocations,
   correlateLifelogWithLocation,
   getLifelogLocationContexts,
+  getTasksByPlace,
+  getRemindersByPlace,
 } from "./db";
 import { getSmartMemoryContext } from "./semanticMemory";
 import { getRecentMemories, getMemoryOverview } from "./omi";
@@ -568,7 +570,7 @@ export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): 
 
   try {
     // Get current location
-    const location = getLatestLocation();
+    const location = await getLatestLocation();
     if (location) {
       const ageMs = Date.now() - new Date(location.createdAt).getTime();
       const ageMinutes = Math.floor(ageMs / 60000);
@@ -581,7 +583,7 @@ export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): 
       const lng = parseFloat(location.longitude);
 
       // Check nearby places (requires numeric lat/lng)
-      const nearbyPlaces = findNearbyPlaces(lat, lng, 500);
+      const nearbyPlaces = await findNearbyPlaces(lat, lng, 500);
       const closestPlace = nearbyPlaces.length > 0 ? nearbyPlaces[0] : null;
 
       // Enhanced header with place name if at a saved location
@@ -599,7 +601,7 @@ export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): 
 
         // Get past conversations at this location - ALWAYS include if available (key feature!)
         if (closestPlace) {
-          const lifelogsAtPlace = getLifelogsAtPlace(closestPlace.id);
+          const lifelogsAtPlace = await getLifelogsAtPlace(closestPlace.id);
           if (lifelogsAtPlace.length > 0) {
             const recentLifelogs = lifelogsAtPlace.slice(0, 8); // More when location is important
             const lifelogList = recentLifelogs.map((ll: LifelogLocation) => {
@@ -617,7 +619,8 @@ export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): 
           }
 
           // Get linked tasks for this place
-          const linkedTasks = getTasksByPlace(closestPlace.id).filter(t => !t.completed);
+          const allTasksForPlace = await getTasksByPlace(closestPlace.id);
+          const linkedTasks = allTasksForPlace.filter(t => !t.completed);
           if (linkedTasks.length > 0) {
             const taskList = linkedTasks.slice(0, 5).map(t =>
               `- ${t.title}${t.priority === "high" ? " (HIGH PRIORITY)" : ""}`
@@ -626,7 +629,7 @@ export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): 
           }
 
           // Get linked reminders for this place
-          const linkedReminders = getRemindersByPlace(closestPlace.id);
+          const linkedReminders = await getRemindersByPlace(closestPlace.id);
           if (linkedReminders.length > 0) {
             const reminderList = linkedReminders.slice(0, 3).map(r => `- ${r.message}`).join("\n");
             parts.push(`### 🔔 Location Reminders\n${reminderList}`);
@@ -635,7 +638,7 @@ export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): 
       }
 
       // Also check for nearby lifelogs (even if not at a saved place)
-      const nearbyLifelogs = getLifelogsNearLocation(lat, lng, 500);
+      const nearbyLifelogs = await getLifelogsNearLocation(lat, lng, 500);
       if (nearbyLifelogs.length > 0 && nearbyPlaces.length === 0) {
         // Only show if not already showing place-specific lifelogs
         const recentNearby = nearbyLifelogs.slice(0, 3);
@@ -647,20 +650,20 @@ export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): 
         parts.push(`### Past Conversations Nearby\n${nearbyList}`);
       }
 
-      // Check grocery proximity - returns an array of nearby grocery stores
-      const groceryProximity = checkGroceryProximity(lat, lng);
-      if (groceryProximity && groceryProximity.length > 0) {
-        const storeNames = groceryProximity.map(g => g.place.name).join(", ");
-        const items = getAllGroceryItems().filter((i: GroceryItem) => !i.purchased);
+      // Check grocery proximity - returns a boolean (not an array in this function)
+      const isNearGrocery = await checkGroceryProximity(lat, lng);
+      if (isNearGrocery) {
+        const allItems = await getAllGroceryItems();
+        const items = allItems.filter((i: GroceryItem) => !i.purchased);
         if (items.length > 0) {
           const topItems = items.slice(0, 5).map(i => i.name).join(", ");
-          parts.push(`### 🛒 Grocery Alert\nNear: ${storeNames}. You have ${items.length} items on your list: ${topItems}${items.length > 5 ? "..." : ""}`);
+          parts.push(`### 🛒 Grocery Alert\nYou're near a grocery store! You have ${items.length} items on your list: ${topItems}${items.length > 5 ? "..." : ""}`);
         }
       }
     }
 
     // Starred places
-    const starred = getStarredPlaces();
+    const starred = await getStarredPlaces();
     if (starred.length > 0) {
       const starredList = starred.slice(0, 5).map(p => `- ${p.name} (${p.category || "starred"})`).join("\n");
       parts.push(`### ⭐ Favorite Places\n${starredList}`);
@@ -719,7 +722,7 @@ export async function buildLocationsBundle(ctx: AppContext, maxTokens: number): 
     }
 
     // Recent location-tagged conversations
-    const recentLocatedLifelogs = getRecentLifelogLocations(5);
+    const recentLocatedLifelogs = await getRecentLifelogLocations(5);
     const withPlaces = recentLocatedLifelogs.filter((ll: LifelogLocation) => ll.savedPlaceName);
     if (withPlaces.length > 0) {
       const locatedList = withPlaces.slice(0, 3).map((ll: LifelogLocation) => {
@@ -750,9 +753,11 @@ function formatActivityType(activity: ActivityType | undefined): string {
   if (!activity || activity === "unknown") return "";
   const labels: Record<ActivityType, string> = {
     "stationary": "stationary",
+    "meeting": "in meeting",
     "walking": "walking",
     "driving": "driving",
     "commuting": "commuting",
+    "transit": "in transit",
     "at_home": "at home",
     "at_work": "at work",
     "at_known_place": "at location",
@@ -793,10 +798,10 @@ export async function buildOmiBundle(ctx: AppContext, maxTokens: number): Promis
         if (recent && recent.length > 0) {
           // Get location context for these memories
           const memoryIds = recent.map((l: any) => l.id);
-          const locationContexts = getLifelogLocationContexts(memoryIds);
+          const locationContexts = await getLifelogLocationContexts(memoryIds);
           
           // Build a map for quick lookup
-          const locationMap = new Map(locationContexts.map(lc => [lc.lifelogId, lc]));
+          const locationMap = new Map(locationContexts.map((lc: any) => [lc.lifelogId, lc]));
           
           const recentList = recent.map((l: any) => {
             const timeStr = new Date(l.startTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
@@ -821,8 +826,8 @@ export async function buildOmiBundle(ctx: AppContext, maxTokens: number): Promis
           // If user is asking about location-specific memories
           if (hasLocationIntent) {
             // Get location-tagged memories with places
-            const locatedMemories = getRecentLifelogLocations(10)
-              .filter((ll: LifelogLocation) => ll.savedPlaceName);
+            const allLocatedMemories = await getRecentLifelogLocations(10);
+            const locatedMemories = allLocatedMemories.filter((ll: LifelogLocation) => ll.savedPlaceName);
             
             if (locatedMemories.length > 0) {
               // Group by place
@@ -1020,7 +1025,7 @@ export async function buildProfileBundle(ctx: AppContext, maxTokens: number): Pr
   const parts: string[] = [];
   
   try {
-    const profileSections = getAllProfileSections();
+    const profileSections = await getAllProfileSections();
     
     for (const profileSection of profileSections) {
       if (!profileSection.data) continue;
@@ -1127,7 +1132,7 @@ export async function buildCrossDomainBundle(
       const messages = await getMessagesByConversation(conversationId);
       
       for (const message of messages.slice(-10)) {
-        const entities = getEntitiesForItem("conversation", message.id);
+        const entities = await getEntitiesForItem("conversation", message.id);
         for (const entity of entities) {
           if (!seenEntityIds.has(entity.id)) {
             seenEntityIds.add(entity.id);
@@ -1145,11 +1150,11 @@ export async function buildCrossDomainBundle(
           seenEntityIds.add(entity.id);
         }
         
-        const relatedItems = getItemsRelatedToEntity(entity.id);
+        const relatedItems = await getItemsRelatedToEntity(entity.id);
         if (relatedItems.length === 0) continue;
 
-        // Group items by domain
-        const byDomain: Record<EntityDomain, Array<{ itemId: string; context: string | null }>> = {
+        // Group items by domain - use a subset of EntityDomain that matches the data
+        const byDomain: Record<string, Array<{ itemId: string; context: string | null }>> = {
           memory: [],
           task: [],
           contact: [],
@@ -1160,7 +1165,9 @@ export async function buildCrossDomainBundle(
         };
 
         for (const item of relatedItems) {
-          byDomain[item.domain].push({ itemId: item.itemId, context: item.context });
+          if (byDomain[item.domain]) {
+            byDomain[item.domain].push({ itemId: item.itemId, context: item.context });
+          }
         }
 
         // Build summary for this entity
@@ -1168,10 +1175,11 @@ export async function buildCrossDomainBundle(
 
         // Memory references
         if (byDomain.memory.length > 0) {
-          const memoryDetails = byDomain.memory.slice(0, 3).map(m => {
-            const note = getMemoryNote(m.itemId);
+          const memoryDetailsPromises = byDomain.memory.slice(0, 3).map(async m => {
+            const note = await getMemoryNote(m.itemId);
             return note ? note.content.substring(0, 50) + (note.content.length > 50 ? "..." : "") : null;
-          }).filter(Boolean);
+          });
+          const memoryDetails = (await Promise.all(memoryDetailsPromises)).filter(Boolean);
           
           if (memoryDetails.length > 0) {
             summaryParts.push(`Mentioned in ${byDomain.memory.length} memories (${memoryDetails.join("; ")})`);
@@ -1182,10 +1190,11 @@ export async function buildCrossDomainBundle(
 
         // Task references
         if (byDomain.task.length > 0) {
-          const taskDetails = byDomain.task.slice(0, 3).map(t => {
-            const task = getTask(t.itemId);
+          const taskDetailsPromises = byDomain.task.slice(0, 3).map(async t => {
+            const task = await getTask(t.itemId);
             return task ? `"${task.title}"${task.completed ? " (done)" : ""}` : null;
-          }).filter(Boolean);
+          });
+          const taskDetails = (await Promise.all(taskDetailsPromises)).filter(Boolean);
           
           if (taskDetails.length > 0) {
             summaryParts.push(`Related tasks: ${taskDetails.join(", ")}`);
@@ -1201,10 +1210,11 @@ export async function buildCrossDomainBundle(
 
         // Location references
         if (byDomain.location.length > 0) {
-          const locationDetails = byDomain.location.slice(0, 2).map(l => {
-            const place = getSavedPlace(l.itemId);
+          const locationDetailsPromises = byDomain.location.slice(0, 2).map(async l => {
+            const place = await getSavedPlace(l.itemId);
             return place ? place.name : null;
-          }).filter(Boolean);
+          });
+          const locationDetails = (await Promise.all(locationDetailsPromises)).filter(Boolean);
           
           if (locationDetails.length > 0) {
             summaryParts.push(`Associated with: ${locationDetails.join(", ")}`);
@@ -1215,10 +1225,11 @@ export async function buildCrossDomainBundle(
 
         // Contact references
         if (byDomain.contact.length > 0) {
-          const contactDetails = byDomain.contact.slice(0, 2).map(c => {
-            const contact = getContact(c.itemId);
+          const contactDetailsPromises = byDomain.contact.slice(0, 2).map(async c => {
+            const contact = await getContact(c.itemId);
             return contact ? `${contact.firstName} ${contact.lastName}`.trim() : null;
-          }).filter(Boolean);
+          });
+          const contactDetails = (await Promise.all(contactDetailsPromises)).filter(Boolean);
           
           if (contactDetails.length > 0) {
             summaryParts.push(`Related to: ${contactDetails.join(", ")}`);
@@ -1331,16 +1342,16 @@ async function buildBundleWithUnifiedCache(
  * Detect if user is currently at a significant place
  * Returns the place info if they are, null otherwise
  */
-function detectCurrentSignificantPlace(): { name: string; category: string } | null {
+async function detectCurrentSignificantPlace(): Promise<{ name: string; category: string } | null> {
   try {
-    const location = getLatestLocation();
+    const location = await getLatestLocation();
     if (!location) return null;
 
     const lat = parseFloat(location.latitude);
     const lng = parseFloat(location.longitude);
 
     // Check if near any starred places first (highest priority)
-    const starredPlaces = getStarredPlaces();
+    const starredPlaces = await getStarredPlaces();
     for (const place of starredPlaces) {
       const placeLat = parseFloat(place.latitude);
       const placeLng = parseFloat(place.longitude);
@@ -1353,7 +1364,7 @@ function detectCurrentSignificantPlace(): { name: string; category: string } | n
     }
 
     // Check for important category places (work, home)
-    const nearbyPlaces = findNearbyPlaces(lat, lng, 200);
+    const nearbyPlaces = await findNearbyPlaces(lat, lng, 200);
     const importantPlace = nearbyPlaces.find(p =>
       p.category === "work" ||
       p.category === "home" ||
