@@ -279,8 +279,8 @@ export function startFeedbackTrainer(cronSchedule: string = "30 2 * * *"): void 
     scheduledTask.stop();
   }
 
-  scheduledTask = cron.schedule(cronSchedule, () => {
-    trainOnFeedback();
+  scheduledTask = cron.schedule(cronSchedule, async () => {
+    await trainOnFeedback();
   });
 
   console.log(`[FeedbackTrainer] Scheduled at "${cronSchedule}" (America/New_York)`);

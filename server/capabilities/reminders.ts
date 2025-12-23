@@ -257,7 +257,9 @@ export async function executeReminderTool(
       
       const delay = scheduledFor.getTime() - Date.now();
       if (delay > 0) {
-        const timeoutId = setTimeout(() => executeReminder(reminder.id), delay);
+        const timeoutId = setTimeout(() => {
+          executeReminder(reminder.id).catch(err => console.error(`[Reminder] Failed to execute ${reminder.id}:`, err));
+        }, delay);
         activeTimeouts.set(reminder.id, timeoutId);
       }
       
@@ -356,7 +358,9 @@ export async function executeReminderTool(
 
         const delay = item.scheduledFor.getTime() - Date.now();
         if (delay > 0) {
-          const timeoutId = setTimeout(() => executeReminder(reminder.id), delay);
+          const timeoutId = setTimeout(() => {
+            executeReminder(reminder.id).catch(err => console.error(`[Reminder] Failed to execute ${reminder.id}:`, err));
+          }, delay);
           activeTimeouts.set(reminder.id, timeoutId);
         }
 
@@ -425,13 +429,15 @@ export async function restorePendingReminders(): Promise<number> {
     const delay = scheduledTime - now;
     
     if (delay > 0) {
-      const timeoutId = setTimeout(() => executeReminder(reminder.id), delay);
+      const timeoutId = setTimeout(() => {
+        executeReminder(reminder.id).catch(err => console.error(`[Reminder] Failed to execute ${reminder.id}:`, err));
+      }, delay);
       activeTimeouts.set(reminder.id, timeoutId);
       restoredCount++;
       console.log(`Restored reminder ${reminder.id}: "${reminder.message}" scheduled for ${new Date(reminder.scheduledFor).toLocaleString("en-US", { timeZone: "America/New_York" })}`);
     } else {
       console.log(`Reminder ${reminder.id} is past due (scheduled for ${reminder.scheduledFor}), executing immediately`);
-      executeReminder(reminder.id);
+      executeReminder(reminder.id).catch(err => console.error(`[Reminder] Failed to execute ${reminder.id}:`, err));
       restoredCount++;
     }
   }
@@ -455,12 +461,14 @@ export function scheduleReminderExecution(reminderId: string, scheduledFor: Date
   const delay = scheduledFor.getTime() - Date.now();
   
   if (delay > 0) {
-    const timeoutId = setTimeout(() => executeReminder(reminderId), delay);
+    const timeoutId = setTimeout(() => {
+      executeReminder(reminderId).catch(err => console.error(`[Reminder] Failed to execute ${reminderId}:`, err));
+    }, delay);
     activeTimeouts.set(reminderId, timeoutId);
     console.log(`Scheduled reminder ${reminderId} for ${scheduledFor.toLocaleString("en-US", { timeZone: "America/New_York" })}`);
   } else {
     // Already past due, execute immediately
     console.log(`Reminder ${reminderId} is past due, executing immediately`);
-    executeReminder(reminderId);
+    executeReminder(reminderId).catch(err => console.error(`[Reminder] Failed to execute ${reminderId}:`, err));
   }
 }
