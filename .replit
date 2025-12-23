@@ -57,6 +57,8 @@ APP_ENV = "development"
 LOG_LEVEL = "info"
 MORNING_BRIEFING_ENABLED = "true"
 MORNING_BRIEFING_PHONE = "+16176868763"
+KG_ENABLED = "true"
+VITE_KG_ENABLED = "true"
 
 [[ports]]
 localPort = 5000
