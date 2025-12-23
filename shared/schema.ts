@@ -4134,6 +4134,7 @@ export const kgEntities = pgTable("kg_entities", {
   canonicalKey: text("canonical_key").notNull().unique(), // type:normalized_name for deduplication
   entityType: text("entity_type").notNull(),              // e.g., "person", "place", "organization"
   name: text("name").notNull(),                           // Display name
+  normalizedName: text("normalized_name").notNull(),      // Lowercased, whitespace-normalized for search
   attributes: text("attributes"),                         // JSON string of additional attributes
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -4141,6 +4142,7 @@ export const kgEntities = pgTable("kg_entities", {
 
 export const insertKgEntitySchema = createInsertSchema(kgEntities).omit({
   id: true,
+  normalizedName: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -4155,12 +4157,12 @@ export type KgRelationshipStatus = typeof kgRelationshipStatuses[number];
 // Relationships - edges in the knowledge graph with evidence tracking
 export const kgRelationships = pgTable("kg_relationships", {
   id: text("id").primaryKey(),
-  fromEntityId: text("from_entity_id").notNull(),  // Source entity
-  toEntityId: text("to_entity_id").notNull(),      // Target entity
+  fromEntityId: text("from_entity_id").notNull().references(() => kgEntities.id),  // Source entity
+  toEntityId: text("to_entity_id").notNull().references(() => kgEntities.id),      // Target entity
   relType: text("rel_type").notNull(),             // e.g., "KNOWS", "WORKS_AT", "LIVES_IN"
   confidence: numeric("confidence", { precision: 3, scale: 2 }).notNull(),  // 0.00 to 1.00
   status: text("status", { enum: kgRelationshipStatuses }).notNull().default("ACTIVE"),
-  evidenceId: text("evidence_id"),                 // Links to supporting evidence
+  evidenceId: text("evidence_id").references(() => kgEvidence.id),  // Links to supporting evidence
   properties: text("properties"),                   // JSON string of additional properties
   createdAt: text("created_at").notNull(),
   lastSeenAt: text("last_seen_at").notNull(),      // Updated when relationship is reinforced

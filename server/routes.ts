@@ -11679,21 +11679,7 @@ export async function registerRoutes(
       }
     });
 
-    // GET /api/kg/entities/:id - Get entity by ID
-    app.get("/api/kg/entities/:id", async (req, res) => {
-      try {
-        const entity = await graphService.getEntityById(req.params.id);
-        if (!entity) {
-          return res.status(404).json({ error: "Entity not found" });
-        }
-        res.json(entity);
-      } catch (error: any) {
-        console.error("[KnowledgeGraph] Error fetching entity:", error);
-        res.status(500).json({ error: error.message });
-      }
-    });
-
-    // GET /api/kg/entities/search - Search entities
+    // GET /api/kg/entities/search - Search entities (must be before :id route)
     app.get("/api/kg/entities/search", async (req, res) => {
       try {
         const q = req.query.q as string;
@@ -11707,6 +11693,20 @@ export async function registerRoutes(
         res.json(entities);
       } catch (error: any) {
         console.error("[KnowledgeGraph] Error searching entities:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/kg/entities/:id - Get entity by ID
+    app.get("/api/kg/entities/:id", async (req, res) => {
+      try {
+        const entity = await graphService.getEntityById(req.params.id);
+        if (!entity) {
+          return res.status(404).json({ error: "Entity not found" });
+        }
+        res.json(entity);
+      } catch (error: any) {
+        console.error("[KnowledgeGraph] Error fetching entity:", error);
         res.status(500).json({ error: error.message });
       }
     });

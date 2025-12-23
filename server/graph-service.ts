@@ -20,8 +20,9 @@ export function normalizeEntityName(name: string): string {
   return name
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/[^\w\s]/g, ""); // Remove most punctuation
+    .replace(/-/g, " ")        // Replace hyphens with spaces first
+    .replace(/\s+/g, " ")      // Collapse multiple spaces
+    .replace(/[^\w\s]/g, "");  // Remove most punctuation
 }
 
 // Generate canonical key from entity type and normalized name
@@ -169,7 +170,6 @@ export async function upsertRelationship(input: {
         properties: input.properties
           ? JSON.stringify(input.properties)
           : existing.properties,
-        updatedAt: now,
       })
       .where(eq(schema.kgRelationships.id, existing.id));
 
@@ -187,12 +187,10 @@ export async function upsertRelationship(input: {
       relType: input.relType,
       confidence: input.confidence.toString(),
       status,
-      firstSeenAt: now,
       lastSeenAt: now,
       evidenceId: input.evidenceId,
       properties: input.properties ? JSON.stringify(input.properties) : "{}",
       createdAt: now,
-      updatedAt: now,
     })
     .returning();
 
@@ -455,65 +453,69 @@ export async function getGraphStats(): Promise<{
   averageConfidence: number;
 }> {
   // Total entities
-  const [{ count: totalEntities }] = await db.execute(
+  const entityCountResult = await db.execute(
     sql`SELECT COUNT(*) as count FROM ${schema.kgEntities}`
   );
+  const totalEntities = entityCountResult.rows[0]?.count ?? 0;
 
   // Total relationships
-  const [{ count: totalRelationships }] = await db.execute(
+  const relCountResult = await db.execute(
     sql`SELECT COUNT(*) as count FROM ${schema.kgRelationships}`
   );
+  const totalRelationships = relCountResult.rows[0]?.count ?? 0;
 
   // Total evidence
-  const [{ count: totalEvidence }] = await db.execute(
+  const evidenceCountResult = await db.execute(
     sql`SELECT COUNT(*) as count FROM ${schema.kgEvidence}`
   );
+  const totalEvidence = evidenceCountResult.rows[0]?.count ?? 0;
 
   // By status
-  const statusCounts = await db.execute(
+  const statusCountsResult = await db.execute(
     sql`SELECT status, COUNT(*) as count FROM ${schema.kgRelationships} GROUP BY status`
   );
 
   // By type
-  const typeCounts = await db.execute(
+  const typeCountsResult = await db.execute(
     sql`SELECT rel_type, COUNT(*) as count FROM ${schema.kgRelationships} GROUP BY rel_type`
   );
 
   // By entity type
-  const entityTypeCounts = await db.execute(
+  const entityTypeCountsResult = await db.execute(
     sql`SELECT entity_type, COUNT(*) as count FROM ${schema.kgEntities} GROUP BY entity_type`
   );
 
   // Average confidence
-  const [{ avg }] = await db.execute(
+  const avgResult = await db.execute(
     sql`SELECT AVG(confidence::float) as avg FROM ${schema.kgRelationships}`
   );
+  const avg = avgResult.rows[0]?.avg ?? 0;
 
   return {
-    totalEntities: parseInt(totalEntities),
-    totalRelationships: parseInt(totalRelationships),
-    totalEvidence: parseInt(totalEvidence),
-    relationshipsByStatus: statusCounts.reduce(
+    totalEntities: parseInt(String(totalEntities)),
+    totalRelationships: parseInt(String(totalRelationships)),
+    totalEvidence: parseInt(String(totalEvidence)),
+    relationshipsByStatus: (statusCountsResult.rows as any[]).reduce(
       (acc, row) => {
         acc[row.status] = parseInt(row.count);
         return acc;
       },
       {} as Record<KgRelationshipStatus, number>
     ),
-    relationshipsByType: typeCounts.reduce(
+    relationshipsByType: (typeCountsResult.rows as any[]).reduce(
       (acc, row) => {
         acc[row.rel_type] = parseInt(row.count);
         return acc;
       },
       {} as Record<KgRelationshipType, number>
     ),
-    entitiesByType: entityTypeCounts.reduce(
+    entitiesByType: (entityTypeCountsResult.rows as any[]).reduce(
       (acc, row) => {
         acc[row.entity_type] = parseInt(row.count);
         return acc;
       },
       {} as Record<KgEntityType, number>
     ),
-    averageConfidence: avg ? parseFloat(avg) : 0,
+    averageConfidence: avg ? parseFloat(String(avg)) : 0,
   };
 }
