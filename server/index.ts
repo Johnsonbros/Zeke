@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
+// Force rebuild: 2025-12-23 - Twilio auth token removed for webhook testing
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startPythonAgents, waitForPythonAgents } from "./python-agents";
