@@ -1124,7 +1124,7 @@ export async function buildCrossDomainBundle(
   try {
     // Collect entities from conversation messages
     if (conversationId) {
-      const messages = getMessagesByConversation(conversationId);
+      const messages = await getMessagesByConversation(conversationId);
       
       for (const message of messages.slice(-10)) {
         const entities = getEntitiesForItem("conversation", message.id);
