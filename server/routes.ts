@@ -220,6 +220,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
 
+    // POST /api/kg/ingestTriples - Bulk ingest triples (entities + relationships)
+    app.post("/api/kg/ingestTriples", async (req, res) => {
+      try {
+        const { evidence, triples } = req.body;
+
+        if (!evidence || !triples || !Array.isArray(triples)) {
+          return res.status(400).json({
+            error: "evidence (object) and triples (array) required",
+          });
+        }
+
+        if (
+          !evidence.sourceType ||
+          !evidence.sourceId
+        ) {
+          return res.status(400).json({
+            error: "evidence.sourceType and evidence.sourceId required",
+          });
+        }
+
+        // Step 1: Create evidence
+        const evidenceId = await graphService.upsertEvidence({
+          sourceType: evidence.sourceType,
+          sourceId: evidence.sourceId,
+          sourceExcerpt: evidence.sourceExcerpt,
+          sourceUrl: evidence.sourceUrl,
+        });
+
+        // Step 2-4: Process each triple
+        const created = {
+          evidence: evidenceId,
+          triples: [] as Array<{
+            fromEntityId: string;
+            toEntityId: string;
+            relationshipId: string;
+          }>,
+        };
+
+        for (const triple of triples) {
+          try {
+            // Validate triple
+            if (!triple.from || !triple.to || !triple.rel_type) {
+              console.warn(
+                "[KnowledgeGraph] Skipping invalid triple:",
+                triple
+              );
+              continue;
+            }
+
+            // Upsert entities
+            const fromEntityId = await graphService.upsertEntity({
+              entityType: triple.from.type,
+              name: triple.from.name,
+              attributes: triple.from.attributes,
+            });
+
+            const toEntityId = await graphService.upsertEntity({
+              entityType: triple.to.type,
+              name: triple.to.name,
+              attributes: triple.to.attributes,
+            });
+
+            // Upsert relationship
+            const relationshipId = await graphService.upsertRelationship({
+              fromEntityId,
+              toEntityId,
+              relType: triple.rel_type,
+              confidence: triple.confidence || 0.8,
+              status: triple.status || "ACTIVE",
+              evidenceId,
+              properties: triple.properties,
+            });
+
+            created.triples.push({
+              fromEntityId,
+              toEntityId,
+              relationshipId,
+            });
+          } catch (tripleError: any) {
+            console.error(
+              "[KnowledgeGraph] Error processing triple:",
+              tripleError
+            );
+            // Continue processing other triples
+          }
+        }
+
+        res.json(created);
+      } catch (error: any) {
+        console.error("[KnowledgeGraph] Error in ingestTriples:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
     console.log("[KnowledgeGraph] Knowledge Graph API endpoints registered");
   } else {
     console.log("[KnowledgeGraph] Knowledge Graph is DISABLED (KG_ENABLED=false)");
