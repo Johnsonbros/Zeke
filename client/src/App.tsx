@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -6,9 +6,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger, SidebarInset, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { LocationProvider } from "@/contexts/location-context";
+import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { QuickMenu } from "@/components/quick-menu";
 import { useSidebarSwipe } from "@/hooks/use-swipe-gesture";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { Loader2 } from "lucide-react";
 import DashboardPage from "@/pages/dashboard";
 import ChatPage from "@/pages/chat";
 import GroceryPage from "@/pages/grocery";
@@ -30,10 +32,13 @@ import FilesPage from "@/pages/files";
 import JournalPage from "@/pages/journal";
 import EvalPage from "@/pages/eval";
 import AiUsagePage from "@/pages/ai-usage";
+import ApplicationsPage from "@/pages/applications";
+import LoginPage from "@/pages/login";
+import ApplyPage from "@/pages/apply";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 
-function Router() {
+function ProtectedRoutes() {
   return (
     <Switch>
       <Route path="/" component={DashboardPage} />
@@ -57,6 +62,7 @@ function Router() {
       <Route path="/journal" component={JournalPage} />
       <Route path="/eval" component={EvalPage} />
       <Route path="/ai-usage" component={AiUsagePage} />
+      <Route path="/applications" component={ApplicationsPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -78,7 +84,7 @@ function SwipeGestureHandler() {
   return null;
 }
 
-function AppContent() {
+function AuthenticatedContent() {
   const isMobile = useIsMobile();
 
   return (
@@ -97,7 +103,7 @@ function AppContent() {
             </div>
           </header>
           <main className="flex-1 overflow-hidden pb-6 md:pb-0">
-            <Router />
+            <ProtectedRoutes />
           </main>
         </SidebarInset>
       </div>
@@ -106,25 +112,57 @@ function AppContent() {
   );
 }
 
-function App() {
-  useEffect(() => {
-    document.documentElement.classList.add("dark");
-  }, []);
+function AuthGate() {
+  const { authenticated, isLoading } = useAuth();
+  const [location] = useLocation();
+  const isMobile = useIsMobile();
 
   const sidebarStyle = {
     "--sidebar-width": "17rem",
     "--sidebar-width-icon": "3rem",
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (location === "/login") {
+    return authenticated ? <Redirect to="/" /> : <LoginPage />;
+  }
+
+  if (location === "/apply") {
+    return <ApplyPage />;
+  }
+
+  if (!authenticated) {
+    return <Redirect to="/login" />;
+  }
+
+  return (
+    <LocationProvider>
+      <SidebarProvider style={sidebarStyle as React.CSSProperties}>
+        <AuthenticatedContent />
+      </SidebarProvider>
+    </LocationProvider>
+  );
+}
+
+function App() {
+  useEffect(() => {
+    document.documentElement.classList.add("dark");
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <LocationProvider>
-          <SidebarProvider style={sidebarStyle as React.CSSProperties}>
-            <AppContent />
-          </SidebarProvider>
+        <AuthProvider>
+          <AuthGate />
           <Toaster />
-        </LocationProvider>
+        </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

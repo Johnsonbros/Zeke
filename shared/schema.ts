@@ -4180,3 +4180,111 @@ export const insertKgRelationshipSchema = createInsertSchema(kgRelationships).om
 
 export type InsertKgRelationship = z.infer<typeof insertKgRelationshipSchema>;
 export type KgRelationship = typeof kgRelationships.$inferSelect;
+
+// ============================================
+// WEB AUTHENTICATION SCHEMA
+// ============================================
+
+// Web sessions - for browser-based authentication
+export const webSessions = pgTable("web_sessions", {
+  id: text("id").primaryKey(),
+  sessionToken: text("session_token").notNull().unique(),
+  phoneNumber: text("phone_number").notNull(),
+  isAdmin: boolean("is_admin").notNull().default(false),
+  expiresAt: text("expires_at").notNull(),
+  createdAt: text("created_at").notNull(),
+  lastAccessedAt: text("last_accessed_at").notNull(),
+});
+
+export const insertWebSessionSchema = createInsertSchema(webSessions).omit({
+  id: true,
+  createdAt: true,
+  lastAccessedAt: true,
+});
+
+export type InsertWebSession = z.infer<typeof insertWebSessionSchema>;
+export type WebSession = typeof webSessions.$inferSelect;
+
+// Web login codes - SMS verification for web login
+export const webLoginCodes = pgTable("web_login_codes", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull().unique(),
+  code: text("code").notNull(),
+  phoneNumber: text("phone_number").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  expiresAt: text("expires_at").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertWebLoginCodeSchema = createInsertSchema(webLoginCodes).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertWebLoginCode = z.infer<typeof insertWebLoginCodeSchema>;
+export type WebLoginCode = typeof webLoginCodes.$inferSelect;
+
+// Web login request/response schemas
+export const webLoginRequestSchema = z.object({
+  phoneNumber: z.string().min(10).max(15),
+});
+
+export const webLoginVerifySchema = z.object({
+  sessionId: z.string().min(1),
+  code: z.string().length(4),
+});
+
+export type WebLoginRequest = z.infer<typeof webLoginRequestSchema>;
+export type WebLoginVerify = z.infer<typeof webLoginVerifySchema>;
+
+export type WebLoginRequestResponse = 
+  | { success: true; sessionId: string; expiresIn: number; message: string }
+  | { success: false; error: string };
+
+export type WebLoginVerifyResponse =
+  | { success: true; sessionToken: string; isAdmin: boolean; message: string }
+  | { success: false; error: string; attemptsRemaining?: number };
+
+// ============================================
+// ZEKE AGENT APPLICATION SCHEMA
+// ============================================
+
+export const applicationStatuses = ["pending", "approved", "rejected", "waitlisted"] as const;
+export type ApplicationStatus = typeof applicationStatuses[number];
+
+// Agent applications - people applying for their own ZEKE agent
+export const agentApplications = pgTable("agent_applications", {
+  id: text("id").primaryKey(),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  email: text("email").notNull(),
+  phoneNumber: text("phone_number").notNull(),
+  useCase: text("use_case").notNull(),
+  howHeard: text("how_heard"),
+  notes: text("notes"),
+  status: text("status", { enum: applicationStatuses }).notNull().default("pending"),
+  reviewedAt: text("reviewed_at"),
+  reviewedBy: text("reviewed_by"),
+  reviewNotes: text("review_notes"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertAgentApplicationSchema = createInsertSchema(agentApplications).omit({
+  id: true,
+  status: true,
+  reviewedAt: true,
+  reviewedBy: true,
+  reviewNotes: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateAgentApplicationSchema = z.object({
+  status: z.enum(applicationStatuses).optional(),
+  reviewNotes: z.string().optional(),
+});
+
+export type InsertAgentApplication = z.infer<typeof insertAgentApplicationSchema>;
+export type UpdateAgentApplication = z.infer<typeof updateAgentApplicationSchema>;
+export type AgentApplication = typeof agentApplications.$inferSelect;

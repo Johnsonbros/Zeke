@@ -10,6 +10,8 @@ import { getDeviceTokenByToken } from "./db";
 import type { TranscriptSegmentEvent } from "@shared/schema";
 import { createMobileAuthMiddleware, registerSecurityLogsEndpoint, registerPairingEndpoints } from "./mobileAuth";
 import { registerSmsPairingEndpoints } from "./sms-pairing";
+import { registerWebAuthEndpoints } from "./web-auth";
+import { registerApplicationEndpoints } from "./applications";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { extractCardsFromResponse } from "./cardExtractor";
 import { syncGitHubRepo, pushToGitHub, createGitHubWebhook } from "./github";
@@ -708,6 +710,10 @@ export async function registerRoutes(
   // Register device pairing endpoints for mobile companion app authentication
   registerPairingEndpoints(app);
   registerSmsPairingEndpoints(app);
+  
+  // Register web authentication and application endpoints
+  registerWebAuthEndpoints(app);
+  registerApplicationEndpoints(app);
   
   // Register object storage routes for file uploads
   registerObjectStorageRoutes(app);

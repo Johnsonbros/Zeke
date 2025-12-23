@@ -50,7 +50,10 @@ import {
   BookOpen,
   Target,
   Activity,
+  ClipboardList,
+  LogOut,
 } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
 import type { Conversation } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -174,12 +177,19 @@ const mainNavItems = [
     href: "/ai-usage",
     description: "Track AI costs and usage",
   },
+  {
+    title: "Applications",
+    icon: ClipboardList,
+    href: "/applications",
+    description: "Manage ZEKE agent applications",
+  },
 ];
 
 export function AppSidebar() {
   const [location] = useLocation();
   const [historyOpen, setHistoryOpen] = useState(false);
   const { setOpenMobile } = useSidebar();
+  const { logout, isAdmin } = useAuth();
 
   const { data: conversations } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations"],
@@ -308,7 +318,7 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4 safe-area-inset-bottom">
+      <SidebarFooter className="p-4 safe-area-inset-bottom space-y-2">
         <Link href="/profile" onClick={closeSidebarOnMobile}>
           <div
             className="flex items-center gap-3 p-3 rounded-xl hover-elevate cursor-pointer transition-all border"
@@ -328,6 +338,18 @@ export function AppSidebar() {
             <Settings className="h-5 w-5 text-muted-foreground" />
           </div>
         </Link>
+        <Button
+          variant="ghost"
+          className="w-full justify-start gap-2 text-muted-foreground"
+          onClick={() => {
+            closeSidebarOnMobile();
+            logout();
+          }}
+          data-testid="button-logout"
+        >
+          <LogOut className="h-4 w-4" />
+          Sign Out
+        </Button>
       </SidebarFooter>
     </Sidebar>
   );
