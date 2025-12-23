@@ -31,14 +31,17 @@ Key architectural decisions and features include:
 - **Batch-First Architecture**: Prioritizes OpenAI Batch API for non-realtime AI tasks (50% cost savings), with three processing lanes: realtime, nearline, and batch.
 - **AI Usage Analytics Dashboard**: Comprehensive tracking of AI costs, including real-time and batch API usage, accessible via `/ai-usage`.
 - **User Interface**: Structured Chat Cards, Mobile UI Enhancements (swipe gestures, Quick Menu), and a Delta Sync System for efficient mobile app synchronization.
-- **Security & Authentication**: HMAC Authentication for the mobile app, replay protection, timing-safe comparisons, and a Device Pairing API.
+- **Security & Authentication**: HMAC Authentication for the mobile app, replay protection, timing-safe comparisons, and unified SMS verification.
+- **Unified SMS Verification System**: Centralized 6-digit SMS verification service (`server/services/smsVerification.ts`) shared across:
+  - Mobile app device pairing (`/api/auth/request-sms-code`, `/api/auth/verify-sms-code`)
+  - Web dashboard login (`/api/web-auth/request-code`, `/api/web-auth/verify-code`)
+  - Security: 6-digit codes, 5-min expiry, 3 max attempts, timing-safe comparison
 - **Unified Conversation System**: All direct communications with Nate across different channels share a single, coherent conversation thread.
 - **Companion App Integration**: Location Ingestion, Push Notification Infrastructure via Expo, and Calendar Proxy Routes for Android app support.
 - **Daily Operations**: Journal/Daily Summary System, Anticipation Engine for morning briefings, and a Pattern Detection System.
 - **News & Morning Briefing System**: Personalized news service querying Perplexity, with urgent breaking news alerts and daily 6 AM briefings via SMS, including feedback learning.
-- **Web Dashboard Authentication**: Secure SMS-based authentication for the production web dashboard, accessible only by `MASTER_ADMIN_PHONE`.
-- **Agent Applications System**: Public application form and admin dashboard for managing ZEKE agent applications.
-- **Mobile Device Pairing API**: Secure SMS-based pairing and legacy secret-based pairing for companion mobile apps, with robust security features.
+- **Web Dashboard Authentication**: Secure SMS-based authentication for the production web dashboard, accessible only by `MASTER_ADMIN_PHONE`. Uses 30-day sessions with HttpOnly cookies.
+- **Agent Applications System**: Public application form (`/apply`) and admin dashboard for managing ZEKE agent applications with status management (pending, approved, rejected, waitlisted).
 - **Real-Time STT Pipeline**: WebSocket-based real-time speech-to-text transcription for audio from the mobile companion app, using Deepgram Live API with speaker diarization.
 
 ## External Dependencies

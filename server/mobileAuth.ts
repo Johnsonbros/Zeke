@@ -395,7 +395,21 @@ export function isRateLimited(ipAddress: string): boolean {
   return failedAttempts >= MAX_FAILED_ATTEMPTS;
 }
 
-// Register pairing endpoints
+// ============================================
+// DEPRECATED: Legacy Secret-Based Pairing
+// ============================================
+// This function registers the legacy /api/auth/pair and /api/auth/verify endpoints
+// that use ZEKE_SHARED_SECRET for authentication.
+// 
+// The Android app now primarily uses SMS-based pairing via:
+// - POST /api/auth/request-sms-code (in sms-pairing.ts)
+// - POST /api/auth/verify-sms-code (in sms-pairing.ts)
+//
+// This function is no longer called in routes.ts as of this version.
+// TODO: Remove this function and related schemas after confirming no clients use legacy flow.
+// Scheduled for removal in the next ZEKE version.
+
+// Register pairing endpoints (DEPRECATED)
 export function registerPairingEndpoints(app: any): void {
   // POST /api/auth/pair - Register new device
   app.post('/api/auth/pair', (req: Request, res: Response) => {

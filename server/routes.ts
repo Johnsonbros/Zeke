@@ -708,7 +708,13 @@ export async function registerRoutes(
   registerSecurityLogsEndpoint(app);
   
   // Register device pairing endpoints for mobile companion app authentication
-  registerPairingEndpoints(app);
+  // DEPRECATED: Legacy secret-based pairing - scheduled for removal in next version
+  // The Android app now uses SMS-based pairing via registerSmsPairingEndpoints()
+  // Legacy endpoints: /api/auth/pair, /api/auth/verify (uses ZEKE_SHARED_SECRET)
+  // TODO: Remove registerPairingEndpoints() after confirming no clients use legacy flow
+  // registerPairingEndpoints(app);
+  
+  // SMS-based pairing (primary authentication method for mobile app)
   registerSmsPairingEndpoints(app);
   
   // Register web authentication and application endpoints

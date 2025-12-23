@@ -3817,7 +3817,14 @@ export const insertPairingAttemptSchema = createInsertSchema(pairingAttempts).om
 export type InsertPairingAttempt = z.infer<typeof insertPairingAttemptSchema>;
 export type PairingAttempt = typeof pairingAttempts.$inferSelect;
 
-// Pairing request schema
+// ============================================
+// LEGACY PAIRING (DEPRECATED - Scheduled for removal)
+// ============================================
+// These schemas support the legacy secret-based pairing flow (/api/auth/pair).
+// The Android app now uses SMS-based pairing via /api/auth/request-sms-code.
+// TODO: Remove after confirming no clients use legacy flow
+
+// Pairing request schema (DEPRECATED)
 export const pairingRequestSchema = z.object({
   secret: z.string().min(1, "Secret is required"),
   deviceName: z.string().min(1, "Device name is required").max(255),
@@ -3825,7 +3832,7 @@ export const pairingRequestSchema = z.object({
 
 export type PairingRequest = z.infer<typeof pairingRequestSchema>;
 
-// Pairing response types
+// Pairing response types (DEPRECATED)
 export interface PairingSuccessResponse {
   deviceToken: string;
   deviceId: string;
@@ -3836,7 +3843,7 @@ export interface PairingErrorResponse {
   error: string;
 }
 
-// Verify response types
+// Verify response types (DEPRECATED)
 export interface VerifySuccessResponse {
   valid: true;
   deviceId: string;
