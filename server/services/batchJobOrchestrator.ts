@@ -160,10 +160,10 @@ const JOB_TEMPLATES: BatchJobTemplate[] = [
     type: "KG_BACKFILL",
     window: "nightly",
     priority: 12,
-    artifactTypes: ["KG_EDGES"],
+    artifactTypes: ["KG_ENTITY_EXTRACTION"],
     requiresAI: true,
     estimatedTokensPerItem: 2000,
-    description: "Backfill knowledge graph with entity relationships from historical data",
+    description: "Backfill knowledge graph with entity extraction using GPT-5.2 (50% batch discount)",
   },
   {
     type: "OMI_ANALYTICS",

@@ -3,10 +3,14 @@
  * 
  * Runs nightly to automatically extract entities from new data
  * and keep the knowledge graph up to date.
+ * 
+ * Supports two modes:
+ * - Batch mode (preferred): Uses OpenAI Batch API with GPT-5.2 for 50% cost savings
+ * - Sync mode (fallback): Immediate processing when batch is disabled
  */
 
 import * as cron from "node-cron";
-import { runBackfill, getBackfillStatus } from "../graphBackfill";
+import { runBackfill, getBackfillStatus, submitBatchBackfill, shouldUseBatchBackfill } from "../graphBackfill";
 
 let backfillTask: cron.ScheduledTask | null = null;
 let lastScheduledRun: Date | null = null;
@@ -15,6 +19,7 @@ let isInitialized = false;
 /**
  * Start the nightly knowledge graph backfill scheduler
  * Runs at 2:00 AM every day to process new data
+ * Uses batch API when enabled for 50% cost savings
  */
 export function startKnowledgeGraphBackfillScheduler(): void {
   if (isInitialized || backfillTask) {
@@ -35,15 +40,24 @@ export function startKnowledgeGraphBackfillScheduler(): void {
         return;
       }
 
-      const result = await runBackfill();
-      
-      if (result.success) {
-        console.log(`[KnowledgeGraphBackfill] Nightly backfill completed successfully`);
-        console.log(`  - Entities created: ${result.totalEntitiesCreated}`);
-        console.log(`  - References created: ${result.totalReferencesCreated}`);
-        console.log(`  - Duration: ${Math.round(result.durationMs / 1000)}s`);
+      // Prefer batch mode for 50% cost savings using GPT-5.2
+      if (shouldUseBatchBackfill()) {
+        console.log("[KnowledgeGraphBackfill] Using batch mode with GPT-5.2 (50% cost savings)");
+        const batchResult = await submitBatchBackfill();
+        
+        if (batchResult.success) {
+          console.log(`[KnowledgeGraphBackfill] Batch job submitted: ${batchResult.jobId}`);
+          console.log(`  - Items queued: ${batchResult.itemCount}`);
+          console.log(`  - Results will be processed asynchronously`);
+        } else {
+          console.error(`[KnowledgeGraphBackfill] Batch submission failed: ${batchResult.message}`);
+          // Fall back to sync mode
+          console.log("[KnowledgeGraphBackfill] Falling back to sync mode...");
+          await runSyncBackfill();
+        }
       } else {
-        console.error(`[KnowledgeGraphBackfill] Nightly backfill completed with errors: ${result.totalErrors}`);
+        // Batch not enabled, use sync mode
+        await runSyncBackfill();
       }
     } catch (error) {
       console.error("[KnowledgeGraphBackfill] Nightly backfill failed:", error);
@@ -51,6 +65,23 @@ export function startKnowledgeGraphBackfillScheduler(): void {
   });
 
   console.log("[KnowledgeGraphBackfill] Scheduler started - will run at 2:00 AM daily");
+  console.log(`[KnowledgeGraphBackfill] Batch mode: ${shouldUseBatchBackfill() ? "ENABLED (50% cost savings)" : "DISABLED"}`);
+}
+
+/**
+ * Run synchronous backfill (fallback when batch is disabled)
+ */
+async function runSyncBackfill(): Promise<void> {
+  const result = await runBackfill();
+  
+  if (result.success) {
+    console.log(`[KnowledgeGraphBackfill] Sync backfill completed successfully`);
+    console.log(`  - Entities created: ${result.totalEntitiesCreated}`);
+    console.log(`  - References created: ${result.totalReferencesCreated}`);
+    console.log(`  - Duration: ${Math.round(result.durationMs / 1000)}s`);
+  } else {
+    console.error(`[KnowledgeGraphBackfill] Sync backfill completed with errors: ${result.totalErrors}`);
+  }
 }
 
 /**

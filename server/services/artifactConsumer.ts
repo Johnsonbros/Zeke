@@ -74,9 +74,28 @@ const feedbackFixPayloadSchema = z.object({
   })).optional().default([]),
 });
 
+const kgEntityExtractionPayloadSchema = z.object({
+  entities: z.array(z.object({
+    label: z.string(),
+    type: z.enum(["person", "location", "topic", "date"]),
+    confidence: z.number().min(0).max(1).optional().default(0.5),
+    aliases: z.array(z.string()).optional().default([]),
+  })).optional().default([]),
+  relationships: z.array(z.object({
+    fromLabel: z.string(),
+    toLabel: z.string(),
+    relationshipType: z.string(),
+    confidence: z.number().min(0).max(1).optional().default(0.5),
+    evidence: z.string().optional().default(""),
+  })).optional().default([]),
+  contextCategory: z.string().optional(),
+  summary: z.string().optional(),
+});
+
 type MemorySummaryPayload = z.infer<typeof memorySummaryPayloadSchema>;
 type KgEdgesPayload = z.infer<typeof kgEdgesPayloadSchema>;
 type FeedbackFixPayload = z.infer<typeof feedbackFixPayloadSchema>;
+type KgEntityExtractionPayload = z.infer<typeof kgEntityExtractionPayloadSchema>;
 
 /**
  * Consume MEMORY_SUMMARY artifacts and create memory notes
@@ -560,11 +579,132 @@ export async function consumeOmiDigestArtifacts(): Promise<{ processed: number; 
 }
 
 /**
+ * Consume KG_ENTITY_EXTRACTION artifacts from batch backfill jobs
+ * Populates the knowledge graph with entities and relationships extracted via GPT-5.2
+ */
+export async function consumeKgEntityExtractionArtifacts(): Promise<{ 
+  processed: number; 
+  entities: number; 
+  relationships: number; 
+  errors: number;
+}> {
+  const artifacts = await getUnprocessedArtifactsByType("KG_ENTITY_EXTRACTION");
+  let processed = 0;
+  let entitiesCreated = 0;
+  let relationshipsCreated = 0;
+  let errors = 0;
+
+  const entityTypeMap: Record<string, EntityType> = {
+    "person": "PERSON",
+    "location": "LOCATION",
+    "topic": "TOPIC",
+    "date": "DATE",
+  };
+
+  const relationshipTypeMap: Record<string, EntityRelationshipType> = {
+    "mentions": "MENTIONS",
+    "knows": "KNOWS",
+    "works_with": "WORKS_WITH",
+    "located_at": "LOCATED_AT",
+    "related_to": "RELATED_TO",
+    "works_on": "WORKS_ON",
+    "attends": "ATTENDS",
+    "discusses": "MENTIONS",
+  };
+
+  for (const artifact of artifacts) {
+    let payload: KgEntityExtractionPayload;
+    
+    try {
+      let rawPayload: unknown;
+      try {
+        rawPayload = JSON.parse(artifact.payloadJson);
+      } catch (parseError) {
+        console.error(`[ArtifactConsumer] Failed to parse JSON for KG_ENTITY_EXTRACTION artifact ${artifact.id}:`, parseError);
+        errors++;
+        continue;
+      }
+      
+      const validationResult = kgEntityExtractionPayloadSchema.safeParse(rawPayload);
+      if (!validationResult.success) {
+        console.error(`[ArtifactConsumer] Validation failed for KG_ENTITY_EXTRACTION artifact ${artifact.id}:`, validationResult.error.format());
+        errors++;
+        continue;
+      }
+      payload = validationResult.data;
+
+      // Map entity labels to their created IDs
+      const entityIdMap = new Map<string, string>();
+
+      // Process entities
+      for (const entity of payload.entities) {
+        try {
+          const existing = await getEntityByLabel(entity.label);
+          if (existing) {
+            entityIdMap.set(entity.label, existing.id);
+          } else {
+            const entityType = entityTypeMap[entity.type] || "OTHER";
+            const created = await createEntity({
+              type: entityType,
+              label: entity.label,
+              metadata: JSON.stringify({ 
+                aliases: entity.aliases, 
+                confidence: entity.confidence,
+                source: "batch_extraction"
+              }),
+            });
+            entityIdMap.set(entity.label, created.id);
+            entitiesCreated++;
+          }
+        } catch (entityError) {
+          console.error(`[ArtifactConsumer] Failed to create entity "${entity.label}":`, entityError);
+        }
+      }
+
+      // Process relationships
+      for (const rel of payload.relationships) {
+        try {
+          const fromId = entityIdMap.get(rel.fromLabel);
+          const toId = entityIdMap.get(rel.toLabel);
+          
+          if (fromId && toId) {
+            const relType = relationshipTypeMap[rel.relationshipType.toLowerCase()] || "MENTIONS";
+            await createEntityLink({
+              fromEntityId: fromId,
+              toEntityId: toId,
+              relationshipType: relType,
+              confidence: String(rel.confidence),
+              context: rel.evidence,
+            });
+            relationshipsCreated++;
+          }
+        } catch (relError) {
+          console.error(`[ArtifactConsumer] Failed to create relationship:`, relError);
+        }
+      }
+
+      await markArtifactProcessed(artifact.id);
+      processed++;
+    } catch (error) {
+      console.error(`[ArtifactConsumer] Error processing KG_ENTITY_EXTRACTION artifact ${artifact.id}:`, error);
+      errors++;
+    }
+  }
+
+  if (processed > 0 || errors > 0) {
+    console.log(`[ArtifactConsumer] KG_ENTITY_EXTRACTION: processed=${processed}, errors=${errors}, entities=${entitiesCreated}, relationships=${relationshipsCreated}`);
+  }
+
+  return { processed, entities: entitiesCreated, relationships: relationshipsCreated, errors };
+}
+
+/**
  * Consume all unprocessed artifacts
  */
 export async function consumeAllArtifacts(): Promise<{
   memorySummaries: { processed: number; errors: number; itemsCreated: number; itemsFailed: number };
   kgEdges: { processed: number; entities: number; edges: number; errors: number; entitiesFailed: number; edgesFailed: number };
+  kgEntityExtraction: { processed: number; entities: number; relationships: number; errors: number };
   feedbackFixes: { processed: number; fixes: number; errors: number; fixesFailed: number };
   coreConcepts: { processed: number; conceptsCreated: number; conceptsUpdated: number; errors: number };
   dailySummaries: { processed: number; entriesCreated: number; errors: number };
@@ -577,6 +717,7 @@ export async function consumeAllArtifacts(): Promise<{
   
   const memorySummaries = await consumeMemorySummaryArtifacts();
   const kgEdges = await consumeKgEdgesArtifacts();
+  const kgEntityExtraction = await consumeKgEntityExtractionArtifacts();
   const feedbackFixes = await consumeFeedbackFixArtifacts();
   const coreConcepts = await consumeCoreConceptArtifacts();
   const dailySummaries = await consumeDailySummaryArtifacts();
@@ -585,12 +726,13 @@ export async function consumeAllArtifacts(): Promise<{
   const omiActionItems = await consumeOmiActionItemArtifacts();
   const omiDigests = await consumeOmiDigestArtifacts();
   
-  return { memorySummaries, kgEdges, feedbackFixes, coreConcepts, dailySummaries, morningBriefings, omiMeetings, omiActionItems, omiDigests };
+  return { memorySummaries, kgEdges, kgEntityExtraction, feedbackFixes, coreConcepts, dailySummaries, morningBriefings, omiMeetings, omiActionItems, omiDigests };
 }
 
 export const ArtifactConsumer = {
   consumeMemorySummaryArtifacts,
   consumeKgEdgesArtifacts,
+  consumeKgEntityExtractionArtifacts,
   consumeFeedbackFixArtifacts,
   consumeCoreConceptArtifacts,
   consumeDailySummaryArtifacts,

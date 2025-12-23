@@ -3,6 +3,10 @@
  * 
  * Processes existing data to populate the knowledge graph with entity references and links.
  * Run this to backfill historical data or repair graph integrity.
+ * 
+ * Supports two modes:
+ * 1. Sync mode (runBackfill): Immediate processing using rule-based extraction
+ * 2. Batch mode (submitBatchBackfill): Uses OpenAI Batch API for 50% cost savings
  */
 
 import {
@@ -19,6 +23,13 @@ import {
 } from "./entityExtractor";
 import { getKnowledgeGraphStats } from "./knowledgeGraph";
 import { getRecentLifelogs, type OmiMemoryData } from "./omi";
+import { 
+  buildKgExtractionBatchRequests, 
+  isBatchEnabled,
+  getBatchMaxItems,
+  type KgExtractionItem 
+} from "./services/batchService";
+import { createBatchJob, updateBatchJobStatus } from "./db";
 
 interface BackfillProgress {
   domain: string;
@@ -288,4 +299,160 @@ export async function runBackfill(): Promise<BackfillResult> {
   } finally {
     isBackfillRunning = false;
   }
+}
+
+// ============================================
+// BATCH MODE BACKFILL (50% cost savings)
+// ============================================
+
+/**
+ * Collect all items that need entity extraction for batch processing
+ */
+async function collectBatchItems(): Promise<KgExtractionItem[]> {
+  const items: KgExtractionItem[] = [];
+  const maxItems = getBatchMaxItems();
+  
+  // Collect memories
+  try {
+    const memories = getAllMemoryNotes(true);
+    for (const memory of memories) {
+      if (items.length >= maxItems) break;
+      items.push({
+        id: memory.id,
+        domain: "memory",
+        content: memory.content,
+        title: undefined,
+        sourceId: memory.sourceId || undefined,
+      });
+    }
+    console.log(`[GraphBackfill] Collected ${memories.length} memories`);
+  } catch (error) {
+    console.error("[GraphBackfill] Error collecting memories:", error);
+  }
+  
+  // Collect tasks
+  try {
+    const tasks = getAllTasks(true);
+    for (const task of tasks) {
+      if (items.length >= maxItems) break;
+      items.push({
+        id: task.id,
+        domain: "task",
+        content: `${task.title}\n${task.description || ""}`,
+        title: task.title,
+      });
+    }
+    console.log(`[GraphBackfill] Collected ${tasks.length} tasks`);
+  } catch (error) {
+    console.error("[GraphBackfill] Error collecting tasks:", error);
+  }
+  
+  // Collect lifelogs from Omi API
+  try {
+    const lifelogs = await getRecentLifelogs(168, 100); // Last 7 days, up to 100
+    for (const lifelog of lifelogs) {
+      if (items.length >= maxItems) break;
+      const transcriptText = lifelog.transcript || lifelog.structured?.overview || "";
+      items.push({
+        id: lifelog.id,
+        domain: "lifelog",
+        content: transcriptText,
+        title: lifelog.structured?.title || undefined,
+      });
+    }
+    console.log(`[GraphBackfill] Collected ${lifelogs.length} lifelogs`);
+  } catch (error) {
+    console.error("[GraphBackfill] Error collecting lifelogs:", error);
+  }
+  
+  return items;
+}
+
+/**
+ * Submit a batch job for knowledge graph entity extraction
+ * Uses OpenAI Batch API for 50% cost savings
+ * Results are processed asynchronously by the artifact consumer
+ */
+export async function submitBatchBackfill(): Promise<{
+  success: boolean;
+  jobId?: string;
+  itemCount: number;
+  message: string;
+}> {
+  if (!isBatchEnabled()) {
+    return {
+      success: false,
+      itemCount: 0,
+      message: "Batch API is not enabled. Set ENABLE_BATCH_JOBS=true to enable."
+    };
+  }
+  
+  if (isBackfillRunning) {
+    return {
+      success: false,
+      itemCount: 0,
+      message: "A sync backfill is currently running. Please wait for it to complete."
+    };
+  }
+  
+  console.log("[GraphBackfill] Collecting items for batch entity extraction...");
+  const items = await collectBatchItems();
+  
+  if (items.length === 0) {
+    return {
+      success: false,
+      itemCount: 0,
+      message: "No items found to process. Add memories, tasks, or lifelogs first."
+    };
+  }
+  
+  console.log(`[GraphBackfill] Building batch request for ${items.length} items...`);
+  const jsonlContent = buildKgExtractionBatchRequests(items);
+  
+  // Create a batch job in the database
+  const now = new Date().toISOString();
+  const idempotencyKey = `kg_backfill_${now.split("T")[0]}_${Date.now()}`;
+  
+  const job = await createBatchJob({
+    type: "KG_BACKFILL",
+    inputWindowStart: now,
+    inputWindowEnd: now,
+    idempotencyKey,
+    model: "gpt-5.2", // Using GPT-5.2 as configured
+    inputItemCount: items.length,
+  });
+  const jobId = job.id;
+  
+  try {
+    // Submit to OpenAI Batch API
+    const { submitBatchJob } = await import("./services/batchService");
+    await submitBatchJob(jobId, jsonlContent);
+    
+    console.log(`[GraphBackfill] Batch job ${jobId} submitted with ${items.length} items`);
+    
+    return {
+      success: true,
+      jobId,
+      itemCount: items.length,
+      message: `Batch job submitted. ${items.length} items will be processed asynchronously. Check batch job status for progress.`
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    await updateBatchJobStatus(jobId, "FAILED", { error: errorMessage });
+    
+    return {
+      success: false,
+      jobId,
+      itemCount: items.length,
+      message: `Failed to submit batch job: ${errorMessage}`
+    };
+  }
+}
+
+/**
+ * Check if batch mode should be used for backfill
+ * Returns true if batch is enabled and there are items to process
+ */
+export function shouldUseBatchBackfill(): boolean {
+  return isBatchEnabled();
 }
