@@ -187,6 +187,7 @@ import type {
   BriefingType,
   BriefingDeliveryLog,
   InsertBriefingDeliveryLog,
+  CalendarEvent,
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
