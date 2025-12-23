@@ -1,9 +1,9 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { pgTable, text, integer, boolean, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Conversations table
-export const conversations = sqliteTable("conversations", {
+export const conversations = pgTable("conversations", {
   id: text("id").primaryKey(),
   title: text("title").notNull().default("New Conversation"),
   phoneNumber: text("phone_number"),
@@ -26,7 +26,7 @@ export type InsertConversation = z.infer<typeof insertConversationSchema>;
 export type Conversation = typeof conversations.$inferSelect;
 
 // Messages table
-export const messages = sqliteTable("messages", {
+export const messages = pgTable("messages", {
   id: text("id").primaryKey(),
   conversationId: text("conversation_id").notNull().references(() => conversations.id),
   role: text("role", { enum: ["user", "assistant"] }).notNull(),
@@ -48,13 +48,13 @@ export const memoryScopes = ["transient", "session", "long_term"] as const;
 export type MemoryScope = typeof memoryScopes[number];
 
 // Memory notes table with confidence scoring
-export const memoryNotes = sqliteTable("memory_notes", {
+export const memoryNotes = pgTable("memory_notes", {
   id: text("id").primaryKey(),
   type: text("type", { enum: ["summary", "note", "preference", "fact"] }).notNull(),
   content: text("content").notNull(),
   context: text("context").notNull().default(""),
   embedding: text("embedding"),
-  isSuperseded: integer("is_superseded", { mode: "boolean" }).notNull().default(false),
+  isSuperseded: boolean("is_superseded").notNull().default(false),
   supersededBy: text("superseded_by"),
   placeId: text("place_id"),
   contactId: text("contact_id"),
@@ -73,7 +73,7 @@ export const memoryNotes = sqliteTable("memory_notes", {
   accessCount: integer("access_count").default(0), // Times this memory was retrieved/accessed
   lastAccessedAt: text("last_accessed_at"), // When this memory was last accessed
   heatScore: text("heat_score").default("0.5"), // 0-1 heat score (from feedback + usage)
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true), // Mark for pruning
+  isActive: boolean("is_active").notNull().default(true), // Mark for pruning
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -103,7 +103,7 @@ export const conceptTypes = [
 ] as const;
 export type ConceptType = typeof conceptTypes[number];
 
-export const coreConcepts = sqliteTable("core_concepts", {
+export const coreConcepts = pgTable("core_concepts", {
   id: text("id").primaryKey(),
   type: text("type", { enum: conceptTypes }).notNull(),
   concept: text("concept").notNull(),
@@ -113,7 +113,7 @@ export const coreConcepts = sqliteTable("core_concepts", {
   confidenceScore: text("confidence_score").default("0.7"),
   usageCount: integer("usage_count").default(0),
   lastUsedAt: text("last_used_at"),
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -136,7 +136,7 @@ export const toolOutcomes = ["success", "failure", "partial", "timeout", "skippe
 export type ToolOutcome = typeof toolOutcomes[number];
 
 // Conversation metrics table - tracks quality signals per conversation
-export const conversationMetrics = sqliteTable("conversation_metrics", {
+export const conversationMetrics = pgTable("conversation_metrics", {
   id: text("id").primaryKey(),
   conversationId: text("conversation_id").notNull(),
   messageId: text("message_id"), // Optional: link to specific message
@@ -146,8 +146,8 @@ export const conversationMetrics = sqliteTable("conversation_metrics", {
   toolDurationMs: integer("tool_duration_ms"),
   toolErrorMessage: text("tool_error_message"),
   // Conversation quality signals
-  requiredFollowUp: integer("required_follow_up", { mode: "boolean" }).default(false),
-  userRetried: integer("user_retried", { mode: "boolean" }).default(false), // User asked same thing again
+  requiredFollowUp: boolean("required_follow_up").default(false),
+  userRetried: boolean("user_retried").default(false), // User asked same thing again
   explicitFeedback: text("explicit_feedback", { enum: ["positive", "negative", "neutral"] }),
   feedbackNote: text("feedback_note"),
   // Memory usage in this interaction
@@ -193,7 +193,7 @@ export interface MemoryWithConfidence extends MemoryNote {
 }
 
 // Preferences table
-export const preferences = sqliteTable("preferences", {
+export const preferences = pgTable("preferences", {
   id: text("id").primaryKey(),
   key: text("key").notNull().unique(),
   value: text("value").notNull(),
@@ -345,13 +345,13 @@ export type ApiError = {
 };
 
 // Grocery list items table
-export const groceryItems = sqliteTable("grocery_items", {
+export const groceryItems = pgTable("grocery_items", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   quantity: text("quantity").default("1"),
   category: text("category").default("Other"),
   addedBy: text("added_by").notNull(),
-  purchased: integer("purchased", { mode: "boolean" }).notNull().default(false),
+  purchased: boolean("purchased").notNull().default(false),
   purchasedAt: text("purchased_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -376,7 +376,7 @@ export type UpdateGroceryItem = z.infer<typeof updateGroceryItemSchema>;
 export type GroceryItem = typeof groceryItems.$inferSelect;
 
 // Grocery shopping history - tracks completed purchases for quick re-add
-export const groceryHistory = sqliteTable("grocery_history", {
+export const groceryHistory = pgTable("grocery_history", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   quantity: text("quantity").default("1"),
@@ -390,14 +390,14 @@ export const groceryHistory = sqliteTable("grocery_history", {
 export type GroceryHistoryItem = typeof groceryHistory.$inferSelect;
 
 // Reminders table for persistent reminders
-export const reminders = sqliteTable("reminders", {
+export const reminders = pgTable("reminders", {
   id: text("id").primaryKey(),
   message: text("message").notNull(),
   recipientPhone: text("recipient_phone"),
   conversationId: text("conversation_id"),
   scheduledFor: text("scheduled_for").notNull(),
   createdAt: text("created_at").notNull(),
-  completed: integer("completed", { mode: "boolean" }).notNull().default(false),
+  completed: boolean("completed").notNull().default(false),
   placeId: text("place_id"),
   parentReminderId: text("parent_reminder_id"),
   sequencePosition: integer("sequence_position"),
@@ -413,14 +413,14 @@ export type InsertReminder = z.infer<typeof insertReminderSchema>;
 export type Reminder = typeof reminders.$inferSelect;
 
 // Tasks table for to-do management
-export const tasks = sqliteTable("tasks", {
+export const tasks = pgTable("tasks", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
   description: text("description").default(""),
   priority: text("priority", { enum: ["low", "medium", "high"] }).notNull().default("medium"),
   dueDate: text("due_date"),
   category: text("category", { enum: ["work", "personal", "family"] }).notNull().default("personal"),
-  completed: integer("completed", { mode: "boolean" }).notNull().default(false),
+  completed: boolean("completed").notNull().default(false),
   placeId: text("place_id"),
   parentTaskId: text("parent_task_id"),
   createdAt: text("created_at").notNull(),
@@ -449,14 +449,14 @@ export type UpdateTask = z.infer<typeof updateTaskSchema>;
 export type Task = typeof tasks.$inferSelect;
 
 // Calendar events table for tracking calendar data
-export const calendarEvents = sqliteTable("calendar_events", {
+export const calendarEvents = pgTable("calendar_events", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
   description: text("description").default(""),
   start: text("start").notNull(),
   end: text("end").notNull(),
   location: text("location"),
-  isAllDay: integer("is_all_day", { mode: "boolean" }).notNull().default(false),
+  isAllDay: boolean("is_all_day").notNull().default(false),
   googleCalendarId: text("google_calendar_id"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -487,7 +487,7 @@ export const accessLevels = ["admin", "family", "friend", "business", "restricte
 export type AccessLevel = typeof accessLevels[number];
 
 // Contacts table for managing who can communicate with ZEKE
-export const contacts = sqliteTable("contacts", {
+export const contacts = pgTable("contacts", {
   id: text("id").primaryKey(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull().default(""),
@@ -499,18 +499,18 @@ export const contacts = sqliteTable("contacts", {
   accessLevel: text("access_level", { enum: accessLevels }).notNull().default("unknown"),
   relationship: text("relationship").default(""),
   notes: text("notes").default(""),
-  canAccessPersonalInfo: integer("can_access_personal_info", { mode: "boolean" }).notNull().default(false),
-  canAccessCalendar: integer("can_access_calendar", { mode: "boolean" }).notNull().default(false),
-  canAccessTasks: integer("can_access_tasks", { mode: "boolean" }).notNull().default(false),
-  canAccessGrocery: integer("can_access_grocery", { mode: "boolean" }).notNull().default(false),
-  canSetReminders: integer("can_set_reminders", { mode: "boolean" }).notNull().default(false),
+  canAccessPersonalInfo: boolean("can_access_personal_info").notNull().default(false),
+  canAccessCalendar: boolean("can_access_calendar").notNull().default(false),
+  canAccessTasks: boolean("can_access_tasks").notNull().default(false),
+  canAccessGrocery: boolean("can_access_grocery").notNull().default(false),
+  canSetReminders: boolean("can_set_reminders").notNull().default(false),
   birthday: text("birthday"),
   occupation: text("occupation"),
   organization: text("organization"),
   lastInteractionAt: text("last_interaction_at"),
   interactionCount: integer("interaction_count").notNull().default(0),
   metadata: text("metadata"),
-  isAutoCreated: integer("is_auto_created", { mode: "boolean" }).notNull().default(false),
+  isAutoCreated: boolean("is_auto_created").notNull().default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -520,7 +520,7 @@ export const contactNoteTypes = ["interaction", "observation", "comment", "fact"
 export type ContactNoteType = typeof contactNoteTypes[number];
 
 // Contact notes table for ZEKE's observations about people
-export const contactNotes = sqliteTable("contact_notes", {
+export const contactNotes = pgTable("contact_notes", {
   id: text("id").primaryKey(),
   contactId: text("contact_id").notNull(),
   content: text("content").notNull(),
@@ -538,7 +538,7 @@ export type InsertContactNote = z.infer<typeof insertContactNoteSchema>;
 export type ContactNote = typeof contactNotes.$inferSelect;
 
 // Contact faces table for face recognition
-export const contactFaces = sqliteTable("contact_faces", {
+export const contactFaces = pgTable("contact_faces", {
   id: text("id").primaryKey(),
   contactId: text("contact_id").notNull(),
   sourceImageId: text("source_image_id"), // Reference to stored_images
@@ -546,7 +546,7 @@ export const contactFaces = sqliteTable("contact_faces", {
   faceDescription: text("face_description").notNull(), // AI-generated description
   distinguishingFeatures: text("distinguishing_features"), // JSON array of notable features
   estimatedAge: text("estimated_age"),
-  isPrimary: integer("is_primary", { mode: "boolean" }).notNull().default(false),
+  isPrimary: boolean("is_primary").notNull().default(false),
   confidence: text("confidence").default("0.8"), // Enrollment confidence
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -670,12 +670,12 @@ export const automationTypes = ["morning_briefing", "scheduled_sms", "daily_chec
 export type AutomationType = typeof automationTypes[number];
 
 // Automations table for recurring scheduled jobs
-export const automations = sqliteTable("automations", {
+export const automations = pgTable("automations", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   type: text("type", { enum: automationTypes }).notNull(),
   cronExpression: text("cron_expression").notNull(),
-  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  enabled: boolean("enabled").notNull().default(true),
   recipientPhone: text("recipient_phone"),
   message: text("message"),
   settings: text("settings"),
@@ -695,7 +695,7 @@ export type InsertAutomation = z.infer<typeof insertAutomationSchema>;
 export type Automation = typeof automations.$inferSelect;
 
 // User profile table for storing detailed personal context about Nate
-export const userProfile = sqliteTable("user_profile", {
+export const userProfile = pgTable("user_profile", {
   id: text("id").primaryKey(),
   section: text("section").notNull(),
   data: text("data").notNull(),
@@ -856,7 +856,7 @@ export const twilioMessageSources = [
 export type TwilioMessageSource = typeof twilioMessageSources[number];
 
 // Twilio messages table for logging all SMS activity
-export const twilioMessages = sqliteTable("twilio_messages", {
+export const twilioMessages = pgTable("twilio_messages", {
   id: text("id").primaryKey(),
   twilioSid: text("twilio_sid"),
   direction: text("direction", { enum: twilioMessageDirections }).notNull(),
@@ -886,7 +886,7 @@ export type TwilioMessage = typeof twilioMessages.$inferSelect;
 // ============================================
 
 // Outbound messages table - tracks all SMS sent out with reference codes
-export const outboundMessages = sqliteTable("outbound_messages", {
+export const outboundMessages = pgTable("outbound_messages", {
   id: text("id").primaryKey(),
   conversationId: text("conversation_id"),
   toPhone: text("to_phone").notNull(),
@@ -914,7 +914,7 @@ export const reactionTypes = ["liked", "disliked", "loved", "laughed", "emphasiz
 export type ReactionType = typeof reactionTypes[number];
 
 // Feedback events table - tracks user reactions and feedback
-export const feedbackEvents = sqliteTable("feedback_events", {
+export const feedbackEvents = pgTable("feedback_events", {
   id: text("id").primaryKey(),
   conversationId: text("conversation_id").notNull(),
   source: text("source", { enum: ["sms", "app"] }).notNull(),
@@ -959,7 +959,7 @@ export const notificationCategories = [
 export type NotificationCategory = typeof notificationCategories[number];
 
 // Notification queue table for pending notifications
-export const notificationQueue = sqliteTable("notification_queue", {
+export const notificationQueue = pgTable("notification_queue", {
   id: text("id").primaryKey(),
   recipientPhone: text("recipient_phone").notNull(),
   category: text("category", { enum: notificationCategories }).notNull(),
@@ -985,15 +985,15 @@ export type InsertNotificationQueue = z.infer<typeof insertNotificationQueueSche
 export type NotificationQueueItem = typeof notificationQueue.$inferSelect;
 
 // Notification preferences table for batch windows
-export const notificationPreferences = sqliteTable("notification_preferences", {
+export const notificationPreferences = pgTable("notification_preferences", {
   id: text("id").primaryKey(),
-  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
-  batchingEnabled: integer("batching_enabled", { mode: "boolean" }).notNull().default(true),
+  enabled: boolean("enabled").notNull().default(true),
+  batchingEnabled: boolean("batching_enabled").notNull().default(true),
   batchIntervalMinutes: integer("batch_interval_minutes").notNull().default(30),
-  quietHoursEnabled: integer("quiet_hours_enabled", { mode: "boolean" }).notNull().default(true),
+  quietHoursEnabled: boolean("quiet_hours_enabled").notNull().default(true),
   quietHoursStart: text("quiet_hours_start").notNull().default("21:00"),
   quietHoursEnd: text("quiet_hours_end").notNull().default("08:00"),
-  urgentBypassQuietHours: integer("urgent_bypass_quiet_hours", { mode: "boolean" }).notNull().default(true),
+  urgentBypassQuietHours: boolean("urgent_bypass_quiet_hours").notNull().default(true),
   maxBatchSize: integer("max_batch_size").notNull().default(5),
   categoryPreferences: text("category_preferences"),
   updatedAt: text("updated_at").notNull(),
@@ -1016,7 +1016,7 @@ export interface CategoryPreference {
 }
 
 // Notification batch record for tracking sent batches
-export const notificationBatches = sqliteTable("notification_batches", {
+export const notificationBatches = pgTable("notification_batches", {
   id: text("id").primaryKey(),
   recipientPhone: text("recipient_phone").notNull(),
   notificationCount: integer("notification_count").notNull(),
@@ -1031,7 +1031,7 @@ export type NotificationBatch = typeof notificationBatches.$inferSelect;
 // ============================================
 
 // Location history table for GPS tracking with geocoding data from companion app
-export const locationHistory = sqliteTable("location_history", {
+export const locationHistory = pgTable("location_history", {
   id: text("id").primaryKey(),
   latitude: text("latitude").notNull(),
   longitude: text("longitude").notNull(),
@@ -1104,7 +1104,7 @@ export type VerificationStatus = typeof verificationStatuses[number];
 export const verifiedByOptions = ["ai", "manual"] as const;
 export type VerifiedBy = typeof verifiedByOptions[number];
 
-export const savedPlaces = sqliteTable("saved_places", {
+export const savedPlaces = pgTable("saved_places", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   label: text("label"),
@@ -1113,8 +1113,8 @@ export const savedPlaces = sqliteTable("saved_places", {
   address: text("address"),
   category: text("category", { enum: placeCategories }).notNull().default("other"),
   notes: text("notes"),
-  isStarred: integer("is_starred", { mode: "boolean" }).notNull().default(false),
-  proximityAlertEnabled: integer("proximity_alert_enabled", { mode: "boolean" }).notNull().default(false),
+  isStarred: boolean("is_starred").notNull().default(false),
+  proximityAlertEnabled: boolean("proximity_alert_enabled").notNull().default(false),
   proximityRadiusMeters: integer("proximity_radius_meters").notNull().default(200),
   verificationStatus: text("verification_status", { enum: verificationStatuses }).default("pending"),
   verificationConfidence: text("verification_confidence"),
@@ -1152,13 +1152,13 @@ export type UpdateSavedPlace = z.infer<typeof updateSavedPlaceSchema>;
 export type SavedPlace = typeof savedPlaces.$inferSelect;
 
 // Place lists table for grouping locations (e.g., "All Stop & Shop locations")
-export const placeLists = sqliteTable("place_lists", {
+export const placeLists = pgTable("place_lists", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
   icon: text("icon"),
   color: text("color"),
-  linkedToGrocery: integer("linked_to_grocery", { mode: "boolean" }).notNull().default(false),
+  linkedToGrocery: boolean("linked_to_grocery").notNull().default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -1182,7 +1182,7 @@ export type UpdatePlaceList = z.infer<typeof updatePlaceListSchema>;
 export type PlaceList = typeof placeLists.$inferSelect;
 
 // Junction table linking places to lists
-export const placeListItems = sqliteTable("place_list_items", {
+export const placeListItems = pgTable("place_list_items", {
   id: text("id").primaryKey(),
   placeListId: text("place_list_id").notNull().references(() => placeLists.id),
   savedPlaceId: text("saved_place_id").notNull().references(() => savedPlaces.id),
@@ -1198,11 +1198,11 @@ export type InsertPlaceListItem = z.infer<typeof insertPlaceListItemSchema>;
 export type PlaceListItem = typeof placeListItems.$inferSelect;
 
 // Location settings for user preferences
-export const locationSettings = sqliteTable("location_settings", {
+export const locationSettings = pgTable("location_settings", {
   id: text("id").primaryKey(),
-  trackingEnabled: integer("tracking_enabled", { mode: "boolean" }).notNull().default(false),
+  trackingEnabled: boolean("tracking_enabled").notNull().default(false),
   trackingIntervalMinutes: integer("tracking_interval_minutes").notNull().default(15),
-  proximityAlertsEnabled: integer("proximity_alerts_enabled", { mode: "boolean" }).notNull().default(true),
+  proximityAlertsEnabled: boolean("proximity_alerts_enabled").notNull().default(true),
   defaultProximityRadiusMeters: integer("default_proximity_radius_meters").notNull().default(200),
   retentionDays: integer("retention_days").notNull().default(30),
   updatedAt: text("updated_at").notNull(),
@@ -1217,14 +1217,14 @@ export type InsertLocationSettings = z.infer<typeof insertLocationSettingsSchema
 export type LocationSettings = typeof locationSettings.$inferSelect;
 
 // Proximity alerts log for tracking when alerts are triggered
-export const proximityAlerts = sqliteTable("proximity_alerts", {
+export const proximityAlerts = pgTable("proximity_alerts", {
   id: text("id").primaryKey(),
   savedPlaceId: text("saved_place_id").notNull().references(() => savedPlaces.id),
   placeListId: text("place_list_id"),
   distanceMeters: text("distance_meters").notNull(),
   alertType: text("alert_type", { enum: ["grocery", "reminder", "general"] }).notNull(),
   alertMessage: text("alert_message").notNull(),
-  acknowledged: integer("acknowledged", { mode: "boolean" }).notNull().default(false),
+  acknowledged: boolean("acknowledged").notNull().default(false),
   createdAt: text("created_at").notNull(),
 });
 
@@ -1241,7 +1241,7 @@ export type ProximityAlert = typeof proximityAlerts.$inferSelect;
 // ============================================
 
 // GPS samples from companion app (raw location data)
-export const locationSamples = sqliteTable("location_samples", {
+export const locationSamples = pgTable("location_samples", {
   id: text("id").primaryKey(),
   latitude: text("latitude").notNull(),
   longitude: text("longitude").notNull(),
@@ -1299,7 +1299,7 @@ export const companionLocationSampleBatchSchema = z.object({
 export type CompanionLocationSampleBatch = z.infer<typeof companionLocationSampleBatchSchema>;
 
 // Aggregated visit records (detected stays at locations)
-export const locationVisits = sqliteTable("location_visits", {
+export const locationVisits = pgTable("location_visits", {
   id: text("id").primaryKey(),
   latitude: text("latitude").notNull(), // center point
   longitude: text("longitude").notNull(),
@@ -1344,7 +1344,7 @@ export const activityTypes = [
 export type ActivityType = typeof activityTypes[number];
 
 // Lifelog-location correlation table
-export const lifelogLocations = sqliteTable("lifelog_locations", {
+export const lifelogLocations = pgTable("lifelog_locations", {
   id: text("id").primaryKey(),
   lifelogId: text("lifelog_id").notNull(),
   lifelogTitle: text("lifelog_title").notNull(),
@@ -1460,7 +1460,7 @@ export const wakeWordCommandStatuses = [
 export type WakeWordCommandStatus = typeof wakeWordCommandStatuses[number];
 
 // Wake word commands table for tracking detected and processed commands
-export const wakeWordCommands = sqliteTable("wake_word_commands", {
+export const wakeWordCommands = pgTable("wake_word_commands", {
   id: text("id").primaryKey(),
   lifelogId: text("lifelog_id").notNull(),
   lifelogTitle: text("lifelog_title").notNull(),
@@ -1489,14 +1489,14 @@ export type InsertWakeWordCommand = z.infer<typeof insertWakeWordCommandSchema>;
 export type WakeWordCommand = typeof wakeWordCommands.$inferSelect;
 
 // Settings for the wake word context agent
-export const contextAgentSettings = sqliteTable("context_agent_settings", {
+export const contextAgentSettings = pgTable("context_agent_settings", {
   id: text("id").primaryKey(),
-  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  enabled: boolean("enabled").notNull().default(true),
   scanIntervalMinutes: integer("scan_interval_minutes").notNull().default(5),
   lookbackHours: integer("lookback_hours").notNull().default(4),
-  autoExecute: integer("auto_execute", { mode: "boolean" }).notNull().default(true),
-  requireApprovalForSms: integer("require_approval_for_sms", { mode: "boolean" }).notNull().default(false),
-  notifyOnExecution: integer("notify_on_execution", { mode: "boolean" }).notNull().default(true),
+  autoExecute: boolean("auto_execute").notNull().default(true),
+  requireApprovalForSms: boolean("require_approval_for_sms").notNull().default(false),
+  notifyOnExecution: boolean("notify_on_execution").notNull().default(true),
   lastScanAt: text("last_scan_at"),
   updatedAt: text("updated_at").notNull(),
 });
@@ -1523,13 +1523,13 @@ export const customListItemPriorities = ["low", "medium", "high"] as const;
 export type CustomListItemPriority = typeof customListItemPriorities[number];
 
 // Custom lists table for user-created lists
-export const customLists = sqliteTable("custom_lists", {
+export const customLists = pgTable("custom_lists", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   type: text("type", { enum: customListTypes }).notNull().default("custom"),
   icon: text("icon"),
   color: text("color"),
-  isShared: integer("is_shared", { mode: "boolean" }).notNull().default(false),
+  isShared: boolean("is_shared").notNull().default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -1553,11 +1553,11 @@ export type UpdateCustomList = z.infer<typeof updateCustomListSchema>;
 export type CustomList = typeof customLists.$inferSelect;
 
 // Custom list items table for items within lists
-export const customListItems = sqliteTable("custom_list_items", {
+export const customListItems = pgTable("custom_list_items", {
   id: text("id").primaryKey(),
   listId: text("list_id").notNull().references(() => customLists.id),
   content: text("content").notNull(),
-  checked: integer("checked", { mode: "boolean" }).notNull().default(false),
+  checked: boolean("checked").notNull().default(false),
   addedBy: text("added_by"),
   priority: text("priority", { enum: customListItemPriorities }).default("medium"),
   notes: text("notes"),
@@ -1593,10 +1593,10 @@ export interface CustomListWithItems extends CustomList {
 // ============================================
 
 // Family members table for tracking who has food preferences
-export const familyMembers = sqliteTable("family_members", {
+export const familyMembers = pgTable("family_members", {
   id: text("id").primaryKey(),
   name: text("name").notNull().unique(),
-  isActive: integer("is_active", { mode: "boolean" }).default(true),
+  isActive: boolean("is_active").default(true),
   createdAt: text("created_at").notNull(),
 });
 
@@ -1623,7 +1623,7 @@ export const foodPreferenceLevels = ["love", "like", "neutral", "dislike", "alle
 export type FoodPreferenceLevel = typeof foodPreferenceLevels[number];
 
 // Food preferences table for tracking likes/dislikes
-export const foodPreferences = sqliteTable("food_preferences", {
+export const foodPreferences = pgTable("food_preferences", {
   id: text("id").primaryKey(),
   memberId: text("member_id").notNull(),
   itemType: text("item_type", { enum: foodItemTypes }).notNull(),
@@ -1653,7 +1653,7 @@ export const dietaryRestrictionSeverities = ["strict", "moderate", "mild"] as co
 export type DietaryRestrictionSeverity = typeof dietaryRestrictionSeverities[number];
 
 // Dietary restrictions table for allergies, religious, health restrictions
-export const dietaryRestrictions = sqliteTable("dietary_restrictions", {
+export const dietaryRestrictions = pgTable("dietary_restrictions", {
   id: text("id").primaryKey(),
   memberId: text("member_id").notNull(),
   restrictionType: text("restriction_type", { enum: dietaryRestrictionTypes }).notNull(),
@@ -1676,7 +1676,7 @@ export const mealTypes = ["breakfast", "lunch", "dinner", "snack"] as const;
 export type MealType = typeof mealTypes[number];
 
 // Meal history table for tracking meals cooked/eaten
-export const mealHistory = sqliteTable("meal_history", {
+export const mealHistory = pgTable("meal_history", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   mealType: text("meal_type", { enum: mealTypes }).notNull(),
@@ -1701,7 +1701,7 @@ export const recipeMealTypes = ["breakfast", "lunch", "dinner", "snack", "desser
 export type RecipeMealType = typeof recipeMealTypes[number];
 
 // Saved recipes table
-export const savedRecipes = sqliteTable("saved_recipes", {
+export const savedRecipes = pgTable("saved_recipes", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
@@ -1715,7 +1715,7 @@ export const savedRecipes = sqliteTable("saved_recipes", {
   source: text("source"),
   familyRating: integer("family_rating"),
   timesCooked: integer("times_cooked").default(0),
-  isFavorite: integer("is_favorite", { mode: "boolean" }).default(false),
+  isFavorite: boolean("is_favorite").default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -1751,7 +1751,7 @@ export type SavedRecipe = typeof savedRecipes.$inferSelect;
 // ============================================
 
 // Omi daily summaries table - stores AI-generated summaries of memory conversations
-export const omiSummaries = sqliteTable("omi_summaries", {
+export const omiSummaries = pgTable("omi_summaries", {
   id: text("id").primaryKey(),
   date: text("date").notNull(), // YYYY-MM-DD format
   timeframeStart: text("timeframe_start").notNull(),
@@ -1796,15 +1796,15 @@ export const contextCategories = [
 export type ContextCategory = typeof contextCategories[number];
 
 // Omi memories cache - stores processed memories for local data fusion
-export const omiMemories = sqliteTable("omi_memories", {
+export const omiMemories = pgTable("omi_memories", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
   markdown: text("markdown"),
   summary: text("summary"),
   startTimestamp: text("start_timestamp").notNull(),
   endTimestamp: text("end_timestamp").notNull(),
-  isStarred: integer("is_starred", { mode: "boolean" }).notNull().default(false),
-  processedSuccessfully: integer("processed_successfully", { mode: "boolean" }).notNull().default(false),
+  isStarred: boolean("is_starred").notNull().default(false),
+  processedSuccessfully: boolean("processed_successfully").notNull().default(false),
   summaryId: text("summary_id"),
   // Context classification for intelligent retrieval
   contextCategory: text("context_category", { enum: contextCategories }).default("unknown"),
@@ -1823,7 +1823,7 @@ export type InsertOmiMemory = z.infer<typeof insertOmiMemorySchema>;
 export type OmiMemory = typeof omiMemories.$inferSelect;
 
 // Weather records table - stores weather data for contextual predictions
-export const weatherRecords = sqliteTable("weather_records", {
+export const weatherRecords = pgTable("weather_records", {
   id: text("id").primaryKey(),
   timestamp: text("timestamp").notNull(),
   temperature: text("temperature"),
@@ -1908,7 +1908,7 @@ export const entityRelationshipTypes = ["mentions", "derived_from", "scheduled_n
 export type EntityRelationshipType = typeof entityRelationshipTypes[number];
 
 // Entities table - canonical entities extracted from across the system
-export const entities = sqliteTable("entities", {
+export const entities = pgTable("entities", {
   id: text("id").primaryKey(),
   type: text("type", { enum: entityTypes }).notNull(),
   label: text("label").notNull(),
@@ -1926,7 +1926,7 @@ export type InsertEntity = z.infer<typeof insertEntitySchema>;
 export type Entity = typeof entities.$inferSelect;
 
 // Entity references table - tracks where entities are referenced
-export const entityReferences = sqliteTable("entity_references", {
+export const entityReferences = pgTable("entity_references", {
   id: text("id").primaryKey(),
   entityId: text("entity_id").notNull(),
   domain: text("domain", { enum: entityDomains }).notNull(),
@@ -1944,7 +1944,7 @@ export type InsertEntityReference = z.infer<typeof insertEntityReferenceSchema>;
 export type EntityReference = typeof entityReferences.$inferSelect;
 
 // Entity links table - tracks relationships between entities
-export const entityLinks = sqliteTable("entity_links", {
+export const entityLinks = pgTable("entity_links", {
   id: text("id").primaryKey(),
   sourceEntityId: text("source_entity_id").notNull(),
   targetEntityId: text("target_entity_id").notNull(),
@@ -1963,7 +1963,7 @@ export type InsertEntityLink = z.infer<typeof insertEntityLinkSchema>;
 export type EntityLink = typeof entityLinks.$inferSelect;
 
 // Memory relationships table - tracks co-occurrence strength between entities
-export const memoryRelationships = sqliteTable("memory_relationships", {
+export const memoryRelationships = pgTable("memory_relationships", {
   id: text("id").primaryKey(),
   sourceEntityId: text("source_entity_id").notNull(),
   targetEntityId: text("target_entity_id").notNull(),
@@ -2028,7 +2028,7 @@ export const insightStatuses = ["new", "surfaced", "snoozed", "completed", "dism
 export type InsightStatus = typeof insightStatuses[number];
 
 // Proactive insights table - stores generated insights from detectors
-export const insights = sqliteTable("insights", {
+export const insights = pgTable("insights", {
   id: text("id").primaryKey(),
   type: text("type", { enum: insightTypes }).notNull(),
   category: text("category", { enum: insightCategories }).notNull(),
@@ -2112,7 +2112,7 @@ export const nlEventTypes = [
 export type NLEventType = typeof nlEventTypes[number];
 
 // NL Automations table - stores parsed natural language automation rules
-export const nlAutomations = sqliteTable("nl_automations", {
+export const nlAutomations = pgTable("nl_automations", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   originalPhrase: text("original_phrase").notNull(),    // The natural language input
@@ -2121,7 +2121,7 @@ export const nlAutomations = sqliteTable("nl_automations", {
   actionType: text("action_type", { enum: nlActionTypes }).notNull(),
   actionConfig: text("action_config").notNull(),        // JSON config for action
   conditions: text("conditions"),                        // Optional JSON conditions
-  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  enabled: boolean("enabled").notNull().default(true),
   lastTriggeredAt: text("last_triggered_at"),
   triggerCount: integer("trigger_count").notNull().default(0),
   createdAt: text("created_at").notNull(),
@@ -2212,12 +2212,12 @@ export interface NotifyActionConfig {
 }
 
 // NL Automation execution log
-export const nlAutomationLogs = sqliteTable("nl_automation_logs", {
+export const nlAutomationLogs = pgTable("nl_automation_logs", {
   id: text("id").primaryKey(),
   automationId: text("automation_id").notNull(),
   triggerData: text("trigger_data"),  // JSON with trigger context
   actionResult: text("action_result"),  // JSON with action outcome
-  success: integer("success", { mode: "boolean" }).notNull(),
+  success: boolean("success").notNull(),
   errorMessage: text("error_message"),
   executedAt: text("executed_at").notNull(),
 });
@@ -2229,7 +2229,7 @@ export type NLAutomationLog = typeof nlAutomationLogs.$inferSelect;
 // ============================================
 
 // Meetings table - tracks multi-speaker conversations detected as meetings
-export const meetings = sqliteTable("meetings", {
+export const meetings = pgTable("meetings", {
   id: text("id").primaryKey(),
   lifelogId: text("lifelog_id").notNull(),
   title: text("title").notNull(),
@@ -2240,7 +2240,7 @@ export const meetings = sqliteTable("meetings", {
   topics: text("topics"), // JSON array of detected topics
   summary: text("summary"), // AI-generated meeting summary
   actionItems: text("action_items"), // JSON array of action items
-  isImportant: integer("is_important", { mode: "boolean" }).default(false),
+  isImportant: boolean("is_important").default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -2271,7 +2271,7 @@ export interface MeetingActionItem {
 }
 
 // Lifelog action items table - commitments detected during real-time processing
-export const lifelogActionItems = sqliteTable("lifelog_action_items", {
+export const lifelogActionItems = pgTable("lifelog_action_items", {
   id: text("id").primaryKey(),
   lifelogId: text("lifelog_id").notNull(),
   content: text("content").notNull(),
@@ -2296,7 +2296,7 @@ export type InsertLifelogActionItem = z.infer<typeof insertLifelogActionItemSche
 export type LifelogActionItem = typeof lifelogActionItems.$inferSelect;
 
 // Omi analytics daily table - pre-aggregated daily analytics
-export const omiAnalyticsDaily = sqliteTable("omi_analytics_daily", {
+export const omiAnalyticsDaily = pgTable("omi_analytics_daily", {
   id: text("id").primaryKey(),
   date: text("date").notNull(), // YYYY-MM-DD format
   totalConversations: integer("total_conversations").notNull().default(0),
@@ -2358,7 +2358,7 @@ export const checkInEventTypes = ["arrival", "departure"] as const;
 export type CheckInEventType = typeof checkInEventTypes[number];
 
 // Location state tracking table - tracks current location state and check-in history
-export const locationStateTracking = sqliteTable("location_state_tracking", {
+export const locationStateTracking = pgTable("location_state_tracking", {
   id: text("id").primaryKey(),
   savedPlaceId: text("saved_place_id").notNull(),
   savedPlaceName: text("saved_place_name").notNull(),
@@ -2367,7 +2367,7 @@ export const locationStateTracking = sqliteTable("location_state_tracking", {
   longitude: text("longitude").notNull(),
   distanceMeters: text("distance_meters").notNull(),
   messageGenerated: text("message_generated"),
-  smsSent: integer("sms_sent", { mode: "boolean" }).notNull().default(false),
+  smsSent: boolean("sms_sent").notNull().default(false),
   smsDeliveredAt: text("sms_delivered_at"),
   eventDetectedAt: text("event_detected_at").notNull(),
   createdAt: text("created_at").notNull(),
@@ -2419,7 +2419,7 @@ export const predictionStatuses = ["pending", "executed", "dismissed", "expired"
 export type PredictionStatus = typeof predictionStatuses[number];
 
 // Predictions table - stores AI-generated predictions about user needs
-export const predictions = sqliteTable("predictions", {
+export const predictions = pgTable("predictions", {
   id: text("id").primaryKey(),
   type: text("type", { enum: predictionTypes }).notNull(),
   title: text("title").notNull(),
@@ -2431,8 +2431,8 @@ export const predictions = sqliteTable("predictions", {
   // What action should be taken
   suggestedAction: text("suggested_action").notNull(),
   actionData: text("action_data"), // JSON data for the action
-  autoExecute: integer("auto_execute", { mode: "boolean" }).notNull().default(false),
-  requiresUserApproval: integer("requires_user_approval", { mode: "boolean" }).notNull().default(true),
+  autoExecute: boolean("auto_execute").notNull().default(false),
+  requiresUserApproval: boolean("requires_user_approval").notNull().default(true),
 
   // Prediction context
   reasoning: text("reasoning").notNull(), // Why this prediction was made
@@ -2453,7 +2453,7 @@ export const predictions = sqliteTable("predictions", {
   // Metadata
   priority: text("priority", { enum: ["low", "medium", "high", "urgent"] }).notNull().default("medium"),
   impactScore: text("impact_score"), // 0-1 scale for potential impact
-  notificationSent: integer("notification_sent", { mode: "boolean" }).notNull().default(false),
+  notificationSent: boolean("notification_sent").notNull().default(false),
   notifiedAt: text("notified_at"),
 
   createdAt: text("created_at").notNull(),
@@ -2481,7 +2481,7 @@ export const patternTypes = [
 export type PatternType = typeof patternTypes[number];
 
 // Patterns table - stores discovered patterns from historical data
-export const patterns = sqliteTable("patterns", {
+export const patterns = pgTable("patterns", {
   id: text("id").primaryKey(),
   type: text("type", { enum: patternTypes }).notNull(),
   name: text("name").notNull(),
@@ -2504,8 +2504,8 @@ export const patterns = sqliteTable("patterns", {
   accuracyRate: text("accuracy_rate"), // 0-1 scale of prediction accuracy
 
   // Pattern status
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
-  isSuperseded: integer("is_superseded", { mode: "boolean" }).notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  isSuperseded: boolean("is_superseded").notNull().default(false),
   supersededBy: text("superseded_by"), // ID of pattern that replaced this
 
   // Usage tracking
@@ -2526,7 +2526,7 @@ export type InsertPattern = z.infer<typeof insertPatternSchema>;
 export type Pattern = typeof patterns.$inferSelect;
 
 // Anticipatory actions - logs of proactive actions taken by ZEKE
-export const anticipatoryActions = sqliteTable("anticipatory_actions", {
+export const anticipatoryActions = pgTable("anticipatory_actions", {
   id: text("id").primaryKey(),
   predictionId: text("prediction_id").notNull().references(() => predictions.id),
   actionType: text("action_type").notNull(), // e.g., "send_sms", "create_task", "adjust_calendar"
@@ -2537,12 +2537,12 @@ export const anticipatoryActions = sqliteTable("anticipatory_actions", {
   executedAt: text("executed_at").notNull(),
 
   // Results
-  success: integer("success", { mode: "boolean" }).notNull(),
+  success: boolean("success").notNull(),
   result: text("result"), // JSON result from action
   errorMessage: text("error_message"),
 
   // User response
-  userResponsed: integer("user_responsed", { mode: "boolean" }).notNull().default(false),
+  userResponsed: boolean("user_responsed").notNull().default(false),
   userResponseType: text("user_response_type", { enum: ["positive", "negative", "neutral", "modified"] }),
   userResponseNote: text("user_response_note"),
   userRespondedAt: text("user_responded_at"),
@@ -2559,12 +2559,12 @@ export type InsertAnticipatoryAction = z.infer<typeof insertAnicipatoryActionSch
 export type AnticipatoryAction = typeof anticipatoryActions.$inferSelect;
 
 // Prediction feedback - tracks prediction accuracy for learning
-export const predictionFeedback = sqliteTable("prediction_feedback", {
+export const predictionFeedback = pgTable("prediction_feedback", {
   id: text("id").primaryKey(),
   predictionId: text("prediction_id").notNull().references(() => predictions.id),
 
   // Feedback details
-  wasAccurate: integer("was_accurate", { mode: "boolean" }).notNull(),
+  wasAccurate: boolean("was_accurate").notNull(),
   accuracyScore: text("accuracy_score"), // 0-1 scale for partial accuracy
   feedbackType: text("feedback_type", { enum: ["explicit_user", "implicit_behavior", "outcome_validation"] }).notNull(),
   feedbackNote: text("feedback_note"),
@@ -2574,7 +2574,7 @@ export const predictionFeedback = sqliteTable("prediction_feedback", {
   adjustmentsMade: text("adjustments_made"), // JSON describing model adjustments
 
   // Impact on future predictions
-  improvedConfidence: integer("improved_confidence", { mode: "boolean" }),
+  improvedConfidence: boolean("improved_confidence"),
   affectedPatternIds: text("affected_pattern_ids"), // JSON array of patterns updated
 
   createdAt: text("created_at").notNull(),
@@ -2616,7 +2616,7 @@ export const contradictionResolutions = ["unexplained", "explained", "pattern_up
 export type ContradictionResolution = typeof contradictionResolutions[number];
 
 // Contradictions table - when observed behavior doesn't match stated preference or established pattern
-export const contradictions = sqliteTable("contradictions", {
+export const contradictions = pgTable("contradictions", {
   id: text("id").primaryKey(),
   observation: text("observation").notNull(), // What was observed
   expected: text("expected").notNull(), // What was expected based on pattern/value
@@ -2630,8 +2630,8 @@ export const contradictions = sqliteTable("contradictions", {
   
   // Impact tracking
   impactLevel: text("impact_level", { enum: ["low", "medium", "high"] }).default("medium"),
-  ledToPatternUpdate: integer("led_to_pattern_update", { mode: "boolean" }).default(false),
-  ledToValueUpdate: integer("led_to_value_update", { mode: "boolean" }).default(false),
+  ledToPatternUpdate: boolean("led_to_pattern_update").default(false),
+  ledToValueUpdate: boolean("led_to_value_update").default(false),
   
   createdAt: text("created_at").notNull(),
   resolvedAt: text("resolved_at"),
@@ -2646,11 +2646,11 @@ export type InsertContradiction = z.infer<typeof insertContradictionSchema>;
 export type Contradiction = typeof contradictions.$inferSelect;
 
 // Values table - what Nate prioritizes, revealed through choices and trade-offs
-export const values = sqliteTable("values", {
+export const values = pgTable("values", {
   id: text("id").primaryKey(),
   name: text("name").notNull(), // The value (e.g., "family time", "career growth")
-  stated: integer("stated", { mode: "boolean" }).default(false), // Explicitly stated
-  inferred: integer("inferred", { mode: "boolean" }).default(false), // Inferred from behavior
+  stated: boolean("stated").default(false), // Explicitly stated
+  inferred: boolean("inferred").default(false), // Inferred from behavior
   priority: integer("priority").default(5), // 1-10 relative importance
   
   // Evidence
@@ -2684,7 +2684,7 @@ export const stressorFrequencies = ["rare", "occasional", "frequent", "chronic"]
 export type StressorFrequency = typeof stressorFrequencies[number];
 
 // Stressors table - situations that drain energy or trigger negative states
-export const stressors = sqliteTable("stressors", {
+export const stressors = pgTable("stressors", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   type: text("type", { enum: stressorTypes }).notNull(),
@@ -2716,7 +2716,7 @@ export type InsertStressor = z.infer<typeof insertStressorSchema>;
 export type Stressor = typeof stressors.$inferSelect;
 
 // Energy model table - Nate's available capacity across time dimensions
-export const energyModel = sqliteTable("energy_model", {
+export const energyModel = pgTable("energy_model", {
   id: text("id").primaryKey(),
   
   // Time patterns
@@ -2760,7 +2760,7 @@ export const omiTriggerTypes = ["memory_created", "transcript_segment", "audio_b
 export type OmiTriggerType = typeof omiTriggerTypes[number];
 
 // Omi webhook lifelogs - stores raw webhook data from Omi app
-export const omiWebhookLogs = sqliteTable("omi_webhook_logs", {
+export const omiWebhookLogs = pgTable("omi_webhook_logs", {
   id: text("id").primaryKey(),
   triggerType: text("trigger_type", { enum: omiTriggerTypes }).notNull(),
   omiSessionId: text("omi_session_id"), // Session ID from Omi
@@ -2942,7 +2942,7 @@ export const actionOutcomeTypes = ["completed", "modified", "deleted", "ignored"
 export type ActionOutcomeType = typeof actionOutcomeTypes[number];
 
 // Action outcomes table - tracks what happens after ZEKE takes actions
-export const actionOutcomes = sqliteTable("action_outcomes", {
+export const actionOutcomes = pgTable("action_outcomes", {
   id: text("id").primaryKey(),
   actionType: text("action_type", { enum: feedbackActionTypes }).notNull(),
   actionId: text("action_id").notNull(),
@@ -2950,8 +2950,8 @@ export const actionOutcomes = sqliteTable("action_outcomes", {
   messageId: text("message_id"),
   outcomeType: text("outcome_type", { enum: actionOutcomeTypes }),
   timeToOutcomeMinutes: integer("time_to_outcome_minutes"),
-  wasModifiedQuickly: integer("was_modified_quickly", { mode: "boolean" }).default(false),
-  wasDeletedQuickly: integer("was_deleted_quickly", { mode: "boolean" }).default(false),
+  wasModifiedQuickly: boolean("was_modified_quickly").default(false),
+  wasDeletedQuickly: boolean("was_deleted_quickly").default(false),
   originalValue: text("original_value"),
   modifiedValue: text("modified_value"),
   createdAt: text("created_at").notNull(),
@@ -2972,7 +2972,7 @@ export const correctionTypes = ["explicit", "implicit", "modification", "deletio
 export type CorrectionType = typeof correctionTypes[number];
 
 // Correction events table - captures when user corrects ZEKE
-export const correctionEvents = sqliteTable("correction_events", {
+export const correctionEvents = pgTable("correction_events", {
   id: text("id").primaryKey(),
   conversationId: text("conversation_id").notNull(),
   triggerMessageId: text("trigger_message_id"),
@@ -3009,7 +3009,7 @@ export const learnedPreferenceCategories = [
 export type LearnedPreferenceCategory = typeof learnedPreferenceCategories[number];
 
 // Learned preferences table - stores preferences learned from patterns
-export const learnedPreferences = sqliteTable("learned_preferences", {
+export const learnedPreferences = pgTable("learned_preferences", {
   id: text("id").primaryKey(),
   category: text("category", { enum: learnedPreferenceCategories }).notNull(),
   preferenceKey: text("preference_key").notNull(),
@@ -3018,7 +3018,7 @@ export const learnedPreferences = sqliteTable("learned_preferences", {
   confidenceScore: text("confidence_score").notNull().default("0.5"),
   evidenceCount: integer("evidence_count").notNull().default(1),
   lastEvidenceAt: text("last_evidence_at"),
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
   supersededBy: text("superseded_by"),
   sourceType: text("source_type", { enum: ["correction", "outcome", "explicit", "pattern"] }).notNull(),
   sourceIds: text("source_ids"),
@@ -3086,13 +3086,13 @@ export const documentTypes = ["note", "document", "template", "reference"] as co
 export type DocumentType = typeof documentTypes[number];
 
 // Folders table for organizing documents
-export const folders = sqliteTable("folders", {
+export const folders = pgTable("folders", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   parentId: text("parent_id"),
   icon: text("icon"),
   color: text("color"),
-  isExpanded: integer("is_expanded", { mode: "boolean" }).default(true),
+  isExpanded: boolean("is_expanded").default(true),
   sortOrder: integer("sort_order").default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -3118,7 +3118,7 @@ export type UpdateFolder = z.infer<typeof updateFolderSchema>;
 export type Folder = typeof folders.$inferSelect;
 
 // Documents table for storing files and notes
-export const documents = sqliteTable("documents", {
+export const documents = pgTable("documents", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
   content: text("content").notNull().default(""),
@@ -3127,8 +3127,8 @@ export const documents = sqliteTable("documents", {
   icon: text("icon"),
   color: text("color"),
   tags: text("tags"),
-  isPinned: integer("is_pinned", { mode: "boolean" }).default(false),
-  isArchived: integer("is_archived", { mode: "boolean" }).default(false),
+  isPinned: boolean("is_pinned").default(false),
+  isArchived: boolean("is_archived").default(false),
   sortOrder: integer("sort_order").default(0),
   lastAccessedAt: text("last_accessed_at"),
   wordCount: integer("word_count").default(0),
@@ -3196,7 +3196,7 @@ export const imageCategories = [
 ] as const;
 export type ImageCategory = typeof imageCategories[number];
 
-export const storedImages = sqliteTable("stored_images", {
+export const storedImages = pgTable("stored_images", {
   id: text("id").primaryKey(),
   objectPath: text("object_path").notNull(),
   originalUrl: text("original_url"),
@@ -3212,7 +3212,7 @@ export const storedImages = sqliteTable("stored_images", {
   detectedPeople: integer("detected_people"),
   detectedObjects: text("detected_objects"),
   extractedText: text("extracted_text"),
-  isMemoryWorthy: integer("is_memory_worthy", { mode: "boolean" }),
+  isMemoryWorthy: boolean("is_memory_worthy"),
   linkedMemoryId: text("linked_memory_id"),
   linkedContactId: text("linked_contact_id"),
   createdAt: text("created_at").notNull(),
@@ -3250,7 +3250,7 @@ export const fileProcessingStatuses = [
 export type FileProcessingStatus = typeof fileProcessingStatuses[number];
 
 // Uploaded files table
-export const uploadedFiles = sqliteTable("uploaded_files", {
+export const uploadedFiles = pgTable("uploaded_files", {
   id: text("id").primaryKey(),
   filename: text("filename").notNull(),
   originalName: text("original_name").notNull(),
@@ -3310,7 +3310,7 @@ export interface UploadedFileWithAnalysis extends UploadedFile {
 // ============================================
 
 // Journal entries table for storing nightly summaries
-export const journalEntries = sqliteTable("journal_entries", {
+export const journalEntries = pgTable("journal_entries", {
   id: text("id").primaryKey(),
   date: text("date").notNull().unique(), // YYYY-MM-DD format, one entry per day
   title: text("title").notNull(),
@@ -3370,7 +3370,7 @@ export const aiLogStatuses = ["ok", "error", "timeout", "rate_limited"] as const
 export type AiLogStatus = typeof aiLogStatuses[number];
 
 // AI logs table for tracking all AI API calls
-export const aiLogs = sqliteTable("ai_logs", {
+export const aiLogs = pgTable("ai_logs", {
   id: text("id").primaryKey(),
   // Request identification
   timestamp: text("timestamp").notNull(), // UTC ISO timestamp
@@ -3523,7 +3523,7 @@ export interface BatchJobTemplate {
 }
 
 // Batch jobs table - tracks OpenAI Batch API submissions
-export const batchJobs = sqliteTable("batch_jobs", {
+export const batchJobs = pgTable("batch_jobs", {
   id: text("id").primaryKey(),
   type: text("type", { enum: batchJobTypes }).notNull(),
   status: text("status", { enum: batchJobStatuses }).notNull().default("QUEUED"),
@@ -3555,13 +3555,13 @@ export type InsertBatchJob = z.infer<typeof insertBatchJobSchema>;
 export type BatchJob = typeof batchJobs.$inferSelect;
 
 // Batch artifacts table - stores derived data from batch processing
-export const batchArtifacts = sqliteTable("batch_artifacts", {
+export const batchArtifacts = pgTable("batch_artifacts", {
   id: text("id").primaryKey(),
   batchJobId: text("batch_job_id").notNull().references(() => batchJobs.id),
   artifactType: text("artifact_type", { enum: batchArtifactTypes }).notNull(),
   sourceRef: text("source_ref").notNull(), // e.g., message_id(s), day_key, etc.
   payloadJson: text("payload_json").notNull(), // JSON blob with artifact data
-  isProcessed: integer("is_processed", { mode: "boolean" }).notNull().default(false), // Whether artifact has been consumed
+  isProcessed: boolean("is_processed").notNull().default(false), // Whether artifact has been consumed
   processedAt: text("processed_at"), // When artifact was used
   createdAt: text("created_at").notNull(),
 });
@@ -3575,14 +3575,14 @@ export type InsertBatchArtifact = z.infer<typeof insertBatchArtifactSchema>;
 export type BatchArtifact = typeof batchArtifacts.$inferSelect;
 
 // Batch model configuration table - hot-swappable models per job type
-export const batchModelConfigs = sqliteTable("batch_model_configs", {
+export const batchModelConfigs = pgTable("batch_model_configs", {
   id: text("id").primaryKey(),
   jobType: text("job_type").notNull().unique(), // BatchJobType or "GLOBAL_DEFAULT"
   model: text("model").notNull(), // e.g., "gpt-5.2-2025-12-11"
   maxTokens: integer("max_tokens").default(4096),
   temperature: text("temperature").default("0.7"),
   reasoningEffort: text("reasoning_effort"), // For reasoning models: low, medium, high
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
   updatedBy: text("updated_by"), // Admin who made change
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -3678,14 +3678,14 @@ export const pushTokenPlatforms = ["ios", "android", "expo"] as const;
 export type PushTokenPlatform = typeof pushTokenPlatforms[number];
 
 // Push tokens table - stores Expo push notification tokens
-export const pushTokens = sqliteTable("push_tokens", {
+export const pushTokens = pgTable("push_tokens", {
   id: text("id").primaryKey(),
   token: text("token").notNull().unique(),
   platform: text("platform", { enum: pushTokenPlatforms }).notNull(),
   deviceId: text("device_id"), // Unique device identifier
   deviceName: text("device_name"), // User-friendly device name
   appVersion: text("app_version"), // App version for compatibility
-  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  enabled: boolean("enabled").notNull().default(true),
   lastUsedAt: text("last_used_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -3782,7 +3782,7 @@ export const deltaQuerySchema = z.object({
 // ============================================
 
 // Device tokens table for mobile companion app authentication
-export const deviceTokens = sqliteTable("device_tokens", {
+export const deviceTokens = pgTable("device_tokens", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   token: text("token").notNull().unique(),
   deviceId: text("device_id").notNull().unique(),
@@ -3799,11 +3799,11 @@ export type InsertDeviceToken = z.infer<typeof insertDeviceTokenSchema>;
 export type DeviceToken = typeof deviceTokens.$inferSelect;
 
 // Pairing attempts table for rate limiting
-export const pairingAttempts = sqliteTable("pairing_attempts", {
+export const pairingAttempts = pgTable("pairing_attempts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   ipAddress: text("ip_address").notNull(),
   attemptedAt: text("attempted_at").notNull(),
-  success: integer("success", { mode: "boolean" }).notNull().default(false),
+  success: boolean("success").notNull().default(false),
 });
 
 export const insertPairingAttemptSchema = createInsertSchema(pairingAttempts).omit({
@@ -3848,7 +3848,7 @@ export interface VerifyErrorResponse {
 // ============================================
 
 // SMS pairing codes for mobile device authentication
-export const pairingCodes = sqliteTable("pairing_codes", {
+export const pairingCodes = pgTable("pairing_codes", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   sessionId: text("session_id").notNull().unique(),
   code: text("code").notNull(),
@@ -3924,7 +3924,7 @@ export const sttProviders = ["deepgram", "whisper"] as const;
 export type SttProvider = typeof sttProviders[number];
 
 // STT sessions table - tracks audio streaming sessions
-export const sttSessions = sqliteTable("stt_sessions", {
+export const sttSessions = pgTable("stt_sessions", {
   id: text("id").primaryKey(),
   deviceId: text("device_id").notNull(),
   codec: text("codec", { enum: sttCodecs }).notNull().default("opus"),
@@ -3944,7 +3944,7 @@ export type InsertSttSession = z.infer<typeof insertSttSessionSchema>;
 export type SttSession = typeof sttSessions.$inferSelect;
 
 // STT segments table - stores transcript segments with speaker diarization
-export const sttSegments = sqliteTable("stt_segments", {
+export const sttSegments = pgTable("stt_segments", {
   id: text("id").primaryKey(),
   sessionId: text("session_id").notNull(),
   speaker: text("speaker").notNull().default("SPEAKER_0"),
@@ -3952,7 +3952,7 @@ export const sttSegments = sqliteTable("stt_segments", {
   endMs: integer("end_ms").notNull(),
   text: text("text").notNull(),
   confidence: text("confidence").default("0.0"),
-  isFinal: integer("is_final", { mode: "boolean" }).notNull().default(false),
+  isFinal: boolean("is_final").notNull().default(false),
   createdAt: text("created_at").notNull(),
 });
 
@@ -3982,13 +3982,13 @@ export interface TranscriptSegmentEvent {
 // ============================================
 
 // News topics - user's interests for personalized news
-export const newsTopics = sqliteTable("news_topics", {
+export const newsTopics = pgTable("news_topics", {
   id: text("id").primaryKey(),
   topic: text("topic").notNull(),
   description: text("description"),
   keywords: text("keywords"), // JSON array of related keywords
   priority: integer("priority").notNull().default(5), // 1-10, higher = more important
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -4003,7 +4003,7 @@ export type InsertNewsTopic = z.infer<typeof insertNewsTopicSchema>;
 export type NewsTopic = typeof newsTopics.$inferSelect;
 
 // News stories - cached stories that were sent
-export const newsStories = sqliteTable("news_stories", {
+export const newsStories = pgTable("news_stories", {
   id: text("id").primaryKey(),
   headline: text("headline").notNull(),
   summary: text("summary").notNull(),
@@ -4029,7 +4029,7 @@ export type NewsStory = typeof newsStories.$inferSelect;
 export const newsFeedbackTypes = ["thumbs_up", "thumbs_down"] as const;
 export type NewsFeedbackType = typeof newsFeedbackTypes[number];
 
-export const newsFeedback = sqliteTable("news_feedback", {
+export const newsFeedback = pgTable("news_feedback", {
   id: text("id").primaryKey(),
   storyId: text("story_id").notNull(),
   topicId: text("topic_id"),
@@ -4047,7 +4047,7 @@ export type InsertNewsFeedback = z.infer<typeof insertNewsFeedbackSchema>;
 export type NewsFeedback = typeof newsFeedback.$inferSelect;
 
 // Briefing settings - configurable delivery settings
-export const briefingSettings = sqliteTable("briefing_settings", {
+export const briefingSettings = pgTable("briefing_settings", {
   id: text("id").primaryKey(),
   settingKey: text("setting_key").notNull().unique(),
   settingValue: text("setting_value").notNull(),
@@ -4067,12 +4067,12 @@ export type BriefingSetting = typeof briefingSettings.$inferSelect;
 export const briefingTypes = ["news_curated", "news_new", "weather", "system_health"] as const;
 export type BriefingType = typeof briefingTypes[number];
 
-export const briefingRecipients = sqliteTable("briefing_recipients", {
+export const briefingRecipients = pgTable("briefing_recipients", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   phoneNumber: text("phone_number").notNull(),
   briefingType: text("briefing_type", { enum: briefingTypes }).notNull(),
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -4087,7 +4087,7 @@ export type InsertBriefingRecipient = z.infer<typeof insertBriefingRecipientSche
 export type BriefingRecipient = typeof briefingRecipients.$inferSelect;
 
 // Briefing delivery log - tracks what was sent when
-export const briefingDeliveryLog = sqliteTable("briefing_delivery_log", {
+export const briefingDeliveryLog = pgTable("briefing_delivery_log", {
   id: text("id").primaryKey(),
   briefingType: text("briefing_type", { enum: briefingTypes }).notNull(),
   recipientPhone: text("recipient_phone").notNull(),

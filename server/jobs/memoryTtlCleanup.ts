@@ -16,7 +16,7 @@ let cleanupTask: ScheduledTask | null = null;
  */
 export async function runMemoryCleanup(): Promise<{ deleted: number; errors: string[] }> {
   console.log("[MemoryTTL] Running cleanup...");
-  const result = cleanupExpiredMemories();
+  const result = await cleanupExpiredMemories();
   
   if (result.deleted > 0) {
     console.log(`[MemoryTTL] Cleaned up ${result.deleted} expired memories`);
@@ -32,8 +32,8 @@ export async function runMemoryCleanup(): Promise<{ deleted: number; errors: str
 /**
  * Get current memory scope statistics.
  */
-export function getMemoryStats(): Record<string, number> {
-  return getMemoryScopeStats();
+export async function getMemoryStats(): Promise<Record<string, number>> {
+  return await getMemoryScopeStats();
 }
 
 /**

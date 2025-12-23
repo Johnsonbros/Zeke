@@ -1010,7 +1010,7 @@ export async function registerRoutes(
   });
   
   // Restore pending reminders from database after server startup
-  restorePendingReminders();
+  await restorePendingReminders();
   
   // Set up daily check-in SMS callback and restore scheduled check-ins
   setDailyCheckInSmsCallback(async (phone: string, message: string) => {
@@ -1104,7 +1104,7 @@ export async function registerRoutes(
       throw error;
     }
   });
-  initializeAutomations();
+  await initializeAutomations();
   
   // Start background people extraction from lifelogs
   startPeopleProcessor();
@@ -1204,7 +1204,7 @@ export async function registerRoutes(
       throw error;
     }
   });
-  initializeNLAutomations();
+  await initializeNLAutomations();
   
   // Start ZEKE Context Agent for wake word detection
   setContextAgentSmsCallback(async (phone: string, message: string, source?: string) => {

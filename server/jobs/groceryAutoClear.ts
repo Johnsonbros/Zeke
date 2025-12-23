@@ -5,13 +5,13 @@ let scheduledTask: cron.ScheduledTask | null = null;
 
 async function runAutoClear(): Promise<void> {
   try {
-    const autoClearHours = getGroceryAutoClearHours();
+    const autoClearHours = await getGroceryAutoClearHours();
     
     if (autoClearHours <= 0) {
       return;
     }
     
-    const cleared = clearOldPurchasedGroceryItems(autoClearHours);
+    const cleared = await clearOldPurchasedGroceryItems(autoClearHours);
     
     if (cleared > 0) {
       console.log(`[GroceryAutoClear] Cleared ${cleared} purchased item(s) older than ${autoClearHours} hours`);

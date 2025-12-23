@@ -159,10 +159,10 @@ export async function executeTool(
   return JSON.stringify({ error: `Unknown tool: ${toolName}` });
 }
 
-export function getActiveReminders(): { id: string; message: string; scheduledFor: Date }[] {
-  return getActiveRemindersFromModule();
+export async function getActiveReminders(): Promise<{ id: string; message: string; scheduledFor: Date }[]> {
+  return await getActiveRemindersFromModule();
 }
 
-export function restorePendingReminders(): number {
-  return restorePendingRemindersFromModule();
+export async function restorePendingReminders(): Promise<number> {
+  return await restorePendingRemindersFromModule();
 }

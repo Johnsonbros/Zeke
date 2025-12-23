@@ -555,10 +555,10 @@ export function stopAutomation(automationId: string): void {
   }
 }
 
-export function initializeAutomations(): void {
+export async function initializeAutomations(): Promise<void> {
   console.log("[Automations] Initializing automation scheduler...");
   
-  const automations = getEnabledAutomations();
+  const automations = await getEnabledAutomations();
   console.log(`[Automations] Found ${automations.length} enabled automation(s)`);
   
   for (const automation of automations) {

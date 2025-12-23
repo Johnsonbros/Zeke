@@ -406,8 +406,8 @@ export async function executeReminderTool(
   }
 }
 
-export function getActiveReminders(): { id: string; message: string; scheduledFor: Date }[] {
-  const pendingReminders = getPendingReminders();
+export async function getActiveReminders(): Promise<{ id: string; message: string; scheduledFor: Date }[]> {
+  const pendingReminders = await getPendingReminders();
   return pendingReminders.map(r => ({
     id: r.id,
     message: r.message,
@@ -415,8 +415,8 @@ export function getActiveReminders(): { id: string; message: string; scheduledFo
   }));
 }
 
-export function restorePendingReminders(): number {
-  const pendingReminders = getPendingReminders();
+export async function restorePendingReminders(): Promise<number> {
+  const pendingReminders = await getPendingReminders();
   let restoredCount = 0;
   
   for (const reminder of pendingReminders) {

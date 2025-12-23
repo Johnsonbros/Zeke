@@ -170,7 +170,7 @@ async function runMorningBriefing(): Promise<void> {
     await sendSystemHealthReport(natePhone);
 
     // Send weather to Carolina (configured recipient)
-    const weatherRecipients = getBriefingRecipientsByType("weather");
+    const weatherRecipients = await getBriefingRecipientsByType("weather");
     for (const recipient of weatherRecipients) {
       await sendWeatherBriefing(recipient.phoneNumber);
     }
@@ -184,13 +184,14 @@ async function runMorningBriefing(): Promise<void> {
 /**
  * Start the morning briefing scheduler (at 6 AM)
  */
-export function startMorningBriefingScheduler(): void {
+export async function startMorningBriefingScheduler(): Promise<void> {
   if (briefingScheduler) {
     console.log("[MorningBriefing] Scheduler already running");
     return;
   }
 
-  const briefingTime = getBriefingSetting("briefing_time") || "06:00";
+  const briefingTimeSetting = await getBriefingSetting("briefing_time");
+  const briefingTime = briefingTimeSetting || "06:00";
   const [hours, minutes] = briefingTime.split(":").map(Number);
 
   // Schedule for 6 AM daily (0 6 * * *)
@@ -219,17 +220,15 @@ export function stopMorningBriefingScheduler(): void {
 /**
  * Get scheduler status
  */
-export function getMorningBriefingStatus(): {
+export async function getMorningBriefingStatus(): Promise<{
   running: boolean;
   scheduledTime: string;
-} {
+}> {
+  const scheduledTime = (await getBriefingSetting("briefing_time")) || "06:00";
   return {
     running: briefingScheduler !== null,
-    scheduledTime: getBriefingSetting("briefing_time") || "06:00",
+    scheduledTime,
   };
 }
 
-// Auto-start on import if enabled
-if (getBriefingSetting("briefing_enabled") === "true") {
-  startMorningBriefingScheduler();
-}
+// Note: Auto-start removed - must be called explicitly with await from server startup

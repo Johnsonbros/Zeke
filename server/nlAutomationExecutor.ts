@@ -682,10 +682,10 @@ export async function evaluateKeywordTriggers(message: string, conversationId?: 
   }
 }
 
-export function initializeNLAutomations(): void {
+export async function initializeNLAutomations(): Promise<void> {
   console.log("[NLAutomationExecutor] Initializing NL automations...");
 
-  const automations = getEnabledNLAutomations();
+  const automations = await getEnabledNLAutomations();
   let scheduledCount = 0;
 
   for (const automation of automations) {

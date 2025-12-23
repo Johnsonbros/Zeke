@@ -150,7 +150,7 @@ async function runNewsQuery(): Promise<void> {
   lastNewsQueryTime = new Date();
 
   try {
-    const topics = getNewsTopics(true);
+    const topics = await getNewsTopics(true);
     if (topics.length === 0) {
       console.log("[NewsService] No active news topics configured");
       return;
@@ -213,14 +213,14 @@ export function stopNewsScheduler(): void {
 /**
  * Get scheduler status
  */
-export function getNewsSchedulerStatus(): {
+export async function getNewsSchedulerStatus(): Promise<{
   running: boolean;
   lastQueryTime: string | null;
   topicsCount: number;
   recipientsCount: number;
-} {
-  const topics = getNewsTopics(true);
-  const recipients = getBriefingRecipientsByType("news_curated");
+}> {
+  const topics = await getNewsTopics(true);
+  const recipients = await getBriefingRecipientsByType("news_curated");
   return {
     running: newsScheduler !== null,
     lastQueryTime: lastNewsQueryTime?.toISOString() || null,
@@ -232,8 +232,8 @@ export function getNewsSchedulerStatus(): {
 /**
  * Initialize default news topics
  */
-export function initializeDefaultTopics(): void {
-  const existing = getNewsTopics(false);
+export async function initializeDefaultTopics(): Promise<void> {
+  const existing = await getNewsTopics(false);
   if (existing.length > 0) return;
 
   const defaults = [
@@ -244,7 +244,7 @@ export function initializeDefaultTopics(): void {
 
   for (const def of defaults) {
     try {
-      createNewsTopic({
+      await createNewsTopic({
         topic: def.topic,
         description: def.description,
         keywords: JSON.stringify([def.topic.toLowerCase()]),
@@ -257,8 +257,4 @@ export function initializeDefaultTopics(): void {
   }
 }
 
-// Auto-start on import if enabled
-if (getBriefingSetting("briefing_enabled") === "true") {
-  initializeDefaultTopics();
-  startNewsScheduler();
-}
+// Note: Auto-start removed - must be called explicitly with await from server startup

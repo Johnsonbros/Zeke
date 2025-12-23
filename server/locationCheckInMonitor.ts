@@ -452,7 +452,7 @@ async function processLocationCheck(): Promise<void> {
     const currentLon = parseFloat(currentLocation.longitude);
 
     // Get all saved places
-    const savedPlaces = getAllSavedPlaces();
+    const savedPlaces = await getAllSavedPlaces();
     if (savedPlaces.length === 0) {
       console.log("[Location Check-In] No saved places configured");
       return;
@@ -470,7 +470,7 @@ async function processLocationCheck(): Promise<void> {
       const isNearby = distance <= settings.proximityThresholdMeters;
 
       // Get last state for this place
-      const lastState = getLastLocationStateByPlace(place.id);
+      const lastState = await getLastLocationStateByPlace(place.id);
       const wasNearby = lastState?.eventType === "arrival";
 
       // Detect state change
