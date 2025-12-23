@@ -222,7 +222,7 @@ export default function SettingsScreen() {
           <Feather name="user" size={32} color="#FFFFFF" />
         </LinearGradient>
         <ThemedText type="h3" style={styles.displayName}>
-          ZEKE User
+          Your Profile
         </ThemedText>
         <ThemedText type="small" secondary>
           {devices.filter((d) => d.isConnected).length} device

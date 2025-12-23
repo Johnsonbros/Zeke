@@ -595,7 +595,7 @@ export async function getEventsForDateRange(
   try {
     // Retry and timeout now handled centrally by ZekeApiClient
     // Routes to local API via isLocalEndpoint() check
-    const data = await apiClient.get<{ events?: ZekeEvent[] }>(
+    const data = await apiClient.get<ZekeEvent[] | { events?: ZekeEvent[] }>(
       "/api/calendar/events",
       {
         query: {
@@ -605,11 +605,10 @@ export async function getEventsForDateRange(
         timeoutMs: 10000,
       },
     );
-    console.log(
-      "[Calendar] Fetched range events count:",
-      Array.isArray(data) ? data.length : (data.events?.length ?? 0),
-    );
-    return data.events || [];
+    // Handle both array response (server returns events directly) and object response
+    const events = Array.isArray(data) ? data : (data.events || []);
+    console.log("[Calendar] Fetched range events count:", events.length);
+    return events;
   } catch (error) {
     console.error("[Calendar] Range fetch error, trying ZEKE proxy:", error);
     return getEventsFromZekeProxy(startDate, endDate);
@@ -622,7 +621,7 @@ async function getEventsFromZekeProxy(
 ): Promise<ZekeEvent[]> {
   try {
     // Retry and timeout now handled centrally by ZekeApiClient
-    const data = await apiClient.get<{ events?: ZekeEvent[] }>(
+    const data = await apiClient.get<ZekeEvent[] | { events?: ZekeEvent[] }>(
       "/api/zeke/calendar/events",
       {
         query: {
@@ -632,7 +631,8 @@ async function getEventsFromZekeProxy(
         timeoutMs: 10000,
       },
     );
-    return data.events || [];
+    // Handle both array response and object response
+    return Array.isArray(data) ? data : (data.events || []);
   } catch (error) {
     console.error("[Calendar] ZEKE proxy fetch error:", error);
     return [];
@@ -645,15 +645,14 @@ export async function getTodayEvents(): Promise<ZekeEvent[]> {
   try {
     // Retry and timeout now handled centrally by ZekeApiClient
     // Routes to local API via isLocalEndpoint() check
-    const data = await apiClient.get<{ events?: ZekeEvent[] }>(
+    const data = await apiClient.get<ZekeEvent[] | { events?: ZekeEvent[] }>(
       "/api/calendar/today",
       { timeoutMs: 10000 },
     );
-    console.log(
-      "[Calendar] Fetched events count:",
-      Array.isArray(data) ? data.length : (data.events?.length ?? 0),
-    );
-    return data.events || [];
+    // Handle both array response (server returns events directly) and object response
+    const events = Array.isArray(data) ? data : (data.events || []);
+    console.log("[Calendar] Fetched events count:", events.length);
+    return events;
   } catch (error) {
     console.error("[Calendar] Fetch error, trying ZEKE proxy:", error);
     return getTodayEventsFromZekeProxy();
@@ -663,15 +662,14 @@ export async function getTodayEvents(): Promise<ZekeEvent[]> {
 async function getTodayEventsFromZekeProxy(): Promise<ZekeEvent[]> {
   try {
     // Retry and timeout now handled centrally by ZekeApiClient
-    const data = await apiClient.get<{ events?: ZekeEvent[] }>(
+    const data = await apiClient.get<ZekeEvent[] | { events?: ZekeEvent[] }>(
       "/api/zeke/calendar/today",
       { timeoutMs: 10000 },
     );
-    console.log(
-      "[Calendar] ZEKE proxy fetched events count:",
-      Array.isArray(data) ? data.length : (data.events?.length ?? 0),
-    );
-    return data.events || [];
+    // Handle both array response and object response
+    const events = Array.isArray(data) ? data : (data.events || []);
+    console.log("[Calendar] ZEKE proxy fetched events count:", events.length);
+    return events;
   } catch (error) {
     console.error("[Calendar] ZEKE proxy fetch error:", error);
     return [];

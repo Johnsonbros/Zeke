@@ -730,6 +730,10 @@ export default function CommunicationsHubScreen() {
 
   const handleTabPress = (tab: TabType) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (tab === "chat") {
+      navigation.navigate("Chat");
+      return;
+    }
     setActiveTab(tab);
   };
 

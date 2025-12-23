@@ -29,6 +29,7 @@ import IntegrationsPage from "@/pages/integrations";
 import FilesPage from "@/pages/files";
 import JournalPage from "@/pages/journal";
 import EvalPage from "@/pages/eval";
+import AiUsagePage from "@/pages/ai-usage";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 
@@ -55,6 +56,7 @@ function Router() {
       <Route path="/files" component={FilesPage} />
       <Route path="/journal" component={JournalPage} />
       <Route path="/eval" component={EvalPage} />
+      <Route path="/ai-usage" component={AiUsagePage} />
       <Route component={NotFound} />
     </Switch>
   );

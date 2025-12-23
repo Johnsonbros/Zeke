@@ -10836,6 +10836,36 @@ export async function registerRoutes(
     }
   });
   
+  // GET /api/ai-logs/stats/daily - Get daily breakdown of AI usage for a date range
+  app.get("/api/ai-logs/stats/daily", (req: Request, res: Response) => {
+    try {
+      const daysBack = parseInt(req.query.days as string) || 30;
+      const dailyStats = [];
+      
+      for (let i = 0; i < daysBack; i++) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const endOfDay = new Date(startOfDay);
+        endOfDay.setDate(endOfDay.getDate() + 1);
+        
+        const dayStats = getAiUsageStats(
+          startOfDay.toISOString(),
+          endOfDay.toISOString()
+        );
+        
+        dailyStats.push({
+          date: startOfDay.toISOString().split('T')[0],
+          ...dayStats
+        });
+      }
+      
+      res.json(dailyStats.reverse());
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to fetch daily AI stats' });
+    }
+  });
+  
   // GET /api/ai-logs/anomalies - Detect cost and performance anomalies
   app.get("/api/ai-logs/anomalies", (req: Request, res: Response) => {
     try {

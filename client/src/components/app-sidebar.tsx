@@ -49,6 +49,7 @@ import {
   FileText,
   BookOpen,
   Target,
+  Activity,
 } from "lucide-react";
 import type { Conversation } from "@shared/schema";
 import { format } from "date-fns";
@@ -166,6 +167,12 @@ const mainNavItems = [
     icon: Target,
     href: "/eval",
     description: "Score against the three pillars",
+  },
+  {
+    title: "AI Usage",
+    icon: Activity,
+    href: "/ai-usage",
+    description: "Track AI costs and usage",
   },
 ];
 
