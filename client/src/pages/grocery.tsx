@@ -24,8 +24,16 @@ import {
   ShoppingCart,
   Check,
   Package,
-  Clock
+  Clock,
+  MessageSquare,
+  History,
+  RefreshCw
 } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { 
   Select,
   SelectContent,
@@ -299,6 +307,61 @@ export default function GroceryPage() {
     },
   });
 
+  // Shopping history query
+  const { data: historyData } = useQuery<{ items: Array<{ id: string; name: string; quantity: string | null; category: string | null; purchaseCount: number; lastPurchasedAt: string }> }>({
+    queryKey: ["/api/grocery/frequent"],
+  });
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  // Send list via SMS mutation
+  const sendSmsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/grocery/send-sms", {});
+      return response.json();
+    },
+    onSuccess: (data: { message: string; recipient: string }) => {
+      toast({
+        title: "List sent",
+        description: data.message,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to send list",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Quick re-add from history
+  const readdItemMutation = useMutation({
+    mutationFn: async (historyItem: { name: string; quantity: string | null; category: string | null }) => {
+      const response = await apiRequest("POST", "/api/grocery", {
+        name: historyItem.name,
+        quantity: historyItem.quantity || "1",
+        category: historyItem.category || "Other",
+        addedBy: "Nate",
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/grocery"] });
+      toast({
+        title: "Item added",
+        description: "Added from history",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to add item",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const onSubmit = (data: GroceryFormValues) => {
     addItemMutation.mutate(data);
   };
@@ -493,11 +556,81 @@ export default function GroceryPage() {
           </div>
         </ScrollArea>
 
+        {/* Shopping History Section */}
+        {historyData?.items && historyData.items.length > 0 && (
+          <div className="border-t border-border">
+            <Collapsible open={historyOpen} onOpenChange={setHistoryOpen}>
+              <CollapsibleTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  className="w-full justify-between px-3 py-2 h-auto"
+                  data-testid="button-toggle-history"
+                >
+                  <div className="flex items-center gap-2">
+                    <History className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs sm:text-sm">Quick Add from History</span>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">
+                    {historyData.items.length}
+                  </Badge>
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="px-3 pb-3 space-y-1">
+                  {historyData.items.slice(0, 10).map((historyItem) => (
+                    <div 
+                      key={historyItem.id}
+                      className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border border-border hover-elevate"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs sm:text-sm truncate">{historyItem.name}</span>
+                        {historyItem.category && (
+                          <Badge variant="outline" className="text-[10px] shrink-0">
+                            {historyItem.category}
+                          </Badge>
+                        )}
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          x{historyItem.purchaseCount}
+                        </span>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0"
+                        onClick={() => readdItemMutation.mutate(historyItem)}
+                        disabled={readdItemMutation.isPending}
+                        data-testid={`button-readd-${historyItem.id}`}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        )}
+
         <div className="p-2 sm:p-3 md:p-4 border-t border-border shrink-0">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              Shared list for Nate, ZEKE, and Shakita
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] sm:text-xs text-muted-foreground">
+                Shared list for Nate, ZEKE, and Shakita
+              </p>
+              {unpurchasedItems.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => sendSmsMutation.mutate()}
+                  disabled={sendSmsMutation.isPending}
+                  className="gap-1 text-xs h-6"
+                  data-testid="button-send-sms"
+                >
+                  <MessageSquare className="h-3 w-3" />
+                  Send to Shakita
+                </Button>
+              )}
+            </div>
             <div className="flex items-center gap-1.5 sm:gap-2">
               <Clock className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-muted-foreground" />
               <span className="text-[10px] sm:text-xs text-muted-foreground" data-testid="text-auto-clear-setting">
