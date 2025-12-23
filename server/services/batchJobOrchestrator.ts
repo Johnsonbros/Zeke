@@ -32,8 +32,6 @@ import {
   pollAllSubmittedJobs,
   getBatchModel,
 } from "./batchService";
-import * as correlationV2 from "./correlationEngineV2";
-import * as selfModelEvaluator from "./selfModelEvaluator";
 import type {
   BatchJobType,
   BatchJobTemplate,
@@ -488,94 +486,32 @@ async function runJobFromTemplate(template: BatchJobTemplate): Promise<{
 
 /**
  * Build JSONL for correlation narrative job
+ * Note: Self-model V2 correlation services were removed in dead code cleanup.
+ * This function now returns empty results.
  */
 async function buildCorrelationNarrativeJob(): Promise<{ jsonl: string; count: number }> {
-  correlationV2.runCorrelationDiscovery();
-  
-  const findings = correlationV2.getCorrelationSummary();
-  if (!findings.strongestCorrelations || findings.strongestCorrelations.length === 0) {
-    return { jsonl: "", count: 0 };
-  }
-  
-  const correlationsForNarrative = findings.strongestCorrelations
-    .slice(0, 10);
-  
-  if (correlationsForNarrative.length === 0) {
-    return { jsonl: "", count: 0 };
-  }
-  
-  const userContent = JSON.stringify({
-    correlations: correlationsForNarrative.map((c) => ({
-      subject: c.subject,
-      object: c.object,
-      r: c.r,
-      direction: c.direction,
-      strength: Math.abs(c.r || 0) >= 0.7 ? "strong" : Math.abs(c.r || 0) >= 0.4 ? "moderate" : "weak",
-    })),
-  });
-  
-  const line = buildBatchRequestLine(
-    `correlation_narrative_${Date.now()}`,
-    CORRELATION_NARRATIVE_PROMPT,
-    userContent
-  );
-  
-  return { jsonl: line, count: correlationsForNarrative.length };
+  console.log("[BatchOrchestrator] Correlation narrative job skipped - service removed");
+  return { jsonl: "", count: 0 };
 }
 
 /**
  * Build JSONL for calibration review job
+ * Note: Self-model evaluator was removed in dead code cleanup.
+ * This function now returns empty results.
  */
 async function buildCalibrationReviewJob(): Promise<{ jsonl: string; count: number }> {
-  const health = selfModelEvaluator.evaluateSelfModel(30);
-  
-  if (health.calibration.totalPredictions === 0) {
-    return { jsonl: "", count: 0 };
-  }
-  
-  const userContent = JSON.stringify({
-    calibrationData: {
-      correctPredictions: health.calibration.correctPredictions,
-      totalPredictions: health.calibration.totalPredictions,
-      score: health.calibration.score,
-    },
-    coverageByDomain: health.coverage.daysByDomain,
-    stabilityScore: health.stability.score,
-  });
-  
-  const line = buildBatchRequestLine(
-    `calibration_review_${Date.now()}`,
-    CALIBRATION_REVIEW_PROMPT,
-    userContent
-  );
-  
-  return { jsonl: line, count: 1 };
+  console.log("[BatchOrchestrator] Calibration review job skipped - service removed");
+  return { jsonl: "", count: 0 };
 }
 
 /**
  * Build JSONL for health report job
+ * Note: Self-model evaluator and correlation services were removed in dead code cleanup.
+ * This function now returns empty results.
  */
 async function buildHealthReportJob(): Promise<{ jsonl: string; count: number }> {
-  const health = selfModelEvaluator.evaluateSelfModel(30);
-  const correlationSummary = correlationV2.getCorrelationSummary();
-  
-  const userContent = JSON.stringify({
-    date: new Date().toISOString().split("T")[0],
-    coverage: health.coverage,
-    stability: health.stability,
-    calibration: health.calibration,
-    overall: health.overall,
-    findings: health.findings,
-    correlations: correlationSummary.strongestCorrelations?.slice(0, 5) || [],
-  });
-  
-  const line = buildBatchRequestLine(
-    `health_report_${Date.now()}`,
-    HEALTH_REPORT_PROMPT,
-    userContent
-  );
-  
-  return { jsonl: line, count: 1 };
+  console.log("[BatchOrchestrator] Health report job skipped - services removed");
+  return { jsonl: "", count: 0 };
 }
 
 /**

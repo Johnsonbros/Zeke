@@ -14,13 +14,13 @@ ZEKE is a single-user personal AI assistant for Nate Johnson, providing action-o
 - All conversation titles and memories should always be generated in English.
 
 ## System Architecture
-ZEKE employs a multi-agent architecture with a Node.js + TypeScript (Express) backend, a Python FastAPI microservice for agent orchestration, and a React frontend with Tailwind CSS and shadcn/ui components. SQLite serves as the persistent data store.
+ZEKE employs a multi-agent architecture with a Node.js + TypeScript (Express) backend, a Python FastAPI microservice for agent orchestration, and a React frontend with Tailwind CSS and shadcn/ui components. **PostgreSQL (Neon-backed)** serves as the persistent data store.
 
 The system features a multi-agent core in Python, including specialized agents like Conductor, Memory Curator, Comms Pilot, Ops Planner, Research Scout, and Safety Auditor. A TypeScript Context Router provides domain-specific context bundles to Python agents. The UI uses a dark theme with a coral red accent and Poppins font, designed as a dashboard-first interface.
 
 Key architectural and feature implementations include:
 - **Context Management**: Multi-layered context assembly, unified cache layer, and conversation summarization.
-- **Memory Model**: Optimized for single-user long-term memory with semantic search (SQLite + FTS5 + vector embeddings), featuring TTL buckets and an asynchronous processing queue for Omi memories.
+- **Memory Model**: Optimized for single-user long-term memory with semantic search (PostgreSQL with vector embeddings), featuring TTL buckets and an asynchronous processing queue for Omi memories.
 - **Task & Automation**: Reminders, AI Task Breakdown, Smart Grocery Suggestions, Proactive Task Follow-up, and Natural Language Automation Builder.
 - **AI-Powered Systems**: Location Intelligence, Automatic People Tracking, Food Preference Intelligence, AI-Powered Weather Briefings, Predictive Task Scheduling, and a Knowledge Graph for multi-hop reasoning.
 - **Input/Output**: SMS/MMS integration with optimized image processing (parallel downloads, smart model routing by category, face recognition with contact matching), voice pipeline for Omi Pendant lifelogs, and Smart Notification Batching.
@@ -30,7 +30,6 @@ Key architectural and feature implementations include:
 - **Learning & Feedback**: Feedback Learning Loop system for user corrections, implicit feedback detection, and a nightly trainer to cluster feedback into style profiles.
 - **Efficiency & Resilience**: Overnight Batch Factory using OpenAI Batch API, AI Usage Logging System for API call tracking and anomaly alerting, Circuit Breaker, and Retry with Jittered Backoff.
 - **Batch-First Architecture**: All non-realtime AI work uses OpenAI Batch API for 50% cost savings. Three-lane processing: realtime (<2s for chat), nearline (minutes for context), batch (hours for narratives/insights). Orchestrator manages nightly (3am) and midday (12pm) batch windows.
-- **Self-Model V2**: Correlation discovery with verified evidence linking, measurable metrics (Coverage, Stability, Calibration), and AI-generated narrative explanations via batch processing.
 - **User Interface**: Structured Chat Cards for rich interactive responses, Mobile UI Enhancements (swipe gestures, Quick Menu), and Delta Sync System for efficient mobile app synchronization.
 - **Security & Authentication**: HMAC Authentication for the mobile app with replay protection and timing-safe comparisons. Device Pairing API for simpler mobile auth flow.
 - **Unified Conversation System**: All direct communications with Nate (SMS, web, mobile, voice) share a single coherent conversation thread.
@@ -44,7 +43,7 @@ Key architectural and feature implementations include:
 - **Twilio**: SMS messaging and voice calling.
 - **ElevenLabs**: Custom voice synthesis.
 - **Deepgram API**: Real-time speech-to-text transcription with speaker diarization (requires `DEEPGRAM_API_KEY`).
-- **better-sqlite3**: Node.js SQLite client.
+- **@neondatabase/serverless**: PostgreSQL client (Neon).
 - **Perplexity API**: Enhanced AI-powered web search.
 - **Google Calendar API**: Calendar integration.
 - **OpenWeatherMap API**: Weather data.

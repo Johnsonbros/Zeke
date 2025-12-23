@@ -25,7 +25,6 @@ import { startContextAgent } from "./zekeContextAgent";
 import { startPeopleProcessor } from "./peopleProcessor";
 import { startPendantHealthMonitor, setMorningBriefingCallback } from "./pendantHealthMonitor";
 import { sendWakeTriggeredBriefing } from "./morningBriefingService";
-import { startImageCleanupJob } from "./jobs/imageCleanupJob";
 import { startNewsScheduler, setSendSmsCallback as setNewsSmsCallback } from "./services/newsService";
 import { startMorningBriefingScheduler, setSendSmsCallback as setBriefingSmsCallback } from "./services/morningBriefingScheduler";
 
@@ -231,10 +230,6 @@ app.use((req, res, next) => {
     startPendantHealthMonitor();
     log("Pendant health monitor started", "startup");
   }
-  
-  // Start image cleanup job (daily at 3 AM)
-  startImageCleanupJob();
-  log("Image cleanup job started", "startup");
   
   // Start news service (queries every 2 hours, detects breaking news)
   startNewsScheduler();
