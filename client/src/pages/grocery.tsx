@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -7,6 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { 
   Plus, 
   Trash2, 
@@ -76,53 +87,79 @@ function GroceryItemRow({
   onDelete: () => void;
   isDeleting: boolean;
 }) {
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
+  const handleDeleteConfirm = () => {
+    setDeleteConfirmOpen(false);
+    onDelete();
+  };
+
   return (
-    <div 
-      className={`group flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-3 rounded-lg border border-border hover-elevate transition-all ${
-        item.purchased ? "opacity-60" : ""
-      }`}
-      data-testid={`grocery-item-${item.id}`}
-    >
-      <Checkbox
-        checked={item.purchased}
-        onCheckedChange={onToggle}
-        className="h-4 w-4 sm:h-5 sm:w-5"
-        data-testid={`checkbox-item-${item.id}`}
-      />
-      
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-          <span 
-            className={`text-xs sm:text-sm font-medium ${item.purchased ? "line-through text-muted-foreground" : ""}`}
-            data-testid={`text-item-name-${item.id}`}
-          >
-            {item.name}
-          </span>
-          {item.quantity && item.quantity !== "1" && (
-            <Badge variant="secondary" className="text-[10px] sm:text-xs">
-              x{item.quantity}
-            </Badge>
-          )}
-          <Badge variant="outline" className="text-[10px] sm:text-xs">
-            {item.category}
-          </Badge>
-        </div>
-        <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
-          Added by {item.addedBy}
-        </p>
-      </div>
-      
-      <Button
-        size="icon"
-        variant="ghost"
-        className="sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
-        onClick={onDelete}
-        disabled={isDeleting}
-        data-testid={`button-delete-item-${item.id}`}
+    <>
+      <div 
+        className={`group flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-3 rounded-lg border border-border hover-elevate transition-all ${
+          item.purchased ? "opacity-60" : ""
+        }`}
+        data-testid={`grocery-item-${item.id}`}
       >
-        <Trash2 className="h-4 w-4 text-muted-foreground" />
-      </Button>
-    </div>
+        <Checkbox
+          checked={item.purchased}
+          onCheckedChange={onToggle}
+          className="h-4 w-4 sm:h-5 sm:w-5"
+          data-testid={`checkbox-item-${item.id}`}
+        />
+        
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <span 
+              className={`text-xs sm:text-sm font-medium ${item.purchased ? "line-through text-muted-foreground" : ""}`}
+              data-testid={`text-item-name-${item.id}`}
+            >
+              {item.name}
+            </span>
+            {item.quantity && item.quantity !== "1" && (
+              <Badge variant="secondary" className="text-[10px] sm:text-xs">
+                x{item.quantity}
+              </Badge>
+            )}
+            <Badge variant="outline" className="text-[10px] sm:text-xs">
+              {item.category}
+            </Badge>
+          </div>
+          <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
+            Added by {item.addedBy}
+          </p>
+        </div>
+        
+        <Button
+          size="icon"
+          variant="ghost"
+          className="sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+          onClick={() => setDeleteConfirmOpen(true)}
+          disabled={isDeleting}
+          data-testid={`button-delete-item-${item.id}`}
+        >
+          <Trash2 className="h-4 w-4 text-muted-foreground" />
+        </Button>
+      </div>
+
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove item?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove "{item.name}" from the grocery list? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive hover:bg-destructive/90">
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 

@@ -3421,7 +3421,11 @@ export function toggleGroceryItemPurchased(id: string): GroceryItem | undefined 
 
 export function deleteGroceryItem(id: string): boolean {
   const result = wrapDbOperation("deleteGroceryItem", () => {
+    const item = getGroceryItem(id);
     const dbResult = db.prepare(`DELETE FROM grocery_items WHERE id = ?`).run(id);
+    if (dbResult.changes > 0 && item) {
+      console.log(`[GroceryDelete] Removed item: "${item.name}" (${item.category}, qty: ${item.quantity})`);
+    }
     return dbResult.changes > 0;
   });
   if (result) invalidateGroceryCache();
@@ -3430,14 +3434,22 @@ export function deleteGroceryItem(id: string): boolean {
 
 export function clearPurchasedGroceryItems(): number {
   return wrapDbOperation("clearPurchasedGroceryItems", () => {
+    const purchased = db.prepare(`SELECT id, name FROM grocery_items WHERE purchased = 1`).all() as Array<{ id: string; name: string }>;
     const result = db.prepare(`DELETE FROM grocery_items WHERE purchased = 1`).run();
+    if (result.changes > 0) {
+      console.log(`[GroceryDelete] Cleared ${result.changes} purchased item(s): ${purchased.map(p => `"${p.name}"`).join(", ")}`);
+    }
     return result.changes;
   });
 }
 
 export function clearAllGroceryItems(): number {
   return wrapDbOperation("clearAllGroceryItems", () => {
+    const allItems = db.prepare(`SELECT id, name FROM grocery_items`).all() as Array<{ id: string; name: string }>;
     const result = db.prepare(`DELETE FROM grocery_items`).run();
+    if (result.changes > 0) {
+      console.log(`[GroceryDelete] Cleared entire list (${result.changes} items): ${allItems.map(i => `"${i.name}"`).join(", ")}`);
+    }
     return result.changes;
   });
 }
