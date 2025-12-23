@@ -28,18 +28,21 @@ async function buildMorningBriefing(): Promise<{
   calendarSummary: string;
 }> {
   // Get top 3 curated stories
-  const curatedStories = getRecentNewsStories(3)
+  const allCuratedStories = await getRecentNewsStories(3);
+  const curatedStories = allCuratedStories
     .filter((s) => s.storyType === "curated")
     .map((s) => ({ headline: s.headline, id: s.id }));
 
   // Get top 3 new stories
-  const newStories = getRecentNewsStories(3)
+  const allNewStories = await getRecentNewsStories(3);
+  const newStories = allNewStories
     .filter((s) => s.storyType === "new")
     .map((s) => ({ headline: s.headline, id: s.id }));
 
   // Get today's tasks
   const today = new Date().toISOString().split("T")[0];
-  const todaysTasks = getTasks().filter((t) => t.dueDate === today && !t.completed);
+  const allTasks = await getTasks();
+  const todaysTasks = allTasks.filter((t) => t.dueDate === today && !t.completed);
   const tasksSummary = todaysTasks.length > 0
     ? `${todaysTasks.length} tasks due today: ${todaysTasks.map((t) => t.title).join(", ")}`
     : "No tasks for today";
@@ -48,7 +51,8 @@ async function buildMorningBriefing(): Promise<{
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-  const todaysEvents = getCalendarEvents().filter(
+  const allEvents = await getCalendarEvents();
+  const todaysEvents = allEvents.filter(
     (e) => new Date(e.start) >= startOfDay && new Date(e.start) < endOfDay
   );
   const calendarSummary = todaysEvents.length > 0
@@ -71,7 +75,7 @@ async function sendCuratedStories(
     try {
       const message = `TOP STORY: ${story.headline}\n\nReply: 👍 for more like this, 👎 for less`;
       const messageId = await sendSmsCallback(recipientPhone, message);
-      createBriefingDeliveryLog({
+      await createBriefingDeliveryLog({
         briefingType: "news_curated",
         recipientPhone,
         content: message,
@@ -97,7 +101,7 @@ async function sendNewStories(
     try {
       const message = `MORNING NEWS: ${story.headline}\n\nReply: 👍 for more, 👎 for less`;
       const messageId = await sendSmsCallback(recipientPhone, message);
-      createBriefingDeliveryLog({
+      await createBriefingDeliveryLog({
         briefingType: "news_new",
         recipientPhone,
         content: message,
@@ -120,7 +124,7 @@ async function sendWeatherBriefing(recipientPhone: string): Promise<void> {
     // TODO: Integrate with weather API
     const weatherMessage = "Weather: Check OpenWeatherMap for updates";
     const messageId = await sendSmsCallback(recipientPhone, weatherMessage);
-    createBriefingDeliveryLog({
+    await createBriefingDeliveryLog({
       briefingType: "weather",
       recipientPhone,
       content: weatherMessage,
@@ -142,7 +146,7 @@ async function sendSystemHealthReport(recipientPhone: string): Promise<void> {
     // TODO: Integrate with health report generation
     const healthMessage = "ZEKE HEALTH: All systems nominal ✓";
     const messageId = await sendSmsCallback(recipientPhone, healthMessage);
-    createBriefingDeliveryLog({
+    await createBriefingDeliveryLog({
       briefingType: "system_health",
       recipientPhone,
       content: healthMessage,

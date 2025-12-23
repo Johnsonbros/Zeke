@@ -96,13 +96,13 @@ async function handleBreakingNews(stories: NewsQueryResult[]): Promise<void> {
   const breakingStories = stories.filter((s) => s.urgency === "breaking");
   if (breakingStories.length === 0 || !sendSmsCallback) return;
 
-  const recipients = getBriefingRecipientsByType("news_curated");
+  const recipients = await getBriefingRecipientsByType("news_curated");
   for (const story of breakingStories) {
     for (const recipient of recipients) {
       const message = `BREAKING: ${story.headline}\n\n${story.summary}\n\nSource: ${story.source}`;
       try {
         const messageId = await sendSmsCallback(recipient.phoneNumber, message);
-        createBriefingDeliveryLog({
+        await createBriefingDeliveryLog({
           briefingType: "news_curated",
           recipientPhone: recipient.phoneNumber,
           content: message,
@@ -121,12 +121,12 @@ async function handleBreakingNews(stories: NewsQueryResult[]): Promise<void> {
  * Store news stories in database with feedback weighting
  */
 async function storeNewsStories(stories: NewsQueryResult[], storyType: "curated" | "new"): Promise<NewsStory[]> {
-  const feedbackStats = getNewsFeedbackStats();
+  const feedbackStats = await getNewsFeedbackStats();
   const stored: NewsStory[] = [];
 
   for (const story of stories) {
     try {
-      const newsStory = createNewsStory({
+      const newsStory = await createNewsStory({
         headline: story.headline,
         summary: story.summary,
         source: story.source,
