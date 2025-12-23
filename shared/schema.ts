@@ -3471,7 +3471,6 @@ export const batchJobTypes = [
   "MIDDAY_INCREMENTAL",
   "CONCEPT_REFLECTION",
   "DAILY_SUMMARY",
-  "MORNING_BRIEFING",
   "OMI_DIGEST",
   "FEEDBACK_TRAINING",
   "ANTICIPATION_ENGINE",
@@ -3499,7 +3498,6 @@ export const batchArtifactTypes = [
   "PATTERN_INSIGHT",
   "CORE_CONCEPT",
   "DAILY_SUMMARY_REPORT",
-  "MORNING_BRIEFING_REPORT",
   "OMI_DIGEST_REPORT",
   "FEEDBACK_TRAINING_RESULT",
   "ANTICIPATION_INSIGHT",
@@ -3978,3 +3976,132 @@ export interface TranscriptSegmentEvent {
   isFinal: boolean;
   provider: SttProvider;
 }
+
+// ============================================
+// MORNING BRIEFING & NEWS SYSTEM
+// ============================================
+
+// News topics - user's interests for personalized news
+export const newsTopics = sqliteTable("news_topics", {
+  id: text("id").primaryKey(),
+  topic: text("topic").notNull(),
+  description: text("description"),
+  keywords: text("keywords"), // JSON array of related keywords
+  priority: integer("priority").notNull().default(5), // 1-10, higher = more important
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertNewsTopicSchema = createInsertSchema(newsTopics).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertNewsTopic = z.infer<typeof insertNewsTopicSchema>;
+export type NewsTopic = typeof newsTopics.$inferSelect;
+
+// News stories - cached stories that were sent
+export const newsStories = sqliteTable("news_stories", {
+  id: text("id").primaryKey(),
+  headline: text("headline").notNull(),
+  summary: text("summary").notNull(),
+  source: text("source"),
+  url: text("url"),
+  topicId: text("topic_id"),
+  storyType: text("story_type", { enum: ["curated", "new", "discovery"] }).notNull().default("new"),
+  sentAt: text("sent_at"),
+  sentTo: text("sent_to"), // Phone number
+  messageId: text("message_id"), // Twilio message ID for feedback tracking
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertNewsStorySchema = createInsertSchema(newsStories).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertNewsStory = z.infer<typeof insertNewsStorySchema>;
+export type NewsStory = typeof newsStories.$inferSelect;
+
+// News feedback - thumbs up/down on stories
+export const newsFeedbackTypes = ["thumbs_up", "thumbs_down"] as const;
+export type NewsFeedbackType = typeof newsFeedbackTypes[number];
+
+export const newsFeedback = sqliteTable("news_feedback", {
+  id: text("id").primaryKey(),
+  storyId: text("story_id").notNull(),
+  topicId: text("topic_id"),
+  feedbackType: text("feedback_type", { enum: newsFeedbackTypes }).notNull(),
+  sourcePhone: text("source_phone"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertNewsFeedbackSchema = createInsertSchema(newsFeedback).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertNewsFeedback = z.infer<typeof insertNewsFeedbackSchema>;
+export type NewsFeedback = typeof newsFeedback.$inferSelect;
+
+// Briefing settings - configurable delivery settings
+export const briefingSettings = sqliteTable("briefing_settings", {
+  id: text("id").primaryKey(),
+  settingKey: text("setting_key").notNull().unique(),
+  settingValue: text("setting_value").notNull(),
+  description: text("description"),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertBriefingSettingSchema = createInsertSchema(briefingSettings).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertBriefingSetting = z.infer<typeof insertBriefingSettingSchema>;
+export type BriefingSetting = typeof briefingSettings.$inferSelect;
+
+// Briefing recipients - who gets what briefings
+export const briefingTypes = ["news_curated", "news_new", "weather", "system_health"] as const;
+export type BriefingType = typeof briefingTypes[number];
+
+export const briefingRecipients = sqliteTable("briefing_recipients", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  phoneNumber: text("phone_number").notNull(),
+  briefingType: text("briefing_type", { enum: briefingTypes }).notNull(),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertBriefingRecipientSchema = createInsertSchema(briefingRecipients).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertBriefingRecipient = z.infer<typeof insertBriefingRecipientSchema>;
+export type BriefingRecipient = typeof briefingRecipients.$inferSelect;
+
+// Briefing delivery log - tracks what was sent when
+export const briefingDeliveryLog = sqliteTable("briefing_delivery_log", {
+  id: text("id").primaryKey(),
+  briefingType: text("briefing_type", { enum: briefingTypes }).notNull(),
+  recipientPhone: text("recipient_phone").notNull(),
+  content: text("content").notNull(),
+  twilioMessageId: text("twilio_message_id"),
+  status: text("status", { enum: ["pending", "sent", "failed"] }).notNull().default("pending"),
+  sentAt: text("sent_at"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertBriefingDeliveryLogSchema = createInsertSchema(briefingDeliveryLog).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertBriefingDeliveryLog = z.infer<typeof insertBriefingDeliveryLogSchema>;
+export type BriefingDeliveryLog = typeof briefingDeliveryLog.$inferSelect;

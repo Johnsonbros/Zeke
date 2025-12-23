@@ -14192,4 +14192,493 @@ export function deleteSttSession(id: string): void {
   });
 }
 
+// ============================================
+// MORNING BRIEFING & NEWS SYSTEM
+// ============================================
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS news_topics (
+    id TEXT PRIMARY KEY,
+    topic TEXT NOT NULL,
+    description TEXT,
+    keywords TEXT,
+    priority INTEGER NOT NULL DEFAULT 5,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_news_topics_active ON news_topics(is_active);
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS news_stories (
+    id TEXT PRIMARY KEY,
+    headline TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    source TEXT,
+    url TEXT,
+    topic_id TEXT,
+    story_type TEXT NOT NULL DEFAULT 'new',
+    sent_at TEXT,
+    sent_to TEXT,
+    message_id TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_news_stories_type ON news_stories(story_type);
+  CREATE INDEX IF NOT EXISTS idx_news_stories_sent ON news_stories(sent_at);
+  CREATE INDEX IF NOT EXISTS idx_news_stories_message ON news_stories(message_id);
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS news_feedback (
+    id TEXT PRIMARY KEY,
+    story_id TEXT NOT NULL,
+    topic_id TEXT,
+    feedback_type TEXT NOT NULL,
+    source_phone TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_news_feedback_story ON news_feedback(story_id);
+  CREATE INDEX IF NOT EXISTS idx_news_feedback_topic ON news_feedback(topic_id);
+  CREATE INDEX IF NOT EXISTS idx_news_feedback_type ON news_feedback(feedback_type);
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS briefing_settings (
+    id TEXT PRIMARY KEY,
+    setting_key TEXT NOT NULL UNIQUE,
+    setting_value TEXT NOT NULL,
+    description TEXT,
+    updated_at TEXT NOT NULL
+  );
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS briefing_recipients (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    phone_number TEXT NOT NULL,
+    briefing_type TEXT NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_briefing_recipients_type ON briefing_recipients(briefing_type);
+  CREATE INDEX IF NOT EXISTS idx_briefing_recipients_active ON briefing_recipients(is_active);
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS briefing_delivery_log (
+    id TEXT PRIMARY KEY,
+    briefing_type TEXT NOT NULL,
+    recipient_phone TEXT NOT NULL,
+    content TEXT NOT NULL,
+    twilio_message_id TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    sent_at TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_briefing_delivery_type ON briefing_delivery_log(briefing_type);
+  CREATE INDEX IF NOT EXISTS idx_briefing_delivery_status ON briefing_delivery_log(status);
+`);
+
+// Row types for morning briefing tables
+interface NewsTopicRow {
+  id: string;
+  topic: string;
+  description: string | null;
+  keywords: string | null;
+  priority: number;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface NewsStoryRow {
+  id: string;
+  headline: string;
+  summary: string;
+  source: string | null;
+  url: string | null;
+  topic_id: string | null;
+  story_type: string;
+  sent_at: string | null;
+  sent_to: string | null;
+  message_id: string | null;
+  created_at: string;
+}
+
+interface NewsFeedbackRow {
+  id: string;
+  story_id: string;
+  topic_id: string | null;
+  feedback_type: string;
+  source_phone: string | null;
+  created_at: string;
+}
+
+interface BriefingSettingRow {
+  id: string;
+  setting_key: string;
+  setting_value: string;
+  description: string | null;
+  updated_at: string;
+}
+
+interface BriefingRecipientRow {
+  id: string;
+  name: string;
+  phone_number: string;
+  briefing_type: string;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface BriefingDeliveryLogRow {
+  id: string;
+  briefing_type: string;
+  recipient_phone: string;
+  content: string;
+  twilio_message_id: string | null;
+  status: string;
+  sent_at: string | null;
+  created_at: string;
+}
+
+// Map functions
+function mapNewsTopicRow(row: NewsTopicRow): NewsTopic {
+  return {
+    id: row.id,
+    topic: row.topic,
+    description: row.description,
+    keywords: row.keywords,
+    priority: row.priority,
+    isActive: row.is_active === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapNewsStoryRow(row: NewsStoryRow): NewsStory {
+  return {
+    id: row.id,
+    headline: row.headline,
+    summary: row.summary,
+    source: row.source,
+    url: row.url,
+    topicId: row.topic_id,
+    storyType: row.story_type as "curated" | "new" | "discovery",
+    sentAt: row.sent_at,
+    sentTo: row.sent_to,
+    messageId: row.message_id,
+    createdAt: row.created_at,
+  };
+}
+
+function mapNewsFeedbackRow(row: NewsFeedbackRow): NewsFeedback {
+  return {
+    id: row.id,
+    storyId: row.story_id,
+    topicId: row.topic_id,
+    feedbackType: row.feedback_type as NewsFeedbackType,
+    sourcePhone: row.source_phone,
+    createdAt: row.created_at,
+  };
+}
+
+function mapBriefingSettingRow(row: BriefingSettingRow): BriefingSetting {
+  return {
+    id: row.id,
+    settingKey: row.setting_key,
+    settingValue: row.setting_value,
+    description: row.description,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapBriefingRecipientRow(row: BriefingRecipientRow): BriefingRecipient {
+  return {
+    id: row.id,
+    name: row.name,
+    phoneNumber: row.phone_number,
+    briefingType: row.briefing_type as BriefingType,
+    isActive: row.is_active === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapBriefingDeliveryLogRow(row: BriefingDeliveryLogRow): BriefingDeliveryLog {
+  return {
+    id: row.id,
+    briefingType: row.briefing_type as BriefingType,
+    recipientPhone: row.recipient_phone,
+    content: row.content,
+    twilioMessageId: row.twilio_message_id,
+    status: row.status as "pending" | "sent" | "failed",
+    sentAt: row.sent_at,
+    createdAt: row.created_at,
+  };
+}
+
+// News Topics CRUD
+export function createNewsTopic(data: InsertNewsTopic): NewsTopic {
+  return wrapDbOperation("createNewsTopic", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      INSERT INTO news_topics (id, topic, description, keywords, priority, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.topic, data.description || null, data.keywords || null, data.priority ?? 5, data.isActive !== false ? 1 : 0, now, now);
+    const row = db.prepare(`SELECT * FROM news_topics WHERE id = ?`).get(id) as NewsTopicRow;
+    return mapNewsTopicRow(row);
+  });
+}
+
+export function getNewsTopics(activeOnly: boolean = true): NewsTopic[] {
+  return wrapDbOperation("getNewsTopics", () => {
+    const query = activeOnly
+      ? `SELECT * FROM news_topics WHERE is_active = 1 ORDER BY priority DESC, topic ASC`
+      : `SELECT * FROM news_topics ORDER BY priority DESC, topic ASC`;
+    const rows = db.prepare(query).all() as NewsTopicRow[];
+    return rows.map(mapNewsTopicRow);
+  });
+}
+
+export function getNewsTopic(id: string): NewsTopic | null {
+  return wrapDbOperation("getNewsTopic", () => {
+    const row = db.prepare(`SELECT * FROM news_topics WHERE id = ?`).get(id) as NewsTopicRow | undefined;
+    return row ? mapNewsTopicRow(row) : null;
+  });
+}
+
+export function updateNewsTopic(id: string, data: Partial<InsertNewsTopic>): NewsTopic | null {
+  return wrapDbOperation("updateNewsTopic", () => {
+    const now = getCurrentTimestamp();
+    const updates: string[] = ["updated_at = ?"];
+    const values: any[] = [now];
+    if (data.topic !== undefined) { updates.push("topic = ?"); values.push(data.topic); }
+    if (data.description !== undefined) { updates.push("description = ?"); values.push(data.description); }
+    if (data.keywords !== undefined) { updates.push("keywords = ?"); values.push(data.keywords); }
+    if (data.priority !== undefined) { updates.push("priority = ?"); values.push(data.priority); }
+    if (data.isActive !== undefined) { updates.push("is_active = ?"); values.push(data.isActive ? 1 : 0); }
+    values.push(id);
+    db.prepare(`UPDATE news_topics SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+    return getNewsTopic(id);
+  });
+}
+
+export function deleteNewsTopic(id: string): boolean {
+  return wrapDbOperation("deleteNewsTopic", () => {
+    const result = db.prepare(`DELETE FROM news_topics WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// News Stories CRUD
+export function createNewsStory(data: InsertNewsStory): NewsStory {
+  return wrapDbOperation("createNewsStory", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      INSERT INTO news_stories (id, headline, summary, source, url, topic_id, story_type, sent_at, sent_to, message_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.headline, data.summary, data.source || null, data.url || null, data.topicId || null, data.storyType ?? "new", data.sentAt || null, data.sentTo || null, data.messageId || null, now);
+    const row = db.prepare(`SELECT * FROM news_stories WHERE id = ?`).get(id) as NewsStoryRow;
+    return mapNewsStoryRow(row);
+  });
+}
+
+export function getNewsStoryByMessageId(messageId: string): NewsStory | null {
+  return wrapDbOperation("getNewsStoryByMessageId", () => {
+    const row = db.prepare(`SELECT * FROM news_stories WHERE message_id = ?`).get(messageId) as NewsStoryRow | undefined;
+    return row ? mapNewsStoryRow(row) : null;
+  });
+}
+
+export function getRecentNewsStories(limit: number = 50): NewsStory[] {
+  return wrapDbOperation("getRecentNewsStories", () => {
+    const rows = db.prepare(`SELECT * FROM news_stories ORDER BY created_at DESC LIMIT ?`).all(limit) as NewsStoryRow[];
+    return rows.map(mapNewsStoryRow);
+  });
+}
+
+export function updateNewsStorySent(id: string, sentTo: string, messageId: string): void {
+  wrapDbOperation("updateNewsStorySent", () => {
+    const now = getCurrentTimestamp();
+    db.prepare(`UPDATE news_stories SET sent_at = ?, sent_to = ?, message_id = ? WHERE id = ?`).run(now, sentTo, messageId, id);
+  });
+}
+
+// News Feedback CRUD
+export function createNewsFeedback(data: InsertNewsFeedback): NewsFeedback {
+  return wrapDbOperation("createNewsFeedback", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      INSERT INTO news_feedback (id, story_id, topic_id, feedback_type, source_phone, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, data.storyId, data.topicId || null, data.feedbackType, data.sourcePhone || null, now);
+    const row = db.prepare(`SELECT * FROM news_feedback WHERE id = ?`).get(id) as NewsFeedbackRow;
+    return mapNewsFeedbackRow(row);
+  });
+}
+
+export function getNewsFeedbackByTopic(topicId: string): NewsFeedback[] {
+  return wrapDbOperation("getNewsFeedbackByTopic", () => {
+    const rows = db.prepare(`SELECT * FROM news_feedback WHERE topic_id = ? ORDER BY created_at DESC`).all(topicId) as NewsFeedbackRow[];
+    return rows.map(mapNewsFeedbackRow);
+  });
+}
+
+export function getNewsFeedbackStats(): { thumbsUp: number; thumbsDown: number; byTopic: Record<string, { up: number; down: number }> } {
+  return wrapDbOperation("getNewsFeedbackStats", () => {
+    const rows = db.prepare(`SELECT topic_id, feedback_type, COUNT(*) as count FROM news_feedback GROUP BY topic_id, feedback_type`).all() as Array<{ topic_id: string | null; feedback_type: string; count: number }>;
+    let thumbsUp = 0;
+    let thumbsDown = 0;
+    const byTopic: Record<string, { up: number; down: number }> = {};
+    for (const row of rows) {
+      if (row.feedback_type === "thumbs_up") thumbsUp += row.count;
+      else thumbsDown += row.count;
+      if (row.topic_id) {
+        if (!byTopic[row.topic_id]) byTopic[row.topic_id] = { up: 0, down: 0 };
+        if (row.feedback_type === "thumbs_up") byTopic[row.topic_id].up += row.count;
+        else byTopic[row.topic_id].down += row.count;
+      }
+    }
+    return { thumbsUp, thumbsDown, byTopic };
+  });
+}
+
+// Briefing Settings CRUD
+export function getBriefingSetting(key: string): string | null {
+  return wrapDbOperation("getBriefingSetting", () => {
+    const row = db.prepare(`SELECT setting_value FROM briefing_settings WHERE setting_key = ?`).get(key) as { setting_value: string } | undefined;
+    return row ? row.setting_value : null;
+  });
+}
+
+export function setBriefingSetting(key: string, value: string, description?: string): void {
+  wrapDbOperation("setBriefingSetting", () => {
+    const now = getCurrentTimestamp();
+    const existing = db.prepare(`SELECT id FROM briefing_settings WHERE setting_key = ?`).get(key);
+    if (existing) {
+      db.prepare(`UPDATE briefing_settings SET setting_value = ?, description = COALESCE(?, description), updated_at = ? WHERE setting_key = ?`).run(value, description || null, now, key);
+    } else {
+      const id = uuidv4();
+      db.prepare(`INSERT INTO briefing_settings (id, setting_key, setting_value, description, updated_at) VALUES (?, ?, ?, ?, ?)`).run(id, key, value, description || null, now);
+    }
+  });
+}
+
+export function getAllBriefingSettings(): BriefingSetting[] {
+  return wrapDbOperation("getAllBriefingSettings", () => {
+    const rows = db.prepare(`SELECT * FROM briefing_settings ORDER BY setting_key`).all() as BriefingSettingRow[];
+    return rows.map(mapBriefingSettingRow);
+  });
+}
+
+// Briefing Recipients CRUD
+export function createBriefingRecipient(data: InsertBriefingRecipient): BriefingRecipient {
+  return wrapDbOperation("createBriefingRecipient", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      INSERT INTO briefing_recipients (id, name, phone_number, briefing_type, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.name, data.phoneNumber, data.briefingType, data.isActive !== false ? 1 : 0, now, now);
+    const row = db.prepare(`SELECT * FROM briefing_recipients WHERE id = ?`).get(id) as BriefingRecipientRow;
+    return mapBriefingRecipientRow(row);
+  });
+}
+
+export function getBriefingRecipientsByType(briefingType: BriefingType): BriefingRecipient[] {
+  return wrapDbOperation("getBriefingRecipientsByType", () => {
+    const rows = db.prepare(`SELECT * FROM briefing_recipients WHERE briefing_type = ? AND is_active = 1`).all(briefingType) as BriefingRecipientRow[];
+    return rows.map(mapBriefingRecipientRow);
+  });
+}
+
+export function getAllBriefingRecipients(): BriefingRecipient[] {
+  return wrapDbOperation("getAllBriefingRecipients", () => {
+    const rows = db.prepare(`SELECT * FROM briefing_recipients ORDER BY briefing_type, name`).all() as BriefingRecipientRow[];
+    return rows.map(mapBriefingRecipientRow);
+  });
+}
+
+export function updateBriefingRecipient(id: string, data: Partial<InsertBriefingRecipient>): BriefingRecipient | null {
+  return wrapDbOperation("updateBriefingRecipient", () => {
+    const now = getCurrentTimestamp();
+    const updates: string[] = ["updated_at = ?"];
+    const values: any[] = [now];
+    if (data.name !== undefined) { updates.push("name = ?"); values.push(data.name); }
+    if (data.phoneNumber !== undefined) { updates.push("phone_number = ?"); values.push(data.phoneNumber); }
+    if (data.briefingType !== undefined) { updates.push("briefing_type = ?"); values.push(data.briefingType); }
+    if (data.isActive !== undefined) { updates.push("is_active = ?"); values.push(data.isActive ? 1 : 0); }
+    values.push(id);
+    db.prepare(`UPDATE briefing_recipients SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+    const row = db.prepare(`SELECT * FROM briefing_recipients WHERE id = ?`).get(id) as BriefingRecipientRow | undefined;
+    return row ? mapBriefingRecipientRow(row) : null;
+  });
+}
+
+export function deleteBriefingRecipient(id: string): boolean {
+  return wrapDbOperation("deleteBriefingRecipient", () => {
+    const result = db.prepare(`DELETE FROM briefing_recipients WHERE id = ?`).run(id);
+    return result.changes > 0;
+  });
+}
+
+// Briefing Delivery Log CRUD
+export function createBriefingDeliveryLog(data: InsertBriefingDeliveryLog): BriefingDeliveryLog {
+  return wrapDbOperation("createBriefingDeliveryLog", () => {
+    const id = uuidv4();
+    const now = getCurrentTimestamp();
+    db.prepare(`
+      INSERT INTO briefing_delivery_log (id, briefing_type, recipient_phone, content, twilio_message_id, status, sent_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.briefingType, data.recipientPhone, data.content, data.twilioMessageId || null, data.status ?? "pending", data.sentAt || null, now);
+    const row = db.prepare(`SELECT * FROM briefing_delivery_log WHERE id = ?`).get(id) as BriefingDeliveryLogRow;
+    return mapBriefingDeliveryLogRow(row);
+  });
+}
+
+export function getRecentBriefingDeliveries(limit: number = 50): BriefingDeliveryLog[] {
+  return wrapDbOperation("getRecentBriefingDeliveries", () => {
+    const rows = db.prepare(`SELECT * FROM briefing_delivery_log ORDER BY created_at DESC LIMIT ?`).all(limit) as BriefingDeliveryLogRow[];
+    return rows.map(mapBriefingDeliveryLogRow);
+  });
+}
+
+export function updateBriefingDeliveryStatus(id: string, status: "sent" | "failed", twilioMessageId?: string): void {
+  wrapDbOperation("updateBriefingDeliveryStatus", () => {
+    const now = getCurrentTimestamp();
+    if (twilioMessageId) {
+      db.prepare(`UPDATE briefing_delivery_log SET status = ?, twilio_message_id = ?, sent_at = ? WHERE id = ?`).run(status, twilioMessageId, now, id);
+    } else {
+      db.prepare(`UPDATE briefing_delivery_log SET status = ?, sent_at = ? WHERE id = ?`).run(status, now, id);
+    }
+  });
+}
+
+// Initialize default briefing settings if not present
+function initializeBriefingDefaults(): void {
+  const defaults: Array<{ key: string; value: string; description: string }> = [
+    { key: "briefing_time", value: "06:00", description: "Time to send morning briefings (24hr format)" },
+    { key: "briefing_timezone", value: "America/New_York", description: "Timezone for briefing schedule" },
+    { key: "curated_stories_count", value: "3", description: "Number of curated top stories to send" },
+    { key: "new_stories_count", value: "3", description: "Number of new morning stories to send" },
+    { key: "briefing_enabled", value: "true", description: "Master switch for morning briefings" },
+  ];
+  for (const def of defaults) {
+    const existing = getBriefingSetting(def.key);
+    if (existing === null) {
+      setBriefingSetting(def.key, def.value, def.description);
+    }
+  }
+}
+
+initializeBriefingDefaults();
+
 export { db };

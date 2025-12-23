@@ -132,15 +132,6 @@ const JOB_TEMPLATES: BatchJobTemplate[] = [
     description: "Generate comprehensive end-of-day journal entry with insights",
   },
   {
-    type: "MORNING_BRIEFING",
-    window: "nightly",
-    priority: 8,
-    artifactTypes: ["MORNING_BRIEFING_REPORT"],
-    requiresAI: true,
-    estimatedTokensPerItem: 3800,
-    description: "Prepare next morning's briefing content with tasks, calendar, and recommendations",
-  },
-  {
     type: "OMI_DIGEST",
     window: "nightly",
     priority: 9,
