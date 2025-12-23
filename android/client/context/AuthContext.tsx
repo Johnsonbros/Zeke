@@ -9,7 +9,7 @@
  * 
  * Critical functions:
  * - requestSmsCode() - Initiates SMS pairing flow
- * - verifySmsCode() - Verifies 4-digit SMS code
+ * - verifySmsCode() - Verifies 6-digit SMS code
  * - pairDevice() - Legacy pairing with secret
  * - unpairDevice() - Clears device credentials
  * 
@@ -37,7 +37,7 @@ import React, {
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { setDeviceToken } from "@/lib/query-client";
-import { apiClient, ApiError } from "@/lib/api-client";
+import { apiClient, ApiError, RateLimitError } from "@/lib/api-client";
 
 const DEVICE_TOKEN_KEY = "zeke_device_token";
 const DEVICE_ID_KEY = "zeke_device_id";
@@ -45,6 +45,15 @@ const LAST_VERIFIED_KEY = "zeke_last_verified";
 
 // Trust cached auth for 7 days before requiring re-verification
 const OFFLINE_AUTH_VALIDITY_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Redact sensitive token values for safe logging
+ */
+function redactToken(token: string | null): string {
+  if (!token) return "null";
+  if (token.length <= 4) return "****";
+  return `${token.substring(0, 4)}****`;
+}
 
 // Load device token synchronously on web (for initialization before queries start)
 export function loadTokenSync(): void {
@@ -69,6 +78,7 @@ interface SmsCodeResult {
   sessionId?: string;
   expiresIn?: number;
   error?: string;
+  retryAfterSeconds?: number;
 }
 
 interface VerifyCodeResult {
@@ -245,7 +255,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               isAuthenticated: false,
               isLoading: false,
               deviceId: null,
-              error: "Session expired. Please pair again.",
+              error: "Your session has expired. Please pair your device again.",
               isOfflineMode: false,
             });
             return false;
@@ -427,6 +437,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error("[Auth] SMS code request error:", error);
+
+        // Handle rate limit error
+        if (error instanceof RateLimitError) {
+          const errorMessage = `Too many requests. Please wait ${error.retryAfterSeconds} seconds.`;
+          setState((prev) => ({ ...prev, isLoading: false, error: errorMessage }));
+          return {
+            success: false,
+            error: errorMessage,
+            retryAfterSeconds: error.retryAfterSeconds
+          };
+        }
+
         const errorMessage =
           error instanceof ApiError
             ? error.message

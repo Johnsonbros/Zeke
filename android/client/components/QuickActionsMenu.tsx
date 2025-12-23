@@ -113,7 +113,7 @@ export function QuickActionsMenu({ actions }: QuickActionsMenuProps) {
           style={[
             styles.menuContainer,
             {
-              bottom: tabBarHeight + Spacing.xl + 70,
+              bottom: tabBarHeight + Spacing.sm + 70,
               right: Spacing.lg,
             },
             menuContainerAnimatedStyle,
@@ -148,7 +148,7 @@ export function QuickActionsMenu({ actions }: QuickActionsMenuProps) {
         style={[
           styles.fab,
           {
-            bottom: tabBarHeight + Spacing.xl,
+            bottom: tabBarHeight + Spacing.sm,
             right: Spacing.lg,
           },
         ]}

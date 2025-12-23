@@ -4,6 +4,19 @@ import { getApiUrl, getLocalApiUrl, getAuthHeaders } from "./query-client";
 declare const __DEV__: boolean;
 
 /**
+ * Rate limit error with retry timing
+ */
+export class RateLimitError extends Error {
+  public retryAfterSeconds: number;
+
+  constructor(retryAfter: number) {
+    super(`Rate limited. Try again in ${retryAfter} seconds.`);
+    this.name = "RateLimitError";
+    this.retryAfterSeconds = retryAfter;
+  }
+}
+
+/**
  * Custom API error with detailed context
  */
 export class ApiError extends Error {
@@ -316,8 +329,44 @@ class ZekeApiClient {
           const bodyText = await response.text();
           const errorMsg = `${response.status} ${response.statusText}`;
 
-          // Only retry on specific status codes
-          const retryableStatuses = [408, 429, 500, 502, 503, 504];
+          // Handle 429 rate limiting - throw RateLimitError immediately (no retry)
+          if (response.status === 429) {
+            const retryAfter = parseInt(response.headers.get("Retry-After") || "60", 10);
+            throw new RateLimitError(retryAfter);
+          }
+
+          // Handle 401 with user-friendly message
+          if (response.status === 401) {
+            throw new ApiError("Session expired. Please authenticate again.", {
+              status: 401,
+              url: url.toString(),
+              method,
+              bodyText,
+            });
+          }
+
+          // Handle 500 with user-friendly message
+          if (response.status === 500) {
+            throw new ApiError("Server error. Please try again later.", {
+              status: 500,
+              url: url.toString(),
+              method,
+              bodyText,
+            });
+          }
+
+          // Handle 503 with user-friendly message
+          if (response.status === 503) {
+            throw new ApiError("Service temporarily unavailable. Please try again.", {
+              status: 503,
+              url: url.toString(),
+              method,
+              bodyText,
+            });
+          }
+
+          // Only retry on specific status codes (removed 429 since we handle it above)
+          const retryableStatuses = [408, 500, 502, 503, 504];
           if (
             retryableStatuses.includes(response.status) &&
             attempt < maxAttempts - 1
@@ -363,6 +412,11 @@ class ZekeApiClient {
 
         return data;
       } catch (error) {
+        // If RateLimitError, rethrow immediately (no retry)
+        if (error instanceof RateLimitError) {
+          throw error;
+        }
+
         // If already an ApiError, keep it
         if (error instanceof ApiError) {
           lastError = error;

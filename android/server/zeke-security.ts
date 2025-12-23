@@ -4,14 +4,12 @@ import type { Request, Response, NextFunction } from "express";
 const SHARED_SECRET = process.env.ZEKE_SHARED_SECRET || "";
 const PROXY_ID = process.env.ZEKE_PROXY_ID || "zeke-mobile-proxy";
 const TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000;
-const TIMESTAMP_TOLERANCE_SECONDS = Math.floor(TIMESTAMP_TOLERANCE_MS / 1000);
 
 const usedNonces = new Map<string, number>();
 
 setInterval(() => {
   const now = Date.now();
-  const entries = Array.from(usedNonces.entries());
-  for (const [nonce, timestamp] of entries) {
+  for (const [nonce, timestamp] of usedNonces.entries()) {
     if (now - timestamp > TIMESTAMP_TOLERANCE_MS * 2) {
       usedNonces.delete(nonce);
     }
@@ -34,14 +32,6 @@ export function generateNonce(): string {
   return crypto.randomBytes(16).toString("hex");
 }
 
-function normalizePath(path: string): string {
-  try {
-    return decodeURIComponent(path);
-  } catch {
-    return path;
-  }
-}
-
 export function signRequest(
   method: string,
   path: string,
@@ -49,15 +39,16 @@ export function signRequest(
   timestamp?: number,
   nonce?: string
 ): SignedRequestHeaders {
+  // ZEKE backend expects timestamp in SECONDS for signature validation
   const ts = timestamp || Math.floor(Date.now() / 1000);
   const n = nonce || generateNonce();
   const requestId = generateRequestId();
   
-  const normalizedPath = normalizePath(path);
   const bodyString = body || "";
   const bodyHash = crypto.createHash("sha256").update(bodyString).digest("hex");
   
-  const payload = `${ts}.${n}.${method.toUpperCase()}.${normalizedPath}.${bodyHash}`;
+  // ZEKE backend payload format: timestamp.nonce.METHOD.path.bodyHash
+  const payload = `${ts}.${n}.${method.toUpperCase()}.${path}.${bodyHash}`;
   
   const signature = crypto
     .createHmac("sha256", SHARED_SECRET)
@@ -83,10 +74,9 @@ export function verifySignature(
   signature: string
 ): { valid: boolean; error?: string } {
   const ts = parseInt(timestamp, 10);
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  const nowMs = Date.now();
+  const now = Date.now();
   
-  if (isNaN(ts) || Math.abs(nowSeconds - ts) > TIMESTAMP_TOLERANCE_SECONDS) {
+  if (isNaN(ts) || Math.abs(now - ts) > TIMESTAMP_TOLERANCE_MS) {
     return { valid: false, error: "Timestamp expired or invalid" };
   }
   
@@ -94,30 +84,27 @@ export function verifySignature(
     return { valid: false, error: "Nonce already used (replay attack detected)" };
   }
   
-  const normalizedPath = normalizePath(path);
-  const bodyString = body || "";
-  const bodyHash = crypto.createHash("sha256").update(bodyString).digest("hex");
-  const payload = `${timestamp}.${nonce}.${method.toUpperCase()}.${normalizedPath}.${bodyHash}`;
+  const payload = [
+    method.toUpperCase(),
+    path,
+    body || "",
+    timestamp,
+    nonce,
+    proxyId,
+  ].join("|");
   
   const expectedSignature = crypto
     .createHmac("sha256", SHARED_SECRET)
     .update(payload)
     .digest("hex");
   
-  let isValid = false;
-  try {
-    if (signature.length === expectedSignature.length) {
-      isValid = crypto.timingSafeEqual(
-        Buffer.from(signature, "hex"),
-        Buffer.from(expectedSignature, "hex")
-      );
-    }
-  } catch {
-    return { valid: false, error: "Invalid signature format" };
-  }
+  const isValid = crypto.timingSafeEqual(
+    Buffer.from(signature, "hex"),
+    Buffer.from(expectedSignature, "hex")
+  );
   
   if (isValid) {
-    usedNonces.set(nonce, nowMs);
+    usedNonces.set(nonce, now);
     return { valid: true };
   }
   

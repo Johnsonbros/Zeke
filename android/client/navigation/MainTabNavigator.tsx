@@ -1,20 +1,21 @@
 import React from "react";
-import { View, StyleSheet, Platform } from "react-native";
+import { View, StyleSheet } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { NavigatorScreenParams } from "@react-navigation/native";
+import * as Haptics from "expo-haptics";
 
 import HomeStackNavigator from "@/navigation/HomeStackNavigator";
 import CommunicationStackNavigator from "@/navigation/CommunicationStackNavigator";
 import CalendarStackNavigator from "@/navigation/CalendarStackNavigator";
 import GeoStackNavigator from "@/navigation/GeoStackNavigator";
 import TasksStackNavigator from "@/navigation/TasksStackNavigator";
-import { useTheme } from "@/hooks/useTheme";
-import { Spacing } from "@/constants/theme";
+import { ZekeLauncher, LauncherItem } from "@/components/ZekeLauncher";
+import { Gradients } from "@/constants/theme";
+import type { HomeStackParamList } from "@/navigation/HomeStackNavigator";
 
 export type MainTabParamList = {
-  HomeTab: undefined;
+  HomeTab: NavigatorScreenParams<HomeStackParamList> | undefined;
   CommsTab: undefined;
   CalendarTab: undefined;
   GeoTab: undefined;
@@ -23,54 +24,106 @@ export type MainTabParamList = {
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
+interface ZekeLauncherWrapperProps {
+  navigation: any;
+}
+
+function ZekeLauncherWrapper({ navigation }: ZekeLauncherWrapperProps) {
+
+  const launcherItems: LauncherItem[] = [
+    {
+      id: "home",
+      icon: "home",
+      label: "Home",
+      gradientColors: ["#6366F1", "#8B5CF6"],
+      onPress: () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        navigation.navigate("HomeTab");
+      },
+    },
+    {
+      id: "comms",
+      icon: "phone",
+      label: "Comms",
+      gradientColors: ["#8B5CF6", "#A855F7"],
+      onPress: () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        navigation.navigate("CommsTab");
+      },
+    },
+    {
+      id: "calendar",
+      icon: "calendar",
+      label: "Calendar",
+      gradientColors: ["#10B981", "#059669"],
+      onPress: () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        navigation.navigate("CalendarTab");
+      },
+    },
+    {
+      id: "geo",
+      icon: "map-pin",
+      label: "Geo",
+      gradientColors: ["#EF4444", "#DC2626"],
+      onPress: () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        navigation.navigate("GeoTab");
+      },
+    },
+    {
+      id: "tasks",
+      icon: "check-square",
+      label: "Tasks",
+      gradientColors: ["#F59E0B", "#D97706"],
+      onPress: () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        navigation.navigate("TasksTab");
+      },
+    },
+    {
+      id: "upload",
+      icon: "upload-cloud",
+      label: "Upload",
+      gradientColors: Gradients.accent,
+      onPress: () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        navigation.navigate("HomeTab", { screen: "AudioUpload" });
+      },
+    },
+    {
+      id: "message",
+      icon: "message-circle",
+      label: "Message",
+      gradientColors: ["#06B6D4", "#0891B2"],
+      onPress: () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        navigation.navigate("CommsTab");
+      },
+    },
+    {
+      id: "settings",
+      icon: "settings",
+      label: "Settings",
+      gradientColors: ["#64748B", "#475569"],
+      onPress: () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        navigation.navigate("HomeTab", { screen: "Settings" });
+      },
+    },
+  ];
+
+  return <ZekeLauncher items={launcherItems} />;
+}
+
 export default function MainTabNavigator() {
-  const { theme, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
-
-  const androidBottomPadding = Math.max(insets.bottom, 16);
-  const tabBarHeight =
-    Platform.OS === "android" ? 80 + androidBottomPadding : 80;
-
   return (
     <View style={styles.container}>
       <Tab.Navigator
         initialRouteName="HomeTab"
+        tabBar={({ navigation }) => <ZekeLauncherWrapper navigation={navigation} />}
         screenOptions={{
-          tabBarActiveTintColor: theme.primary,
-          tabBarInactiveTintColor: theme.tabIconDefault,
-          tabBarStyle: {
-            position: "absolute",
-            backgroundColor: Platform.select({
-              ios: "transparent",
-              android: theme.backgroundDefault,
-            }),
-            borderTopWidth: Platform.OS === "android" ? 1 : 0,
-            borderTopColor: theme.border,
-            elevation: Platform.OS === "android" ? 8 : 0,
-            height: tabBarHeight,
-            paddingBottom: Platform.OS === "ios" ? 24 : androidBottomPadding,
-            paddingTop: Platform.OS === "android" ? Spacing.sm : 0,
-          },
-          tabBarBackground: () =>
-            Platform.OS === "ios" ? (
-              <BlurView
-                intensity={100}
-                tint={isDark ? "dark" : "light"}
-                style={StyleSheet.absoluteFill}
-              />
-            ) : null,
           headerShown: false,
-          tabBarLabelStyle: {
-            fontSize: 12,
-            fontWeight: "600",
-            marginTop: Platform.OS === "android" ? 4 : 0,
-          },
-          tabBarIconStyle: {
-            marginBottom: Platform.OS === "android" ? -4 : 0,
-          },
-          tabBarItemStyle: {
-            paddingVertical: Platform.OS === "android" ? Spacing.xs : 0,
-          },
         }}
       >
         <Tab.Screen

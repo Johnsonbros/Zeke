@@ -31,8 +31,6 @@ import { deviceTokens } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
 const ZEKE_SECRET = process.env.ZEKE_SHARED_SECRET;
-const TOKEN_EXPIRY_DAYS = 30;
-const TOKEN_EXPIRY_MS = TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
 
 interface DeviceTokenData {
   token: string;
@@ -120,19 +118,7 @@ export async function registerDevice(deviceName: string): Promise<DeviceTokenDat
 export function validateDeviceToken(token: string): DeviceTokenData | null {
   const device = tokenCache.get(token);
   if (device) {
-    const now = new Date();
-    const tokenAge = now.getTime() - device.createdAt.getTime();
-    
-    if (tokenAge > TOKEN_EXPIRY_MS) {
-      console.log(`[DeviceAuth] Token expired for device: ${device.deviceId} (age: ${Math.floor(tokenAge / (24 * 60 * 60 * 1000))} days)`);
-      tokenCache.delete(token);
-      db.delete(deviceTokens)
-        .where(eq(deviceTokens.token, token))
-        .catch(err => console.error('[DeviceAuth] Failed to delete expired token:', err));
-      return null;
-    }
-    
-    device.lastUsed = now;
+    device.lastUsed = new Date();
     
     db.update(deviceTokens)
       .set({ lastUsedAt: device.lastUsed })
@@ -170,14 +156,13 @@ export async function revokeAllDeviceTokens(): Promise<number> {
   return count;
 }
 
-export function listDevices(): Array<Omit<DeviceTokenData, 'token'> & { tokenPreview: string; expiresAt: Date }> {
+export function listDevices(): Array<Omit<DeviceTokenData, 'token'> & { tokenPreview: string }> {
   return Array.from(tokenCache.values()).map(device => ({
     deviceId: device.deviceId,
     deviceName: device.deviceName,
     createdAt: device.createdAt,
     lastUsed: device.lastUsed,
-    tokenPreview: `${device.token.substring(0, 4)}****`,
-    expiresAt: new Date(device.createdAt.getTime() + TOKEN_EXPIRY_MS),
+    tokenPreview: `${device.token.substring(0, 8)}...${device.token.substring(device.token.length - 4)}`
   }));
 }
 

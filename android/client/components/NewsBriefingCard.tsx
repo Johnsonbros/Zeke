@@ -536,6 +536,7 @@ const styles = StyleSheet.create({
   sectionContainer: {
     borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
+    marginBottom: Spacing.xl,
   },
   sectionWrapper: {
     marginVertical: Spacing.sm,

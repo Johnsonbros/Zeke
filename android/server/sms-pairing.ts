@@ -35,42 +35,9 @@ import { eq, lt } from "drizzle-orm";
 const MASTER_PHONE_NUMBER = process.env.ZEKE_MASTER_PHONE;
 const CODE_EXPIRY_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 3;
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const MAX_REQUESTS_PER_WINDOW = 3;
-
-const rateLimitMap = new Map<string, { count: number; windowStart: number }>();
-
-setInterval(() => {
-  const now = Date.now();
-  const keys = Array.from(rateLimitMap.keys());
-  for (const key of keys) {
-    const record = rateLimitMap.get(key);
-    if (record && now - record.windowStart > RATE_LIMIT_WINDOW_MS * 2) {
-      rateLimitMap.delete(key);
-    }
-  }
-}, 5 * 60 * 1000);
 
 function generateCode(): string {
-  return crypto.randomInt(100000, 999999).toString();
-}
-
-function checkRateLimit(identifier: string): { allowed: boolean; retryAfterMs?: number } {
-  const now = Date.now();
-  const record = rateLimitMap.get(identifier);
-  
-  if (!record || now - record.windowStart > RATE_LIMIT_WINDOW_MS) {
-    rateLimitMap.set(identifier, { count: 1, windowStart: now });
-    return { allowed: true };
-  }
-  
-  if (record.count >= MAX_REQUESTS_PER_WINDOW) {
-    const retryAfterMs = RATE_LIMIT_WINDOW_MS - (now - record.windowStart);
-    return { allowed: false, retryAfterMs };
-  }
-  
-  record.count++;
-  return { allowed: true };
+  return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
 function generateSessionId(): string {
@@ -86,26 +53,13 @@ async function cleanupExpiredCodes(): Promise<void> {
   }
 }
 
-export async function requestPairingCode(deviceName: string, clientIP?: string): Promise<{
+export async function requestPairingCode(deviceName: string): Promise<{
   success: boolean;
   sessionId?: string;
   error?: string;
   expiresIn?: number;
-  retryAfterSeconds?: number;
 }> {
   await cleanupExpiredCodes();
-
-  const rateLimitKey = clientIP || 'global';
-  const rateCheck = checkRateLimit(rateLimitKey);
-  if (!rateCheck.allowed) {
-    const retryAfterSeconds = Math.ceil((rateCheck.retryAfterMs || 60000) / 1000);
-    console.warn(`[SMS Pairing] Rate limit exceeded for ${rateLimitKey}`);
-    return {
-      success: false,
-      error: `Too many pairing requests. Please wait ${retryAfterSeconds} seconds.`,
-      retryAfterSeconds,
-    };
-  }
 
   if (!MASTER_PHONE_NUMBER) {
     console.error("[SMS Pairing] ZEKE_MASTER_PHONE not configured");

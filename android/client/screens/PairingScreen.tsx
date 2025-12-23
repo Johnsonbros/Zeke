@@ -48,12 +48,13 @@ export function PairingScreen() {
   const { requestSmsCode, verifySmsCode, pairDevice, smsPairingState, isLoading, error } = useAuth();
   const [step, setStep] = useState<PairingStep>("request");
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [code, setCode] = useState(["", "", "", ""]);
+  const [code, setCode] = useState(["", "", "", "", "", ""]);
   const [localError, setLocalError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number>(0);
   const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
   const [legacySecret, setLegacySecret] = useState("");
   const [codeSentSuccess, setCodeSentSuccess] = useState(false);
+  const [rateLimitCountdown, setRateLimitCountdown] = useState<number>(0);
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
   useEffect(() => {
@@ -77,6 +78,22 @@ export function PairingScreen() {
       setAttemptsRemaining(smsPairingState.attemptsRemaining);
     }
   }, [smsPairingState.attemptsRemaining]);
+
+  useEffect(() => {
+    if (rateLimitCountdown <= 0) return;
+
+    const timer = setInterval(() => {
+      setRateLimitCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [rateLimitCountdown]);
 
   useEffect(() => {
     if (smsPairingState.sessionId && smsPairingState.expiresIn && smsPairingState.expiresIn > 0) {
@@ -114,6 +131,8 @@ export function PairingScreen() {
       setCodeSentSuccess(true);
       setStep("verify");
       setTimeout(() => inputRefs.current[0]?.focus(), 100);
+    } else if (result.retryAfterSeconds) {
+      setRateLimitCountdown(result.retryAfterSeconds);
     }
   };
 
@@ -123,17 +142,17 @@ export function PairingScreen() {
     }
 
     if (value.length > 1) {
-      const digits = value.replace(/\D/g, '').slice(0, 4).split('');
-      const newCode = ["", "", "", ""];
+      const digits = value.replace(/\D/g, '').slice(0, 6).split('');
+      const newCode = ["", "", "", "", "", ""];
       digits.forEach((digit, i) => {
         newCode[i] = digit;
       });
       setCode(newCode);
       setLocalError(null);
-      if (digits.length === 4) {
-        inputRefs.current[3]?.focus();
+      if (digits.length === 6) {
+        inputRefs.current[5]?.focus();
       } else if (digits.length > 0) {
-        inputRefs.current[Math.min(digits.length, 3)]?.focus();
+        inputRefs.current[Math.min(digits.length, 5)]?.focus();
       }
       return;
     }
@@ -143,7 +162,7 @@ export function PairingScreen() {
     setCode(newCode);
     setLocalError(null);
 
-    if (value && index < 3) {
+    if (value && index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
   };
@@ -156,8 +175,8 @@ export function PairingScreen() {
 
   const handleVerifyCode = async () => {
     const finalCode = code.join("");
-    if (finalCode.length !== 4) {
-      setLocalError("Please enter all 4 digits");
+    if (finalCode.length !== 6) {
+      setLocalError("Please enter all 6 digits");
       return;
     }
 
@@ -175,7 +194,7 @@ export function PairingScreen() {
         setAttemptsRemaining(result.attemptsRemaining);
       }
       if (result.attemptsRemaining === 0) {
-        setCode(["", "", "", ""]);
+        setCode(["", "", "", "", "", ""]);
         setStep("request");
         setSessionId(null);
         setCountdown(0);
@@ -201,7 +220,7 @@ export function PairingScreen() {
 
   const handleBack = () => {
     setStep("request");
-    setCode(["", "", "", ""]);
+    setCode(["", "", "", "", "", ""]);
     setSessionId(null);
     setLocalError(null);
     setCountdown(0);
@@ -269,9 +288,9 @@ export function PairingScreen() {
             ) : null}
 
             <Pressable
-              style={[styles.button, isLoading && styles.buttonDisabled]}
+              style={[styles.button, (isLoading || rateLimitCountdown > 0) && styles.buttonDisabled]}
               onPress={handleRequestCode}
-              disabled={isLoading}
+              disabled={isLoading || rateLimitCountdown > 0}
             >
               <LinearGradient
                 colors={Gradients.accent}
@@ -281,6 +300,10 @@ export function PairingScreen() {
               >
                 {isLoading ? (
                   <ActivityIndicator color={Colors.dark.text} />
+                ) : rateLimitCountdown > 0 ? (
+                  <ThemedText style={styles.buttonText}>
+                    Try again in {rateLimitCountdown}s
+                  </ThemedText>
                 ) : (
                   <>
                     <Feather name="smartphone" size={20} color={Colors.dark.text} />
@@ -311,7 +334,7 @@ export function PairingScreen() {
             ) : null}
 
             <ThemedText style={styles.label}>
-              Enter the 4-digit code below
+              Enter the 6-digit code below
             </ThemedText>
 
             <View style={styles.codeContainer}>
@@ -329,7 +352,7 @@ export function PairingScreen() {
                     handleKeyPress(index, nativeEvent.key)
                   }
                   keyboardType="number-pad"
-                  maxLength={index === 0 ? 4 : 1}
+                  maxLength={index === 0 ? 6 : 1}
                   textContentType={index === 0 ? "oneTimeCode" : "none"}
                   autoComplete={index === 0 ? "one-time-code" : "off"}
                   selectTextOnFocus
@@ -525,12 +548,12 @@ const styles = StyleSheet.create({
   codeContainer: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: Spacing.md,
+    gap: Spacing.sm,
     marginBottom: Spacing.lg,
   },
   codeInput: {
-    width: 56,
-    height: 64,
+    width: 44,
+    height: 56,
     backgroundColor: Colors.dark.backgroundSecondary,
     borderRadius: BorderRadius.md,
     fontSize: 28,

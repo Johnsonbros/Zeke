@@ -23,10 +23,7 @@ const CACHE_TTL_MS = 60000; // 60 seconds
 const proxyCache: Map<string, CacheEntry> = new Map();
 
 function getCacheKey(endpoint: string, deviceToken?: string): string {
-  if (!deviceToken) {
-    return `${endpoint}:no-cache`;
-  }
-  return `${endpoint}:${deviceToken}`;
+  return `${endpoint}:${deviceToken || 'anonymous'}`;
 }
 
 function isCacheValid(entry: CacheEntry | undefined): boolean {
@@ -35,8 +32,7 @@ function isCacheValid(entry: CacheEntry | undefined): boolean {
 }
 
 function invalidateCache(endpointPrefix: string): void {
-  const keys = Array.from(proxyCache.keys());
-  for (const key of keys) {
+  for (const key of proxyCache.keys()) {
     if (key.startsWith(endpointPrefix)) {
       proxyCache.delete(key);
     }
@@ -117,15 +113,8 @@ async function proxyToZeke(
       fetchOptions.body = bodyStr;
     }
     
-    const isProduction = process.env.NODE_ENV === 'production';
     console.log(`[ZEKE Proxy] ${method} ${url.href} [${requestId}]`);
-    if (!isProduction) {
-      const sanitizedHeaders = { ...fetchOptions.headers } as Record<string, string>;
-      if (sanitizedHeaders['authorization']) sanitizedHeaders['authorization'] = '[REDACTED]';
-      if (sanitizedHeaders['x-zeke-device-token']) sanitizedHeaders['x-zeke-device-token'] = '[REDACTED]';
-      if (sanitizedHeaders['X-ZEKE-Signature']) sanitizedHeaders['X-ZEKE-Signature'] = '[REDACTED]';
-      console.log(`[ZEKE Proxy] Headers:`, JSON.stringify(sanitizedHeaders, null, 2));
-    }
+    console.log(`[ZEKE Proxy] Headers:`, JSON.stringify(fetchOptions.headers, null, 2));
     
     const response = await fetch(url.href, fetchOptions);
     const contentType = response.headers.get("content-type");
@@ -139,7 +128,7 @@ async function proxyToZeke(
     }
     
     console.log(`[ZEKE Proxy] Response: ${response.status} [${requestId}] ${latencyMs}ms`);
-    if (!response.ok && !isProduction) {
+    if (!response.ok) {
       console.log(`[ZEKE Proxy] Error response body:`, JSON.stringify(data, null, 2));
     }
     

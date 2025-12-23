@@ -986,7 +986,7 @@ export default function CommunicationsHubScreen() {
           onPress={handleFabPress}
           style={({ pressed }) => [
             styles.fab,
-            { bottom: tabBarHeight + Spacing.xl, opacity: pressed ? 0.8 : 1 },
+            { bottom: tabBarHeight + Spacing["3xl"], opacity: pressed ? 0.8 : 1 },
           ]}
         >
           <LinearGradient colors={Gradients.primary} style={styles.fabGradient}>
