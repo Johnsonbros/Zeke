@@ -249,6 +249,10 @@ import {
   getGroceryItemsSince,
   getContactsSince,
   getSavedPlacesSince,
+  getAllEntities,
+  getAllInsights,
+  getAllNLAutomations,
+  getAllCustomLists,
 } from "./db";
 import type { TwilioMessageSource, UploadedFileType } from "@shared/schema";
 import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema, locationSampleBatchSchema, insertSavedPlaceSchema, companionLocationHistorySchema, companionLocationSampleBatchSchema, registerPushTokenSchema, deltaQuerySchema } from "@shared/schema";
@@ -3120,29 +3124,106 @@ export async function registerRoutes(
         console.log(`[SECURITY] Export access granted via same-origin check - IP: ${clientIp}`);
       }
       
-      const memories = getAllMemoryNotes();
+      // Export limits for data with potentially large volumes
+      const EXPORT_LIMITS = {
+        TWILIO_MESSAGES: 1000,
+        JOURNAL_ENTRIES: 1000,
+        MEETINGS: 100,
+        LIFELOG_ACTION_ITEMS: 500,
+        PREDICTIONS: 500,
+        INSIGHTS: 1000,
+      };
+      
+      // Gather all data from the database
+      const conversations = getAllConversations();
+      const memories = getAllMemoryNotes(true); // Include superseded memories
       const preferences = getAllPreferences();
       const contacts = getAllContacts();
       const groceryItems = getAllGroceryItems();
-      const tasks = getAllTasks();
+      const tasks = getAllTasks(true); // Include completed tasks
       const reminders = getAllReminders();
+      const automations = getAllAutomations();
+      const profileSections = getAllProfileSections();
+      const twilioMessages = getAllTwilioMessages(EXPORT_LIMITS.TWILIO_MESSAGES);
+      const savedPlaces = getAllSavedPlaces();
+      const placeLists = getAllPlaceLists();
+      const folders = getAllFolders();
+      const documents = getAllDocuments();
+      const uploadedFiles = getAllUploadedFiles();
+      const journalEntries = getJournalEntries(EXPORT_LIMITS.JOURNAL_ENTRIES);
+      const customLists = getAllCustomLists();
+      const meetings = getAllMeetings(EXPORT_LIMITS.MEETINGS);
+      const lifelogActionItems = getAllLifelogActionItems(EXPORT_LIMITS.LIFELOG_ACTION_ITEMS);
+      const predictions = getAllPredictions({ limit: EXPORT_LIMITS.PREDICTIONS });
+      const patterns = getAllPatterns({});
+      const entities = getAllEntities();
+      const insights = getAllInsights({ limit: EXPORT_LIMITS.INSIGHTS });
+      const nlAutomations = getAllNLAutomations();
+      
+      // Get messages for all conversations in parallel
+      const allMessages: Record<string, any[]> = {};
+      await Promise.all(
+        conversations.map(async (conversation) => {
+          allMessages[conversation.id] = getMessagesByConversation(conversation.id);
+        })
+      );
       
       const exportData = {
         exportedAt: new Date().toISOString(),
-        version: "1.0",
+        version: "2.0", // Bumped version for comprehensive export
         data: {
+          // Core conversation data
+          conversations,
+          messages: allMessages,
+          
+          // Memory and knowledge
           memories,
           preferences,
+          entities,
+          insights,
+          
+          // Personal information
           contacts,
-          groceryItems,
+          profileSections,
+          
+          // Task management
           tasks,
           reminders,
+          automations,
+          nlAutomations,
+          
+          // Lists
+          groceryItems,
+          customLists,
+          
+          // Communication
+          twilioMessages,
+          
+          // Location data
+          savedPlaces,
+          placeLists,
+          
+          // Documents and files
+          folders,
+          documents,
+          uploadedFiles,
+          journalEntries,
+          
+          // Omi/Lifelog data
+          meetings,
+          lifelogActionItems,
+          
+          // AI predictions and patterns
+          predictions,
+          patterns,
         },
       };
       
       const filename = `zeke-backup-${new Date().toISOString().split('T')[0]}.json`;
       
-      console.log(`[SECURITY] Export completed successfully - Records: ${memories.length} memories, ${contacts.length} contacts, ${tasks.length} tasks - IP: ${clientIp}`);
+      // Calculate totals for logging
+      const totalMessages = Object.values(allMessages).reduce((sum, msgs) => sum + msgs.length, 0);
+      console.log(`[SECURITY] Export completed successfully - Records: ${conversations.length} conversations, ${totalMessages} messages, ${memories.length} memories, ${contacts.length} contacts, ${tasks.length} tasks, ${documents.length} documents - IP: ${clientIp}`);
       
       res.setHeader("Content-Type", "application/json");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
