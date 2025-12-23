@@ -173,6 +173,20 @@ import type {
   SttSegment,
   SttCodec,
   SttProvider,
+  NewsTopic,
+  InsertNewsTopic,
+  NewsStory,
+  InsertNewsStory,
+  NewsFeedback,
+  InsertNewsFeedback,
+  NewsFeedbackType,
+  BriefingSetting,
+  InsertBriefingSetting,
+  BriefingRecipient,
+  InsertBriefingRecipient,
+  BriefingType,
+  BriefingDeliveryLog,
+  InsertBriefingDeliveryLog,
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -3844,6 +3858,28 @@ export function getAllTasks(includeCompleted: boolean = true): Task[] {
       : `SELECT * FROM tasks WHERE completed = 0 ORDER BY due_date ASC NULLS LAST, priority DESC, created_at DESC`;
     const rows = db.prepare(query).all() as TaskRow[];
     return rows.map(mapTask);
+  });
+}
+
+export function getTasks(includeCompleted: boolean = true): Task[] {
+  return getAllTasks(includeCompleted);
+}
+
+export function getCalendarEvents(): CalendarEvent[] {
+  return wrapDbOperation("getCalendarEvents", () => {
+    const rows = db.prepare(`SELECT * FROM calendar_events ORDER BY start ASC`).all() as Array<any>;
+    return rows.map((row: any) => ({
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      start: row.start,
+      end: row.end,
+      location: row.location,
+      isAllDay: row.is_all_day === 1,
+      googleCalendarId: row.google_calendar_id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
   });
 }
 

@@ -26,6 +26,8 @@ import { startPeopleProcessor } from "./peopleProcessor";
 import { startPendantHealthMonitor, setMorningBriefingCallback } from "./pendantHealthMonitor";
 import { sendWakeTriggeredBriefing } from "./morningBriefingService";
 import { startImageCleanupJob } from "./jobs/imageCleanupJob";
+import { startNewsScheduler, setSendSmsCallback as setNewsSmsCallback } from "./services/newsService";
+import { startMorningBriefingScheduler, setSendSmsCallback as setBriefingSmsCallback } from "./services/morningBriefingScheduler";
 
 export { log };
 
@@ -233,6 +235,14 @@ app.use((req, res, next) => {
   // Start image cleanup job (daily at 3 AM)
   startImageCleanupJob();
   log("Image cleanup job started", "startup");
+  
+  // Start news service (queries every 2 hours, detects breaking news)
+  startNewsScheduler();
+  log("News query scheduler started (every 2 hours)", "startup");
+  
+  // Start morning briefing scheduler (6 AM daily)
+  startMorningBriefingScheduler();
+  log("Morning briefing scheduler started (daily at 6 AM)", "startup");
   
   log("=== ZEKE cold start complete - all services operational ===", "startup");
 
