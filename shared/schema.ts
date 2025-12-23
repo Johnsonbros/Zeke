@@ -375,6 +375,20 @@ export type InsertGroceryItem = z.infer<typeof insertGroceryItemSchema>;
 export type UpdateGroceryItem = z.infer<typeof updateGroceryItemSchema>;
 export type GroceryItem = typeof groceryItems.$inferSelect;
 
+// Grocery shopping history - tracks completed purchases for quick re-add
+export const groceryHistory = sqliteTable("grocery_history", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  quantity: text("quantity").default("1"),
+  category: text("category").default("Other"),
+  purchasedAt: text("purchased_at").notNull(),
+  purchasedBy: text("purchased_by").notNull(),
+  purchaseCount: integer("purchase_count").notNull().default(1),  // How many times this item has been bought
+  lastPurchasedAt: text("last_purchased_at").notNull(),
+});
+
+export type GroceryHistoryItem = typeof groceryHistory.$inferSelect;
+
 // Reminders table for persistent reminders
 export const reminders = sqliteTable("reminders", {
   id: text("id").primaryKey(),

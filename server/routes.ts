@@ -38,6 +38,10 @@ import {
   clearPurchasedGroceryItems,
   getGroceryAutoClearHours,
   setGroceryAutoClearHours,
+  getGroceryHistory,
+  getFrequentGroceryItems,
+  searchGroceryHistory,
+  findContactsByName,
   createTask,
   getAllTasks,
   getTask,
@@ -3276,6 +3280,116 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Get grocery suggestions error:", error);
       res.status(500).json({ message: "Failed to get grocery suggestions" });
+    }
+  });
+
+  // Get grocery shopping history (items that have been purchased before)
+  app.get("/api/grocery/history", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const history = getGroceryHistory(limit);
+      res.json({ history });
+    } catch (error: any) {
+      console.error("Get grocery history error:", error);
+      res.status(500).json({ message: "Failed to get grocery history" });
+    }
+  });
+
+  // Get frequently purchased items
+  app.get("/api/grocery/frequent", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const items = getFrequentGroceryItems(limit);
+      res.json({ items });
+    } catch (error: any) {
+      console.error("Get frequent items error:", error);
+      res.status(500).json({ message: "Failed to get frequent items" });
+    }
+  });
+
+  // Search grocery history
+  app.get("/api/grocery/history/search", async (req, res) => {
+    try {
+      const query = req.query.q as string;
+      if (!query) {
+        return res.status(400).json({ message: "Search query required" });
+      }
+      const limit = parseInt(req.query.limit as string) || 10;
+      const results = searchGroceryHistory(query, limit);
+      res.json({ results });
+    } catch (error: any) {
+      console.error("Search grocery history error:", error);
+      res.status(500).json({ message: "Failed to search grocery history" });
+    }
+  });
+
+  // Send grocery list via SMS
+  app.post("/api/grocery/send-sms", async (req, res) => {
+    try {
+      const { recipient, recipientName } = req.body as { recipient?: string; recipientName?: string };
+      
+      // Try to find phone number: use provided recipient, or look up by name, or fall back to Shakita
+      let targetPhone = recipient;
+      let targetName = recipientName || "recipient";
+      
+      if (!targetPhone && recipientName) {
+        const contacts = findContactsByName(recipientName);
+        if (contacts.length > 0 && contacts[0].phone) {
+          targetPhone = contacts[0].phone;
+          targetName = contacts[0].name;
+        }
+      }
+      
+      // Default to Shakita if no recipient specified
+      if (!targetPhone) {
+        const shakitaContacts = findContactsByName("Shakita");
+        if (shakitaContacts.length > 0 && shakitaContacts[0].phone) {
+          targetPhone = shakitaContacts[0].phone;
+          targetName = "Shakita";
+        }
+      }
+      
+      if (!targetPhone) {
+        return res.status(400).json({ message: "No recipient phone number provided and couldn't find Shakita's contact" });
+      }
+
+      const items = getAllGroceryItems().filter(item => !item.purchased);
+      
+      if (items.length === 0) {
+        return res.status(400).json({ message: "No items on the grocery list to send" });
+      }
+
+      // Group items by category
+      const byCategory = items.reduce((acc, item) => {
+        const cat = item.category || "Other";
+        if (!acc[cat]) acc[cat] = [];
+        acc[cat].push(item);
+        return acc;
+      }, {} as Record<string, typeof items>);
+
+      // Format the message
+      let message = "Grocery List:\n";
+      for (const [category, categoryItems] of Object.entries(byCategory)) {
+        message += `\n${category}:\n`;
+        for (const item of categoryItems) {
+          const qty = item.quantity && item.quantity !== "1" ? ` (${item.quantity})` : "";
+          message += `- ${item.name}${qty}\n`;
+        }
+      }
+      message += `\n${items.length} item(s) total`;
+
+      // Send via Twilio
+      await sendSMS(targetPhone, message);
+      console.log(`[GrocerySMS] Sent list with ${items.length} items to ${targetPhone}`);
+      
+      res.json({ 
+        success: true, 
+        message: `Grocery list sent to ${targetPhone}`,
+        itemCount: items.length 
+      });
+    } catch (error: any) {
+      console.error("Send grocery SMS error:", error);
+      res.status(500).json({ message: "Failed to send grocery list via SMS" });
     }
   });
   

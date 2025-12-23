@@ -408,6 +408,24 @@ try {
   console.error("Migration error for grocery_items.purchased_at:", e);
 }
 
+// Create grocery_history table for tracking shopping history
+db.exec(`
+  CREATE TABLE IF NOT EXISTS grocery_history (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    quantity TEXT DEFAULT '1',
+    category TEXT DEFAULT 'Other',
+    purchased_at TEXT NOT NULL,
+    purchased_by TEXT NOT NULL,
+    purchase_count INTEGER NOT NULL DEFAULT 1,
+    last_purchased_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_grocery_history_name ON grocery_history(name);
+  CREATE INDEX IF NOT EXISTS idx_grocery_history_category ON grocery_history(category);
+  CREATE INDEX IF NOT EXISTS idx_grocery_history_last_purchased ON grocery_history(last_purchased_at);
+`);
+console.log("Grocery history table initialized");
+
 // Create reminders table if it doesn't exist
 db.exec(`
   CREATE TABLE IF NOT EXISTS reminders (
@@ -3434,10 +3452,21 @@ export function deleteGroceryItem(id: string): boolean {
 
 export function clearPurchasedGroceryItems(): number {
   return wrapDbOperation("clearPurchasedGroceryItems", () => {
-    const purchased = db.prepare(`SELECT id, name FROM grocery_items WHERE purchased = 1`).all() as Array<{ id: string; name: string }>;
+    const purchased = db.prepare(`SELECT * FROM grocery_items WHERE purchased = 1`).all() as Array<GroceryItemRow>;
+    
+    // Move purchased items to history before deleting
+    for (const item of purchased) {
+      addToGroceryHistory({
+        name: item.name,
+        quantity: item.quantity || "1",
+        category: item.category || "Other",
+        purchasedBy: item.added_by,
+      });
+    }
+    
     const result = db.prepare(`DELETE FROM grocery_items WHERE purchased = 1`).run();
     if (result.changes > 0) {
-      console.log(`[GroceryDelete] Cleared ${result.changes} purchased item(s): ${purchased.map(p => `"${p.name}"`).join(", ")}`);
+      console.log(`[GroceryDelete] Cleared ${result.changes} purchased item(s) to history: ${purchased.map(p => `"${p.name}"`).join(", ")}`);
     }
     return result.changes;
   });
@@ -3493,6 +3522,121 @@ export function clearOldPurchasedGroceryItems(olderThanHours: number): number {
       WHERE purchased = 1 AND purchased_at IS NOT NULL AND purchased_at < ?
     `).run(cutoffTime);
     return result.changes;
+  });
+}
+
+// Grocery History operations
+export interface GroceryHistoryItem {
+  id: string;
+  name: string;
+  quantity: string | null;
+  category: string | null;
+  purchasedAt: string;
+  purchasedBy: string;
+  purchaseCount: number;
+  lastPurchasedAt: string;
+}
+
+interface GroceryHistoryRow {
+  id: string;
+  name: string;
+  quantity: string | null;
+  category: string | null;
+  purchased_at: string;
+  purchased_by: string;
+  purchase_count: number;
+  last_purchased_at: string;
+}
+
+function mapGroceryHistory(row: GroceryHistoryRow): GroceryHistoryItem {
+  return {
+    id: row.id,
+    name: row.name,
+    quantity: row.quantity,
+    category: row.category,
+    purchasedAt: row.purchased_at,
+    purchasedBy: row.purchased_by,
+    purchaseCount: row.purchase_count,
+    lastPurchasedAt: row.last_purchased_at,
+  };
+}
+
+export function addToGroceryHistory(item: { name: string; quantity?: string; category?: string; purchasedBy: string }): GroceryHistoryItem {
+  return wrapDbOperation("addToGroceryHistory", () => {
+    const now = getCurrentTimestamp();
+    const normalizedName = item.name.toLowerCase().trim();
+    
+    // Check if this item already exists in history
+    const existing = db.prepare(`
+      SELECT * FROM grocery_history WHERE LOWER(name) = ?
+    `).get(normalizedName) as GroceryHistoryRow | undefined;
+    
+    if (existing) {
+      // Update existing entry
+      db.prepare(`
+        UPDATE grocery_history 
+        SET purchase_count = purchase_count + 1, 
+            last_purchased_at = ?,
+            quantity = COALESCE(?, quantity),
+            category = COALESCE(?, category)
+        WHERE id = ?
+      `).run(now, item.quantity || null, item.category || null, existing.id);
+      
+      const updated = db.prepare(`SELECT * FROM grocery_history WHERE id = ?`).get(existing.id) as GroceryHistoryRow;
+      return mapGroceryHistory(updated);
+    } else {
+      // Create new entry
+      const id = uuidv4();
+      db.prepare(`
+        INSERT INTO grocery_history (id, name, quantity, category, purchased_at, purchased_by, purchase_count, last_purchased_at)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+      `).run(id, item.name, item.quantity || "1", item.category || "Other", now, item.purchasedBy, now);
+      
+      return {
+        id,
+        name: item.name,
+        quantity: item.quantity || "1",
+        category: item.category || "Other",
+        purchasedAt: now,
+        purchasedBy: item.purchasedBy,
+        purchaseCount: 1,
+        lastPurchasedAt: now,
+      };
+    }
+  });
+}
+
+export function getGroceryHistory(limit: number = 50): GroceryHistoryItem[] {
+  return wrapDbOperation("getGroceryHistory", () => {
+    const rows = db.prepare(`
+      SELECT * FROM grocery_history 
+      ORDER BY last_purchased_at DESC
+      LIMIT ?
+    `).all(limit) as GroceryHistoryRow[];
+    return rows.map(mapGroceryHistory);
+  });
+}
+
+export function getFrequentGroceryItems(limit: number = 20): GroceryHistoryItem[] {
+  return wrapDbOperation("getFrequentGroceryItems", () => {
+    const rows = db.prepare(`
+      SELECT * FROM grocery_history 
+      ORDER BY purchase_count DESC, last_purchased_at DESC
+      LIMIT ?
+    `).all(limit) as GroceryHistoryRow[];
+    return rows.map(mapGroceryHistory);
+  });
+}
+
+export function searchGroceryHistory(query: string, limit: number = 10): GroceryHistoryItem[] {
+  return wrapDbOperation("searchGroceryHistory", () => {
+    const rows = db.prepare(`
+      SELECT * FROM grocery_history 
+      WHERE name LIKE ?
+      ORDER BY purchase_count DESC, last_purchased_at DESC
+      LIMIT ?
+    `).all(`%${query}%`, limit) as GroceryHistoryRow[];
+    return rows.map(mapGroceryHistory);
   });
 }
 
