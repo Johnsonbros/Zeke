@@ -1815,8 +1815,8 @@ export async function registerRoutes(
   // This returns the single conversation that spans all channels
   app.get("/api/conversations/unified", async (_req, res) => {
     try {
-      const conversation = findOrCreateUnifiedConversation('web');
-      const messages = getMessagesByConversation(conversation.id);
+      const conversation = await findOrCreateUnifiedConversation('web');
+      const messages = await getMessagesByConversation(conversation.id);
       res.json({ conversation, messages });
     } catch (error: any) {
       console.error("Get unified conversation error:", error);
@@ -1827,7 +1827,7 @@ export async function registerRoutes(
   // Get all conversations
   app.get("/api/conversations", async (_req, res) => {
     try {
-      const conversations = getAllConversations();
+      const conversations = await getAllConversations();
       res.json(conversations);
     } catch (error: any) {
       console.error("Get conversations error:", error);
@@ -1839,13 +1839,13 @@ export async function registerRoutes(
   app.get("/api/conversations/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const conversation = getConversation(id);
+      const conversation = await getConversation(id);
       
       if (!conversation) {
         return res.status(404).json({ message: "Conversation not found" });
       }
       
-      const messages = getMessagesByConversation(id);
+      const messages = await getMessagesByConversation(id);
       
       res.json({ conversation, messages });
     } catch (error: any) {
@@ -1858,13 +1858,13 @@ export async function registerRoutes(
   app.delete("/api/conversations/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const conversation = getConversation(id);
+      const conversation = await getConversation(id);
       
       if (!conversation) {
         return res.status(404).json({ message: "Conversation not found" });
       }
       
-      deleteConversation(id);
+      await deleteConversation(id);
       res.json({ success: true });
     } catch (error: any) {
       console.error("Delete conversation error:", error);
@@ -1876,13 +1876,13 @@ export async function registerRoutes(
   app.get("/api/conversations/:id/messages", async (req, res) => {
     try {
       const { id } = req.params;
-      const conversation = getConversation(id);
+      const conversation = await getConversation(id);
       
       if (!conversation) {
         return res.status(404).json({ message: "Conversation not found" });
       }
       
-      const messages = getMessagesByConversation(id);
+      const messages = await getMessagesByConversation(id);
       res.json(messages);
     } catch (error: any) {
       console.error("Get conversation messages error:", error);
@@ -1900,7 +1900,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Message content is required" });
       }
       
-      const conversation = getConversation(id);
+      const conversation = await getConversation(id);
       if (!conversation) {
         return res.status(404).json({ message: "Conversation not found" });
       }
@@ -1910,7 +1910,7 @@ export async function registerRoutes(
       const source = deviceToken ? "mobile" : "web";
       
       // Store user message
-      const userMessage = createMessage({
+      const userMessage = await createMessage({
         conversationId: id,
         role: "user",
         content,
@@ -2974,7 +2974,7 @@ export async function registerRoutes(
   // Get all memory notes
   app.get("/api/memory", async (_req, res) => {
     try {
-      const notes = getAllMemoryNotes();
+      const notes = await getAllMemoryNotes();
       res.json(notes);
     } catch (error: any) {
       console.error("Get memory error:", error);
@@ -3184,7 +3184,7 @@ export async function registerRoutes(
   // Get all grocery items
   app.get("/api/grocery", async (_req, res) => {
     try {
-      const items = getAllGroceryItems();
+      const items = await getAllGroceryItems();
       res.json(items);
     } catch (error: any) {
       console.error("Get grocery items error:", error);
@@ -3947,11 +3947,11 @@ export async function registerRoutes(
       
       let tasks;
       if (dueToday) {
-        tasks = getTasksDueToday();
+        tasks = await getTasksDueToday();
       } else if (overdue) {
-        tasks = getOverdueTasks();
+        tasks = await getOverdueTasks();
       } else {
-        tasks = getAllTasks(includeCompleted);
+        tasks = await getAllTasks(includeCompleted);
         if (category) {
           tasks = tasks.filter(t => t.category === category);
         }
@@ -3972,7 +3972,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
       }
       
-      const task = createTask(parsed.data);
+      const task = await createTask(parsed.data);
       
       onTaskCreated(task).catch(err => {
         console.error("[Routes] Entity extraction for task failed:", err);
@@ -4345,13 +4345,13 @@ export async function registerRoutes(
   // Get all contacts
   app.get("/api/contacts", async (_req, res) => {
     try {
-      const contacts = getAllContacts();
-      // Enhance with message counts
-      const contactsWithStats = contacts.map(contact => ({
+      const contacts = await getAllContacts();
+      // Enhance with message counts - need to await each async call
+      const contactsWithStats = await Promise.all(contacts.map(async contact => ({
         ...contact,
-        messageCount: getMessageCountForPhone(contact.phoneNumber),
-        conversations: getConversationsByPhone(contact.phoneNumber),
-      }));
+        messageCount: await getMessageCountForPhone(contact.phoneNumber),
+        conversations: await getConversationsByPhone(contact.phoneNumber),
+      })));
       res.json(contactsWithStats);
     } catch (error: any) {
       console.error("Get contacts error:", error);
@@ -6089,18 +6089,18 @@ export async function registerRoutes(
   // === Saved Places ===
   
   // GET /api/location/places - Get all saved places
-  app.get("/api/location/places", (req, res) => {
+  app.get("/api/location/places", async (req, res) => {
     try {
       const category = req.query.category as string;
       const starred = req.query.starred === "true";
       
       let places;
       if (category) {
-        places = getSavedPlacesByCategory(category as any);
+        places = await getSavedPlacesByCategory(category as any);
       } else if (starred) {
-        places = getStarredPlaces();
+        places = await getStarredPlaces();
       } else {
-        places = getAllSavedPlaces();
+        places = await getAllSavedPlaces();
       }
       
       res.json(places);
@@ -6111,7 +6111,7 @@ export async function registerRoutes(
   });
 
   // POST /api/location/places - Create a new saved place
-  app.post("/api/location/places", (req, res) => {
+  app.post("/api/location/places", async (req, res) => {
     try {
       const { name, latitude, longitude, label, address, category, notes, isStarred, proximityAlertEnabled, proximityRadiusMeters } = req.body;
       
@@ -6119,7 +6119,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "name, latitude, and longitude are required" });
       }
       
-      const place = createSavedPlace({
+      const place = await createSavedPlace({
         name,
         latitude: String(latitude),
         longitude: String(longitude),
@@ -6140,7 +6140,7 @@ export async function registerRoutes(
   });
 
   // Get places delta for mobile sync (MUST be before /:id route)
-  app.get("/api/location/places/delta", (req, res) => {
+  app.get("/api/location/places/delta", async (req, res) => {
     try {
       const parseResult = deltaQuerySchema.safeParse(req.query);
       
@@ -6155,7 +6155,7 @@ export async function registerRoutes(
       const { since, limit } = parseResult.data;
       
       if (!since) {
-        const syncState = getSyncState();
+        const syncState = await getSyncState();
         return res.json({
           useDelta: false,
           syncState,
@@ -6163,7 +6163,7 @@ export async function registerRoutes(
         });
       }
       
-      const places = getSavedPlacesSince(since, limit);
+      const places = await getSavedPlacesSince(since, limit);
       
       res.json({
         count: places.length,
@@ -6181,9 +6181,9 @@ export async function registerRoutes(
   });
 
   // GET /api/location/places/:id - Get a specific saved place
-  app.get("/api/location/places/:id", (req, res) => {
+  app.get("/api/location/places/:id", async (req, res) => {
     try {
-      const place = getSavedPlace(req.params.id);
+      const place = await getSavedPlace(req.params.id);
       if (!place) {
         return res.status(404).json({ error: "Place not found" });
       }
@@ -6195,9 +6195,9 @@ export async function registerRoutes(
   });
 
   // PATCH /api/location/places/:id - Update a saved place
-  app.patch("/api/location/places/:id", (req, res) => {
+  app.patch("/api/location/places/:id", async (req, res) => {
     try {
-      const updated = updateSavedPlace(req.params.id, req.body);
+      const updated = await updateSavedPlace(req.params.id, req.body);
       if (!updated) {
         return res.status(404).json({ error: "Place not found" });
       }
@@ -7284,14 +7284,14 @@ export async function registerRoutes(
   });
 
   // GET /api/location/places/:id/lifelogs - Get lifelogs at a specific place
-  app.get("/api/location/places/:id/lifelogs", (req, res) => {
+  app.get("/api/location/places/:id/lifelogs", async (req, res) => {
     try {
-      const place = getSavedPlace(req.params.id);
+      const place = await getSavedPlace(req.params.id);
       if (!place) {
         return res.status(404).json({ error: "Place not found" });
       }
       
-      const lifelogs = getLifelogsAtPlace(req.params.id);
+      const lifelogs = await getLifelogsAtPlace(req.params.id);
       
       res.json({
         place: {
@@ -7308,12 +7308,12 @@ export async function registerRoutes(
   });
 
   // GET /api/location/timeline - Get unified timeline combining location and lifelogs
-  app.get("/api/location/timeline", (req, res) => {
+  app.get("/api/location/timeline", async (req, res) => {
     try {
       const startDate = req.query.startDate as string || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const endDate = req.query.endDate as string || new Date().toISOString();
       
-      const timeline = buildUnifiedTimeline(startDate, endDate);
+      const timeline = await buildUnifiedTimeline(startDate, endDate);
       
       res.json({
         startDate,
@@ -9382,9 +9382,9 @@ export async function registerRoutes(
       
       let insights;
       if (activeOnly) {
-        insights = getActiveInsights({ category, limit, priority });
+        insights = await getActiveInsights({ category, limit, priority });
       } else {
-        insights = getAllInsights({ status, category, limit });
+        insights = await getAllInsights({ status, category, limit });
       }
       
       res.json({
@@ -9401,7 +9401,7 @@ export async function registerRoutes(
   app.get("/api/insights/stats", async (req, res) => {
     try {
       console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching insight statistics`);
-      const stats = getInsightStats();
+      const stats = await getInsightStats();
       res.json(stats);
     } catch (error: any) {
       console.error("Get insight stats error:", error);
@@ -9415,7 +9415,7 @@ export async function registerRoutes(
       const { id } = req.params;
       console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Fetching insight ${id}`);
       
-      const insight = getInsight(id);
+      const insight = await getInsight(id);
       if (!insight) {
         return res.status(404).json({ error: "Insight not found" });
       }
