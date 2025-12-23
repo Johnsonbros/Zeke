@@ -123,7 +123,7 @@ export default function LoginPage() {
             <CardDescription>
               {step === "phone"
                 ? "Enter your phone number to receive a verification code"
-                : "Enter the 4-digit code sent to your phone"}
+                : "Enter the 6-digit code sent to your phone"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -171,8 +171,8 @@ export default function LoginPage() {
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
-                    maxLength={4}
-                    placeholder="1234"
+                    maxLength={6}
+                    placeholder="123456"
                     value={code}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
                     required
@@ -188,7 +188,7 @@ export default function LoginPage() {
                 <Button
                   type="submit"
                   className="w-full"
-                  disabled={isLoading || code.length !== 4}
+                  disabled={isLoading || code.length !== 6}
                   data-testid="button-verify-code"
                 >
                   {isLoading ? (

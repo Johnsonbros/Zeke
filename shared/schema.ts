@@ -3879,7 +3879,7 @@ export type SmsCodeRequest = z.infer<typeof smsCodeRequestSchema>;
 // SMS code verification request schema
 export const smsCodeVerifySchema = z.object({
   sessionId: z.string().min(1, "Session ID is required"),
-  code: z.string().length(4, "Code must be 4 digits").regex(/^\d{4}$/, "Code must be 4 digits"),
+  code: z.string().length(6, "Code must be 6 digits").regex(/^\d{6}$/, "Code must be 6 digits"),
 });
 
 export type SmsCodeVerifyRequest = z.infer<typeof smsCodeVerifySchema>;
@@ -4231,7 +4231,7 @@ export const webLoginRequestSchema = z.object({
 
 export const webLoginVerifySchema = z.object({
   sessionId: z.string().min(1),
-  code: z.string().length(4),
+  code: z.string().length(6),
 });
 
 export type WebLoginRequest = z.infer<typeof webLoginRequestSchema>;

@@ -2,14 +2,12 @@
  * SMS-based Device Pairing
  * 
  * Implements secure SMS pairing flow:
- * 1. User requests pairing code -> 4-digit code sent via SMS
+ * 1. User requests pairing code -> 6-digit code sent via SMS
  * 2. User enters code in app -> code verified, device token issued
  * 3. Device token used for persistent authentication
  */
 
-import crypto from 'crypto';
 import type { Express, Request, Response } from 'express';
-import { getTwilioClient, getTwilioFromPhoneNumber, isTwilioConfigured } from './twilioClient';
 import { generateDeviceToken, generateDeviceId } from './mobileAuth';
 import { 
   createPairingCode, 
@@ -25,74 +23,35 @@ import {
 import { 
   smsCodeRequestSchema, 
   smsCodeVerifySchema,
-  MASTER_ADMIN_PHONE,
   type SmsCodeRequestSuccessResponse,
   type SmsCodeRequestErrorResponse,
   type SmsCodeVerifySuccessResponse,
   type SmsCodeVerifyErrorResponse,
   type PairingStatusResponse
 } from '@shared/schema';
+import {
+  SMS_VERIFICATION_CONFIG,
+  generateVerificationCode,
+  generateSessionId,
+  timingSafeCodeCompare,
+  getMasterPhone,
+  sendVerificationSms,
+  checkTwilioReady,
+  hasExceededMaxAttempts,
+  calculateAttemptsRemaining,
+  isCodeExpired,
+} from './services/smsVerification';
 
-const CODE_EXPIRY_SECONDS = 300; // 5 minutes
-const MAX_ATTEMPTS = 3;
-const MAX_PENDING_CODES_PER_DEVICE = 3; // Limit codes to prevent flooding
-
-function getMasterPhone(): string | null {
-  // Use ZEKE_MASTER_PHONE override if set, otherwise use MASTER_ADMIN_PHONE constant
-  const override = process.env.ZEKE_MASTER_PHONE;
-  if (override) return override;
-  
-  // Use the hardcoded master admin phone (consistent with rest of codebase)
-  return MASTER_ADMIN_PHONE ? `+1${MASTER_ADMIN_PHONE}` : null;
-}
-
-function generate4DigitCode(): string {
-  return crypto.randomInt(1000, 9999).toString();
-}
-
-function generateSessionId(): string {
-  return crypto.randomBytes(24).toString('hex');
-}
-
-function timingSafeCodeCompare(a: string, b: string): boolean {
-  try {
-    const bufA = Buffer.from(a);
-    const bufB = Buffer.from(b);
-    if (bufA.length !== bufB.length) {
-      crypto.timingSafeEqual(bufA, bufA);
-      return false;
-    }
-    return crypto.timingSafeEqual(bufA, bufB);
-  } catch {
-    return false;
-  }
-}
-
-async function sendSmsCode(phoneNumber: string, code: string, deviceName: string): Promise<void> {
-  const client = await getTwilioClient();
-  const fromNumber = await getTwilioFromPhoneNumber();
-  
-  const message = `ZEKE Pairing Code: ${code}\n\nEnter this code in the app to pair "${deviceName}". Expires in 5 minutes.`;
-  
-  await client.messages.create({
-    body: message,
-    from: fromNumber,
-    to: phoneNumber
-  });
-  
-  console.log(`[SMS PAIRING] Sent pairing code to ${phoneNumber.substring(0, 6)}***`);
-}
+const MAX_PENDING_CODES_PER_DEVICE = 3;
 
 export function registerSmsPairingEndpoints(app: Express): void {
   // POST /api/auth/request-sms-code - Generate and send SMS pairing code
   app.post('/api/auth/request-sms-code', async (req: Request, res: Response) => {
     try {
-      // Cleanup expired codes periodically
       cleanupExpiredPairingCodes();
       
-      // Check if SMS pairing is configured
       const masterPhone = getMasterPhone();
-      const twilioReady = await isTwilioConfigured();
+      const twilioReady = await checkTwilioReady();
       
       if (!masterPhone) {
         const response: SmsCodeRequestErrorResponse = {
@@ -112,7 +71,6 @@ export function registerSmsPairingEndpoints(app: Express): void {
         return;
       }
       
-      // Validate request body
       const parseResult = smsCodeRequestSchema.safeParse(req.body);
       if (!parseResult.success) {
         const response: SmsCodeRequestErrorResponse = {
@@ -125,29 +83,25 @@ export function registerSmsPairingEndpoints(app: Express): void {
       
       const { deviceName } = parseResult.data;
       
-      // Limit pending codes per device to prevent flooding
       const existingCount = countPairingCodesForDevice(deviceName);
       if (existingCount >= MAX_PENDING_CODES_PER_DEVICE) {
         deleteOldestPairingCodeForDevice(deviceName);
       }
       
-      // Generate code and session
-      const code = generate4DigitCode();
+      const code = generateVerificationCode();
       const sessionId = generateSessionId();
-      const expiresAt = new Date(Date.now() + CODE_EXPIRY_SECONDS * 1000).toISOString();
+      const expiresAt = new Date(Date.now() + SMS_VERIFICATION_CONFIG.CODE_EXPIRY_SECONDS * 1000).toISOString();
       
-      // Store in database
       createPairingCode(sessionId, code, deviceName, expiresAt);
       
-      // Send SMS
-      await sendSmsCode(masterPhone, code, deviceName);
+      await sendVerificationSms(masterPhone, code, { type: 'device_pairing', deviceName });
       
       console.log(`[SMS PAIRING] Code requested for device: ${deviceName}, session: ${sessionId.substring(0, 8)}...`);
       
       const response: SmsCodeRequestSuccessResponse = {
         success: true,
         sessionId,
-        expiresIn: CODE_EXPIRY_SECONDS,
+        expiresIn: SMS_VERIFICATION_CONFIG.CODE_EXPIRY_SECONDS,
         message: "Verification code sent to your phone"
       };
       res.status(200).json(response);
@@ -165,15 +119,13 @@ export function registerSmsPairingEndpoints(app: Express): void {
   // POST /api/auth/verify-sms-code - Verify code and issue device token
   app.post('/api/auth/verify-sms-code', async (req: Request, res: Response) => {
     try {
-      // Cleanup expired codes
       cleanupExpiredPairingCodes();
       
-      // Validate request body
       const parseResult = smsCodeVerifySchema.safeParse(req.body);
       if (!parseResult.success) {
         const response: SmsCodeVerifyErrorResponse = {
           success: false,
-          error: "Invalid request: sessionId and 4-digit code are required"
+          error: `Invalid request: sessionId and ${SMS_VERIFICATION_CONFIG.CODE_LENGTH}-digit code are required`
         };
         res.status(400).json(response);
         return;
@@ -181,7 +133,6 @@ export function registerSmsPairingEndpoints(app: Express): void {
       
       const { sessionId, code } = parseResult.data;
       
-      // Find the pairing code record
       const pairingCode = getPairingCodeBySessionId(sessionId);
       
       if (!pairingCode) {
@@ -193,8 +144,7 @@ export function registerSmsPairingEndpoints(app: Express): void {
         return;
       }
       
-      // Check if expired
-      if (new Date(pairingCode.expiresAt) < new Date()) {
+      if (isCodeExpired(pairingCode.expiresAt)) {
         deletePairingCode(sessionId);
         const response: SmsCodeVerifyErrorResponse = {
           success: false,
@@ -204,8 +154,7 @@ export function registerSmsPairingEndpoints(app: Express): void {
         return;
       }
       
-      // Check attempts
-      if (pairingCode.attempts >= MAX_ATTEMPTS) {
+      if (hasExceededMaxAttempts(pairingCode.attempts)) {
         deletePairingCode(sessionId);
         const response: SmsCodeVerifyErrorResponse = {
           success: false,
@@ -216,10 +165,9 @@ export function registerSmsPairingEndpoints(app: Express): void {
         return;
       }
       
-      // Verify code using timing-safe comparison
       if (!timingSafeCodeCompare(pairingCode.code, code)) {
         const newAttempts = incrementPairingCodeAttempts(sessionId);
-        const remaining = MAX_ATTEMPTS - newAttempts;
+        const remaining = calculateAttemptsRemaining(newAttempts);
         
         if (remaining <= 0) {
           deletePairingCode(sessionId);
@@ -275,7 +223,7 @@ export function registerSmsPairingEndpoints(app: Express): void {
   app.get('/api/auth/pairing-status', async (_req: Request, res: Response) => {
     try {
       const masterPhone = getMasterPhone();
-      const twilioReady = await isTwilioConfigured();
+      const twilioReady = await checkTwilioReady();
       const pendingCodes = countPendingPairingCodes();
       
       const response: PairingStatusResponse = {

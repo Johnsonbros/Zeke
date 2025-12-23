@@ -2,16 +2,14 @@
  * Web Authentication Module
  * 
  * Implements SMS-based authentication for the web dashboard:
- * 1. User enters phone number -> 4-digit code sent via SMS
+ * 1. User enters phone number -> 6-digit code sent via SMS
  * 2. User enters code -> code verified, session token issued
  * 3. Session token used for persistent authentication via cookie
  */
 
-import crypto from 'crypto';
 import type { Express, Request, Response, NextFunction } from 'express';
-import { getTwilioClient, getTwilioFromPhoneNumber, isTwilioConfigured } from './twilioClient';
-import { db, pool } from './db';
-import { eq, and, lte } from 'drizzle-orm';
+import { db } from './db';
+import { eq, lte } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import * as schema from '@shared/schema';
 import { 
@@ -22,71 +20,26 @@ import {
   type WebLoginVerifyResponse,
   type WebSession,
 } from '@shared/schema';
+import {
+  SMS_VERIFICATION_CONFIG,
+  generateVerificationCode,
+  generateSessionId,
+  generateSecureToken,
+  timingSafeCodeCompare,
+  normalizePhoneNumber,
+  isAuthorizedPhone,
+  sendVerificationSms,
+  checkTwilioReady,
+  hasExceededMaxAttempts,
+  calculateAttemptsRemaining,
+  isCodeExpired,
+  getCodeExpiryDate,
+} from './services/smsVerification';
 
-const CODE_EXPIRY_SECONDS = 300; // 5 minutes
 const SESSION_EXPIRY_DAYS = 30;
-const MAX_ATTEMPTS = 3;
 
 function getNow(): string {
   return new Date().toISOString();
-}
-
-function generate4DigitCode(): string {
-  return crypto.randomInt(1000, 9999).toString();
-}
-
-function generateSessionId(): string {
-  return crypto.randomBytes(24).toString('hex');
-}
-
-function generateSessionToken(): string {
-  return crypto.randomBytes(32).toString('hex');
-}
-
-function timingSafeCodeCompare(a: string, b: string): boolean {
-  try {
-    const bufA = Buffer.from(a);
-    const bufB = Buffer.from(b);
-    if (bufA.length !== bufB.length) {
-      crypto.timingSafeEqual(bufA, bufA);
-      return false;
-    }
-    return crypto.timingSafeEqual(bufA, bufB);
-  } catch {
-    return false;
-  }
-}
-
-function normalizePhoneNumber(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 10) {
-    return `+1${digits}`;
-  }
-  if (digits.length === 11 && digits.startsWith('1')) {
-    return `+${digits}`;
-  }
-  return `+${digits}`;
-}
-
-function isAllowedPhone(phone: string): boolean {
-  if (!MASTER_ADMIN_PHONE) return false;
-  const normalized = phone.replace(/\D/g, '');
-  return normalized === MASTER_ADMIN_PHONE || normalized.endsWith(MASTER_ADMIN_PHONE);
-}
-
-async function sendLoginCode(phoneNumber: string, code: string): Promise<void> {
-  const client = await getTwilioClient();
-  const fromNumber = await getTwilioFromPhoneNumber();
-  
-  const message = `ZEKE Dashboard Login Code: ${code}\n\nEnter this code to access your dashboard. Expires in 5 minutes.`;
-  
-  await client.messages.create({
-    body: message,
-    from: fromNumber,
-    to: phoneNumber
-  });
-  
-  console.log(`[WEB AUTH] Sent login code to ${phoneNumber.substring(0, 6)}***`);
 }
 
 async function cleanupExpiredCodes(): Promise<void> {
@@ -104,7 +57,7 @@ export function registerWebAuthEndpoints(app: Express): void {
     try {
       await cleanupExpiredCodes();
       
-      const twilioReady = await isTwilioConfigured();
+      const twilioReady = await checkTwilioReady();
       if (!twilioReady) {
         const response: WebLoginRequestResponse = {
           success: false,
@@ -126,7 +79,7 @@ export function registerWebAuthEndpoints(app: Express): void {
       
       const normalizedPhone = normalizePhoneNumber(parseResult.data.phoneNumber);
       
-      if (!isAllowedPhone(normalizedPhone)) {
+      if (!isAuthorizedPhone(normalizedPhone)) {
         const response: WebLoginRequestResponse = {
           success: false,
           error: "Phone number not authorized for dashboard access"
@@ -135,9 +88,9 @@ export function registerWebAuthEndpoints(app: Express): void {
         return;
       }
       
-      const code = generate4DigitCode();
+      const code = generateVerificationCode();
       const sessionId = generateSessionId();
-      const expiresAt = new Date(Date.now() + CODE_EXPIRY_SECONDS * 1000).toISOString();
+      const expiresAt = getCodeExpiryDate().toISOString();
       const now = getNow();
       
       await db.insert(schema.webLoginCodes).values({
@@ -150,14 +103,14 @@ export function registerWebAuthEndpoints(app: Express): void {
         createdAt: now,
       });
       
-      await sendLoginCode(normalizedPhone, code);
+      await sendVerificationSms(normalizedPhone, code, { type: 'web_login' });
       
       console.log(`[WEB AUTH] Code requested for phone: ${normalizedPhone.substring(0, 6)}***`);
       
       const response: WebLoginRequestResponse = {
         success: true,
         sessionId,
-        expiresIn: CODE_EXPIRY_SECONDS,
+        expiresIn: SMS_VERIFICATION_CONFIG.CODE_EXPIRY_SECONDS,
         message: "Verification code sent to your phone"
       };
       res.status(200).json(response);
@@ -180,7 +133,7 @@ export function registerWebAuthEndpoints(app: Express): void {
       if (!parseResult.success) {
         const response: WebLoginVerifyResponse = {
           success: false,
-          error: "Invalid request: sessionId and 4-digit code are required"
+          error: `Invalid request: sessionId and ${SMS_VERIFICATION_CONFIG.CODE_LENGTH}-digit code are required`
         };
         res.status(400).json(response);
         return;
@@ -200,7 +153,7 @@ export function registerWebAuthEndpoints(app: Express): void {
         return;
       }
       
-      if (new Date(loginCode.expiresAt) < new Date()) {
+      if (isCodeExpired(loginCode.expiresAt)) {
         await db.delete(schema.webLoginCodes).where(eq(schema.webLoginCodes.sessionId, sessionId));
         const response: WebLoginVerifyResponse = {
           success: false,
@@ -210,7 +163,7 @@ export function registerWebAuthEndpoints(app: Express): void {
         return;
       }
       
-      if (loginCode.attempts >= MAX_ATTEMPTS) {
+      if (hasExceededMaxAttempts(loginCode.attempts)) {
         await db.delete(schema.webLoginCodes).where(eq(schema.webLoginCodes.sessionId, sessionId));
         const response: WebLoginVerifyResponse = {
           success: false,
@@ -222,11 +175,12 @@ export function registerWebAuthEndpoints(app: Express): void {
       }
       
       if (!timingSafeCodeCompare(loginCode.code, code)) {
+        const newAttempts = loginCode.attempts + 1;
         await db.update(schema.webLoginCodes)
-          .set({ attempts: loginCode.attempts + 1 })
+          .set({ attempts: newAttempts })
           .where(eq(schema.webLoginCodes.sessionId, sessionId));
         
-        const remaining = MAX_ATTEMPTS - loginCode.attempts - 1;
+        const remaining = calculateAttemptsRemaining(newAttempts);
         
         if (remaining <= 0) {
           await db.delete(schema.webLoginCodes).where(eq(schema.webLoginCodes.sessionId, sessionId));
@@ -248,7 +202,7 @@ export function registerWebAuthEndpoints(app: Express): void {
         return;
       }
       
-      const sessionToken = generateSessionToken();
+      const sessionToken = generateSecureToken(32);
       const now = getNow();
       const expiresAt = new Date(Date.now() + SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString();
       
@@ -256,7 +210,7 @@ export function registerWebAuthEndpoints(app: Express): void {
         id: uuidv4(),
         sessionToken,
         phoneNumber: loginCode.phoneNumber,
-        isAdmin: isAllowedPhone(loginCode.phoneNumber),
+        isAdmin: isAuthorizedPhone(loginCode.phoneNumber),
         expiresAt,
         createdAt: now,
         lastAccessedAt: now,
@@ -277,7 +231,7 @@ export function registerWebAuthEndpoints(app: Express): void {
       const response: WebLoginVerifyResponse = {
         success: true,
         sessionToken,
-        isAdmin: isAllowedPhone(loginCode.phoneNumber),
+        isAdmin: isAuthorizedPhone(loginCode.phoneNumber),
         message: "Login successful"
       };
       res.status(200).json(response);
