@@ -92,6 +92,74 @@ import { Map, MapProvider, LocationMap } from '@/components/map';
 </MapProvider>
 ```
 
+## Web Dashboard Authentication
+
+Secure SMS-based authentication for the production web dashboard.
+
+### Authentication Flow
+1. User enters phone number on login page (`/login`)
+2. 4-digit verification code sent via SMS
+3. User enters code within 5 minutes (3 attempts max)
+4. Session cookie issued for 30-day persistent auth
+5. Authenticated users access the full dashboard
+
+### Endpoints
+- **POST /api/web-auth/request-code**: Request login code via SMS
+  - Request: `{ "phoneNumber": "555-123-4567" }`
+  - Success: `{ "success": true, "sessionId": "abc123...", "expiresIn": 300 }`
+  
+- **POST /api/web-auth/verify-code**: Verify code and establish session
+  - Request: `{ "sessionId": "abc123...", "code": "1234" }`
+  - Success: `{ "success": true, "isAdmin": true }` (sets HttpOnly cookie)
+  
+- **POST /api/web-auth/logout**: End session and clear cookie
+
+- **GET /api/web-auth/session**: Check current authentication status
+
+### Security
+- Only `MASTER_ADMIN_PHONE` number can access the dashboard
+- Codes expire after 5 minutes, max 3 attempts
+- HttpOnly, SameSite=Lax cookies for session persistence
+- Timing-safe code comparison to prevent timing attacks
+
+### Key Files
+- `server/web-auth.ts`: Authentication endpoints and middleware
+- `client/src/pages/login.tsx`: Phone verification UI
+- `client/src/contexts/auth-context.tsx`: Client-side auth state
+
+## Agent Applications System
+
+Public application form for users to apply for their own ZEKE agent.
+
+### Public Routes
+- **/apply**: Application submission form (no auth required)
+- **/login**: SMS verification login
+
+### Admin Routes (require authentication)
+- **/applications**: Dashboard to review and manage applications
+
+### Endpoints
+- **POST /api/applications**: Submit new application (public)
+- **GET /api/applications**: List all applications (admin only)
+- **GET /api/applications/:id**: Get application details (admin only)
+- **PATCH /api/applications/:id**: Update application status (admin only)
+- **GET /api/applications/stats/summary**: Get application statistics (admin only)
+
+### Application Statuses
+- `pending`: Awaiting review
+- `approved`: Accepted
+- `rejected`: Declined
+- `waitlisted`: Deferred for future consideration
+
+### Admin Notifications
+New applications trigger SMS notification to the master admin phone number.
+
+### Key Files
+- `server/applications.ts`: Application CRUD endpoints
+- `client/src/pages/apply.tsx`: Public application form
+- `client/src/pages/applications.tsx`: Admin review dashboard
+- `shared/schema.ts`: Database schema for applications
+
 ## Mobile Device Pairing API
 
 Authentication methods for the companion mobile app.
