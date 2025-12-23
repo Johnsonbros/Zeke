@@ -204,27 +204,35 @@ export async function previewBackfill(limit: number = 5): Promise<{
   tasks: { id: string; title: string; extraction: string }[];
   lifelogs: { id: string; title: string; extraction: string }[];
 }> {
-  const memories = getAllMemoryNotes(true).slice(0, limit).map(m => ({
-    id: m.id,
-    content: m.content.substring(0, 100) + (m.content.length > 100 ? "..." : ""),
-    extraction: getExtractionSummary(extractAllFromText(m.content))
-  }));
+  const allMemories = await getAllMemoryNotes(true);
+  const memories = await Promise.all(
+    allMemories.slice(0, limit).map(async m => ({
+      id: m.id,
+      content: m.content.substring(0, 100) + (m.content.length > 100 ? "..." : ""),
+      extraction: getExtractionSummary(await extractAllFromText(m.content))
+    }))
+  );
 
-  const tasks = getAllTasks(true).slice(0, limit).map(t => ({
-    id: t.id,
-    title: t.title,
-    extraction: getExtractionSummary(extractAllFromText(`${t.title} ${t.description || ""}`))
-  }));
+  const allTasks = await getAllTasks(true);
+  const tasks = await Promise.all(
+    allTasks.slice(0, limit).map(async t => ({
+      id: t.id,
+      title: t.title,
+      extraction: getExtractionSummary(await extractAllFromText(`${t.title} ${t.description || ""}`))
+    }))
+  );
 
   // Fetch recent memories from Omi API
   let lifelogs: { id: string; title: string; extraction: string }[] = [];
   try {
     const recentMemories = await getRecentLifelogs(72, limit);
-    lifelogs = recentMemories.map((m: OmiMemoryData) => ({
-      id: m.id,
-      title: m.structured?.title || "Untitled",
-      extraction: getExtractionSummary(extractAllFromText(`${m.structured?.title || ""} ${m.transcript || ""}`))
-    }));
+    lifelogs = await Promise.all(
+      recentMemories.map(async (m: OmiMemoryData) => ({
+        id: m.id,
+        title: m.structured?.title || "Untitled",
+        extraction: getExtractionSummary(await extractAllFromText(`${m.structured?.title || ""} ${m.transcript || ""}`))
+      }))
+    );
   } catch (error) {
     console.log("[GraphBackfill] Could not fetch lifelogs for preview:", error);
   }

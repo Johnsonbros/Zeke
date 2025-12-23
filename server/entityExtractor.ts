@@ -357,9 +357,9 @@ export function extractTopicsFromText(text: string): TopicMatch[] {
 /**
  * Extract all entity types from text
  */
-export function extractAllFromText(text: string): ExtractionResult {
-  const contacts = getAllContacts();
-  const places = getAllSavedPlaces();
+export async function extractAllFromText(text: string): Promise<ExtractionResult> {
+  const contacts = await getAllContacts();
+  const places = await getAllSavedPlaces();
   
   return {
     people: extractPeopleFromText(text, contacts),
@@ -376,9 +376,9 @@ export function extractAllFromText(text: string): ExtractionResult {
 /**
  * Find or create an entity for a person (contact)
  */
-function findOrCreatePersonEntity(contact: Contact): Entity {
+async function findOrCreatePersonEntity(contact: Contact): Promise<Entity> {
   const label = getContactFullName(contact);
-  const existing = findEntitiesByLabel(label).find(e => 
+  const existing = (await findEntitiesByLabel(label)).find(e => 
     e.type === "person" && e.canonicalId === contact.id
   );
   
@@ -386,7 +386,7 @@ function findOrCreatePersonEntity(contact: Contact): Entity {
     return existing;
   }
   
-  return createEntity({
+  return await createEntity({
     type: "person",
     label,
     canonicalId: contact.id,
@@ -397,9 +397,9 @@ function findOrCreatePersonEntity(contact: Contact): Entity {
 /**
  * Find or create an entity for a location (saved place)
  */
-function findOrCreateLocationEntity(place: SavedPlace): Entity {
+async function findOrCreateLocationEntity(place: SavedPlace): Promise<Entity> {
   const label = place.label || place.name;
-  const existing = findEntitiesByLabel(label).find(e => 
+  const existing = (await findEntitiesByLabel(label)).find(e => 
     e.type === "location" && e.canonicalId === place.id
   );
   
@@ -407,7 +407,7 @@ function findOrCreateLocationEntity(place: SavedPlace): Entity {
     return existing;
   }
   
-  return createEntity({
+  return await createEntity({
     type: "location",
     label,
     canonicalId: place.id,
@@ -418,14 +418,14 @@ function findOrCreateLocationEntity(place: SavedPlace): Entity {
 /**
  * Find or create an entity for a topic
  */
-function findOrCreateTopicEntity(topic: string): Entity {
-  const existing = findEntitiesByLabel(topic).find(e => e.type === "topic");
+async function findOrCreateTopicEntity(topic: string): Promise<Entity> {
+  const existing = (await findEntitiesByLabel(topic)).find(e => e.type === "topic");
   
   if (existing) {
     return existing;
   }
   
-  return createEntity({
+  return await createEntity({
     type: "topic",
     label: topic,
     canonicalId: null,
@@ -441,17 +441,17 @@ export async function processMemoryForEntities(
   memoryContent: string, 
   conversationId?: string
 ): Promise<{ entities: Entity[]; references: EntityReference[] }> {
-  const extraction = extractAllFromText(memoryContent);
+  const extraction = await extractAllFromText(memoryContent);
   const now = new Date().toISOString();
   const entities: Entity[] = [];
   const references: EntityReference[] = [];
   
   // Process people matches
   for (const personMatch of extraction.people) {
-    const entity = findOrCreatePersonEntity(personMatch.contact);
+    const entity = await findOrCreatePersonEntity(personMatch.contact);
     entities.push(entity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: entity.id,
       domain: "memory",
       itemId: memoryId,
@@ -464,10 +464,10 @@ export async function processMemoryForEntities(
   
   // Process location matches
   for (const locationMatch of extraction.locations) {
-    const entity = findOrCreateLocationEntity(locationMatch.place);
+    const entity = await findOrCreateLocationEntity(locationMatch.place);
     entities.push(entity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: entity.id,
       domain: "memory",
       itemId: memoryId,
@@ -480,10 +480,10 @@ export async function processMemoryForEntities(
   
   // Process topic matches
   for (const topicMatch of extraction.topics) {
-    const entity = findOrCreateTopicEntity(topicMatch.topic);
+    const entity = await findOrCreateTopicEntity(topicMatch.topic);
     entities.push(entity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: entity.id,
       domain: "memory",
       itemId: memoryId,
@@ -498,20 +498,20 @@ export async function processMemoryForEntities(
   if (entities.length > 1) {
     for (let i = 0; i < entities.length; i++) {
       for (let j = i + 1; j < entities.length; j++) {
-        findOrCreateEntityLink(entities[i].id, entities[j].id, "same_subject");
+        await findOrCreateEntityLink(entities[i].id, entities[j].id, "same_subject");
         // Also track in memory relationships table for strength over time
-        findOrCreateMemoryRelationship(entities[i].id, entities[j].id);
+        await findOrCreateMemoryRelationship(entities[i].id, entities[j].id);
       }
     }
   }
   
   // If there's a conversation ID, link memory entities to conversation
   if (conversationId) {
-    const conversationEntities = getEntitiesForItem("conversation", conversationId);
+    const conversationEntities = await getEntitiesForItem("conversation", conversationId);
     for (const memoryEntity of entities) {
       for (const convEntity of conversationEntities) {
         if (memoryEntity.id !== convEntity.id) {
-          findOrCreateEntityLink(memoryEntity.id, convEntity.id, "derived_from");
+          await findOrCreateEntityLink(memoryEntity.id, convEntity.id, "derived_from");
         }
       }
     }
@@ -529,17 +529,17 @@ export async function processTaskForEntities(
   taskDescription?: string
 ): Promise<{ entities: Entity[]; references: EntityReference[] }> {
   const fullText = taskDescription ? `${taskTitle} ${taskDescription}` : taskTitle;
-  const extraction = extractAllFromText(fullText);
+  const extraction = await extractAllFromText(fullText);
   const now = new Date().toISOString();
   const entities: Entity[] = [];
   const references: EntityReference[] = [];
   
   // Process people matches
   for (const personMatch of extraction.people) {
-    const entity = findOrCreatePersonEntity(personMatch.contact);
+    const entity = await findOrCreatePersonEntity(personMatch.contact);
     entities.push(entity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: entity.id,
       domain: "task",
       itemId: taskId,
@@ -552,10 +552,10 @@ export async function processTaskForEntities(
   
   // Process location matches
   for (const locationMatch of extraction.locations) {
-    const entity = findOrCreateLocationEntity(locationMatch.place);
+    const entity = await findOrCreateLocationEntity(locationMatch.place);
     entities.push(entity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: entity.id,
       domain: "task",
       itemId: taskId,
@@ -568,10 +568,10 @@ export async function processTaskForEntities(
   
   // Process topic matches
   for (const topicMatch of extraction.topics) {
-    const entity = findOrCreateTopicEntity(topicMatch.topic);
+    const entity = await findOrCreateTopicEntity(topicMatch.topic);
     entities.push(entity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: entity.id,
       domain: "task",
       itemId: taskId,
@@ -586,7 +586,7 @@ export async function processTaskForEntities(
   if (entities.length > 1) {
     for (let i = 0; i < entities.length; i++) {
       for (let j = i + 1; j < entities.length; j++) {
-        findOrCreateEntityLink(entities[i].id, entities[j].id, "same_subject");
+        await findOrCreateEntityLink(entities[i].id, entities[j].id, "same_subject");
       }
     }
   }
@@ -612,17 +612,17 @@ export async function processConversationForEntities(
   
   // Process each message for people and locations
   for (const message of messages) {
-    const extraction = extractAllFromText(message.content);
+    const extraction = await extractAllFromText(message.content);
     
     // Process people matches
     for (const personMatch of extraction.people) {
-      const entity = findOrCreatePersonEntity(personMatch.contact);
+      const entity = await findOrCreatePersonEntity(personMatch.contact);
       
       if (!seenEntityIds.has(entity.id)) {
         allEntities.push(entity);
         seenEntityIds.add(entity.id);
         
-        const ref = createEntityReference({
+        const ref = await createEntityReference({
           entityId: entity.id,
           domain: "conversation",
           itemId: conversationId,
@@ -636,13 +636,13 @@ export async function processConversationForEntities(
     
     // Process location matches
     for (const locationMatch of extraction.locations) {
-      const entity = findOrCreateLocationEntity(locationMatch.place);
+      const entity = await findOrCreateLocationEntity(locationMatch.place);
       
       if (!seenEntityIds.has(entity.id)) {
         allEntities.push(entity);
         seenEntityIds.add(entity.id);
         
-        const ref = createEntityReference({
+        const ref = await createEntityReference({
           entityId: entity.id,
           domain: "conversation",
           itemId: conversationId,
@@ -657,13 +657,13 @@ export async function processConversationForEntities(
   
   // Add topic entities for the whole conversation
   for (const topicMatch of topicExtraction) {
-    const entity = findOrCreateTopicEntity(topicMatch.topic);
+    const entity = await findOrCreateTopicEntity(topicMatch.topic);
     
     if (!seenEntityIds.has(entity.id)) {
       allEntities.push(entity);
       seenEntityIds.add(entity.id);
       
-      const ref = createEntityReference({
+      const ref = await createEntityReference({
         entityId: entity.id,
         domain: "conversation",
         itemId: conversationId,
@@ -679,7 +679,7 @@ export async function processConversationForEntities(
   if (allEntities.length > 1) {
     for (let i = 0; i < allEntities.length; i++) {
       for (let j = i + 1; j < allEntities.length; j++) {
-        findOrCreateEntityLink(allEntities[i].id, allEntities[j].id, "same_subject");
+        await findOrCreateEntityLink(allEntities[i].id, allEntities[j].id, "same_subject");
       }
     }
   }
@@ -731,7 +731,7 @@ export async function onTaskCreated(task: Task): Promise<void> {
 export async function onConversationUpdated(conversationId: string): Promise<void> {
   try {
     console.log(`[EntityExtractor] Processing conversation: ${conversationId}`);
-    const messages = getMessagesByConversation(conversationId);
+    const messages = await getMessagesByConversation(conversationId);
     
     if (messages.length === 0) {
       console.log(`[EntityExtractor] No messages found for conversation ${conversationId}`);
@@ -755,17 +755,17 @@ export async function processLifelogForEntities(
   transcriptText: string
 ): Promise<{ entities: Entity[]; references: EntityReference[] }> {
   const fullText = `${title} ${transcriptText}`;
-  const extraction = extractAllFromText(fullText);
+  const extraction = await extractAllFromText(fullText);
   const now = new Date().toISOString();
   const entities: Entity[] = [];
   const references: EntityReference[] = [];
   
   // Process people matches
   for (const personMatch of extraction.people) {
-    const entity = findOrCreatePersonEntity(personMatch.contact);
+    const entity = await findOrCreatePersonEntity(personMatch.contact);
     entities.push(entity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: entity.id,
       domain: "lifelog",
       itemId: lifelogId,
@@ -778,10 +778,10 @@ export async function processLifelogForEntities(
   
   // Process location matches
   for (const locationMatch of extraction.locations) {
-    const entity = findOrCreateLocationEntity(locationMatch.place);
+    const entity = await findOrCreateLocationEntity(locationMatch.place);
     entities.push(entity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: entity.id,
       domain: "lifelog",
       itemId: lifelogId,
@@ -794,10 +794,10 @@ export async function processLifelogForEntities(
   
   // Process topic matches
   for (const topicMatch of extraction.topics) {
-    const entity = findOrCreateTopicEntity(topicMatch.topic);
+    const entity = await findOrCreateTopicEntity(topicMatch.topic);
     entities.push(entity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: entity.id,
       domain: "lifelog",
       itemId: lifelogId,
@@ -812,7 +812,7 @@ export async function processLifelogForEntities(
   if (entities.length > 1) {
     for (let i = 0; i < entities.length; i++) {
       for (let j = i + 1; j < entities.length; j++) {
-        findOrCreateEntityLink(entities[i].id, entities[j].id, "same_subject");
+        await findOrCreateEntityLink(entities[i].id, entities[j].id, "same_subject");
       }
     }
   }
@@ -831,17 +831,17 @@ export async function processCalendarEventForEntities(
 ): Promise<{ entities: Entity[]; references: EntityReference[] }> {
   // Combine all text fields for extraction
   const fullText = [summary, description, location].filter(Boolean).join(" ");
-  const extraction = extractAllFromText(fullText);
+  const extraction = await extractAllFromText(fullText);
   const now = new Date().toISOString();
   const entities: Entity[] = [];
   const references: EntityReference[] = [];
   
   // Process people matches
   for (const personMatch of extraction.people) {
-    const entity = findOrCreatePersonEntity(personMatch.contact);
+    const entity = await findOrCreatePersonEntity(personMatch.contact);
     entities.push(entity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: entity.id,
       domain: "calendar",
       itemId: eventId,
@@ -854,10 +854,10 @@ export async function processCalendarEventForEntities(
   
   // Process location matches
   for (const locationMatch of extraction.locations) {
-    const entity = findOrCreateLocationEntity(locationMatch.place);
+    const entity = await findOrCreateLocationEntity(locationMatch.place);
     entities.push(entity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: entity.id,
       domain: "calendar",
       itemId: eventId,
@@ -870,10 +870,10 @@ export async function processCalendarEventForEntities(
   
   // Process topic matches
   for (const topicMatch of extraction.topics) {
-    const entity = findOrCreateTopicEntity(topicMatch.topic);
+    const entity = await findOrCreateTopicEntity(topicMatch.topic);
     entities.push(entity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: entity.id,
       domain: "calendar",
       itemId: eventId,
@@ -888,7 +888,7 @@ export async function processCalendarEventForEntities(
   if (entities.length > 1) {
     for (let i = 0; i < entities.length; i++) {
       for (let j = i + 1; j < entities.length; j++) {
-        findOrCreateEntityLink(entities[i].id, entities[j].id, "same_subject");
+        await findOrCreateEntityLink(entities[i].id, entities[j].id, "same_subject");
       }
     }
   }
@@ -904,23 +904,23 @@ export async function processSmsForEntities(
   messageContent: string,
   phoneNumber: string
 ): Promise<{ entities: Entity[]; references: EntityReference[] }> {
-  const extraction = extractAllFromText(messageContent);
+  const extraction = await extractAllFromText(messageContent);
   const now = new Date().toISOString();
   const entities: Entity[] = [];
   const references: EntityReference[] = [];
   
   // Try to link to contact by phone number
-  const contacts = getAllContacts();
+  const contacts = await getAllContacts();
   const matchingContact = contacts.find(c => 
     c.phoneNumber === phoneNumber || 
     c.phoneNumber.replace(/\D/g, '') === phoneNumber.replace(/\D/g, '')
   );
   
   if (matchingContact) {
-    const contactEntity = findOrCreatePersonEntity(matchingContact);
+    const contactEntity = await findOrCreatePersonEntity(matchingContact);
     entities.push(contactEntity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: contactEntity.id,
       domain: "sms",
       itemId: messageId,
@@ -936,10 +936,10 @@ export async function processSmsForEntities(
     // Skip if already added via phone number match
     if (matchingContact && personMatch.contact.id === matchingContact.id) continue;
     
-    const entity = findOrCreatePersonEntity(personMatch.contact);
+    const entity = await findOrCreatePersonEntity(personMatch.contact);
     entities.push(entity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: entity.id,
       domain: "sms",
       itemId: messageId,
@@ -952,10 +952,10 @@ export async function processSmsForEntities(
   
   // Process location matches
   for (const locationMatch of extraction.locations) {
-    const entity = findOrCreateLocationEntity(locationMatch.place);
+    const entity = await findOrCreateLocationEntity(locationMatch.place);
     entities.push(entity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: entity.id,
       domain: "sms",
       itemId: messageId,
@@ -968,10 +968,10 @@ export async function processSmsForEntities(
   
   // Process topic matches
   for (const topicMatch of extraction.topics) {
-    const entity = findOrCreateTopicEntity(topicMatch.topic);
+    const entity = await findOrCreateTopicEntity(topicMatch.topic);
     entities.push(entity);
     
-    const ref = createEntityReference({
+    const ref = await createEntityReference({
       entityId: entity.id,
       domain: "sms",
       itemId: messageId,
@@ -986,7 +986,7 @@ export async function processSmsForEntities(
   if (entities.length > 1) {
     for (let i = 0; i < entities.length; i++) {
       for (let j = i + 1; j < entities.length; j++) {
-        findOrCreateEntityLink(entities[i].id, entities[j].id, "same_subject");
+        await findOrCreateEntityLink(entities[i].id, entities[j].id, "same_subject");
       }
     }
   }
