@@ -67,3 +67,61 @@ export async function getTwilioApiCredentials(): Promise<{ apiKey: string; apiKe
   const { accountSid, apiKey, apiKeySecret } = await getCredentials();
   return { apiKey, apiKeySecret, accountSid };
 }
+
+/**
+ * Get the Auth Token for Twilio webhook signature validation.
+ * Note: Twilio webhook signatures use the account Auth Token (from Console),
+ * NOT the API Key Secret used for making API calls.
+ * 
+ * The Auth Token must be set as TWILIO_AUTH_TOKEN environment variable/secret.
+ */
+export function getTwilioAuthToken(): string | null {
+  return process.env.TWILIO_AUTH_TOKEN || null;
+}
+
+/**
+ * Validate an incoming Twilio webhook request signature.
+ * Returns true if the request is authentic, false otherwise.
+ * 
+ * If TWILIO_AUTH_TOKEN is not configured, returns true with a warning
+ * to avoid breaking existing functionality while the token is being set up.
+ */
+export async function validateTwilioSignature(
+  signature: string | undefined,
+  url: string,
+  params: Record<string, string>
+): Promise<boolean> {
+  const authToken = getTwilioAuthToken();
+  
+  // If Auth Token not configured, allow request but warn (once per session)
+  if (!authToken) {
+    if (!validateTwilioSignature.hasWarnedNoToken) {
+      console.warn('[Twilio Security] TWILIO_AUTH_TOKEN not set - signature validation disabled. Set this secret to enable webhook security.');
+      validateTwilioSignature.hasWarnedNoToken = true;
+    }
+    return true;  // Allow request when auth token not configured
+  }
+  
+  if (!signature) {
+    console.warn('[Twilio Security] Missing X-Twilio-Signature header - rejecting request');
+    return false;
+  }
+  
+  try {
+    const twilio = await import('twilio');
+    const isValid = twilio.validateRequest(authToken, signature, url, params);
+    
+    if (!isValid) {
+      console.warn('[Twilio Security] Invalid signature - request rejected');
+    } else {
+      console.log('[Twilio Security] Request signature verified');
+    }
+    
+    return isValid;
+  } catch (error) {
+    console.error('[Twilio Security] Signature validation error:', error);
+    return false;
+  }
+}
+// Track if we've warned about missing token
+validateTwilioSignature.hasWarnedNoToken = false;

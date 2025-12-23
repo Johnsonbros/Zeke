@@ -429,7 +429,7 @@ import {
 } from "./db";
 import type { EntityDomain, EntityType, InsightCategory, InsightStatus, InsightPriority, ActivityType } from "@shared/schema";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertContactNoteSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, insertFoodPreferenceSchema, insertDietaryRestrictionSchema, insertSavedRecipeSchema, updateSavedRecipeSchema, insertMealHistorySchema, type Automation, type InsertAutomation, getContactFullName } from "@shared/schema";
-import { getTwilioClient, getTwilioFromPhoneNumber, isTwilioConfigured } from "./twilioClient";
+import { getTwilioClient, getTwilioFromPhoneNumber, isTwilioConfigured, validateTwilioSignature } from "./twilioClient";
 import { z } from "zod";
 import { listCalendarEvents, getTodaysEvents, getUpcomingEvents, createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, listCalendars, type CalendarEvent, type CalendarInfo } from "./googleCalendar";
 import { parseQuickAction } from "./quickActions";
@@ -2035,6 +2035,22 @@ export async function registerRoutes(
       // Log full request for debugging
       console.log("Twilio webhook received:", JSON.stringify(req.body));
       
+      // ============================================
+      // SECURITY: Validate Twilio request signature
+      // ============================================
+      const twilioSignature = req.headers['x-twilio-signature'] as string | undefined;
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.headers['host'] || 'localhost:5000';
+      const webhookUrl = `${protocol}://${host}${req.originalUrl}`;
+      
+      const isValidRequest = await validateTwilioSignature(twilioSignature, webhookUrl, req.body);
+      if (!isValidRequest) {
+        console.error('[Twilio Security] Rejected unauthorized webhook request');
+        // Return 403 Forbidden for invalid signatures
+        return res.status(403).send('Forbidden');
+      }
+      console.log('[Twilio Security] Request signature verified');
+      
       const { 
         Body: message, 
         From: rawFromNumber, 
@@ -2654,6 +2670,18 @@ export async function registerRoutes(
     try {
       console.log("Twilio voice webhook received:", JSON.stringify(req.body));
       
+      // SECURITY: Validate Twilio request signature
+      const twilioSignature = req.headers['x-twilio-signature'] as string | undefined;
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.headers['host'] || 'localhost:5000';
+      const webhookUrl = `${protocol}://${host}${req.originalUrl}`;
+      
+      const isValidRequest = await validateTwilioSignature(twilioSignature, webhookUrl, req.body);
+      if (!isValidRequest) {
+        console.error('[Twilio Security] Rejected unauthorized voice webhook');
+        return res.status(403).send('Forbidden');
+      }
+      
       const { From: rawFromNumber, CallSid: callSid } = req.body;
       const fromNumber = rawFromNumber ? normalizePhoneNumber(rawFromNumber) : "Unknown";
       
@@ -2717,6 +2745,18 @@ export async function registerRoutes(
   app.post("/api/twilio/voice-response", async (req, res) => {
     try {
       console.log("Twilio voice-response received:", JSON.stringify(req.body));
+      
+      // SECURITY: Validate Twilio request signature
+      const twilioSignature = req.headers['x-twilio-signature'] as string | undefined;
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.headers['host'] || 'localhost:5000';
+      const webhookUrl = `${protocol}://${host}${req.originalUrl}`;
+      
+      const isValidRequest = await validateTwilioSignature(twilioSignature, webhookUrl, req.body);
+      if (!isValidRequest) {
+        console.error('[Twilio Security] Rejected unauthorized voice-response webhook');
+        return res.status(403).send('Forbidden');
+      }
       
       const { SpeechResult: speechText, From: rawFromNumber, CallSid: callSid } = req.body;
       // Use normalizePhoneNumber for consistent contact/conversation lookup
