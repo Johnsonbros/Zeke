@@ -960,6 +960,39 @@ export async function registerRoutes(
     });
   });
 
+  // GET /api/time - Get current date/time in New York timezone
+  app.get("/api/time", (_req, res) => {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(now);
+    const values: Record<string, string> = {};
+    parts.forEach(({ type, value }) => {
+      values[type] = value;
+    });
+    
+    const iso = now.toISOString();
+    const nyTime = `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}:${values.second}`;
+    
+    res.json({
+      iso: iso,
+      timezone: "America/New_York",
+      currentTime: nyTime,
+      date: `${values.year}-${values.month}-${values.day}`,
+      time: `${values.hour}:${values.minute}:${values.second}`,
+      dayOfWeek: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.getDay()],
+      unixTimestamp: Math.floor(now.getTime() / 1000),
+    });
+  });
+
   console.log("[STT] WebSocket endpoint /ws/audio registered");
   
   // Set up SMS callback for tools (reminders and send_sms tool)
