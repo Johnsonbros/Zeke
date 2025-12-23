@@ -1,0 +1,70 @@
+BACKEND CHANGES SUMMARY:
+
+Database Migration Complete: SQLite → PostgreSQL (Neon-backed)
+All 91 tables are now in PostgreSQL
+The Android app's server already uses PostgreSQL via Drizzle ORM, so this should be compatible
+API response formats remain identical
+Removed Dead Code Endpoints (these no longer exist on the backend):
+/api/v2/signals/* - Self-Model V2 signals
+/api/v2/findings/* - Self-Model V2 findings
+/api/v2/expectations/* - Self-Model V2 expectations
+/api/v2/correlations/* - Correlation discovery V2
+/api/v2/model/* - Self-model health
+/api/v2/understand/* - Self-understanding V2
+/api/contradictions/* - Contradiction tracking
+/api/correlations/* - Correlation engine V1
+/api/self-understanding/* - Self-understanding V1
+/api/images/* - Image storage management
+/api/eval/* - ZEKE Ideal evaluation
+WORKING ENDPOINTS (all remain functional):
+/api/tasks - Task management
+/api/grocery - Grocery lists
+/api/memory - Memories
+/api/conversations/* - Conversations
+/api/calendar/* - Calendar integration
+/api/location/* - Location tracking (history, places, samples, settings)
+/api/auth/* - Device pairing and authentication
+/api/contacts/* - Contact management
+/api/twilio/* - SMS/Voice
+/api/notifications/* - Push notifications
+/api/omi/* - Omi wearable integration
+YOUR TASKS:
+
+Verify API Client Compatibility
+Check android/client/lib/api-client.ts for any calls to removed endpoints
+Check all screen files in android/client/screens/ for API calls
+Remove or comment out any code calling the deprecated endpoints listed above
+Test Core Functionality
+Ensure the proxy in android/server/zeke-proxy.ts correctly forwards to the ZEKE backend
+The backend URL remains: https://zekeai.replit.app
+All /api/zeke/* proxy routes should continue working
+Location Endpoints Verification (critical for Android app)
+These endpoints are confirmed working:
+POST /api/location/samples       - Batch location samples
+POST /api/location-samples/batch - Alternative batch endpoint  
+GET  /api/location/history       - Location history
+GET  /api/location/places        - Saved places
+GET  /api/location/settings      - Location settings
+GET  /api/location/timeline      - Timeline view
+Search for Deprecated Endpoint Usage
+Run these searches in the android/ folder:
+grep -r "api/v2/" android/client/
+grep -r "api/contradictions" android/client/
+grep -r "api/correlations" android/client/
+grep -r "api/self-understanding" android/client/
+grep -r "api/images" android/client/
+grep -r "api/eval" android/client/
+If any matches are found, those features need to be removed or replaced.
+Update Documentation
+Update android/replit.md if it references any removed endpoints
+Update any API documentation in android/docs/
+REFERENCE FILES:
+
+android/client/lib/api-client.ts - Main API client
+android/client/lib/query-client.ts - Query configuration
+android/server/zeke-proxy.ts - Backend proxy routes
+android/replit.md - Project documentation
+NO CHANGES NEEDED IF:
+
+The Android app only uses core endpoints (tasks, grocery, memory, calendar, location, auth, contacts, twilio)
+You don't see any imports or calls to the deprecated /api/v2/*, /api/contradictions/*, /api/correlations/*, /api/self-understanding/*, /api/images/*, or /api/eval/* endpoints
