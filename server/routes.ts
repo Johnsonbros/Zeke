@@ -10839,15 +10839,14 @@ export async function registerRoutes(
   // GET /api/ai-logs/stats/daily - Get daily breakdown of AI usage for a date range
   app.get("/api/ai-logs/stats/daily", (req: Request, res: Response) => {
     try {
-      const daysBack = parseInt(req.query.days as string) || 30;
+      const daysBack = Math.min(parseInt(req.query.days as string) || 30, 90);
       const dailyStats = [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
       
       for (let i = 0; i < daysBack; i++) {
-        const date = new Date();
-        date.setDate(date.getDate() - i);
-        const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-        const endOfDay = new Date(startOfDay);
-        endOfDay.setDate(endOfDay.getDate() + 1);
+        const startOfDay = new Date(today.getTime() - (i * 24 * 60 * 60 * 1000));
+        const endOfDay = new Date(startOfDay.getTime() + (24 * 60 * 60 * 1000));
         
         const dayStats = getAiUsageStats(
           startOfDay.toISOString(),

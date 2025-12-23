@@ -148,7 +148,7 @@ export default function AiUsagePage() {
     refetchInterval: autoRefresh ? 30000 : false,
   });
 
-  const { data: weekStats, isLoading: weekLoading } = useQuery<AiUsageStats>({
+  const { data: weekStats, isLoading: weekLoading, refetch: refetchWeek } = useQuery<AiUsageStats>({
     queryKey: ["/api/ai-logs/stats/week"],
     refetchInterval: autoRefresh ? 60000 : false,
   });
@@ -183,6 +183,7 @@ export default function AiUsagePage() {
 
   const handleRefresh = () => {
     refetchToday();
+    refetchWeek();
     refetchDaily();
   };
 
