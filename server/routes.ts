@@ -3380,12 +3380,13 @@ export async function registerRoutes(
 
       // Send via Twilio
       await sendSMS(targetPhone, message);
-      console.log(`[GrocerySMS] Sent list with ${items.length} items to ${targetPhone}`);
+      console.log(`[GrocerySMS] Sent list with ${items.length} items to ${targetName} (${targetPhone})`);
       
       res.json({ 
         success: true, 
-        message: `Grocery list sent to ${targetPhone}`,
-        itemCount: items.length 
+        message: `Grocery list sent to ${targetName}`,
+        itemCount: items.length,
+        recipient: targetName
       });
     } catch (error: any) {
       console.error("Send grocery SMS error:", error);
