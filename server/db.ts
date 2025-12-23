@@ -5363,9 +5363,8 @@ export async function getRecentOutboundMessages(limit = 50): Promise<OutboundMes
 }
 
 export async function updateOutboundMessageSid(id: string, messageSid: string): Promise<void> {
-  const now = getNow();
   await db.update(schema.outboundMessages)
-    .set({ messageSid, status: 'sent' as any, sentAt: now, updatedAt: now })
+    .set({ twilioMessageSid: messageSid })
     .where(eq(schema.outboundMessages.id, id));
 }
 
