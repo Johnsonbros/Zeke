@@ -372,6 +372,111 @@ export async function pollAllSubmittedJobs(): Promise<void> {
   }
 }
 
+// ============================================
+// KNOWLEDGE GRAPH ENTITY EXTRACTION BATCH
+// ============================================
+
+export interface KgExtractionItem {
+  id: string;
+  domain: "memory" | "task" | "conversation" | "lifelog";
+  content: string;
+  title?: string;
+  sourceId?: string;
+}
+
+const KG_EXTRACTION_SYSTEM_PROMPT = `You are an entity extraction system for a personal AI assistant's knowledge graph.
+
+Extract entities and relationships from the given text. Focus on:
+1. PEOPLE: Names of individuals mentioned (first names, full names, nicknames)
+2. LOCATIONS: Places, addresses, landmarks, cities, venues
+3. TOPICS: Key subjects, projects, themes being discussed
+4. DATES: Any temporal references (today, tomorrow, next week, specific dates)
+
+Also identify relationships between entities when clear from context.
+
+Return JSON with this exact structure:
+{
+  "entities": [
+    {
+      "label": "<entity name>",
+      "type": "person" | "location" | "topic" | "date",
+      "confidence": <0.0-1.0>,
+      "aliases": ["<alternative names if any>"]
+    }
+  ],
+  "relationships": [
+    {
+      "fromLabel": "<entity label>",
+      "toLabel": "<entity label>",
+      "relationshipType": "mentions" | "knows" | "works_with" | "located_at" | "related_to" | "works_on" | "attends" | "discusses",
+      "confidence": <0.0-1.0>,
+      "evidence": "<brief quote or reason>"
+    }
+  ],
+  "contextCategory": "business_call" | "family_planning" | "work_meeting" | "health_related" | "social_conversation" | "planning_logistics" | "casual_chat" | "unknown",
+  "summary": "<one sentence summary of the content>"
+}
+
+Be conservative - only extract entities you're confident about. Prefer fewer high-confidence extractions over many low-confidence ones.`;
+
+/**
+ * Build JSONL content for knowledge graph entity extraction batch
+ * @param items - Array of content items to process
+ * @returns JSONL string ready for batch submission
+ */
+export function buildKgExtractionBatchRequests(items: KgExtractionItem[]): string {
+  const lines: string[] = [];
+  
+  for (const item of items) {
+    const customId = `kg_extract:${item.domain}:${item.id}`;
+    const userContent = item.title 
+      ? `Title: ${item.title}\n\nContent:\n${item.content.slice(0, 4000)}`
+      : item.content.slice(0, 4000);
+    
+    const line = buildBatchRequestLine(
+      customId,
+      KG_EXTRACTION_SYSTEM_PROMPT,
+      userContent,
+      "KG_BACKFILL"
+    );
+    lines.push(line);
+  }
+  
+  return lines.join("\n");
+}
+
+/**
+ * Parse a knowledge graph extraction result from batch output
+ */
+export function parseKgExtractionResult(customId: string, content: string): {
+  sourceId: string;
+  sourceDomain: string;
+  parsed: any;
+} | null {
+  try {
+    // Parse customId: kg_extract:domain:id
+    const parts = customId.split(":");
+    if (parts.length < 3 || parts[0] !== "kg_extract") {
+      console.error(`[BatchService] Invalid KG extraction customId: ${customId}`);
+      return null;
+    }
+    
+    const sourceDomain = parts[1];
+    const sourceId = parts.slice(2).join(":"); // Handle IDs with colons
+    
+    const parsed = JSON.parse(content);
+    
+    return {
+      sourceId,
+      sourceDomain,
+      parsed,
+    };
+  } catch (error) {
+    console.error(`[BatchService] Failed to parse KG extraction result:`, error);
+    return null;
+  }
+}
+
 // Export service interface
 export const BatchService = {
   isBatchEnabled,
@@ -379,6 +484,8 @@ export const BatchService = {
   getBatchMaxItems,
   generateIdempotencyKey,
   buildBatchRequestLine,
+  buildKgExtractionBatchRequests,
+  parseKgExtractionResult,
   submitBatchJob,
   pollBatchJob,
   downloadBatchResults,

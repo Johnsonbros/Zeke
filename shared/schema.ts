@@ -3631,6 +3631,28 @@ export interface KgEdgesPayload {
   }>;
 }
 
+// Knowledge graph entity extraction payload structure (batch API result)
+export interface KgEntityExtractionPayload {
+  sourceId: string; // ID of the memory/task/lifelog
+  sourceDomain: EntityDomain; // memory, task, conversation, etc.
+  entities: Array<{
+    label: string;
+    type: "person" | "location" | "topic" | "date";
+    confidence: number; // 0-1
+    canonicalId?: string; // Optional: link to existing contact/place ID
+    aliases?: string[];
+  }>;
+  relationships: Array<{
+    fromLabel: string;
+    toLabel: string;
+    relationshipType: EntityRelationshipType;
+    confidence: number;
+    evidence: string;
+  }>;
+  contextCategory?: ContextCategory;
+  summary?: string;
+}
+
 // Feedback fix artifact payload structure
 export interface FeedbackFixPayload {
   fixes: Array<{
