@@ -68,8 +68,10 @@ import {
   FormDescription,
 } from "@/components/ui/form";
 import type { Contact, Conversation, AccessLevel, TwilioMessage, ContactNote } from "@shared/schema";
-import { accessLevels, defaultPermissionsByLevel, MASTER_ADMIN_PHONE, getContactFullName } from "@shared/schema";
+import { accessLevels, defaultPermissionsByLevel, getContactFullName } from "@shared/schema";
 import { format, parseISO } from "date-fns";
+
+const MASTER_ADMIN_PHONE = "6177013332";
 
 type ContactWithStats = Contact & {
   messageCount: number;

@@ -4,12 +4,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
-import { 
-  Network, 
-  Users, 
-  MapPin, 
+import { Slider } from "@/components/ui/slider";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Network,
+  Users,
+  MapPin,
   Tag,
   Search,
   Link2,
@@ -17,109 +23,85 @@ import {
   Activity,
   Loader2,
   ChevronRight,
-  Sparkles,
-  Brain,
-  Calendar,
-  MessageSquare,
-  ListTodo,
-  Mic,
-  RefreshCw,
+  AlertCircle,
   CheckCircle2,
-  AlertCircle
+  Clock,
+  Filter,
+  Info,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-interface Entity {
+// Types matching the KG schema
+interface KGEntity {
   id: string;
-  type: string;
-  label: string;
-  canonicalId: string | null;
-  metadata: any;
+  entityType: string;
+  canonicalKey: string;
+  name: string;
+  attributes: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface KGRelationship {
+  id: string;
+  fromEntityId: string;
+  toEntityId: string;
+  relType: string;
+  confidence: number;
+  status: "ACTIVE" | "CONTESTED" | "RETRACTED";
+  evidenceId: string | null;
+  properties: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+  lastSeenAt: string;
+}
+
+interface KGEvidence {
+  id: string;
+  sourceType: string;
+  sourceId: string;
+  sourceExcerpt: string | null;
+  sourceUrl: string | null;
   createdAt: string;
 }
 
-interface EntityWithConnections {
-  entity: Entity;
-  connectionCount: number;
+interface Neighborhood {
+  center: KGEntity;
+  outgoing: Array<{
+    relationship: KGRelationship;
+    toEntity: KGEntity;
+    evidence: KGEvidence | null;
+  }>;
+  incoming: Array<{
+    relationship: KGRelationship;
+    fromEntity: KGEntity;
+    evidence: KGEvidence | null;
+  }>;
+  stats: {
+    totalOutgoing: number;
+    totalIncoming: number;
+    relTypeDistribution: Record<string, number>;
+  };
 }
 
 interface GraphStats {
   totalEntities: number;
-  totalLinks: number;
-  totalReferences: number;
-  entitiesByType: Record<string, number>;
-  linksByType: Record<string, number>;
-  referencesByDomain: Record<string, number>;
-  mostConnectedEntities: EntityWithConnections[];
-  recentActivity: {
-    lastDay: number;
-    lastWeek: number;
-    lastMonth: number;
-  };
-}
-
-interface GraphNode {
-  entity: Entity;
-  depth: number;
-  score: number;
-  path: string[];
-  temporalScore?: number;
-  relationshipPath?: string[];
-}
-
-interface GraphEdge {
-  source: string;
-  target: string;
-  relationship: string;
-  weight: number;
-  lastSeen: string;
-}
-
-interface EntityNeighborhood {
-  center: Entity;
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-  stats: {
-    totalNodes: number;
-    totalEdges: number;
-    avgDepth: number;
-    maxDepth: number;
-    typeDistribution: Record<string, number>;
-  };
-}
-
-interface BackfillProgress {
-  domain: string;
-  total: number;
-  processed: number;
-  entitiesCreated: number;
-  referencesCreated: number;
-  errors: number;
-}
-
-interface BackfillResult {
-  success: boolean;
-  progress: BackfillProgress[];
-  totalEntitiesCreated: number;
-  totalReferencesCreated: number;
-  totalErrors: number;
-  durationMs: number;
-}
-
-interface BackfillStatus {
-  isRunning: boolean;
-  result: BackfillResult | null;
+  totalRelationships: number;
+  totalEvidence: number;
+  averageConfidence: number;
+  statusDistribution: Record<string, number>;
+  relTypeDistribution: Record<string, number>;
 }
 
 function getEntityIcon(type: string) {
-  switch (type) {
-    case "person":
+  switch (type?.toUpperCase()) {
+    case "PERSON":
       return <Users className="h-4 w-4" />;
-    case "location":
+    case "PLACE":
       return <MapPin className="h-4 w-4" />;
-    case "topic":
+    case "CONCEPT":
       return <Tag className="h-4 w-4" />;
     default:
       return <Network className="h-4 w-4" />;
@@ -127,111 +109,183 @@ function getEntityIcon(type: string) {
 }
 
 function getEntityColor(type: string) {
-  switch (type) {
-    case "person":
+  switch (type?.toUpperCase()) {
+    case "PERSON":
       return "bg-blue-500/10 text-blue-500 border-blue-500/20";
-    case "location":
+    case "PLACE":
       return "bg-green-500/10 text-green-500 border-green-500/20";
-    case "topic":
+    case "CONCEPT":
       return "bg-purple-500/10 text-purple-500 border-purple-500/20";
     default:
       return "bg-muted text-muted-foreground";
   }
 }
 
-function getDomainIcon(domain: string) {
-  switch (domain) {
-    case "memory":
-      return <Brain className="h-3 w-3" />;
-    case "task":
-      return <ListTodo className="h-3 w-3" />;
-    case "calendar":
-      return <Calendar className="h-3 w-3" />;
-    case "lifelog":
-      return <Mic className="h-3 w-3" />;
-    case "sms":
-      return <MessageSquare className="h-3 w-3" />;
+function getStatusColor(status: string) {
+  switch (status) {
+    case "ACTIVE":
+      return "bg-green-500/10 text-green-600 border-green-500/20";
+    case "CONTESTED":
+      return "bg-yellow-500/10 text-yellow-600 border-yellow-500/20";
+    case "RETRACTED":
+      return "bg-red-500/10 text-red-600 border-red-500/20";
     default:
-      return <Tag className="h-3 w-3" />;
+      return "bg-muted text-muted-foreground";
   }
 }
 
-function StatCard({ 
-  title, 
-  value, 
-  icon: Icon, 
-  description 
-}: { 
-  title: string; 
-  value: number | string; 
-  icon: any;
-  description?: string;
+function EntitySearchResults({
+  searchQuery,
+  isLoading,
+  results,
+  onSelect,
+  selectedId,
+}: {
+  searchQuery: string;
+  isLoading: boolean;
+  results: KGEntity[] | undefined;
+  onSelect: (id: string) => void;
+  selectedId: string | null;
 }) {
+  if (!searchQuery) {
+    return (
+      <div className="flex items-center justify-center py-8 text-muted-foreground">
+        <p className="text-sm">Enter a search query...</p>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!results || results.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-8 text-muted-foreground">
+        <p className="text-sm">No entities found</p>
+      </div>
+    );
+  }
+
   return (
-    <Card data-testid={`stat-${title.toLowerCase().replace(/\s+/g, "-")}`}>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Icon className="h-5 w-5 text-primary" />
+    <div className="space-y-2">
+      {results.map((entity) => (
+        <button
+          key={entity.id}
+          onClick={() => onSelect(entity.id)}
+          className={`w-full text-left p-3 rounded-lg border transition-all hover-elevate ${
+            selectedId === entity.id
+              ? "ring-2 ring-primary border-primary"
+              : "border-muted"
+          }`}
+          data-testid={`entity-search-result-${entity.id}`}
+        >
+          <div className="flex items-center gap-2">
+            <div className={`p-1.5 rounded ${getEntityColor(entity.entityType)}`}>
+              {getEntityIcon(entity.entityType)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium truncate">{entity.name}</p>
+              <p className="text-xs text-muted-foreground">{entity.entityType}</p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </div>
-          <div>
-            <p className="text-2xl font-bold">{value}</p>
-            <p className="text-xs text-muted-foreground">{title}</p>
-            {description && (
-              <p className="text-[10px] text-muted-foreground/70 mt-0.5">{description}</p>
-            )}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+        </button>
+      ))}
+    </div>
   );
 }
 
-function EntityCard({ 
-  entity, 
-  connectionCount,
-  onClick,
-  isSelected
-}: { 
-  entity: Entity; 
-  connectionCount?: number;
-  onClick?: () => void;
-  isSelected?: boolean;
+function RelationshipEdge({
+  rel,
+  entity,
+  evidence,
+  isIncoming,
+}: {
+  rel: KGRelationship;
+  entity: KGEntity;
+  evidence: KGEvidence | null;
+  isIncoming: boolean;
 }) {
   return (
-    <Card 
-      className={`cursor-pointer transition-all hover-elevate ${isSelected ? "ring-2 ring-primary" : ""}`}
-      onClick={onClick}
-      data-testid={`entity-card-${entity.id}`}
-    >
+    <Card className="text-sm" data-testid={`edge-${rel.id}`}>
       <CardContent className="p-3">
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg ${getEntityColor(entity.type)}`}>
-            {getEntityIcon(entity.type)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-medium truncate capitalize">{entity.label}</p>
+        <div className="space-y-2">
+          {/* Edge header with confidence and status */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium text-xs uppercase text-muted-foreground">
+              {rel.relType}
+            </span>
             <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="text-[10px] capitalize">
-                {entity.type}
+              <Badge variant="secondary" className="text-[10px]">
+                {(rel.confidence * 100).toFixed(0)}%
               </Badge>
-              {connectionCount !== undefined && (
-                <span className="text-[10px] text-muted-foreground">
-                  {connectionCount} connections
-                </span>
-              )}
+              <Badge className={`text-[10px] ${getStatusColor(rel.status)}`}>
+                {rel.status}
+              </Badge>
             </div>
           </div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+
+          {/* Entity reference */}
+          <div className="flex items-center gap-2 p-2 bg-muted/50 rounded">
+            <div className={`p-1.5 rounded ${getEntityColor(entity.entityType)}`}>
+              {getEntityIcon(entity.entityType)}
+            </div>
+            <span className="text-xs font-medium flex-1 truncate">{entity.name}</span>
+            {isIncoming && <span className="text-[10px] text-muted-foreground">→ entity</span>}
+            {!isIncoming && <span className="text-[10px] text-muted-foreground">entity →</span>}
+          </div>
+
+          {/* Last seen timestamp */}
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            <span>
+              {new Date(rel.lastSeenAt).toLocaleDateString()}
+            </span>
+          </div>
+
+          {/* Evidence */}
+          {evidence && (
+            <div className="p-2 bg-muted/30 rounded border border-muted text-[11px]">
+              <p className="font-medium mb-1">{evidence.sourceType}</p>
+              {evidence.sourceExcerpt && (
+                <p className="text-muted-foreground italic line-clamp-2">
+                  "{evidence.sourceExcerpt}"
+                </p>
+              )}
+              {evidence.sourceUrl && (
+                <p className="text-[10px] text-primary truncate mt-1">
+                  {evidence.sourceUrl}
+                </p>
+              )}
+              <p className="text-[10px] text-muted-foreground mt-1">
+                ID: {evidence.sourceId}
+              </p>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function EntityDetail({ entityId }: { entityId: string }) {
-  const { data: neighborhood, isLoading } = useQuery<EntityNeighborhood>({
-    queryKey: ["/api/graph/neighborhood", entityId],
+function EntityDetail({
+  entityId,
+  minConfidence,
+  status,
+  depth,
+}: {
+  entityId: string;
+  minConfidence: number;
+  status: string;
+  depth: number;
+}) {
+  const { data: neighborhood, isLoading } = useQuery<Neighborhood>({
+    queryKey: ["/api/kg/neighborhood", entityId, { minConfidence, status, depth }],
     enabled: !!entityId,
   });
 
@@ -246,184 +300,123 @@ function EntityDetail({ entityId }: { entityId: string }) {
   if (!neighborhood) {
     return (
       <div className="text-center text-muted-foreground py-8">
-        Select an entity to view details
+        <Info className="h-8 w-8 mx-auto mb-2 opacity-50" />
+        <p>Select an entity to view details</p>
       </div>
     );
   }
 
-  const { center, nodes, edges, stats } = neighborhood;
-  const connectedNodes = nodes.filter(n => n.entity.id !== center.id);
+  const { center, outgoing, incoming, stats } = neighborhood;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
-        <div className={`p-3 rounded-lg ${getEntityColor(center.type)}`}>
-          {getEntityIcon(center.type)}
-        </div>
-        <div className="flex-1">
-          <h3 className="text-lg font-semibold capitalize">{center.label}</h3>
-          <div className="flex items-center gap-2 mt-1">
-            <Badge variant="secondary" className="capitalize">{center.type}</Badge>
-            <span className="text-xs text-muted-foreground">
-              {stats.totalNodes} nodes, {stats.totalEdges} edges
-            </span>
+    <ScrollArea className="h-full">
+      <div className="p-4 space-y-4">
+        {/* Entity header */}
+        <div className="flex items-start gap-3 pb-4 border-b">
+          <div className={`p-3 rounded-lg ${getEntityColor(center.entityType)}`}>
+            {getEntityIcon(center.entityType)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-lg font-semibold break-words">{center.name}</h3>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <Badge variant="secondary" className="capitalize">
+                {center.entityType}
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                Created {new Date(center.createdAt).toLocaleDateString()}
+              </span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div>
-        <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-          <Link2 className="h-4 w-4" />
-          Connected Entities ({connectedNodes.length})
-        </h4>
-        {connectedNodes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No direct connections</p>
-        ) : (
-          <div className="space-y-2">
-            {connectedNodes.slice(0, 10).map((node, idx) => (
-              <div 
-                key={idx} 
-                className="flex items-center gap-2 p-2 bg-background rounded border"
-                data-testid={`neighbor-${node.entity.id}`}
-              >
-                <div className={`p-1.5 rounded ${getEntityColor(node.entity.type)}`}>
-                  {getEntityIcon(node.entity.type)}
-                </div>
-                <span className="text-sm capitalize flex-1">{node.entity.label}</span>
-                <div className="flex items-center gap-1">
-                  <Badge variant="outline" className="text-[10px]">
-                    depth {node.depth}
-                  </Badge>
-                  <span className="text-[10px] text-muted-foreground">
-                    {Math.round(node.score * 100)}%
+        {/* Attributes */}
+        {Object.keys(center.attributes || {}).length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium mb-2">Attributes</h4>
+            <div className="space-y-1 text-sm">
+              {Object.entries(center.attributes || {}).map(([key, value]) => (
+                <div key={key} className="flex gap-2">
+                  <span className="text-muted-foreground">{key}:</span>
+                  <span className="font-medium break-words">
+                    {String(value)}
                   </span>
                 </div>
-              </div>
-            ))}
-            {connectedNodes.length > 10 && (
-              <p className="text-xs text-muted-foreground text-center">
-                +{connectedNodes.length - 10} more connections
-              </p>
-            )}
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Outgoing relationships */}
+        {outgoing.length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium mb-2">
+              Outgoing ({outgoing.length})
+            </h4>
+            <div className="space-y-2">
+              {outgoing.map((item) => (
+                <RelationshipEdge
+                  key={item.relationship.id}
+                  rel={item.relationship}
+                  entity={item.toEntity}
+                  evidence={item.evidence}
+                  isIncoming={false}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Incoming relationships */}
+        {incoming.length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium mb-2">
+              Incoming ({incoming.length})
+            </h4>
+            <div className="space-y-2">
+              {incoming.map((item) => (
+                <RelationshipEdge
+                  key={item.relationship.id}
+                  rel={item.relationship}
+                  entity={item.fromEntity}
+                  evidence={item.evidence}
+                  isIncoming={true}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {outgoing.length === 0 && incoming.length === 0 && (
+          <div className="flex items-center justify-center py-8 text-muted-foreground">
+            <p className="text-sm">No relationships found with current filters</p>
           </div>
         )}
       </div>
-
-      <div>
-        <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-          <Activity className="h-4 w-4" />
-          Relationship Paths ({edges.length})
-        </h4>
-        {edges.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No relationship paths found</p>
-        ) : (
-          <div className="space-y-2">
-            {edges.slice(0, 8).map((edge, idx) => {
-              const sourceNode = nodes.find(n => n.entity.id === edge.source);
-              const targetNode = nodes.find(n => n.entity.id === edge.target);
-              return (
-                <div 
-                  key={idx} 
-                  className="flex items-center gap-2 p-2 bg-background rounded border text-xs"
-                  data-testid={`edge-${idx}`}
-                >
-                  <span className="capitalize truncate">{sourceNode?.entity.label || "?"}</span>
-                  <Badge variant="secondary" className="text-[10px] shrink-0">
-                    {edge.relationship.replace(/_/g, " ")}
-                  </Badge>
-                  <span className="capitalize truncate">{targetNode?.entity.label || "?"}</span>
-                </div>
-              );
-            })}
-            {edges.length > 8 && (
-              <p className="text-xs text-muted-foreground text-center">
-                +{edges.length - 8} more relationships
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {Object.keys(stats.typeDistribution).length > 0 && (
-        <div>
-          <h4 className="text-sm font-medium mb-2">Type Distribution</h4>
-          <div className="flex flex-wrap gap-1">
-            {Object.entries(stats.typeDistribution).map(([type, count]) => (
-              <Badge key={type} variant="outline" className={`text-[10px] ${getEntityColor(type)}`}>
-                {type}: {count}
-              </Badge>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+    </ScrollArea>
   );
 }
 
 export default function KnowledgeGraphPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("all");
+  const [minConfidence, setMinConfidence] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [depthFilter, setDepthFilter] = useState<"1" | "2">("1");
+
   const { toast } = useToast();
 
-  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQuery<GraphStats>({
-    queryKey: ["/api/graph/stats"],
+  // Get stats
+  const { data: stats, isLoading: statsLoading } = useQuery<GraphStats>({
+    queryKey: ["/api/kg/stats"],
+    enabled: import.meta.env.VITE_KG_ENABLED === "true",
   });
 
-  const { data: searchResults, isLoading: searchLoading } = useQuery<{ entities: Entity[] }>({
-    queryKey: ["/api/graph/query", searchQuery],
+  // Search entities
+  const { data: searchResults, isLoading: searchLoading } = useQuery<KGEntity[]>({
+    queryKey: ["/api/kg/entities/search", searchQuery],
     enabled: searchQuery.length >= 2,
   });
-
-  const { data: backfillStatus, refetch: refetchBackfillStatus } = useQuery<BackfillStatus>({
-    queryKey: ["/api/graph/backfill/status"],
-    refetchInterval: (query) => {
-      const data = query.state.data as BackfillStatus | undefined;
-      return data?.isRunning ? 2000 : false;
-    },
-  });
-
-  const backfillMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/graph/backfill");
-      return res.json();
-    },
-    onSuccess: (data) => {
-      toast({
-        title: "Backfill Complete",
-        description: `Created ${data.totalEntitiesCreated} entities and ${data.totalReferencesCreated} references`,
-      });
-      refetchStats();
-      refetchBackfillStatus();
-      queryClient.invalidateQueries({ queryKey: ["/api/graph"] });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Backfill Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-      refetchBackfillStatus();
-    },
-  });
-
-  useEffect(() => {
-    if (backfillStatus?.isRunning) {
-      const interval = setInterval(() => {
-        refetchBackfillStatus();
-      }, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [backfillStatus?.isRunning, refetchBackfillStatus]);
-
-  const isBackfillRunning = backfillStatus?.isRunning || backfillMutation.isPending;
-  const isEmpty = !stats || stats.totalEntities === 0;
-
-  const filteredEntities = stats?.mostConnectedEntities?.filter(e => 
-    activeTab === "all" || e.entity.type === activeTab
-  ) || [];
-
-  const entityTypes = stats ? Object.keys(stats.entitiesByType) : [];
 
   if (statsLoading) {
     return (
@@ -436,258 +429,186 @@ export default function KnowledgeGraphPage() {
     );
   }
 
+  if (!stats) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Card>
+          <CardContent className="p-8 text-center">
+            <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">
+              Knowledge Graph is not enabled
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Set KG_ENABLED=true to use this feature
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col">
+      {/* Header */}
       <div className="border-b px-4 py-3 sm:px-6 sm:py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Network className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-lg sm:text-xl font-semibold">Knowledge Graph</h1>
-              <p className="text-xs sm:text-sm text-muted-foreground">
-                Explore connections across your data
-              </p>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-primary/10">
+            <Network className="h-5 w-5 text-primary" />
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => backfillMutation.mutate()}
-            disabled={isBackfillRunning}
-            data-testid="button-refresh-graph"
-          >
-            {isBackfillRunning ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                <span className="hidden sm:inline">Processing...</span>
-              </>
-            ) : (
-              <>
-                <RefreshCw className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Refresh Graph</span>
-              </>
-            )}
-          </Button>
+          <div>
+            <h1 className="text-lg sm:text-xl font-semibold">Knowledge Graph Inspector</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              Explore entities, relationships, and evidence
+            </p>
+          </div>
         </div>
-        {isBackfillRunning && (
-          <div className="mt-3 p-3 bg-muted/50 rounded-lg">
-            <div className="flex items-center gap-2 text-sm">
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-              <span>Extracting entities from your data...</span>
-            </div>
-          </div>
-        )}
-        {backfillStatus?.result && !isBackfillRunning && backfillStatus.result.success && (
-          <div className="mt-3 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
-            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-              <CheckCircle2 className="h-4 w-4" />
-              <span>
-                Last backfill: {backfillStatus.result.totalEntitiesCreated} entities, {backfillStatus.result.totalReferencesCreated} references 
-                ({Math.round(backfillStatus.result.durationMs / 1000)}s)
-              </span>
-            </div>
-          </div>
-        )}
       </div>
 
-      <ScrollArea className="flex-1">
-        <div className="p-4 sm:p-6 space-y-6">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatCard 
-              title="Entities" 
-              value={stats?.totalEntities || 0} 
-              icon={Network}
-              description="People, places, topics"
-            />
-            <StatCard 
-              title="Connections" 
-              value={stats?.totalLinks || 0} 
-              icon={Link2}
-              description="Entity relationships"
-            />
-            <StatCard 
-              title="References" 
-              value={stats?.totalReferences || 0} 
-              icon={Activity}
-              description="Cross-domain links"
-            />
-            <StatCard 
-              title="This Week" 
-              value={stats?.recentActivity?.lastWeek || 0} 
-              icon={TrendingUp}
-              description="New connections"
-            />
-          </div>
-
-          {stats && Object.keys(stats.referencesByDomain).length > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Sparkles className="h-4 w-4" />
-                  Domain Distribution
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {Object.entries(stats.referencesByDomain).map(([domain, count]) => {
-                  const total = stats.totalReferences;
-                  const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
-                  return (
-                    <div key={domain} className="space-y-1">
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2">
-                          {getDomainIcon(domain)}
-                          <span className="capitalize">{domain}</span>
-                        </div>
-                        <span className="text-muted-foreground">{count} ({percentage}%)</span>
-                      </div>
-                      <Progress value={percentage} className="h-1.5" />
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="lg:col-span-1">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium">Explore Entities</CardTitle>
-                <div className="relative mt-2">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search entities..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
-                    data-testid="input-entity-search"
-                  />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <Tabs value={activeTab} onValueChange={setActiveTab}>
-                  <TabsList className="w-full justify-start mb-3">
-                    <TabsTrigger value="all" className="text-xs">All</TabsTrigger>
-                    {entityTypes.map(type => (
-                      <TabsTrigger key={type} value={type} className="text-xs capitalize">
-                        {type} ({stats?.entitiesByType[type] || 0})
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-
-                  <ScrollArea className="h-[300px]">
-                    <div className="space-y-2 pr-3">
-                      {searchQuery.length >= 2 ? (
-                        searchLoading ? (
-                          <div className="flex items-center justify-center py-8">
-                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                          </div>
-                        ) : searchResults?.entities?.length ? (
-                          searchResults.entities.map(entity => (
-                            <EntityCard
-                              key={entity.id}
-                              entity={entity}
-                              onClick={() => setSelectedEntityId(entity.id)}
-                              isSelected={selectedEntityId === entity.id}
-                            />
-                          ))
-                        ) : (
-                          <p className="text-sm text-muted-foreground text-center py-8">
-                            No entities found for "{searchQuery}"
-                          </p>
-                        )
-                      ) : filteredEntities.length > 0 ? (
-                        filteredEntities.map(({ entity, connectionCount }) => (
-                          <EntityCard
-                            key={entity.id}
-                            entity={entity}
-                            connectionCount={connectionCount}
-                            onClick={() => setSelectedEntityId(entity.id)}
-                            isSelected={selectedEntityId === entity.id}
-                          />
-                        ))
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-8 gap-4">
-                          <Network className="h-12 w-12 text-muted-foreground/30" />
-                          <p className="text-sm text-muted-foreground text-center">
-                            No entities found. Run a backfill to populate the graph.
-                          </p>
-                          <Button
-                            onClick={() => backfillMutation.mutate()}
-                            disabled={isBackfillRunning}
-                            data-testid="button-run-backfill"
-                          >
-                            {isBackfillRunning ? (
-                              <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Processing...
-                              </>
-                            ) : (
-                              <>
-                                <RefreshCw className="h-4 w-4 mr-2" />
-                                Run Backfill
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </ScrollArea>
-                </Tabs>
-              </CardContent>
-            </Card>
-
-            <Card className="lg:col-span-1">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium">Entity Details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[360px]">
-                  {selectedEntityId ? (
-                    <EntityDetail entityId={selectedEntityId} />
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-48 text-center">
-                      <Network className="h-12 w-12 text-muted-foreground/30 mb-3" />
-                      <p className="text-sm text-muted-foreground">
-                        Select an entity to explore its connections
-                      </p>
-                    </div>
-                  )}
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </div>
-
-          {stats?.mostConnectedEntities && stats.mostConnectedEntities.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4" />
-                  Most Connected Entities
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {stats.mostConnectedEntities.slice(0, 15).map(({ entity, connectionCount }) => (
-                    <Badge 
-                      key={entity.id}
-                      variant="secondary"
-                      className={`cursor-pointer hover-elevate ${getEntityColor(entity.type)}`}
-                      onClick={() => setSelectedEntityId(entity.id)}
-                      data-testid={`badge-entity-${entity.id}`}
-                    >
-                      {getEntityIcon(entity.type)}
-                      <span className="ml-1 capitalize">{entity.label}</span>
-                      <span className="ml-1 opacity-60">({connectionCount})</span>
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+      {/* Stats bar */}
+      <div className="border-b px-4 py-3 sm:px-6 bg-muted/30 grid grid-cols-4 gap-3">
+        <div className="text-center" data-testid="stat-entities">
+          <p className="text-lg font-bold">{stats.totalEntities}</p>
+          <p className="text-xs text-muted-foreground">Entities</p>
         </div>
-      </ScrollArea>
+        <div className="text-center" data-testid="stat-relationships">
+          <p className="text-lg font-bold">{stats.totalRelationships}</p>
+          <p className="text-xs text-muted-foreground">Relationships</p>
+        </div>
+        <div className="text-center" data-testid="stat-evidence">
+          <p className="text-lg font-bold">{stats.totalEvidence}</p>
+          <p className="text-xs text-muted-foreground">Evidence</p>
+        </div>
+        <div className="text-center" data-testid="stat-confidence">
+          <p className="text-lg font-bold">
+            {(stats.averageConfidence * 100).toFixed(0)}%
+          </p>
+          <p className="text-xs text-muted-foreground">Avg Confidence</p>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1 overflow-hidden flex gap-4 p-4 sm:p-6">
+        {/* Left panel: Search */}
+        <div className="flex-1 min-w-0 flex flex-col gap-4">
+          <Card className="flex-1 flex flex-col">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Search className="h-4 w-4" />
+                Search Entities
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 flex flex-col">
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by entity name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                  data-testid="input-entity-search"
+                />
+              </div>
+
+              <ScrollArea className="flex-1">
+                <EntitySearchResults
+                  searchQuery={searchQuery}
+                  isLoading={searchLoading}
+                  results={searchResults}
+                  onSelect={setSelectedEntityId}
+                  selectedId={selectedEntityId}
+                />
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right panel: Details + Filters */}
+        <div className="flex-1 min-w-0 flex flex-col gap-4">
+          {/* Filters */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Filter className="h-4 w-4" />
+                Filters
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Min Confidence Slider */}
+              <div>
+                <label className="text-xs font-medium">
+                  Min Confidence: {(minConfidence * 100).toFixed(0)}%
+                </label>
+                <Slider
+                  value={[minConfidence]}
+                  onValueChange={(val) => setMinConfidence(val[0])}
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  className="mt-2"
+                  data-testid="slider-confidence"
+                />
+              </div>
+
+              {/* Status Filter */}
+              <div>
+                <label className="text-xs font-medium mb-2 block">
+                  Status Filter
+                </label>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger
+                    className="text-xs"
+                    data-testid="select-status"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="ACTIVE">Active</SelectItem>
+                    <SelectItem value="CONTESTED">Contested</SelectItem>
+                    <SelectItem value="RETRACTED">Retracted</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Depth Selector */}
+              <div>
+                <label className="text-xs font-medium mb-2 block">
+                  Traversal Depth
+                </label>
+                <Select value={depthFilter} onValueChange={(v) => setDepthFilter(v as "1" | "2")}>
+                  <SelectTrigger
+                    className="text-xs"
+                    data-testid="select-depth"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Depth 1 (direct)</SelectItem>
+                    <SelectItem value="2">Depth 2 (one hop)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Entity Detail */}
+          <Card className="flex-1 flex flex-col overflow-hidden">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium">
+                {selectedEntityId ? "Entity Details" : "Select an entity..."}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-hidden">
+              <EntityDetail
+                entityId={selectedEntityId || ""}
+                minConfidence={minConfidence}
+                status={statusFilter === "all" ? "" : statusFilter}
+                depth={parseInt(depthFilter)}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

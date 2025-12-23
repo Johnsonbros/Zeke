@@ -1,0 +1,236 @@
+Yep — this is exactly how we avoid the “we picked Postgres, now we’re trapped” problem.
+
+Here’s a clean optional projection layer that lets you add Neo4j later for reads (fast traversals) while keeping GraphService callers unchanged.
+
+The design in one sentence
+
+GraphService stays your public API. Internally it delegates writes to Postgres (source of truth) and reads to a pluggable “projection” that can be Postgres or Neo4j.
+
+⸻
+
+Files to add
+
+backend/
+  kg/
+    GraphService.ts
+    projections/
+      GraphProjection.ts
+      PostgresProjection.ts
+      Neo4jProjection.ts   // stub now, real later
+    storage/
+      GraphStore.ts        // postgres write + basic read primitives
+
+
+⸻
+
+1) The interface: GraphProjection
+
+This is the contract GraphService uses for read operations (and optionally “apply events” later).
+
+// backend/kg/projections/GraphProjection.ts
+
+export type Entity = {
+  id: string;
+  entity_type: string;
+  name: string;
+  attributes: Record<string, unknown>;
+};
+
+export type Edge = {
+  id: string;
+  from_entity_id: string;
+  to_entity_id: string;
+  rel_type: string;
+  confidence: number;
+  status: "ACTIVE" | "CONTESTED" | "RETRACTED";
+  evidence_id: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  properties: Record<string, unknown>;
+};
+
+export type Evidence = {
+  id: string;
+  source_type: string;
+  source_id: string;
+  source_excerpt?: string | null;
+  source_url?: string | null;
+  created_at: string;
+};
+
+export type NeighborhoodQuery = {
+  entityId: string;
+  depth?: 1 | 2 | 3;
+  limit?: number;
+  status?: "ACTIVE" | "CONTESTED" | "RETRACTED";
+  minConfidence?: number;
+};
+
+export type NeighborhoodResult = {
+  nodes: Entity[];
+  edges: Edge[];
+  evidenceById: Record<string, Evidence>;
+};
+
+export type EntitySearchQuery = { q: string; limit?: number };
+export type EntitySearchResult = Entity[];
+
+export interface GraphProjection {
+  name: string;
+
+  // READS
+  searchEntities(query: EntitySearchQuery): Promise<EntitySearchResult>;
+  getNeighborhood(query: NeighborhoodQuery): Promise<NeighborhoodResult>;
+
+  // Optional: nice-to-have later (Neo4j feature)
+  shortestPath?(
+    fromEntityId: string,
+    toEntityId: string,
+    maxDepth?: number
+  ): Promise<NeighborhoodResult>;
+}
+
+Key point: GraphService will call projection.getNeighborhood(...) and not care if it’s Postgres or Neo4j.
+
+⸻
+
+2) The Postgres projection implementation
+
+This just wraps your existing Postgres graph tables and implements the neighborhood query.
+
+// backend/kg/projections/PostgresProjection.ts
+import type { GraphProjection, NeighborhoodQuery, NeighborhoodResult, EntitySearchQuery } from "./GraphProjection";
+import { GraphStore } from "../storage/GraphStore";
+
+export class PostgresProjection implements GraphProjection {
+  name = "postgres";
+
+  constructor(private store: GraphStore) {}
+
+  async searchEntities(query: EntitySearchQuery) {
+    return this.store.searchEntities(query.q, query.limit ?? 20);
+  }
+
+  async getNeighborhood(query: NeighborhoodQuery): Promise<NeighborhoodResult> {
+    const depth = query.depth ?? 1;
+    const limit = query.limit ?? 100;
+    const status = query.status;
+    const minConfidence = query.minConfidence;
+
+    // Depth 1/2 traversal using Postgres
+    return this.store.getNeighborhood({
+      entityId: query.entityId,
+      depth,
+      limit,
+      status,
+      minConfidence,
+    });
+  }
+}
+
+
+⸻
+
+3) Neo4j projection stub (optional now)
+
+You add the class now, but it can throw until Neo4j is enabled.
+
+// backend/kg/projections/Neo4jProjection.ts
+import type { GraphProjection, NeighborhoodQuery, NeighborhoodResult, EntitySearchQuery } from "./GraphProjection";
+
+export class Neo4jProjection implements GraphProjection {
+  name = "neo4j";
+
+  constructor(/* neo4j driver dep later */) {}
+
+  async searchEntities(_query: EntitySearchQuery) {
+    throw new Error("Neo4jProjection not implemented yet.");
+  }
+
+  async getNeighborhood(_query: NeighborhoodQuery): Promise<NeighborhoodResult> {
+    throw new Error("Neo4jProjection not implemented yet.");
+  }
+
+  async shortestPath(_from: string, _to: string, _maxDepth = 5) {
+    throw new Error("Neo4jProjection not implemented yet.");
+  }
+}
+
+
+⸻
+
+4) GraphService chooses the projection via feature flags
+
+GraphService becomes the stable public façade: writes always go to Postgres, reads go to the selected projection.
+
+// backend/kg/GraphService.ts
+import type { GraphProjection } from "./projections/GraphProjection";
+import { PostgresProjection } from "./projections/PostgresProjection";
+// import { Neo4jProjection } from "./projections/Neo4jProjection"; // later
+import { GraphStore } from "./storage/GraphStore";
+
+export class GraphService {
+  private projection: GraphProjection;
+
+  constructor(private store: GraphStore, projection?: GraphProjection) {
+    this.projection = projection ?? new PostgresProjection(store);
+  }
+
+  static buildDefault(store: GraphStore) {
+    const kgEnabled = process.env.KG_ENABLED === "true";
+    if (!kgEnabled) return null;
+
+    const projectionKind = process.env.KG_PROJECTION ?? "postgres";
+
+    // Later:
+    // if (projectionKind === "neo4j" && process.env.NEO4J_ENABLED === "true") {
+    //   return new GraphService(store, new Neo4jProjection(driver));
+    // }
+
+    return new GraphService(store, new PostgresProjection(store));
+  }
+
+  // WRITES (always to Postgres store)
+  async upsertEvidence(input: any) {
+    return this.store.upsertEvidence(input);
+  }
+  async upsertEntity(input: any) {
+    return this.store.upsertEntity(input);
+  }
+  async upsertRelationship(input: any) {
+    return this.store.upsertRelationship(input);
+  }
+
+  // READS (via projection)
+  async searchEntities(q: string, limit = 20) {
+    return this.projection.searchEntities({ q, limit });
+  }
+
+  async getNeighborhood(params: any) {
+    return this.projection.getNeighborhood(params);
+  }
+
+  async shortestPath(fromId: string, toId: string, maxDepth = 5) {
+    if (!this.projection.shortestPath) {
+      throw new Error(`Shortest path not supported by projection: ${this.projection.name}`);
+    }
+    return this.projection.shortestPath(fromId, toId, maxDepth);
+  }
+}
+
+
+⸻
+
+5) Why this is “right the first time”
+	•	No caller changes later: callers only know GraphService.getNeighborhood(...).
+	•	No data integrity risk: writes remain Postgres-only.
+	•	Easy switch: set KG_PROJECTION=neo4j and you’ve swapped reads.
+	•	Future-ready: when you add Neo4j, you only implement Neo4jProjection, not refactor ZEKE’s agent logic.
+
+⸻
+
+One important note (so we don’t accidentally lie to ourselves)
+
+If/when you add Neo4j for reads, you’ll want a projection sync mechanism (outbox or periodic rebuild) so Neo4j stays consistent with Postgres. This projection interface doesn’t force the sync mechanism — it just ensures the rest of ZEKE never cares.
+
+If you want, I’ll write the follow-up “projection sync” prompt next (Outbox table + projector worker), but you can ship the interface above immediately with Postgres projection only.
