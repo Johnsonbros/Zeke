@@ -37,6 +37,7 @@ Key architectural and feature implementations include:
 - **Companion App Integration**: Location Ingestion for real-time tracking, Push Notification Infrastructure via Expo, and Calendar Proxy Routes for Android app support.
 - **Health Monitoring**: Sleep Tracking, Pendant Health Monitor for Omi device status, and Mobile Auth Health Endpoint for debugging.
 - **Daily Operations**: Journal/Daily Summary System, Anticipation Engine for morning briefings, and a Pattern Detection System.
+- **News & Morning Briefing System**: Personalized news service that queries Perplexity every 2 hours for top stories based on configured topics (Technology, Business, Science). Breaking news detected via urgency scoring triggers immediate SMS alerts. Daily 6 AM morning briefing sends individual SMS for each story (3 curated + 3 new), enabling thumbs up/down feedback learning. Includes system health report and weather briefing. All settings configurable via database tables (news_topics, news_stories, news_feedback, briefing_settings, briefing_recipients, briefing_delivery_log).
 
 ## External Dependencies
 - **OpenAI API**: AI responses, agent logic, and text embeddings.

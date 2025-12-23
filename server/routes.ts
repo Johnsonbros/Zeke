@@ -325,6 +325,8 @@ import {
   stopAutomation,
   runAutomationNow 
 } from "./automations";
+import { setSendSmsCallback as setNewsSmsCallback } from "./services/newsService";
+import { setSendSmsCallback as setBriefingSmsCallback } from "./services/morningBriefingScheduler";
 import {
   generateDailySummary as generateOmiDailySummary,
   getConversationAnalytics,
@@ -1307,6 +1309,100 @@ export async function registerRoutes(
   const { startHealthMonitoring } = await import("./locationIntelligence");
   startHealthMonitoring(10); // Check every 10 minutes
   console.log("[LocationIntelligence] Health monitoring initialized");
+
+  // Set up news service SMS callback for breaking news alerts
+  setNewsSmsCallback(async (phone: string, message: string) => {
+    const fromNumber = await getTwilioFromPhoneNumber();
+    if (!fromNumber) {
+      console.log("[NewsService] Twilio not configured, cannot send SMS");
+      throw new Error("Twilio not configured");
+    }
+
+    const formattedPhone = phone.startsWith('+') ? phone : `+1${phone}`;
+
+    try {
+      const client = await getTwilioClient();
+      const result = await client.messages.create({
+        body: message,
+        from: fromNumber,
+        to: formattedPhone,
+      });
+
+      logTwilioMessage({
+        direction: "outbound",
+        source: "news_alert",
+        fromNumber: fromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        twilioSid: result.sid,
+        status: "sent",
+      });
+
+      console.log(`[NewsService] Breaking news SMS sent to ${formattedPhone}`);
+    } catch (error: any) {
+      logTwilioMessage({
+        direction: "outbound",
+        source: "news_alert",
+        fromNumber: fromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        status: "failed",
+        errorCode: error.code?.toString() || "UNKNOWN",
+        errorMessage: error.message || "Unknown error",
+      });
+
+      console.error("[NewsService] Failed to send SMS:", error);
+      throw error;
+    }
+  });
+  console.log("[NewsService] SMS callback configured for breaking news alerts");
+
+  // Set up morning briefing SMS callback
+  setBriefingSmsCallback(async (phone: string, message: string) => {
+    const fromNumber = await getTwilioFromPhoneNumber();
+    if (!fromNumber) {
+      console.log("[MorningBriefing] Twilio not configured, cannot send SMS");
+      throw new Error("Twilio not configured");
+    }
+
+    const formattedPhone = phone.startsWith('+') ? phone : `+1${phone}`;
+
+    try {
+      const client = await getTwilioClient();
+      const result = await client.messages.create({
+        body: message,
+        from: fromNumber,
+        to: formattedPhone,
+      });
+
+      logTwilioMessage({
+        direction: "outbound",
+        source: "morning_briefing",
+        fromNumber: fromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        twilioSid: result.sid,
+        status: "sent",
+      });
+
+      console.log(`[MorningBriefing] SMS sent to ${formattedPhone}`);
+    } catch (error: any) {
+      logTwilioMessage({
+        direction: "outbound",
+        source: "morning_briefing",
+        fromNumber: fromNumber,
+        toNumber: formattedPhone,
+        body: message,
+        status: "failed",
+        errorCode: error.code?.toString() || "UNKNOWN",
+        errorMessage: error.message || "Unknown error",
+      });
+
+      console.error("[MorningBriefing] Failed to send SMS:", error);
+      throw error;
+    }
+  });
+  console.log("[MorningBriefing] SMS callback configured");
 
   // Set up AI usage anomaly alerting via SMS
   setAnomalyAlertCallback(async (phone: string, message: string) => {
