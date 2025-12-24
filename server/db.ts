@@ -6136,3 +6136,186 @@ export async function initLocationVisitsTable(): Promise<void> {
   // No-op: Tables are created via drizzle migrations
 }
 
+// ============================================================================
+// HARDWARE DEVICES
+// ============================================================================
+
+export async function createDevice(data: {
+  type: "omi" | "limitless" | "custom";
+  name: string;
+  macAddress?: string;
+  firmwareVersion?: string;
+  hardwareModel?: string;
+  metadata?: string;
+}): Promise<typeof schema.devices.$inferSelect> {
+  const now = getNow();
+  const id = uuidv4();
+  const [result] = await db.insert(schema.devices).values({
+    ...data,
+    id,
+    status: "paired",
+    pairedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  return result;
+}
+
+export async function getDevice(id: string): Promise<typeof schema.devices.$inferSelect | undefined> {
+  const [result] = await db.select().from(schema.devices).where(eq(schema.devices.id, id));
+  return result;
+}
+
+export async function getDeviceByMacAddress(macAddress: string): Promise<typeof schema.devices.$inferSelect | undefined> {
+  const [result] = await db.select().from(schema.devices).where(eq(schema.devices.macAddress, macAddress));
+  return result;
+}
+
+export async function getAllDevices(): Promise<typeof schema.devices.$inferSelect[]> {
+  return await db.select().from(schema.devices).orderBy(desc(schema.devices.createdAt));
+}
+
+export async function getDevicesByType(type: "omi" | "limitless" | "custom"): Promise<typeof schema.devices.$inferSelect[]> {
+  return await db.select().from(schema.devices)
+    .where(eq(schema.devices.type, type))
+    .orderBy(desc(schema.devices.createdAt));
+}
+
+export async function updateDevice(id: string, data: Partial<{
+  name: string;
+  status: "paired" | "active" | "offline" | "disconnected";
+  batteryLevel: number;
+  firmwareVersion: string;
+  lastSeenAt: string;
+  metadata: string;
+}>): Promise<typeof schema.devices.$inferSelect | undefined> {
+  const [result] = await db.update(schema.devices)
+    .set({ ...data, updatedAt: getNow() })
+    .where(eq(schema.devices.id, id))
+    .returning();
+  return result;
+}
+
+export async function updateDeviceStatus(id: string, status: "paired" | "active" | "offline" | "disconnected"): Promise<void> {
+  await db.update(schema.devices)
+    .set({ status, lastSeenAt: getNow(), updatedAt: getNow() })
+    .where(eq(schema.devices.id, id));
+}
+
+export async function updateDeviceLastSeen(id: string): Promise<void> {
+  await db.update(schema.devices)
+    .set({ lastSeenAt: getNow(), updatedAt: getNow() })
+    .where(eq(schema.devices.id, id));
+}
+
+export async function deleteDevice(id: string): Promise<boolean> {
+  const result = await db.delete(schema.devices).where(eq(schema.devices.id, id));
+  return (result.rowCount ?? 0) > 0;
+}
+
+// ============================================================================
+// VOICE PROFILES & SAMPLES
+// ============================================================================
+
+export async function createVoiceProfile(data: {
+  name: string;
+  isDefault?: boolean;
+  metadata?: string;
+}): Promise<typeof schema.voiceProfiles.$inferSelect> {
+  const now = getNow();
+  const id = uuidv4();
+  const [result] = await db.insert(schema.voiceProfiles).values({
+    ...data,
+    id,
+    enrolledAt: now,
+    sampleCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  return result;
+}
+
+export async function getVoiceProfile(id: string): Promise<typeof schema.voiceProfiles.$inferSelect | undefined> {
+  const [result] = await db.select().from(schema.voiceProfiles).where(eq(schema.voiceProfiles.id, id));
+  return result;
+}
+
+export async function getAllVoiceProfiles(): Promise<typeof schema.voiceProfiles.$inferSelect[]> {
+  return await db.select().from(schema.voiceProfiles).orderBy(desc(schema.voiceProfiles.createdAt));
+}
+
+export async function getDefaultVoiceProfile(): Promise<typeof schema.voiceProfiles.$inferSelect | undefined> {
+  const [result] = await db.select().from(schema.voiceProfiles)
+    .where(eq(schema.voiceProfiles.isDefault, true))
+    .limit(1);
+  return result;
+}
+
+export async function updateVoiceProfile(id: string, data: Partial<{
+  name: string;
+  isDefault: boolean;
+  embeddingVector: string;
+  metadata: string;
+}>): Promise<typeof schema.voiceProfiles.$inferSelect | undefined> {
+  const [result] = await db.update(schema.voiceProfiles)
+    .set({ ...data, updatedAt: getNow() })
+    .where(eq(schema.voiceProfiles.id, id))
+    .returning();
+  return result;
+}
+
+export async function deleteVoiceProfile(id: string): Promise<boolean> {
+  await db.delete(schema.voiceSamples).where(eq(schema.voiceSamples.profileId, id));
+  const result = await db.delete(schema.voiceProfiles).where(eq(schema.voiceProfiles.id, id));
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function createVoiceSample(data: {
+  profileId: string;
+  audioUrl?: string;
+  durationMs: number;
+  transcript?: string;
+  quality?: "good" | "fair" | "poor";
+}): Promise<typeof schema.voiceSamples.$inferSelect> {
+  const now = getNow();
+  const id = uuidv4();
+  const [result] = await db.insert(schema.voiceSamples).values({
+    ...data,
+    id,
+    createdAt: now,
+  }).returning();
+  
+  await db.update(schema.voiceProfiles)
+    .set({ 
+      sampleCount: sql`${schema.voiceProfiles.sampleCount} + 1`,
+      updatedAt: now 
+    })
+    .where(eq(schema.voiceProfiles.id, data.profileId));
+  
+  return result;
+}
+
+export async function getVoiceSamplesByProfile(profileId: string): Promise<typeof schema.voiceSamples.$inferSelect[]> {
+  return await db.select().from(schema.voiceSamples)
+    .where(eq(schema.voiceSamples.profileId, profileId))
+    .orderBy(desc(schema.voiceSamples.createdAt));
+}
+
+export async function deleteVoiceSample(id: string): Promise<boolean> {
+  const [sample] = await db.select().from(schema.voiceSamples).where(eq(schema.voiceSamples.id, id));
+  if (!sample) return false;
+  
+  const result = await db.delete(schema.voiceSamples).where(eq(schema.voiceSamples.id, id));
+  
+  if ((result.rowCount ?? 0) > 0) {
+    await db.update(schema.voiceProfiles)
+      .set({ 
+        sampleCount: sql`GREATEST(${schema.voiceProfiles.sampleCount} - 1, 0)`,
+        updatedAt: getNow() 
+      })
+      .where(eq(schema.voiceProfiles.id, sample.profileId));
+  }
+  
+  return (result.rowCount ?? 0) > 0;
+}
+

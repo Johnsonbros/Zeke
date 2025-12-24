@@ -44,6 +44,10 @@ Key architectural decisions and features include:
 - **Web Dashboard Authentication**: Secure SMS-based authentication for the production web dashboard, accessible only by `MASTER_ADMIN_PHONE`. Uses 30-day sessions with HttpOnly cookies.
 - **Agent Applications System**: Public application form (`/apply`) and admin dashboard for managing ZEKE agent applications with status management (pending, approved, rejected, waitlisted).
 - **Real-Time STT Pipeline**: WebSocket-based real-time speech-to-text transcription for audio from the mobile companion app, using Deepgram Live API with speaker diarization.
+- **Voice Activity Detection (VAD)**: WebRTC-based VAD (`node-vad`) filters silence before sending audio to Deepgram, reducing transcription costs by ~50%. Pre-speech buffering (300ms) ensures no speech is cut off.
+- **Hardware Device Registry**: Multi-device support for Omi and Limitless pendants with tracking of device status, battery level, firmware version, and last seen timestamps. API: `/api/devices`.
+- **Limitless Integration**: REST API client for Limitless pendant cloud (`api.limitless.ai/v1`) with lifelog fetching, audio download, and scheduled sync job (`server/services/limitless.ts`, `server/services/limitlessSync.ts`).
+- **Voice Enrollment System**: Voice profile management with speaker identification support. Stores voice samples and embedding vectors for future speaker recognition. API: `/api/voice/profiles`.
 
 ## External Dependencies
 - **OpenAI API**: AI responses, agent logic, and text embeddings.
@@ -56,5 +60,6 @@ Key architectural decisions and features include:
 - **OpenWeatherMap API**: Weather data.
 - **DuckDuckGo API**: Fallback web search.
 - **Omi Hardware**: Omi pendant connects via Android app (cloud API disabled - direct audio streaming via WebSocket).
+- **Limitless Hardware**: Limitless pendant lifelogs sync via REST API at api.limitless.ai (requires LIMITLESS_API_KEY).
 - **OpenStreetMap / Leaflet**: Default open-source map provider.
 - **Google Maps API**: Optional paid map provider.

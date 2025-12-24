@@ -3975,6 +3975,81 @@ export const insertSttSegmentSchema = createInsertSchema(sttSegments).omit({
 export type InsertSttSegment = z.infer<typeof insertSttSegmentSchema>;
 export type SttSegment = typeof sttSegments.$inferSelect;
 
+// Device types for hardware pendants
+export const deviceTypes = ["omi", "limitless", "custom"] as const;
+export type DeviceType = typeof deviceTypes[number];
+
+// Device status enum
+export const deviceStatuses = ["paired", "active", "offline", "disconnected"] as const;
+export type DeviceStatus = typeof deviceStatuses[number];
+
+// Hardware devices table - tracks Omi/Limitless pendants
+export const devices = pgTable("devices", {
+  id: text("id").primaryKey(),
+  type: text("type", { enum: deviceTypes }).notNull(),
+  name: text("name").notNull(),
+  macAddress: text("mac_address"),
+  firmwareVersion: text("firmware_version"),
+  hardwareModel: text("hardware_model"),
+  status: text("status", { enum: deviceStatuses }).notNull().default("paired"),
+  batteryLevel: integer("battery_level"),
+  lastSeenAt: text("last_seen_at"),
+  pairedAt: text("paired_at").notNull(),
+  metadata: text("metadata"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertDeviceSchema = createInsertSchema(devices).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertDevice = z.infer<typeof insertDeviceSchema>;
+export type Device = typeof devices.$inferSelect;
+
+// Voice profiles table - stores voice enrollment for speaker identification
+export const voiceProfiles = pgTable("voice_profiles", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  isDefault: boolean("is_default").notNull().default(false),
+  enrolledAt: text("enrolled_at").notNull(),
+  sampleCount: integer("sample_count").notNull().default(0),
+  embeddingVector: text("embedding_vector"),
+  metadata: text("metadata"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertVoiceProfileSchema = createInsertSchema(voiceProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertVoiceProfile = z.infer<typeof insertVoiceProfileSchema>;
+export type VoiceProfile = typeof voiceProfiles.$inferSelect;
+
+// Voice samples table - individual audio samples for voice enrollment
+export const voiceSamples = pgTable("voice_samples", {
+  id: text("id").primaryKey(),
+  profileId: text("profile_id").notNull(),
+  audioUrl: text("audio_url"),
+  durationMs: integer("duration_ms").notNull(),
+  transcript: text("transcript"),
+  quality: text("quality", { enum: ["good", "fair", "poor"] as const }).default("fair"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertVoiceSampleSchema = createInsertSchema(voiceSamples).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertVoiceSample = z.infer<typeof insertVoiceSampleSchema>;
+export type VoiceSample = typeof voiceSamples.$inferSelect;
+
 // Normalized transcript segment event sent to clients
 export interface TranscriptSegmentEvent {
   type: "transcript_segment";

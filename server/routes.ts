@@ -5,9 +5,28 @@ import type { IncomingMessage } from "http";
 import { v4 as uuidv4 } from "uuid";
 import { registerOmiRoutes } from "./omi-routes";
 import { createOpusDecoder, createDeepgramBridge, isDeepgramConfigured, createVAD, isVADAvailable } from "./stt";
+import { limitlessClient, getLimitlessStatus, type ListLifelogsParams, type LimitlessConfig } from "./services/limitless";
+import { limitlessSyncService, initLimitlessSync } from "./services/limitlessSync";
 import type { VoiceActivityDetector } from "./stt";
 import { createSttSession, endSttSession, createSttSegment, getSttSession } from "./db";
 import { getDeviceTokenByToken } from "./db";
+import { 
+  createDevice as createDeviceInDb,
+  getDevice as getDeviceFromDb,
+  getDeviceByMacAddress as getDeviceByMacAddressFromDb,
+  getAllDevices as getAllDevicesFromDb,
+  updateDevice as updateDeviceInDb,
+  updateDeviceLastSeen as updateDeviceLastSeenInDb,
+  deleteDevice as deleteDeviceFromDb,
+  createVoiceProfile as createVoiceProfileInDb,
+  getVoiceProfile as getVoiceProfileFromDb,
+  getAllVoiceProfiles as getAllVoiceProfilesFromDb,
+  updateVoiceProfile as updateVoiceProfileInDb,
+  deleteVoiceProfile as deleteVoiceProfileFromDb,
+  createVoiceSample as createVoiceSampleInDb,
+  getVoiceSamplesByProfile as getVoiceSamplesByProfileFromDb,
+  deleteVoiceSample as deleteVoiceSampleFromDb,
+} from "./db";
 import type { TranscriptSegmentEvent } from "@shared/schema";
 import { createMobileAuthMiddleware, registerSecurityLogsEndpoint, registerPairingEndpoints } from "./mobileAuth";
 import { registerSmsPairingEndpoints } from "./sms-pairing";
@@ -736,10 +755,12 @@ export async function registerRoutes(
   const audioSessions = new Map<WebSocket, {
     sessionId: string;
     deviceId: string;
+    deviceType: "omi" | "limitless" | "custom" | "unknown";
     decoder: ReturnType<typeof createOpusDecoder>;
     bridge: ReturnType<typeof createDeepgramBridge> | null;
     vad: VoiceActivityDetector | null;
     vadEnabled: boolean;
+    lastHeartbeat: number;
   }>();
   
   const vadAvailable = isVADAvailable();
@@ -863,6 +884,14 @@ export async function registerRoutes(
           const codec = message.codec || "opus";
           const sampleRate = message.sample_rate_hint || 16000;
           const frameFormat = message.frame_format || "raw_opus_packets";
+          const deviceType = (message.device_type as "omi" | "limitless" | "custom") || "unknown";
+          const sessionDeviceId = message.device_id || deviceId;
+
+          if (sessionDeviceId && sessionDeviceId !== "anonymous") {
+            updateDeviceLastSeenInDb(sessionDeviceId).catch(err => {
+              console.log(`[STT WS] Device ${sessionDeviceId} not in registry (will continue without tracking)`);
+            });
+          }
 
           if (!isDeepgramConfigured()) {
             ws.send(JSON.stringify({ 
@@ -874,7 +903,7 @@ export async function registerRoutes(
 
           const dbSession = createSttSession({
             id: sessionId,
-            deviceId: message.device_id || deviceId,
+            deviceId: sessionDeviceId,
             codec,
             sampleRate,
             provider: "deepgram",
@@ -933,13 +962,24 @@ export async function registerRoutes(
             },
           }, { sampleRate });
 
-          audioSessions.set(ws, { sessionId, deviceId, decoder, bridge, vad, vadEnabled: enableVad });
+          audioSessions.set(ws, { 
+            sessionId, 
+            deviceId: sessionDeviceId, 
+            deviceType, 
+            decoder, 
+            bridge, 
+            vad, 
+            vadEnabled: enableVad,
+            lastHeartbeat: Date.now(),
+          });
 
           const connected = await bridge.connect();
           
           ws.send(JSON.stringify({
             type: "session_started",
             session_id: sessionId,
+            device_id: sessionDeviceId,
+            device_type: deviceType,
             deepgram_connected: connected,
             frame_format: frameFormat,
             vad_enabled: enableVad,
@@ -1028,6 +1068,419 @@ export async function registerRoutes(
       vadAvailable: vadAvailable,
       vadDescription: "Voice Activity Detection filters silence to reduce Deepgram costs by ~50%",
     });
+  });
+
+  // ============================================================================
+  // LIMITLESS API ROUTES
+  // ============================================================================
+
+  // GET /api/limitless/status - Check Limitless API configuration and connection
+  app.get("/api/limitless/status", async (_req, res) => {
+    try {
+      const status = await getLimitlessStatus();
+      res.json(status);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/limitless/configure - Configure Limitless API key
+  app.post("/api/limitless/configure", async (req, res) => {
+    try {
+      const { apiKey } = req.body as { apiKey?: string };
+      if (!apiKey) {
+        return res.status(400).json({ error: "apiKey is required" });
+      }
+
+      const config: LimitlessConfig = { apiKey, syncEnabled: true };
+      await limitlessClient.saveConfig(config);
+      
+      const test = await limitlessClient.testConnection();
+      res.json({
+        success: true,
+        connected: test.success,
+        error: test.error,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // GET /api/limitless/lifelogs - List lifelogs with optional filters
+  app.get("/api/limitless/lifelogs", async (req, res) => {
+    try {
+      const params: ListLifelogsParams = {
+        timezone: req.query.timezone as string | undefined,
+        date: req.query.date as string | undefined,
+        start: req.query.start as string | undefined,
+        end: req.query.end as string | undefined,
+        cursor: req.query.cursor as string | undefined,
+        direction: req.query.direction as "asc" | "desc" | undefined,
+        limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined,
+        includeMarkdown: req.query.includeMarkdown === "true",
+        includeHeadings: req.query.includeHeadings === "true",
+      };
+
+      const response = await limitlessClient.listLifelogs(params);
+      res.json(response);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("not configured")) {
+        return res.status(401).json({ error: message });
+      }
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // GET /api/limitless/lifelogs/:id - Get a specific lifelog with full details
+  app.get("/api/limitless/lifelogs/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const includeMarkdown = req.query.includeMarkdown !== "false";
+      const includeHeadings = req.query.includeHeadings !== "false";
+
+      const response = await limitlessClient.getLifelog(id, includeMarkdown, includeHeadings);
+      res.json(response);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("not configured")) {
+        return res.status(401).json({ error: message });
+      }
+      if (message.includes("404")) {
+        return res.status(404).json({ error: "Lifelog not found" });
+      }
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // GET /api/limitless/lifelogs/:id/audio - Download audio for a lifelog
+  app.get("/api/limitless/lifelogs/:id/audio", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const audioBuffer = await limitlessClient.downloadAudio(id);
+      
+      res.setHeader("Content-Type", "audio/ogg");
+      res.setHeader("Content-Disposition", `attachment; filename="lifelog-${id}.ogg"`);
+      res.send(audioBuffer);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("not configured")) {
+        return res.status(401).json({ error: message });
+      }
+      if (message.includes("404")) {
+        return res.status(404).json({ error: "Audio not found" });
+      }
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // GET /api/limitless/sync/status - Get sync service status
+  app.get("/api/limitless/sync/status", async (_req, res) => {
+    try {
+      const status = limitlessSyncService.getStatus();
+      const syncState = await (await import("./services/limitlessSync")).limitlessSyncService.getSyncedLifelogs();
+      res.json({
+        ...status,
+        recentLogs: syncState.slice(0, 5),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/limitless/sync/run - Trigger immediate sync
+  app.post("/api/limitless/sync/run", async (_req, res) => {
+    try {
+      const result = await limitlessSyncService.runNow();
+      res.json({
+        success: true,
+        ...result,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/limitless/sync/start - Start the sync scheduler
+  app.post("/api/limitless/sync/start", async (_req, res) => {
+    try {
+      limitlessSyncService.start();
+      res.json({ success: true, message: "Sync scheduler started" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/limitless/sync/stop - Stop the sync scheduler
+  app.post("/api/limitless/sync/stop", async (_req, res) => {
+    try {
+      limitlessSyncService.stop();
+      res.json({ success: true, message: "Sync scheduler stopped" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // GET /api/limitless/sync/logs - Get synced lifelogs
+  app.get("/api/limitless/sync/logs", async (req, res) => {
+    try {
+      const logs = await limitlessSyncService.getSyncedLifelogs();
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+      res.json({
+        total: logs.length,
+        logs: logs.slice(0, limit),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // Initialize Limitless sync on startup
+  initLimitlessSync().catch(err => {
+    console.error("[LimitlessSync] Failed to initialize:", err);
+  });
+
+  // ============================================================================
+  // DEVICE MANAGEMENT API ROUTES
+  // ============================================================================
+
+  // GET /api/devices - List all registered devices
+  app.get("/api/devices", async (_req, res) => {
+    try {
+      const devices = await getAllDevicesFromDb();
+      res.json(devices);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/devices - Register a new device
+  app.post("/api/devices", async (req, res) => {
+    try {
+      const { type, name, macAddress, firmwareVersion, hardwareModel, metadata } = req.body;
+      if (!type || !name) {
+        return res.status(400).json({ error: "type and name are required" });
+      }
+      if (!["omi", "limitless", "custom"].includes(type)) {
+        return res.status(400).json({ error: "type must be omi, limitless, or custom" });
+      }
+
+      if (macAddress) {
+        const existing = await getDeviceByMacAddressFromDb(macAddress);
+        if (existing) {
+          return res.status(409).json({ error: "Device with this MAC address already registered", device: existing });
+        }
+      }
+
+      const device = await createDeviceInDb({
+        type,
+        name,
+        macAddress,
+        firmwareVersion,
+        hardwareModel,
+        metadata: metadata ? JSON.stringify(metadata) : undefined,
+      });
+      res.status(201).json(device);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // GET /api/devices/:id - Get device details
+  app.get("/api/devices/:id", async (req, res) => {
+    try {
+      const device = await getDeviceFromDb(req.params.id);
+      if (!device) {
+        return res.status(404).json({ error: "Device not found" });
+      }
+      res.json(device);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // PATCH /api/devices/:id - Update device
+  app.patch("/api/devices/:id", async (req, res) => {
+    try {
+      const { name, status, batteryLevel, firmwareVersion, metadata } = req.body;
+      const device = await updateDeviceInDb(req.params.id, {
+        name,
+        status,
+        batteryLevel,
+        firmwareVersion,
+        metadata: metadata ? JSON.stringify(metadata) : undefined,
+      });
+      if (!device) {
+        return res.status(404).json({ error: "Device not found" });
+      }
+      res.json(device);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // DELETE /api/devices/:id - Remove device
+  app.delete("/api/devices/:id", async (req, res) => {
+    try {
+      const deleted = await deleteDeviceFromDb(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Device not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/devices/:id/heartbeat - Update device last seen
+  app.post("/api/devices/:id/heartbeat", async (req, res) => {
+    try {
+      const { batteryLevel } = req.body;
+      await updateDeviceLastSeenInDb(req.params.id);
+      if (batteryLevel !== undefined) {
+        await updateDeviceInDb(req.params.id, { batteryLevel });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // ============================================================================
+  // VOICE PROFILES API ROUTES
+  // ============================================================================
+
+  // GET /api/voice/profiles - List all voice profiles
+  app.get("/api/voice/profiles", async (_req, res) => {
+    try {
+      const profiles = await getAllVoiceProfilesFromDb();
+      res.json(profiles);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/voice/profiles - Create a new voice profile
+  app.post("/api/voice/profiles", async (req, res) => {
+    try {
+      const { name, isDefault, metadata } = req.body;
+      if (!name) {
+        return res.status(400).json({ error: "name is required" });
+      }
+
+      const profile = await createVoiceProfileInDb({
+        name,
+        isDefault: isDefault || false,
+        metadata: metadata ? JSON.stringify(metadata) : undefined,
+      });
+      res.status(201).json(profile);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // GET /api/voice/profiles/:id - Get voice profile with samples
+  app.get("/api/voice/profiles/:id", async (req, res) => {
+    try {
+      const profile = await getVoiceProfileFromDb(req.params.id);
+      if (!profile) {
+        return res.status(404).json({ error: "Voice profile not found" });
+      }
+      const samples = await getVoiceSamplesByProfileFromDb(req.params.id);
+      res.json({ ...profile, samples });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // PATCH /api/voice/profiles/:id - Update voice profile
+  app.patch("/api/voice/profiles/:id", async (req, res) => {
+    try {
+      const { name, isDefault, metadata } = req.body;
+      const profile = await updateVoiceProfileInDb(req.params.id, {
+        name,
+        isDefault,
+        metadata: metadata ? JSON.stringify(metadata) : undefined,
+      });
+      if (!profile) {
+        return res.status(404).json({ error: "Voice profile not found" });
+      }
+      res.json(profile);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // DELETE /api/voice/profiles/:id - Delete voice profile and samples
+  app.delete("/api/voice/profiles/:id", async (req, res) => {
+    try {
+      const deleted = await deleteVoiceProfileFromDb(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Voice profile not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/voice/profiles/:id/samples - Add voice sample
+  app.post("/api/voice/profiles/:id/samples", async (req, res) => {
+    try {
+      const { audioUrl, durationMs, transcript, quality } = req.body;
+      if (!durationMs) {
+        return res.status(400).json({ error: "durationMs is required" });
+      }
+
+      const profile = await getVoiceProfileFromDb(req.params.id);
+      if (!profile) {
+        return res.status(404).json({ error: "Voice profile not found" });
+      }
+
+      const sample = await createVoiceSampleInDb({
+        profileId: req.params.id,
+        audioUrl,
+        durationMs,
+        transcript,
+        quality,
+      });
+      res.status(201).json(sample);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // DELETE /api/voice/samples/:id - Delete voice sample
+  app.delete("/api/voice/samples/:id", async (req, res) => {
+    try {
+      const deleted = await deleteVoiceSampleFromDb(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Voice sample not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
   });
 
   // GET /api/time - Get current date/time in New York timezone
