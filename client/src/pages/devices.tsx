@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -6,22 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   Bluetooth,
   Battery,
   Wifi,
   WifiOff,
-  Plus,
   Trash2,
   RefreshCw,
   Smartphone,
   Circle,
-  Settings,
   AlertCircle,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -137,104 +130,6 @@ function DeviceCard({ device, onDelete }: { device: Device; onDelete: () => void
   );
 }
 
-function AddDeviceDialog({ onSuccess }: { onSuccess: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [type, setType] = useState<"omi" | "limitless" | "custom">("omi");
-  const [macAddress, setMacAddress] = useState("");
-  const { toast } = useToast();
-
-  const createMutation = useMutation({
-    mutationFn: async (data: { type: string; name: string; macAddress?: string }) => {
-      return apiRequest("/api/devices", {
-        method: "POST",
-        body: JSON.stringify(data),
-        headers: { "Content-Type": "application/json" },
-      });
-    },
-    onSuccess: () => {
-      toast({ title: "Device added", description: "Your device has been registered." });
-      queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
-      setOpen(false);
-      setName("");
-      setMacAddress("");
-      onSuccess();
-    },
-    onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    createMutation.mutate({
-      type,
-      name,
-      macAddress: macAddress || undefined,
-    });
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button data-testid="button-add-device">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Device
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add New Device</DialogTitle>
-          <DialogDescription>
-            Register a new Omi or Limitless pendant to connect with ZEKE.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="device-type">Device Type</Label>
-            <Select value={type} onValueChange={(v) => setType(v as typeof type)}>
-              <SelectTrigger data-testid="select-device-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="omi">Omi Pendant</SelectItem>
-                <SelectItem value="limitless">Limitless Pendant</SelectItem>
-                <SelectItem value="custom">Custom Device</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="device-name">Device Name</Label>
-            <Input
-              id="device-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My Omi Pendant"
-              required
-              data-testid="input-device-name"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="mac-address">MAC Address (optional)</Label>
-            <Input
-              id="mac-address"
-              value={macAddress}
-              onChange={(e) => setMacAddress(e.target.value)}
-              placeholder="AA:BB:CC:DD:EE:FF"
-              data-testid="input-mac-address"
-            />
-          </div>
-          <DialogFooter>
-            <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-device">
-              {createMutation.isPending ? "Adding..." : "Add Device"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export default function DevicesPage() {
   const { toast } = useToast();
 
@@ -268,17 +163,14 @@ export default function DevicesPage() {
               Manage your connected Omi and Limitless pendants
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => refetch()}
-              data-testid="button-refresh-devices"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-            <AddDeviceDialog onSuccess={() => {}} />
-          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => refetch()}
+            data-testid="button-refresh-devices"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
         </div>
 
         <Card>
@@ -357,10 +249,9 @@ export default function DevicesPage() {
             <CardContent className="py-12 text-center">
               <Smartphone className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">No Devices Registered</h3>
-              <p className="text-muted-foreground mb-4">
-                Add your first Omi or Limitless pendant to get started
+              <p className="text-muted-foreground text-sm">
+                Devices will appear here once paired via the ZEKE companion app
               </p>
-              <AddDeviceDialog onSuccess={() => {}} />
             </CardContent>
           </Card>
         )}
