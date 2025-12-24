@@ -3630,7 +3630,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid request" });
       }
       
-      const list = createCustomList(parsed.data);
+      const list = await createCustomList(parsed.data);
       console.log(`[LIST ACCESS] Created list: ${list.id} - "${list.name}"`);
       res.json(list);
     } catch (error: any) {
@@ -3650,7 +3650,7 @@ export async function registerRoutes(
     }
     
     try {
-      const list = getCustomListWithItems(id);
+      const list = await getCustomListWithItems(id);
       
       if (!list) {
         return res.status(404).json({ message: "Not found" });
@@ -3673,7 +3673,7 @@ export async function registerRoutes(
     }
     
     try {
-      const existing = getCustomList(id);
+      const existing = await getCustomList(id);
       
       if (!existing) {
         return res.status(404).json({ message: "Not found" });
@@ -3685,7 +3685,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid request" });
       }
       
-      const list = updateCustomList(id, parsed.data);
+      const list = await updateCustomList(id, parsed.data);
       console.log(`[LIST ACCESS] Updated list: ${id}`);
       res.json(list);
     } catch (error: any) {
@@ -3704,13 +3704,13 @@ export async function registerRoutes(
     }
     
     try {
-      const existing = getCustomList(id);
+      const existing = await getCustomList(id);
       
       if (!existing) {
         return res.status(404).json({ message: "Not found" });
       }
       
-      deleteCustomList(id);
+      await deleteCustomList(id);
       console.log(`[LIST ACCESS] Deleted list: ${id} - "${existing.name}"`);
       res.json({ success: true });
     } catch (error: any) {
@@ -3729,7 +3729,7 @@ export async function registerRoutes(
     }
     
     try {
-      const existing = getCustomList(id);
+      const existing = await getCustomList(id);
       
       if (!existing) {
         return res.status(404).json({ message: "Not found" });
@@ -3741,7 +3741,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid request" });
       }
       
-      const item = createCustomListItem(parsed.data);
+      const item = await createCustomListItem(parsed.data);
       console.log(`[LIST ACCESS] Created item in list ${id}: ${item.id}`);
       res.json(item);
     } catch (error: any) {
@@ -3760,13 +3760,13 @@ export async function registerRoutes(
     }
     
     try {
-      const existingList = getCustomList(id);
+      const existingList = await getCustomList(id);
       
       if (!existingList) {
         return res.status(404).json({ message: "Not found" });
       }
       
-      const existingItem = getCustomListItem(itemId);
+      const existingItem = await getCustomListItem(itemId);
       if (!existingItem || existingItem.listId !== id) {
         return res.status(404).json({ message: "Not found" });
       }
@@ -3777,7 +3777,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid request" });
       }
       
-      const item = updateCustomListItem(itemId, parsed.data);
+      const item = await updateCustomListItem(itemId, parsed.data);
       console.log(`[LIST ACCESS] Updated item ${itemId} in list ${id}`);
       res.json(item);
     } catch (error: any) {
@@ -3796,18 +3796,18 @@ export async function registerRoutes(
     }
     
     try {
-      const existingList = getCustomList(id);
+      const existingList = await getCustomList(id);
       
       if (!existingList) {
         return res.status(404).json({ message: "Not found" });
       }
       
-      const existingItem = getCustomListItem(itemId);
+      const existingItem = await getCustomListItem(itemId);
       if (!existingItem || existingItem.listId !== id) {
         return res.status(404).json({ message: "Not found" });
       }
       
-      deleteCustomListItem(itemId);
+      await deleteCustomListItem(itemId);
       console.log(`[LIST ACCESS] Deleted item ${itemId} from list ${id}`);
       res.json({ success: true });
     } catch (error: any) {
@@ -3826,18 +3826,18 @@ export async function registerRoutes(
     }
     
     try {
-      const existingList = getCustomList(id);
+      const existingList = await getCustomList(id);
       
       if (!existingList) {
         return res.status(404).json({ message: "Not found" });
       }
       
-      const existingItem = getCustomListItem(itemId);
+      const existingItem = await getCustomListItem(itemId);
       if (!existingItem || existingItem.listId !== id) {
         return res.status(404).json({ message: "Not found" });
       }
       
-      const item = toggleCustomListItemChecked(itemId);
+      const item = await toggleCustomListItemChecked(itemId);
       console.log(`[LIST ACCESS] Toggled item ${itemId} in list ${id} - checked: ${item?.checked}`);
       res.json(item);
     } catch (error: any) {
@@ -3856,13 +3856,13 @@ export async function registerRoutes(
     }
     
     try {
-      const existing = getCustomList(id);
+      const existing = await getCustomList(id);
       
       if (!existing) {
         return res.status(404).json({ message: "Not found" });
       }
       
-      const count = clearCheckedCustomListItems(id);
+      const count = await clearCheckedCustomListItems(id);
       console.log(`[LIST ACCESS] Cleared ${count} checked items from list ${id}`);
       res.json({ success: true, deleted: count });
     } catch (error: any) {
@@ -5205,7 +5205,7 @@ export async function registerRoutes(
   app.patch("/api/automations/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const existing = getAutomation(id);
+      const existing = await getAutomation(id);
       
       if (!existing) {
         console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Failed to update automation ${id} - not found`);
@@ -5218,7 +5218,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
       }
       
-      const automation = updateAutomation(id, parsed.data);
+      const automation = await updateAutomation(id, parsed.data);
       console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Updated automation "${existing.name}" (${id}) - Changes: ${JSON.stringify(parsed.data)}`);
       
       // Reschedule the automation (handles enable/disable and cron changes)
@@ -5237,7 +5237,7 @@ export async function registerRoutes(
   app.delete("/api/automations/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const existing = getAutomation(id);
+      const existing = await getAutomation(id);
       
       if (!existing) {
         console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Failed to delete automation ${id} - not found`);
@@ -5249,7 +5249,7 @@ export async function registerRoutes(
       // Stop the scheduled task before deleting
       stopAutomation(id);
       
-      deleteAutomation(id);
+      await deleteAutomation(id);
       console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Automation ${id} deleted successfully`);
       res.json({ success: true });
     } catch (error: any) {
@@ -5262,7 +5262,7 @@ export async function registerRoutes(
   app.post("/api/automations/:id/toggle", async (req, res) => {
     try {
       const { id } = req.params;
-      const existing = getAutomation(id);
+      const existing = await getAutomation(id);
       
       if (!existing) {
         console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Failed to toggle automation ${id} - not found`);
@@ -5272,7 +5272,7 @@ export async function registerRoutes(
       const newState = !existing.enabled;
       console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Toggling automation "${existing.name}" (${id}) - ${existing.enabled ? "DISABLING" : "ENABLING"}`);
       
-      const automation = updateAutomation(id, { enabled: newState });
+      const automation = await updateAutomation(id, { enabled: newState });
       
       // Update the schedule based on new enabled state
       if (automation) {
