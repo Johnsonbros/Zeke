@@ -5450,7 +5450,7 @@ export async function registerRoutes(
   // Get unique conversation phone numbers (for sidebar)
   app.get("/api/twilio/conversations", async (_req, res) => {
     try {
-      const conversations = getTwilioConversationPhones();
+      const conversations = await getTwilioConversationPhones();
       res.json(conversations);
     } catch (error: any) {
       console.error("Get twilio conversations error:", error);
