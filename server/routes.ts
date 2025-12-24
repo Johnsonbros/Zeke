@@ -1560,7 +1560,7 @@ export async function registerRoutes(
     
     // Check database by trying a simple query
     try {
-      const conversations = getAllConversations();
+      const conversations = await getAllConversations();
       checks.database = { status: "ok", message: `${conversations.length} conversations` };
     } catch (error: any) {
       checks.database = { status: "error", message: error.message };
@@ -3092,7 +3092,7 @@ export async function registerRoutes(
         ...restData,
         embedding: undefined, // Embeddings are generated server-side
       };
-      const note = createMemoryNote(noteInput);
+      const note = await createMemoryNote(noteInput);
       res.json(note);
     } catch (error: any) {
       console.error("Create memory error:", error);
@@ -3104,7 +3104,7 @@ export async function registerRoutes(
   app.delete("/api/memory/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      deleteMemoryNote(id);
+      await deleteMemoryNote(id);
       res.json({ success: true });
     } catch (error: any) {
       console.error("Delete memory error:", error);
@@ -3115,7 +3115,7 @@ export async function registerRoutes(
   // Get all preferences
   app.get("/api/preferences", async (_req, res) => {
     try {
-      const prefs = getAllPreferences();
+      const prefs = await getAllPreferences();
       res.json(prefs);
     } catch (error: any) {
       console.error("Get preferences error:", error);
@@ -3131,7 +3131,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid request body" });
       }
       
-      const pref = setPreference(parsed.data);
+      const pref = await setPreference(parsed.data);
       res.json(pref);
     } catch (error: any) {
       console.error("Set preference error:", error);
@@ -3182,12 +3182,12 @@ export async function registerRoutes(
         console.log(`[SECURITY] Export access granted via same-origin check - IP: ${clientIp}`);
       }
       
-      const memories = getAllMemoryNotes();
-      const preferences = getAllPreferences();
-      const contacts = getAllContacts();
-      const groceryItems = getAllGroceryItems();
-      const tasks = getAllTasks();
-      const reminders = getAllReminders();
+      const memories = await getAllMemoryNotes();
+      const preferences = await getAllPreferences();
+      const contacts = await getAllContacts();
+      const groceryItems = await getAllGroceryItems();
+      const tasks = await getAllTasks();
+      const reminders = await getAllReminders();
       
       const exportData = {
         exportedAt: new Date().toISOString(),
@@ -3612,7 +3612,7 @@ export async function registerRoutes(
   app.get("/api/lists", async (req, res) => {
     logListAccess("GET /api/lists", req);
     try {
-      const lists = getAllCustomLists();
+      const lists = await getAllCustomLists();
       res.json(lists);
     } catch (error: any) {
       console.error("Get custom lists error:", error);
@@ -5087,7 +5087,7 @@ export async function registerRoutes(
   // Get all automations
   app.get("/api/automations", async (_req, res) => {
     try {
-      const automations = getAllAutomations();
+      const automations = await getAllAutomations();
       console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Listed ${automations.length} automations`);
       res.json(automations);
     } catch (error: any) {
@@ -5105,7 +5105,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
       }
       
-      const automation = createAutomation(parsed.data);
+      const automation = await createAutomation(parsed.data);
       console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Created automation "${automation.name}" (${automation.id}) - Type: ${automation.type}, Enabled: ${automation.enabled}, Recipient: ${automation.recipientPhone || "N/A"}`);
       
       // Schedule the new automation if enabled
@@ -5123,11 +5123,11 @@ export async function registerRoutes(
   // Get or create task follow-up automation (MUST be before generic /:id route)
   app.get("/api/automations/task-followup", async (_req, res) => {
     try {
-      const automations = getAllAutomations();
+      const automations = await getAllAutomations();
       let taskFollowup = automations.find(a => a.type === "task_followup");
       
       if (!taskFollowup) {
-        taskFollowup = createAutomation({
+        taskFollowup = await createAutomation({
           name: "Daily Task Follow-up",
           type: "task_followup",
           cronExpression: "0 8 * * *",
@@ -5139,9 +5139,9 @@ export async function registerRoutes(
         console.log(`[AUDIT] [${new Date().toISOString()}] Created default task follow-up automation`);
       }
       
-      const overdue = getOverdueTasks();
-      const today = getTasksDueToday();
-      const tomorrow = getTasksDueTomorrow();
+      const overdue = await getOverdueTasks();
+      const today = await getTasksDueToday();
+      const tomorrow = await getTasksDueTomorrow();
       
       res.json({
         automation: taskFollowup,
@@ -5161,11 +5161,11 @@ export async function registerRoutes(
   // Update task follow-up automation settings (MUST be before generic /:id route)
   app.patch("/api/automations/task-followup", async (req, res) => {
     try {
-      const automations = getAllAutomations();
+      const automations = await getAllAutomations();
       let taskFollowup = automations.find(a => a.type === "task_followup");
       
       if (!taskFollowup) {
-        taskFollowup = createAutomation({
+        taskFollowup = await createAutomation({
           name: "Daily Task Follow-up",
           type: "task_followup",
           cronExpression: "0 8 * * *",
@@ -5187,7 +5187,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
       }
       
-      const updated = updateAutomation(taskFollowup.id, parsed.data);
+      const updated = await updateAutomation(taskFollowup.id, parsed.data);
       
       if (updated) {
         scheduleAutomation(updated);
@@ -9797,7 +9797,7 @@ export async function registerRoutes(
   // GET /api/nl-automations - Get all NL automations
   app.get("/api/nl-automations", async (req, res) => {
     try {
-      const automations = getAllNLAutomationsDb();
+      const automations = await getAllNLAutomationsDb();
       res.json(automations);
     } catch (error: any) {
       console.error("Get NL automations error:", error);
