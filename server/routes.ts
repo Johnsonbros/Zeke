@@ -11131,7 +11131,7 @@ export async function registerRoutes(
     try {
       const limit = parseInt(req.query.limit as string) || 30;
       const offset = parseInt(req.query.offset as string) || 0;
-      const entries = getJournalEntries(limit, offset);
+      const entries = await getJournalEntries(limit, offset);
       res.json(entries);
     } catch (error: any) {
       console.error("[JOURNAL] Error getting entries:", error);

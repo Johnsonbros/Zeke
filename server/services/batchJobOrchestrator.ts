@@ -38,6 +38,7 @@ import type {
   BatchWindow,
   BatchArtifactType,
 } from "@shared/schema";
+import { generateDailySummary } from "../jobs/dailySummaryAgent";
 
 // ============================================
 // CONFIGURATION
@@ -440,6 +441,29 @@ async function runJobFromTemplate(template: BatchJobTemplate): Promise<{
       jsonlContent = patternResult.jsonl;
       itemCount = patternResult.count;
       break;
+      
+    case "DAILY_SUMMARY":
+      // Daily journal generation runs synchronously (single AI call)
+      // Generate for yesterday since nightly batch runs at 3 AM
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const targetDate = yesterday.toISOString().split("T")[0];
+      
+      try {
+        console.log(`[BatchOrchestrator] Generating daily journal for ${targetDate}`);
+        const journalEntry = await generateDailySummary(targetDate);
+        if (journalEntry) {
+          console.log(`[BatchOrchestrator] Daily journal created: ${journalEntry.title}`);
+          // Mark as successful - no batch submission needed
+          return { submitted: true, estimatedCostCents: 5, jobId: `journal-${targetDate}` };
+        } else {
+          console.log(`[BatchOrchestrator] No journal entry generated (no activity for ${targetDate})`);
+          return { submitted: false, estimatedCostCents: 0 };
+        }
+      } catch (error) {
+        console.error(`[BatchOrchestrator] Daily journal generation failed:`, error);
+        return { submitted: false, estimatedCostCents: 0 };
+      }
       
     default:
       console.log(`[BatchOrchestrator] No builder for ${template.type}, skipping`);
