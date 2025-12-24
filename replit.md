@@ -23,7 +23,8 @@ Key architectural decisions and features include:
 - **Memory Model**: Optimized for single-user long-term memory with semantic search (PostgreSQL vector embeddings), TTL buckets, and an asynchronous processing queue for Omi memories.
 - **AI-Powered Systems**: Location Intelligence, Automatic People Tracking, Food Preference Intelligence, AI-Powered Weather Briefings, Predictive Task Scheduling, and a Knowledge Graph for multi-hop reasoning.
 - **Knowledge Graph Batch Processing**: Entity extraction via OpenAI Batch API (GPT-5.2) for cost efficiency, with a daily 2 AM backfill and synchronous fallback.
-- **Input/Output**: SMS/MMS integration with optimized image processing (parallel downloads, smart model routing, face recognition), a voice pipeline for Omi Pendant lifelogs, and Smart Notification Batching.
+- **Input/Output**: SMS/MMS integration with optimized image processing (parallel downloads, smart model routing, face recognition), a voice pipeline for Omi Pendant via Android app, and Smart Notification Batching.
+- **Omi Pendant Integration (Dec 2024)**: Omi cloud API is DISABLED. Audio flows directly from the Omi pendant hardware through the Android companion app to ZEKE's backend: `Omi Pendant → Bluetooth → Android App → WebSocket (/ws/audio) → Deepgram STT → feedSttTranscript() → Voice Pipeline`. The Android app handles Bluetooth connection and audio capture, while ZEKE processes transcripts for wake word detection and command execution.
 - **Proactive Memory Creation**: Auto-detection of memory-worthy images with user SMS confirmation for saving.
 - **Context Enhancement**: Semantic search enriches AI context based on identified people or locations in images.
 - **Learning & Feedback**: A Feedback Learning Loop system for user corrections, implicit feedback detection, and nightly training to cluster feedback into style profiles.
@@ -54,6 +55,6 @@ Key architectural decisions and features include:
 - **Google Calendar API**: Calendar integration.
 - **OpenWeatherMap API**: Weather data.
 - **DuckDuckGo API**: Fallback web search.
-- **Omi API**: Accessing lifelogs from the Omi pendant.
+- **Omi Hardware**: Omi pendant connects via Android app (cloud API disabled - direct audio streaming via WebSocket).
 - **OpenStreetMap / Leaflet**: Default open-source map provider.
 - **Google Maps API**: Optional paid map provider.

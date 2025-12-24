@@ -71,12 +71,8 @@ export function initializeVoicePipeline(): boolean {
     return true;
   }
 
-  // Check if Omi is available - this is the minimum requirement
-  if (!isVoicePipelineAvailable()) {
-    log("Voice pipeline not available - OMI_API_KEY or OMI_DEV_API_KEY not configured", "voice");
-    isInitialized = true;  // Mark as initialized so status endpoint works
-    return false;
-  }
+  // Voice pipeline is always available - audio comes from Android app via WebSocket
+  // (Omi cloud API is disabled)
 
   log("Initializing voice pipeline...", "voice");
 
@@ -217,6 +213,7 @@ export function resetVoicePipeline(): void {
 export { 
   OmiListener, 
   isVoicePipelineAvailable,
+  feedSttTranscript,
   registerMemoryHandler as registerLifelogHandler,
   unregisterMemoryHandler as unregisterLifelogHandler,
   type MemoryHandler as LifelogHandler

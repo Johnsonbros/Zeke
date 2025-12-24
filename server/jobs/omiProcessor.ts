@@ -370,17 +370,15 @@ export function clearCompletedJobs(): number {
 /**
  * Initialize the Omi enhanced features processor
  * Should be called during server startup
+ * Note: Omi cloud API is disabled. Audio data flows from Android app via WebSocket.
  */
 export function initializeOmiProcessor(): void {
-  if (!process.env.OMI_API_KEY && !process.env.OMI_DEV_API_KEY) {
-    console.log("[OmiProcessor] Not starting - OMI_API_KEY or OMI_DEV_API_KEY not configured");
-    return;
-  }
-  
+  // Omi cloud API disabled - processor still works for Android app data
   if (!process.env.OPENAI_API_KEY) {
     console.log("[OmiProcessor] Not starting - OPENAI_API_KEY not configured");
     return;
   }
   
+  console.log("[OmiProcessor] Initializing (audio from Android app via WebSocket)");
   startOmiProcessor();
 }

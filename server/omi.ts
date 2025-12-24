@@ -1,9 +1,22 @@
 /**
- * Omi AI API Service
+ * Omi Data Types and Local Processing
  * 
- * Provides access to memories from the Omi wearable for ZEKE context.
- * Omi uses a webhook-based architecture for real-time data push.
- * API documentation: https://docs.omi.me
+ * ============================================================================
+ * ARCHITECTURE CHANGE: Omi Cloud API is DISABLED
+ * ============================================================================
+ * 
+ * Audio data now flows directly from the Omi pendant hardware through the 
+ * Android companion app to ZEKE's backend:
+ * 
+ *   Omi Pendant → Bluetooth → Android App → WebSocket/STT → ZEKE Backend
+ * 
+ * This file now contains:
+ * - Data types and interfaces (OmiMemoryData, TranscriptSegment, etc.)
+ * - Local processing utilities (extractConversationContent, etc.)
+ * - Database summary operations (local storage, not Omi cloud)
+ * 
+ * The cloud-fetching functions (getMemories, searchMemories, etc.) return
+ * empty results to maintain compatibility with code that references them.
  */
 
 import OpenAI from "openai";
@@ -14,7 +27,7 @@ import {
   getOmiSummariesInRange,
 } from "./db";
 import type { OmiSummary, InsertOmiSummary } from "@shared/schema";
-import { wrapOmi } from "../lib/reliability/client_wrap";
+// wrapOmi import removed - cloud API disabled
 
 const OMI_API_BASE = "https://api.omi.me";
 const TIMEZONE = "America/New_York";
@@ -119,103 +132,61 @@ interface GetMemoriesParams {
   offset?: number;
 }
 
-function getApiKey(): string {
-  const apiKey = process.env.OMI_API_KEY || process.env.OMI_DEV_API_KEY;
-  if (!apiKey) {
-    throw new Error("OMI_API_KEY or OMI_DEV_API_KEY is not configured. Please add it to your secrets.");
-  }
-  return apiKey;
-}
+// ============================================================================
+// OMI CLOUD API DISABLED
+// The Omi cloud integration has been disabled. Audio data now flows directly
+// from the Android companion app to ZEKE's backend via WebSocket/STT pipeline.
+// These functions return empty results to maintain compatibility.
+// ============================================================================
 
-async function fetchFromOmiRaw<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
-  const apiKey = getApiKey();
-  
-  const url = new URL(`${OMI_API_BASE}${endpoint}`);
-  
-  if (params) {
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined) {
-        url.searchParams.append(key, String(value));
-      }
-    });
-  }
-  
-  const response = await fetch(url.toString(), {
-    method: "GET",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Accept": "application/json",
-    },
-  });
-  
-  if (!response.ok) {
-    const error = new Error(`Omi API error: ${response.status} ${response.statusText}`) as any;
-    error.status = response.status;
-    if (response.status === 429) {
-      const retryAfter = response.headers.get("Retry-After") || "60";
-      error.message = `Rate limit exceeded. Retry after ${retryAfter} seconds.`;
-    }
-    throw error;
-  }
-  
-  return response.json() as Promise<T>;
-}
-
-async function fetchFromOmi<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
-  return wrapOmi(() => fetchFromOmiRaw<T>(endpoint, params));
+function getApiKey(): string | null {
+  return process.env.OMI_API_KEY || process.env.OMI_DEV_API_KEY || null;
 }
 
 /**
- * Get memories from Omi API
- * Updated to use the correct endpoint: /v1/dev/user/memories
+ * Check if Omi cloud integration is enabled (it's not - we use direct Android app connection)
+ */
+export function isOmiCloudEnabled(): boolean {
+  return false; // Disabled - using Android app direct connection instead
+}
+
+/**
+ * DEPRECATED: Omi cloud API is disabled. Do not call this function.
+ * Returns null to degrade gracefully if accidentally called.
+ * @deprecated Use Android app WebSocket pipeline instead
+ */
+async function fetchFromOmiRaw<T>(_endpoint: string, _params?: Record<string, string | number | boolean | undefined>): Promise<null> {
+  console.warn("[Omi] Cloud API disabled - fetchFromOmiRaw called but returning null. Data flows through Android app.");
+  return null;
+}
+
+/**
+ * DEPRECATED: Omi cloud API is disabled. Do not call this function.
+ * @deprecated Use Android app WebSocket pipeline instead
+ */
+async function fetchFromOmi<T>(_endpoint: string, _params?: Record<string, string | number | boolean | undefined>): Promise<null> {
+  return fetchFromOmiRaw<T>(_endpoint, _params);
+}
+
+/**
+ * Get memories - Omi cloud disabled, returns empty array
+ * Data now comes from Android app via WebSocket STT pipeline
  */
 export async function getMemories(params: GetMemoriesParams = {}): Promise<OmiMemoryData[]> {
-  const queryParams: Record<string, string | number | boolean | undefined> = {
-    limit: params.limit ?? 10,
-    offset: params.offset ?? 0,
-  };
-  
-  // Try the developer endpoint first (v1/dev/user/memories)
-  // Fall back to v1/memories if that fails
-  try {
-    const response = await fetchFromOmi<OmiMemoryData[]>("/v1/dev/user/memories", queryParams);
-    return response || [];
-  } catch (error: any) {
-    // If dev endpoint fails, try legacy endpoint
-    if (error.message?.includes('404')) {
-      const response = await fetchFromOmi<OmiMemoriesResponse>("/v1/memories", queryParams);
-      return response.memories || [];
-    }
-    throw error;
-  }
+  // Omi cloud API disabled - memories come from Android app
+  return [];
 }
 
 /**
- * Get a single memory by ID
+ * Get a single memory by ID - Omi cloud disabled
  */
 export async function getMemory(id: string): Promise<OmiMemoryData | null> {
-  try {
-    // Try dev endpoint first
-    const response = await fetchFromOmi<OmiMemoryData>(`/v1/dev/user/memories/${id}`);
-    return response;
-  } catch (error: any) {
-    // Fall back to legacy endpoint
-    if (error.message?.includes('404')) {
-      try {
-        const response = await fetchFromOmi<OmiMemoryResponse>(`/v1/memories/${id}`);
-        return response.memory;
-      } catch {
-        console.error(`Failed to get memory ${id}:`, error);
-        return null;
-      }
-    }
-    console.error(`Failed to get memory ${id}:`, error);
-    return null;
-  }
+  // Omi cloud API disabled
+  return null;
 }
 
 /**
- * Search memories - Omi uses local search on fetched data
+ * Search memories - Omi cloud disabled
  */
 export async function searchMemories(
   query: string,
@@ -223,43 +194,24 @@ export async function searchMemories(
     limit?: number;
   } = {}
 ): Promise<OmiMemoryData[]> {
-  const memories = await getMemories({ limit: options.limit ?? 50 });
-  const lowerQuery = query.toLowerCase();
-  
-  return memories.filter(memory => {
-    const searchableText = [
-      memory.transcript,
-      memory.structured?.title,
-      memory.structured?.overview,
-      ...memory.transcriptSegments.map(s => s.text)
-    ].filter(Boolean).join(' ').toLowerCase();
-    
-    return searchableText.includes(lowerQuery);
-  });
+  // Omi cloud API disabled
+  return [];
 }
 
 /**
- * Get recent memories from today
+ * Get recent memories from today - Omi cloud disabled
  */
 export async function getTodaysMemories(limit = 10): Promise<OmiMemoryData[]> {
-  const memories = await getMemories({ limit: 50 });
-  const today = new Date().toISOString().split("T")[0];
-  
-  return memories
-    .filter(m => m.startedAt?.startsWith(today))
-    .slice(0, limit);
+  // Omi cloud API disabled
+  return [];
 }
 
 /**
- * Get memories from the last N hours
+ * Get memories from the last N hours - Omi cloud disabled
  */
 export async function getRecentMemories(hours = 24, limit = 20): Promise<OmiMemoryData[]> {
-  const memories = await getMemories({ limit: 100 });
-  const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000);
-  
-  return memories
-    .filter(m => m.startedAt && new Date(m.startedAt) >= cutoffTime)
-    .slice(0, limit);
+  // Omi cloud API disabled
+  return [];
 }
 
 /**
@@ -667,7 +619,7 @@ export async function generateDailySummary(
   forceRegenerate = false
 ): Promise<DailySummaryResult | null> {
   if (!forceRegenerate) {
-    const cached = getOmiSummaryByDate(date);
+    const cached = await getOmiSummaryByDate(date);
     if (cached) {
       console.log(`Using cached summary for ${date}`);
       return { summary: cached, cached: true };
@@ -770,7 +722,7 @@ Respond with ONLY the JSON object, no additional text.`;
       totalDurationMinutes,
     };
 
-    const savedSummary = createOmiSummary(summaryData);
+    const savedSummary = await createOmiSummary(summaryData);
     console.log(`Generated and saved new summary for ${date}`);
 
     return { summary: savedSummary, cached: false };
@@ -869,7 +821,7 @@ export async function getMorningBriefingEnhancement(): Promise<{
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().split("T")[0];
 
-    let recentSummary: OmiSummary | null = getOmiSummaryByDate(yesterdayStr) ?? null;
+    let recentSummary: OmiSummary | null = (await getOmiSummaryByDate(yesterdayStr)) ?? null;
     
     if (!recentSummary) {
       const result = await generateDailySummary(yesterdayStr);
@@ -878,7 +830,7 @@ export async function getMorningBriefingEnhancement(): Promise<{
 
     const threeDaysAgo = new Date();
     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-    const recentSummaries = getOmiSummariesInRange(
+    const recentSummaries = await getOmiSummariesInRange(
       threeDaysAgo.toISOString().split("T")[0],
       yesterdayStr
     );

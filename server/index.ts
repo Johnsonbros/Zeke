@@ -158,8 +158,6 @@ app.use((req, res, next) => {
         log("Voice pipeline initialized but failed to auto-start", "startup");
       }
     }
-  } else {
-    log("Voice pipeline not available - OMI_API_KEY or OMI_DEV_API_KEY not configured", "startup");
   }
   
   // Initialize Omi enhanced features (daily digest + processor)

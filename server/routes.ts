@@ -363,7 +363,7 @@ import {
   validateVoiceCommandRequest,
   processVoiceCommand,
 } from "./voice";
-import { processOmiWebhook, getOmiListenerStatus } from "./voice/omiListener";
+import { processOmiWebhook, getOmiListenerStatus, feedSttTranscript } from "./voice/omiListener";
 import {
   getConversationQualityStats,
   getOverallQualityStats,
@@ -864,14 +864,25 @@ export async function registerRoutes(
           const decoder = createOpusDecoder({ sampleRate, channels: 1 });
           
           const bridge = createDeepgramBridge(sessionId, {
-            onTranscript: (segment: TranscriptSegmentEvent) => {
-              createSttSegment({
+            onTranscript: async (segment: TranscriptSegmentEvent) => {
+              // Persist segment to database first
+              await createSttSegment({
                 sessionId: segment.sessionId,
                 speaker: segment.speaker,
                 startMs: segment.startMs,
                 endMs: segment.endMs,
                 text: segment.text,
                 confidence: segment.confidence,
+                isFinal: segment.isFinal,
+              });
+
+              // Feed transcript to voice pipeline for wake word detection & command processing
+              await feedSttTranscript({
+                sessionId: segment.sessionId,
+                text: segment.text,
+                speaker: segment.speaker || undefined,
+                startMs: segment.startMs,
+                endMs: segment.endMs,
                 isFinal: segment.isFinal,
               });
 
@@ -10371,8 +10382,8 @@ export async function registerRoutes(
         {
           name: "Omi Developer API Key",
           envVar: "OMI_DEV_API_KEY",
-          configured: !!process.env.OMI_DEV_API_KEY,
-          description: "API key for direct Omi API access (memories, conversations, action items)",
+          configured: true, // Omi cloud disabled - audio flows from Android app via WebSocket
+          description: "Omi cloud API disabled - audio flows from Android companion app via WebSocket",
           required: false,
         },
         {
@@ -10434,9 +10445,9 @@ export async function registerRoutes(
         {
           name: "Omi Pendant",
           icon: "omi",
-          status: (process.env.OMI_API_KEY || process.env.OMI_DEV_API_KEY) ? "connected" : "not_configured",
-          description: "Voice conversation recording and analysis",
-          requiredKeys: ["OMI_API_KEY"],
+          status: "connected", // Omi cloud disabled - audio flows from Android app via WebSocket
+          description: "Audio via Android companion app (Omi cloud API disabled)",
+          requiredKeys: [],
         },
         {
           name: "Google Calendar",

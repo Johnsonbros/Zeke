@@ -1,14 +1,18 @@
 /**
- * Omi Memory Listener
+ * Voice Pipeline Listener
  * 
- * Receives real-time memory updates from the Omi wearable via webhooks.
- * Omi pushes data to us when new memories are created, updated, or deleted.
+ * ============================================================================
+ * ARCHITECTURE: Audio from Android App via WebSocket/STT
+ * ============================================================================
  * 
- * Webhook Events:
- *   - memory_created: New memory captured
- *   - memory_updated: Existing memory modified
- *   - memory_deleted: Memory removed
- *   - transcript_segment: Real-time transcript chunk
+ * Audio data flows from the Omi pendant through the Android companion app:
+ *   Omi Pendant → Bluetooth → Android App → WebSocket → Deepgram STT → Here
+ * 
+ * The feedSttTranscript() function connects Deepgram transcripts to the voice
+ * command processing pipeline, enabling wake word detection and commands.
+ * 
+ * Legacy webhook handlers are preserved for compatibility but Omi cloud API
+ * is disabled - all audio comes from the Android app.
  */
 
 import { log } from "../logger";
@@ -96,6 +100,40 @@ async function notifyTranscriptHandlers(chunk: TranscriptChunk): Promise<void> {
   }
 }
 
+/**
+ * Feed a transcript from the Android app STT pipeline into the voice handlers.
+ * This connects Deepgram transcripts to the voice command processing pipeline.
+ * 
+ * Called from the /ws/audio WebSocket handler when Deepgram returns transcripts.
+ */
+export async function feedSttTranscript(transcript: {
+  sessionId: string;
+  text: string;
+  speaker?: string;
+  startMs: number;
+  endMs: number;
+  isFinal?: boolean;
+}): Promise<void> {
+  // Only process final transcripts
+  if (!transcript.isFinal) {
+    return;
+  }
+  
+  const chunk: TranscriptChunk = {
+    memoryId: `stt-${transcript.sessionId}`,
+    text: transcript.text,
+    speakerName: transcript.speaker || null,
+    startTime: new Date(transcript.startMs).toISOString(),
+    endTime: new Date(transcript.endMs).toISOString(),
+  };
+  
+  listenerStatus.webhookReceived++;
+  listenerStatus.lastWebhookTime = new Date().toISOString();
+  
+  await notifyTranscriptHandlers(chunk);
+  log(`Fed STT transcript to voice pipeline: "${transcript.text.substring(0, 50)}..."`, "voice");
+}
+
 export interface OmiListenerConfig {
   onTranscript?: TranscriptHandler;
   onMemory?: MemoryHandler;
@@ -144,30 +182,27 @@ export class OmiListener {
   }
 
   /**
-   * Check if the Omi API key is configured
+   * Check if the listener is configured
+   * Note: Omi cloud API is disabled. Audio flows from Android app via WebSocket.
    */
   isConfigured(): boolean {
-    return !!(process.env.OMI_API_KEY || process.env.OMI_DEV_API_KEY);
+    // Always configured - audio comes from Android app, not Omi cloud
+    return true;
   }
 
   /**
    * Start the listener (marks as active for webhook processing)
    */
   start(): void {
-    if (!this.isConfigured()) {
-      log("Omi API key not configured - voice pipeline disabled", "voice");
-      return;
-    }
-
     if (listenerStatus.running) {
-      log("Omi listener already running", "voice");
+      log("Voice listener already running", "voice");
       return;
     }
 
     listenerStatus.running = true;
     listenerStatus.consecutiveErrors = 0;
     
-    log("Started Omi listener (webhook-based)", "voice");
+    log("Started voice listener (Android app via WebSocket)", "voice");
   }
 
   /**
@@ -307,10 +342,13 @@ export function resetOmiListener(): void {
 }
 
 /**
- * Check if the voice pipeline is available (API key configured)
+ * Check if the voice pipeline is available
+ * Note: Omi cloud API is disabled. Audio now flows from Android app via WebSocket.
+ * The voice pipeline is always available for receiving audio from the Android app.
  */
 export function isVoicePipelineAvailable(): boolean {
-  return !!(process.env.OMI_API_KEY || process.env.OMI_DEV_API_KEY);
+  // Always available - audio comes from Android app via WebSocket, not Omi cloud
+  return true;
 }
 
 /**
