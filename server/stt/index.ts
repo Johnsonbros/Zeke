@@ -6,6 +6,7 @@
  * Architecture:
  * - Client streams Opus packets to ZEKE over WebSocket (/ws/audio)
  * - ZEKE decodes Opus -> PCM16LE 16kHz mono
+ * - ZEKE runs VAD to filter silence (reduces Deepgram costs ~50%)
  * - ZEKE streams PCM to Deepgram Live with diarization
  * - ZEKE emits normalized transcript events back to client
  * - ZEKE stores transcript segments and sessions in DB
@@ -24,3 +25,6 @@ export type { DecoderStats, OpusDecoderConfig } from "./opus_decoder";
 
 export { DeepgramLiveBridge, createDeepgramBridge, isDeepgramConfigured } from "./deepgram_live";
 export type { DeepgramConfig, DeepgramBridgeEvents } from "./deepgram_live";
+
+export { VoiceActivityDetector, createVAD, isVADAvailable, VADMode } from "./vad";
+export type { VADConfig, VADStats, VADResult, VADEvent } from "./vad";

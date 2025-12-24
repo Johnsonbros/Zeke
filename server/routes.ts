@@ -4,7 +4,8 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "http";
 import { v4 as uuidv4 } from "uuid";
 import { registerOmiRoutes } from "./omi-routes";
-import { createOpusDecoder, createDeepgramBridge, isDeepgramConfigured } from "./stt";
+import { createOpusDecoder, createDeepgramBridge, isDeepgramConfigured, createVAD, isVADAvailable } from "./stt";
+import type { VoiceActivityDetector } from "./stt";
 import { createSttSession, endSttSession, createSttSegment, getSttSession } from "./db";
 import { getDeviceTokenByToken } from "./db";
 import type { TranscriptSegmentEvent } from "@shared/schema";
@@ -737,7 +738,16 @@ export async function registerRoutes(
     deviceId: string;
     decoder: ReturnType<typeof createOpusDecoder>;
     bridge: ReturnType<typeof createDeepgramBridge> | null;
+    vad: VoiceActivityDetector | null;
+    vadEnabled: boolean;
   }>();
+  
+  const vadAvailable = isVADAvailable();
+  if (vadAvailable) {
+    console.log("[STT] Voice Activity Detection (VAD) available - will filter silence to reduce costs");
+  } else {
+    console.log("[STT] VAD not available - all audio will be sent to Deepgram");
+  }
 
   const STT_RATE_LIMIT_WINDOW_MS = 60_000;
   const STT_MAX_CONNECTIONS_PER_WINDOW = 10;
@@ -829,7 +839,18 @@ export async function registerRoutes(
       if (isBinary && session) {
         const pcmData = session.decoder.decodePacket(data as Buffer);
         if (pcmData && session.bridge?.isReady()) {
-          session.bridge.sendAudio(pcmData);
+          if (session.vad && session.vadEnabled) {
+            session.vad.processChunk(pcmData).then((vadResult) => {
+              if (vadResult.audio && session.bridge?.isReady()) {
+                session.bridge.sendAudio(vadResult.audio);
+              }
+            }).catch((err) => {
+              console.error(`[STT WS] VAD error: ${err.message}`);
+              session.bridge?.sendAudio(pcmData);
+            });
+          } else {
+            session.bridge.sendAudio(pcmData);
+          }
         }
         return;
       }
@@ -862,6 +883,12 @@ export async function registerRoutes(
           });
 
           const decoder = createOpusDecoder({ sampleRate, channels: 1 });
+          
+          const enableVad = message.vad !== false && vadAvailable;
+          const vad = enableVad ? createVAD({ sampleRate }) : null;
+          if (enableVad) {
+            console.log(`[STT WS] VAD enabled for session ${sessionId}`);
+          }
           
           const bridge = createDeepgramBridge(sessionId, {
             onTranscript: async (segment: TranscriptSegmentEvent) => {
@@ -906,7 +933,7 @@ export async function registerRoutes(
             },
           }, { sampleRate });
 
-          audioSessions.set(ws, { sessionId, deviceId, decoder, bridge });
+          audioSessions.set(ws, { sessionId, deviceId, decoder, bridge, vad, vadEnabled: enableVad });
 
           const connected = await bridge.connect();
           
@@ -915,6 +942,7 @@ export async function registerRoutes(
             session_id: sessionId,
             deepgram_connected: connected,
             frame_format: frameFormat,
+            vad_enabled: enableVad,
           }));
 
           console.log(`[STT WS] Session ${sessionId} started, Deepgram connected: ${connected}`);
@@ -931,6 +959,10 @@ export async function registerRoutes(
             await session.bridge?.close();
             session.decoder.destroy();
             
+            if (session.vad) {
+              session.vad.reset();
+            }
+            
             endSttSession(session.sessionId);
             audioSessions.delete(ws);
 
@@ -938,6 +970,7 @@ export async function registerRoutes(
               type: "session_ended",
               session_id: session.sessionId,
               stats: session.decoder.getStats(),
+              vad_stats: session.vad?.getStats() || null,
             }));
 
             console.log(`[STT WS] Session ${session.sessionId} ended`);
@@ -969,6 +1002,11 @@ export async function registerRoutes(
       if (session) {
         await session.bridge?.close();
         session.decoder.destroy();
+        if (session.vad) {
+          const vadStats = session.vad.getStats();
+          console.log(`[STT WS] VAD stats - speech: ${vadStats.speechFrames}, silence: ${vadStats.silenceFrames}, ratio: ${(vadStats.speechRatio * 100).toFixed(1)}%`);
+          session.vad.reset();
+        }
         endSttSession(session.sessionId);
         audioSessions.delete(ws);
         console.log(`[STT WS] Connection closed, session ${session.sessionId} ended`);
@@ -987,6 +1025,8 @@ export async function registerRoutes(
       wsEndpoint: "/ws/audio",
       frameFormat: "raw_opus_packets",
       requiredEnv: "DEEPGRAM_API_KEY",
+      vadAvailable: vadAvailable,
+      vadDescription: "Voice Activity Detection filters silence to reduce Deepgram costs by ~50%",
     });
   });
 
