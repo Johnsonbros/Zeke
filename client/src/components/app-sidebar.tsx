@@ -52,6 +52,8 @@ import {
   Activity,
   ClipboardList,
   LogOut,
+  Bluetooth,
+  AudioWaveform,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import type { Conversation } from "@shared/schema";
@@ -146,6 +148,18 @@ const mainNavItems = [
     icon: Mic,
     href: "/omi",
     description: "AI conversation insights",
+  },
+  {
+    title: "Devices",
+    icon: Bluetooth,
+    href: "/devices",
+    description: "Manage hardware pendants",
+  },
+  {
+    title: "Voice Profiles",
+    icon: AudioWaveform,
+    href: "/voice-profiles",
+    description: "Speaker identification",
   },
   {
     title: "Journal",
