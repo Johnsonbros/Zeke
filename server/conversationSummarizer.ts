@@ -97,7 +97,7 @@ Guidelines:
 }
 
 export async function summarizeAllPendingConversations(): Promise<number> {
-  const conversationsNeedingSummary = getConversationsNeedingSummary(MESSAGE_THRESHOLD);
+  const conversationsNeedingSummary = await getConversationsNeedingSummary(MESSAGE_THRESHOLD);
   
   if (conversationsNeedingSummary.length === 0) {
     return 0;

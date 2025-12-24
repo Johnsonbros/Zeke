@@ -10,6 +10,7 @@ import {
   tasks,
   calendarEvents,
   locationHistory,
+  locationVisits,
   savedPlaces,
   groceryItems,
   omiMemories,
@@ -221,19 +222,19 @@ export async function buildFusedContext(
   const taskLoad: FusedContext["taskLoad"] =
     pendingTasks.length < 3 ? "light" : pendingTasks.length < 8 ? "moderate" : "heavy";
 
-  // Location context
-  const recentLocations = await db
+  // Location context - use locationVisits for saved place info
+  const recentVisits = await db
     .select()
-    .from(locationHistory)
-    .orderBy(desc(locationHistory.timestamp))
+    .from(locationVisits)
+    .orderBy(desc(locationVisits.createdAt))
     .limit(20);
 
   let currentLocation: FusedContext["currentLocation"];
-  if (recentLocations.length > 0 && recentLocations[0].savedPlaceId) {
+  if (recentVisits.length > 0 && recentVisits[0].savedPlaceId) {
     const place = await db
       .select()
       .from(savedPlaces)
-      .where(eq(savedPlaces.id, recentLocations[0].savedPlaceId))
+      .where(eq(savedPlaces.id, recentVisits[0].savedPlaceId))
       .limit(1);
 
     if (place.length > 0) {
@@ -241,18 +242,18 @@ export async function buildFusedContext(
         savedPlaceId: place[0].id,
         name: place[0].name,
         category: place[0].category,
-        latitude: recentLocations[0].latitude,
-        longitude: recentLocations[0].longitude,
+        latitude: recentVisits[0].latitude,
+        longitude: recentVisits[0].longitude,
       };
     }
   }
 
-  const recentLocationHistory = recentLocations
-    .filter((loc) => loc.savedPlaceId && loc.savedPlaceName)
-    .map((loc) => ({
-      savedPlaceId: loc.savedPlaceId!,
-      savedPlaceName: loc.savedPlaceName!,
-      timestamp: new Date(loc.timestamp),
+  const recentLocationHistory = recentVisits
+    .filter((visit) => visit.savedPlaceId && visit.savedPlaceName)
+    .map((visit) => ({
+      savedPlaceId: visit.savedPlaceId!,
+      savedPlaceName: visit.savedPlaceName!,
+      timestamp: new Date(visit.createdAt),
     }))
     .slice(0, 10);
 
