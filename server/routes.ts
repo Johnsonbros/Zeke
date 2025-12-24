@@ -2039,9 +2039,14 @@ export async function registerRoutes(
       // SECURITY: Validate Twilio request signature
       // ============================================
       const twilioSignature = req.headers['x-twilio-signature'] as string | undefined;
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const host = req.headers['host'] || 'localhost:5000';
-      const webhookUrl = `${protocol}://${host}${req.originalUrl}`;
+      // Use the known production URL for signature validation
+      // Twilio calculates signature using the exact URL configured in their console
+      // Using req.host can fail due to proxy header differences
+      const webhookUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://zekeai.replit.app/api/twilio/webhook'
+        : `${req.headers['x-forwarded-proto'] || req.protocol}://${req.headers['host'] || 'localhost:5000'}${req.originalUrl}`;
+      
+      console.log('[Twilio Security] Validating signature for URL:', webhookUrl);
       
       const isValidRequest = await validateTwilioSignature(twilioSignature, webhookUrl, req.body);
       if (!isValidRequest) {
@@ -2748,9 +2753,9 @@ export async function registerRoutes(
       
       // SECURITY: Validate Twilio request signature
       const twilioSignature = req.headers['x-twilio-signature'] as string | undefined;
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const host = req.headers['host'] || 'localhost:5000';
-      const webhookUrl = `${protocol}://${host}${req.originalUrl}`;
+      const webhookUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://zekeai.replit.app/api/twilio/voice-response'
+        : `${req.headers['x-forwarded-proto'] || req.protocol}://${req.headers['host'] || 'localhost:5000'}${req.originalUrl}`;
       
       const isValidRequest = await validateTwilioSignature(twilioSignature, webhookUrl, req.body);
       if (!isValidRequest) {
