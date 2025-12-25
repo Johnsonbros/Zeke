@@ -4,7 +4,8 @@ import {
   type Memory, type InsertMemory, memories,
   type ChatSession, type InsertChatSession, chatSessions,
   type ChatMessage, type InsertChatMessage, chatMessages,
-  type SpeakerProfile, type InsertSpeakerProfile, speakerProfiles
+  type SpeakerProfile, type InsertSpeakerProfile, speakerProfiles,
+  type Upload, type InsertUpload, uploads
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ilike, and, or } from "drizzle-orm";
@@ -40,6 +41,12 @@ export interface IStorage {
   createSpeakerProfile(speaker: InsertSpeakerProfile): Promise<SpeakerProfile>;
   updateSpeakerProfile(id: string, data: Partial<Pick<InsertSpeakerProfile, 'name' | 'voiceCharacteristics'>>): Promise<SpeakerProfile | undefined>;
   deleteSpeakerProfile(id: string): Promise<boolean>;
+
+  getUploads(filters?: { deviceId?: string; status?: string; fileType?: string; limit?: number }): Promise<Upload[]>;
+  getUpload(id: string): Promise<Upload | undefined>;
+  createUpload(upload: InsertUpload): Promise<Upload>;
+  updateUpload(id: string, data: Partial<InsertUpload>): Promise<Upload | undefined>;
+  deleteUpload(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -216,6 +223,59 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSpeakerProfile(id: string): Promise<boolean> {
     const result = await db.delete(speakerProfiles).where(eq(speakerProfiles.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getUploads(filters?: { deviceId?: string; status?: string; fileType?: string; limit?: number }): Promise<Upload[]> {
+    const conditions: any[] = [];
+    
+    if (filters?.deviceId) {
+      conditions.push(eq(uploads.deviceId, filters.deviceId));
+    }
+    
+    if (filters?.status) {
+      conditions.push(eq(uploads.status, filters.status));
+    }
+    
+    if (filters?.fileType) {
+      conditions.push(eq(uploads.fileType, filters.fileType));
+    }
+    
+    let query = db.select().from(uploads);
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+    
+    query = query.orderBy(desc(uploads.createdAt)) as any;
+    
+    if (filters?.limit) {
+      query = query.limit(filters.limit) as any;
+    }
+    
+    return query;
+  }
+
+  async getUpload(id: string): Promise<Upload | undefined> {
+    const [upload] = await db.select().from(uploads).where(eq(uploads.id, id));
+    return upload;
+  }
+
+  async createUpload(upload: InsertUpload): Promise<Upload> {
+    const [newUpload] = await db.insert(uploads).values(upload).returning();
+    return newUpload;
+  }
+
+  async updateUpload(id: string, data: Partial<InsertUpload>): Promise<Upload | undefined> {
+    const [updated] = await db.update(uploads)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(uploads.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteUpload(id: string): Promise<boolean> {
+    const result = await db.delete(uploads).where(eq(uploads.id, id)).returning();
     return result.length > 0;
   }
 }

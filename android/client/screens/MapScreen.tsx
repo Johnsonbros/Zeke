@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { View, StyleSheet, Pressable, ActivityIndicator } from "react-native";
+import { View, StyleSheet, Pressable, ActivityIndicator, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { Feather } from "@expo/vector-icons";
@@ -299,11 +299,18 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
     elevation: 4,
+    ...Platform.select({
+      web: {
+        boxShadow: "0px 2px 8px rgba(0, 0, 0, 0.15)",
+      },
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+      },
+    }),
   },
   addressBar: {
     position: "absolute",
@@ -316,11 +323,18 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     borderRadius: BorderRadius.lg,
     gap: Spacing.sm,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
     elevation: 3,
+    ...Platform.select({
+      web: {
+        boxShadow: "0px 2px 8px rgba(0, 0, 0, 0.1)",
+      },
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+    }),
   },
   addressText: {
     flex: 1,

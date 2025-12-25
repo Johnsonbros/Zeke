@@ -1,7 +1,7 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import HomeScreen from "@/screens/HomeScreen";
-import AudioUploadScreen from "@/screens/AudioUploadScreen";
+import FileUploadScreen from "@/screens/FileUploadScreen";
 import SettingsScreen from "@/screens/SettingsScreen";
 import NotificationSettingsScreen from "@/screens/NotificationSettingsScreen";
 import BluetoothConnectionScreen from "@/screens/BluetoothConnectionScreen";
@@ -13,7 +13,7 @@ import { createZekeSubHeader } from "@/components/ZekeSubHeader";
 
 export type HomeStackParamList = {
   Home: undefined;
-  AudioUpload: undefined;
+  FileUpload: undefined;
   Settings: undefined;
   NotificationSettings: undefined;
   BluetoothConnection: undefined;
@@ -41,10 +41,10 @@ export default function HomeStackNavigator() {
         }}
       />
       <Stack.Screen
-        name="AudioUpload"
-        component={AudioUploadScreen}
+        name="FileUpload"
+        component={FileUploadScreen}
         options={{
-          headerTitle: createZekeSubHeader("Upload Audio"),
+          headerTitle: createZekeSubHeader("Upload to ZEKE"),
         }}
       />
       <Stack.Screen

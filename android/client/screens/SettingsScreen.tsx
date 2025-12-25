@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View,
   StyleSheet,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   Pressable,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -16,18 +17,29 @@ import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import * as WebBrowser from "expo-web-browser";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import * as ImagePicker from "expo-image-picker";
+import { Image } from "expo-image";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 
 import { ThemedText } from "@/components/ThemedText";
 import { SettingsRow, SettingsSection } from "@/components/SettingsRow";
 import { DeviceCard, DeviceInfo } from "@/components/DeviceCard";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, Colors, BorderRadius, Gradients } from "@/constants/theme";
-import { clearAllData } from "@/lib/storage";
+import { 
+  clearAllData,
+  getProfilePicture,
+  saveProfilePicture,
+  saveProfilePictureReminder,
+  shouldShowProfilePictureReminder,
+  calculateNextReminderDate,
+  ProfilePictureData,
+} from "@/lib/storage";
 import { getZekeDevices, ZekeDevice } from "@/lib/zeke-api-adapter";
 import { SettingsStackParamList } from "@/navigation/SettingsStackNavigator";
 import { useAuth } from "@/context/AuthContext";
 import { checkCalendarConnection, type CalendarConnectionStatus } from "@/lib/zeke-api-adapter";
+import { getApiUrl, getAuthHeaders } from "@/lib/query-client";
 import * as Linking from "expo-linking";
 
 function mapZekeDeviceToDeviceInfo(zekeDevice: ZekeDevice): DeviceInfo {
@@ -97,6 +109,176 @@ export default function SettingsScreen() {
   const devices: DeviceInfo[] = zekeDevices.map(mapZekeDeviceToDeviceInfo);
   const [autoSync, setAutoSync] = useState(true);
   const [isConnectingCalendar, setIsConnectingCalendar] = useState(false);
+  const [profilePicture, setProfilePicture] = useState<ProfilePictureData | null>(null);
+  const [showReminderBadge, setShowReminderBadge] = useState(false);
+  const [isTakingPhoto, setIsTakingPhoto] = useState(false);
+
+  useEffect(() => {
+    loadProfilePicture();
+    checkReminder();
+  }, []);
+
+  const loadProfilePicture = async () => {
+    const saved = await getProfilePicture();
+    if (saved) {
+      setProfilePicture(saved);
+    }
+  };
+
+  const checkReminder = async () => {
+    const shouldRemind = await shouldShowProfilePictureReminder();
+    setShowReminderBadge(shouldRemind);
+  };
+
+  const sendProfileToZekeMutation = useMutation({
+    mutationFn: async (imageUri: string) => {
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+      const reader = new FileReader();
+      
+      return new Promise<void>((resolve, reject) => {
+        reader.onloadend = async () => {
+          try {
+            const base64data = reader.result as string;
+            const baseUrl = getApiUrl();
+            const url = new URL("/api/uploads", baseUrl);
+            
+            const uploadRes = await fetch(url.toString(), {
+              method: "POST",
+              headers: {
+                ...getAuthHeaders(),
+                "Content-Type": "application/json",
+              },
+              credentials: "include",
+              body: JSON.stringify({
+                originalName: `profile-selfie-${new Date().toISOString().split('T')[0]}.jpg`,
+                mimeType: "image/jpeg",
+                fileType: "image",
+                fileSize: blob.size,
+                fileData: base64data.split(',')[1],
+                tags: [
+                  "profile-picture",
+                  "aging-documentation", 
+                  "selfie",
+                  "master-user-enrollment",
+                  "facial-recognition-primary"
+                ],
+                metadata: {
+                  isPrimary: true,
+                  userType: "master-user",
+                  enrollFace: true,
+                  capturedAt: new Date().toISOString(),
+                },
+              }),
+            });
+            
+            if (!uploadRes.ok) throw new Error("Upload failed");
+            const uploadData = await uploadRes.json();
+            
+            const sendUrl = new URL(`/api/uploads/${uploadData.id}/send-to-zeke`, baseUrl);
+            const sendRes = await fetch(sendUrl.toString(), {
+              method: "POST",
+              credentials: "include",
+              headers: getAuthHeaders(),
+            });
+            
+            if (!sendRes.ok) {
+              console.warn("Failed to send to ZEKE, will retry later");
+            }
+            
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        };
+        reader.onerror = () => reject(new Error("Failed to read image"));
+        reader.readAsDataURL(blob);
+      });
+    },
+    onSuccess: async () => {
+      if (profilePicture) {
+        await saveProfilePicture({ ...profilePicture, sentToZeke: true });
+        setProfilePicture(prev => prev ? { ...prev, sentToZeke: true } : null);
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/uploads"] });
+    },
+  });
+
+  const handleTakeProfilePicture = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    if (Platform.OS === "web") {
+      Alert.alert(
+        "Camera Not Available",
+        "Please use Expo Go on your phone to take a selfie for your profile picture."
+      );
+      return;
+    }
+    
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Camera Permission Required",
+        "Please enable camera access in your device settings to take a profile picture.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { 
+            text: "Open Settings", 
+            onPress: async () => {
+              try {
+                await Linking.openSettings();
+              } catch (error) {
+                console.error("Could not open settings:", error);
+              }
+            }
+          },
+        ]
+      );
+      return;
+    }
+    
+    setIsTakingPhoto(true);
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        cameraType: ImagePicker.CameraType.front,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      
+      if (!result.canceled && result.assets[0]) {
+        const capturedAt = new Date().toISOString();
+        const newPicture: ProfilePictureData = {
+          uri: result.assets[0].uri,
+          capturedAt,
+          sentToZeke: false,
+        };
+        
+        await saveProfilePicture(newPicture);
+        setProfilePicture(newPicture);
+        
+        const nextReminder = calculateNextReminderDate();
+        await saveProfilePictureReminder({
+          lastCapturedAt: capturedAt,
+          nextReminderAt: nextReminder.toISOString(),
+        });
+        setShowReminderBadge(false);
+        
+        sendProfileToZekeMutation.mutate(result.assets[0].uri);
+        
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert(
+          "Profile Updated",
+          "Your selfie has been saved and will be sent to ZEKE for your aging documentation project."
+        );
+      }
+    } catch (error) {
+      console.error("Error taking photo:", error);
+      Alert.alert("Error", "Failed to take photo. Please try again.");
+    } finally {
+      setIsTakingPhoto(false);
+    }
+  };
 
   const handleDeviceConfigure = (device: DeviceInfo) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -213,18 +395,54 @@ export default function SettingsScreen() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.profileSection}>
-        <LinearGradient
-          colors={Gradients.primary}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.avatarContainer}
+        <Pressable 
+          onPress={handleTakeProfilePicture}
+          disabled={isTakingPhoto}
+          style={({ pressed }) => [
+            styles.avatarPressable,
+            { opacity: pressed ? 0.8 : 1 }
+          ]}
         >
-          <Feather name="user" size={32} color="#FFFFFF" />
-        </LinearGradient>
+          {profilePicture ? (
+            <View style={styles.avatarImageWrapper}>
+              <Image
+                source={{ uri: profilePicture.uri }}
+                style={styles.avatarImage}
+                contentFit="cover"
+              />
+              <View style={styles.cameraIconOverlay}>
+                <Feather name="camera" size={14} color="#FFFFFF" />
+              </View>
+            </View>
+          ) : (
+            <LinearGradient
+              colors={Gradients.primary}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.avatarContainer}
+            >
+              {isTakingPhoto ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Feather name="camera" size={32} color="#FFFFFF" />
+              )}
+            </LinearGradient>
+          )}
+          {showReminderBadge ? (
+            <View style={styles.reminderBadge}>
+              <Feather name="clock" size={10} color="#FFFFFF" />
+            </View>
+          ) : null}
+        </Pressable>
         <ThemedText type="h3" style={styles.displayName}>
           Your Profile
         </ThemedText>
         <ThemedText type="small" secondary>
+          {profilePicture 
+            ? "Tap photo to update your selfie" 
+            : "Tap to take a selfie"}
+        </ThemedText>
+        <ThemedText type="small" secondary style={{ marginTop: Spacing.xs }}>
           {devices.filter((d) => d.isConnected).length} device
           {devices.filter((d) => d.isConnected).length !== 1 ? "s" : ""}{" "}
           connected
@@ -454,7 +672,48 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     alignItems: "center",
     justifyContent: "center",
+  },
+  avatarPressable: {
     marginBottom: Spacing.md,
+    position: "relative",
+  },
+  avatarImageWrapper: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    overflow: "hidden",
+    position: "relative",
+  },
+  avatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+  },
+  cameraIconOverlay: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: Colors.dark.primary,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: Colors.dark.backgroundRoot,
+  },
+  reminderBadge: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    backgroundColor: Colors.dark.warning,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: Colors.dark.backgroundRoot,
   },
   displayName: {
     marginBottom: Spacing.xs,

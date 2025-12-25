@@ -21,7 +21,10 @@ export const devices = pgTable("devices", {
   type: text("type").notNull(),
   macAddress: text("mac_address"),
   batteryLevel: integer("battery_level"),
+  signalStrength: integer("signal_strength"),
+  firmwareVersion: text("firmware_version"),
   isConnected: boolean("is_connected").default(false).notNull(),
+  lastHeartbeat: timestamp("last_heartbeat"),
   lastSyncAt: timestamp("last_sync_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -283,6 +286,7 @@ export const speakerProfiles = pgTable("speaker_profiles", {
     .default(sql`gen_random_uuid()`),
   deviceId: varchar("device_id").references(() => devices.id).notNull(),
   name: text("name").notNull(),
+  externalSpeakerId: integer("external_speaker_id"),
   voiceCharacteristics: jsonb("voice_characteristics"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -340,3 +344,150 @@ export type TranscriptSession = typeof transcriptSessions.$inferSelect;
 
 export type InsertSpeakerProfile = z.infer<typeof insertSpeakerProfileSchema>;
 export type SpeakerProfile = typeof speakerProfiles.$inferSelect;
+
+// Limitless API credentials
+export const limitlessCredentials = pgTable("limitless_credentials", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  deviceId: varchar("device_id").references(() => devices.id),
+  apiKey: text("api_key").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  lastSyncAt: timestamp("last_sync_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Conversation sessions for wearable transcripts
+export const conversationSessions = pgTable("conversation_sessions", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  deviceId: varchar("device_id").references(() => devices.id).notNull(),
+  externalId: text("external_id"),
+  source: text("source").notNull(),
+  status: text("status").default("active").notNull(),
+  startTime: timestamp("start_time").notNull(),
+  endTime: timestamp("end_time"),
+  transcript: text("transcript"),
+  speakers: jsonb("speakers"),
+  metadata: jsonb("metadata"),
+  memoryId: varchar("memory_id").references(() => memories.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Offline sync queue for audio recordings
+export const offlineSyncQueue = pgTable("offline_sync_queue", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  deviceId: varchar("device_id").references(() => devices.id).notNull(),
+  recordingType: text("recording_type").notNull(),
+  audioPath: text("audio_path"),
+  audioData: text("audio_data"),
+  duration: integer("duration"),
+  priority: integer("priority").default(0).notNull(),
+  status: text("status").default("pending").notNull(),
+  retryCount: integer("retry_count").default(0).notNull(),
+  errorMessage: text("error_message"),
+  recordedAt: timestamp("recorded_at").notNull(),
+  processedAt: timestamp("processed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const limitlessCredentialsRelations = relations(limitlessCredentials, ({ one }) => ({
+  device: one(devices, {
+    fields: [limitlessCredentials.deviceId],
+    references: [devices.id],
+  }),
+}));
+
+export const conversationSessionsRelations = relations(conversationSessions, ({ one }) => ({
+  device: one(devices, {
+    fields: [conversationSessions.deviceId],
+    references: [devices.id],
+  }),
+  memory: one(memories, {
+    fields: [conversationSessions.memoryId],
+    references: [memories.id],
+  }),
+}));
+
+export const offlineSyncQueueRelations = relations(offlineSyncQueue, ({ one }) => ({
+  device: one(devices, {
+    fields: [offlineSyncQueue.deviceId],
+    references: [devices.id],
+  }),
+}));
+
+export const insertLimitlessCredentialsSchema = createInsertSchema(limitlessCredentials).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertConversationSessionSchema = createInsertSchema(conversationSessions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertOfflineSyncQueueSchema = createInsertSchema(offlineSyncQueue).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertLimitlessCredentials = z.infer<typeof insertLimitlessCredentialsSchema>;
+export type LimitlessCredentials = typeof limitlessCredentials.$inferSelect;
+
+export type InsertConversationSession = z.infer<typeof insertConversationSessionSchema>;
+export type ConversationSession = typeof conversationSessions.$inferSelect;
+
+export type InsertOfflineSyncQueue = z.infer<typeof insertOfflineSyncQueueSchema>;
+export type OfflineSyncQueueItem = typeof offlineSyncQueue.$inferSelect;
+
+// Uploads table for storing any file type (audio, images, documents, etc.)
+export const uploads = pgTable("uploads", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  deviceId: varchar("device_id").references(() => devices.id),
+  fileName: text("file_name").notNull(),
+  originalName: text("original_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  fileType: text("file_type").notNull(), // 'audio', 'image', 'document', 'video', 'other'
+  fileSize: integer("file_size").notNull(),
+  filePath: text("file_path"), // Local path if stored on server
+  fileData: text("file_data"), // Base64 encoded data for small files
+  tags: jsonb("tags").default([]).notNull(), // Array of string tags
+  metadata: jsonb("metadata"), // Additional metadata (e.g., facial recognition enrollment flags)
+  status: text("status").default("pending").notNull(), // 'pending', 'processing', 'processed', 'sent', 'error'
+  processingResult: jsonb("processing_result"), // Transcription, OCR, etc.
+  memoryId: varchar("memory_id").references(() => memories.id), // Link to created memory
+  sentToZekeAt: timestamp("sent_to_zeke_at"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const uploadsRelations = relations(uploads, ({ one }) => ({
+  device: one(devices, {
+    fields: [uploads.deviceId],
+    references: [devices.id],
+  }),
+  memory: one(memories, {
+    fields: [uploads.memoryId],
+    references: [memories.id],
+  }),
+}));
+
+export const insertUploadSchema = createInsertSchema(uploads).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertUpload = z.infer<typeof insertUploadSchema>;
+export type Upload = typeof uploads.$inferSelect;

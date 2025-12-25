@@ -1297,11 +1297,18 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
     elevation: 8,
+    ...Platform.select({
+      web: {
+        boxShadow: "0px 4px 16px rgba(0, 0, 0, 0.3)",
+      },
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+    }),
   },
   fabGradient: {
     width: 56,

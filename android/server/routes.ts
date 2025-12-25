@@ -26,11 +26,11 @@
 import type { Express } from "express";
 import { createServer, type Server } from "node:http";
 import { storage } from "./storage";
-import { insertDeviceSchema, insertMemorySchema, insertChatSessionSchema, insertChatMessageSchema, insertSpeakerProfileSchema } from "@shared/schema";
+import { insertDeviceSchema, insertMemorySchema, insertChatSessionSchema, insertChatMessageSchema, insertSpeakerProfileSchema, insertUploadSchema } from "@shared/schema";
 import OpenAI from "openai";
 import multer from "multer";
 import { registerLocationRoutes } from "./location";
-import { registerZekeProxyRoutes } from "./zeke-proxy";
+import { registerZekeProxyRoutes, proxyToZeke, extractForwardHeaders } from "./zeke-proxy";
 import { requestPairingCode, verifyPairingCode, getPairingStatus } from "./sms-pairing";
 import { validateDeviceToken } from "./device-auth";
 
@@ -1765,6 +1765,316 @@ Return at most ${Math.min(limit, 10)} results. Only include memories with releva
     } catch (error) {
       console.error("Error deleting speaker:", error);
       res.status(500).json({ error: "Failed to delete speaker" });
+    }
+  });
+
+  // Upload routes - for uploading any file type to ZEKE
+  function getFileType(mimeType: string): string {
+    if (mimeType.startsWith("audio/")) return "audio";
+    if (mimeType.startsWith("image/")) return "image";
+    if (mimeType.startsWith("video/")) return "video";
+    if (mimeType.includes("pdf") || mimeType.includes("document") || mimeType.includes("text/")) return "document";
+    return "other";
+  }
+
+  app.get("/api/uploads", async (req, res) => {
+    try {
+      const filters: { deviceId?: string; status?: string; fileType?: string; limit?: number } = {};
+      
+      if (req.query.deviceId) filters.deviceId = req.query.deviceId as string;
+      if (req.query.status) filters.status = req.query.status as string;
+      if (req.query.fileType) filters.fileType = req.query.fileType as string;
+      if (req.query.limit) filters.limit = parseInt(req.query.limit as string, 10);
+      
+      const uploads = await storage.getUploads(filters);
+      res.json(uploads);
+    } catch (error) {
+      console.error("Error fetching uploads:", error);
+      res.status(500).json({ error: "Failed to fetch uploads" });
+    }
+  });
+
+  app.get("/api/uploads/:id", async (req, res) => {
+    try {
+      const upload = await storage.getUpload(req.params.id);
+      if (!upload) {
+        return res.status(404).json({ error: "Upload not found" });
+      }
+      res.json(upload);
+    } catch (error) {
+      console.error("Error fetching upload:", error);
+      res.status(500).json({ error: "Failed to fetch upload" });
+    }
+  });
+
+  app.post("/api/uploads", upload.single("file"), async (req, res, next) => {
+    // Check if this is a JSON upload (base64 encoded file data)
+    if (req.is("application/json") && req.body.fileData) {
+      try {
+        const { 
+          originalName, 
+          mimeType, 
+          fileType: providedFileType, 
+          fileSize, 
+          fileData, 
+          tags = [], 
+          metadata,
+          deviceId 
+        } = req.body;
+
+        if (!originalName || !mimeType || !fileData) {
+          return res.status(400).json({ error: "Missing required fields: originalName, mimeType, fileData" });
+        }
+
+        const fileType = providedFileType || getFileType(mimeType);
+
+        const uploadData = {
+          deviceId: deviceId || null,
+          fileName: `${Date.now()}-${originalName}`,
+          originalName,
+          mimeType,
+          fileType,
+          fileSize: fileSize || Buffer.from(fileData, "base64").length,
+          fileData,
+          tags: Array.isArray(tags) ? tags : [],
+          metadata: metadata || null,
+          status: "pending" as const,
+        };
+
+        const parsed = insertUploadSchema.safeParse(uploadData);
+        if (!parsed.success) {
+          return res.status(400).json({ error: "Invalid upload data", details: parsed.error.errors });
+        }
+
+        const newUpload = await storage.createUpload(parsed.data);
+        return res.status(201).json(newUpload);
+      } catch (error) {
+        console.error("Error creating JSON upload:", error);
+        return res.status(500).json({ error: "Failed to create upload" });
+      }
+    }
+
+    // Handle multipart file upload
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file provided" });
+      }
+
+      const deviceId = req.body.deviceId || null;
+      const tags = req.body.tags ? JSON.parse(req.body.tags) : [];
+      const fileType = getFileType(req.file.mimetype);
+      
+      const fileData = req.file.buffer.toString("base64");
+
+      const uploadData = {
+        deviceId,
+        fileName: `${Date.now()}-${req.file.originalname}`,
+        originalName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        fileType,
+        fileSize: req.file.size,
+        fileData,
+        tags,
+        status: "pending" as const,
+      };
+
+      const parsed = insertUploadSchema.safeParse(uploadData);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid upload data", details: parsed.error.errors });
+      }
+
+      const newUpload = await storage.createUpload(parsed.data);
+      res.status(201).json(newUpload);
+    } catch (error) {
+      console.error("Error creating upload:", error);
+      res.status(500).json({ error: "Failed to create upload" });
+    }
+  });
+
+  app.patch("/api/uploads/:id", async (req, res) => {
+    try {
+      const allowedFields = ["tags", "status", "processingResult", "memoryId", "errorMessage"];
+      const updates: Record<string, any> = {};
+      
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) {
+          updates[field] = req.body[field];
+        }
+      }
+      
+      const upload = await storage.updateUpload(req.params.id, updates);
+      if (!upload) {
+        return res.status(404).json({ error: "Upload not found" });
+      }
+      res.json(upload);
+    } catch (error) {
+      console.error("Error updating upload:", error);
+      res.status(500).json({ error: "Failed to update upload" });
+    }
+  });
+
+  app.delete("/api/uploads/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteUpload(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Upload not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting upload:", error);
+      res.status(500).json({ error: "Failed to delete upload" });
+    }
+  });
+
+  // Process upload - handles transcription for audio, OCR for images/documents
+  app.post("/api/uploads/:id/process", async (req, res) => {
+    try {
+      const existingUpload = await storage.getUpload(req.params.id);
+      if (!existingUpload) {
+        return res.status(404).json({ error: "Upload not found" });
+      }
+
+      await storage.updateUpload(req.params.id, { status: "processing" });
+
+      try {
+        let processingResult: any = {};
+
+        if (existingUpload.fileType === "audio" && existingUpload.fileData) {
+          const audioBuffer = Buffer.from(existingUpload.fileData, "base64");
+          const uint8Array = new Uint8Array(audioBuffer);
+          const file = new File([uint8Array], existingUpload.originalName, { type: existingUpload.mimeType });
+          
+          const transcription = await openai.audio.transcriptions.create({
+            file: file,
+            model: "whisper-1",
+            response_format: "verbose_json"
+          });
+
+          processingResult = {
+            type: "transcription",
+            text: transcription.text,
+            duration: transcription.duration || 0,
+            segments: transcription.segments || []
+          };
+        } else if ((existingUpload.fileType === "image" || existingUpload.fileType === "document") && existingUpload.fileData) {
+          const imageBase64 = `data:${existingUpload.mimeType};base64,${existingUpload.fileData}`;
+          
+          const response = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: "Extract and describe all text and content from this image. If it's a document, provide a structured summary. If it's a photo, describe what you see including any text visible." },
+                  { type: "image_url", image_url: { url: imageBase64 } }
+                ]
+              }
+            ],
+            max_tokens: 2000
+          });
+
+          processingResult = {
+            type: "vision_analysis",
+            text: response.choices[0]?.message?.content || "",
+            model: "gpt-4o"
+          };
+        } else {
+          processingResult = {
+            type: "stored",
+            message: "File stored but no automatic processing available for this file type"
+          };
+        }
+
+        const updated = await storage.updateUpload(req.params.id, {
+          status: "processed",
+          processingResult
+        });
+
+        res.json(updated);
+      } catch (processingError) {
+        console.error("Processing error:", processingError);
+        const errorMessage = processingError instanceof Error ? processingError.message : "Processing failed";
+        await storage.updateUpload(req.params.id, {
+          status: "error",
+          errorMessage
+        });
+        res.status(500).json({ error: errorMessage });
+      }
+    } catch (error) {
+      console.error("Error processing upload:", error);
+      res.status(500).json({ error: "Failed to process upload" });
+    }
+  });
+
+  // Send upload to ZEKE - forwards file to ZEKE backend for processing
+  app.post("/api/uploads/:id/send-to-zeke", async (req, res) => {
+    try {
+      const existingUpload = await storage.getUpload(req.params.id);
+      if (!existingUpload) {
+        return res.status(404).json({ error: "Upload not found" });
+      }
+
+      // Verify file data exists
+      if (!existingUpload.fileData) {
+        console.error(`[Upload] No file data found for upload ${req.params.id}`);
+        return res.status(400).json({ error: "File data not available for forwarding" });
+      }
+
+      // Forward to ZEKE backend for processing
+      const headers = extractForwardHeaders(req.headers);
+      
+      // Prepare payload for ZEKE backend
+      const payload = {
+        fileName: existingUpload.originalName,
+        fileType: existingUpload.fileType,
+        mimeType: existingUpload.mimeType,
+        fileSize: existingUpload.fileSize,
+        fileData: existingUpload.fileData, // base64 encoded
+        tags: existingUpload.tags || [],
+        metadata: existingUpload.metadata || {},
+        source: "mobile-upload"
+      };
+
+      console.log(`[Upload] Forwarding ${existingUpload.originalName} (${existingUpload.fileSize} bytes) to ZEKE backend...`);
+      
+      const result = await proxyToZeke("POST", "/api/uploads/process", payload, headers);
+      
+      if (!result.success) {
+        const errorMsg = result.data?.error || result.error || "Failed to send to ZEKE backend";
+        console.error(`[Upload] ZEKE backend error: ${errorMsg}`, result.data);
+        
+        // Update status to error so user can retry
+        await storage.updateUpload(req.params.id, {
+          status: "error",
+          errorMessage: errorMsg
+        });
+        
+        return res.status(result.status).json({ 
+          error: errorMsg,
+          details: result.data
+        });
+      }
+
+      // Update local record with ZEKE response
+      await storage.updateUpload(req.params.id, {
+        status: "sent",
+        memoryId: result.data?.memoryId || result.data?.id || null,
+        sentToZekeAt: new Date(),
+        processingResult: result.data,
+        errorMessage: null
+      });
+
+      console.log(`[Upload] Successfully sent ${existingUpload.originalName} to ZEKE backend`);
+
+      res.json({
+        success: true,
+        data: result.data,
+        message: "File sent to ZEKE backend for processing"
+      });
+    } catch (error) {
+      console.error("Error sending to ZEKE:", error);
+      const errorMsg = error instanceof Error ? error.message : "Failed to send to ZEKE";
+      res.status(500).json({ error: errorMsg });
     }
   });
 

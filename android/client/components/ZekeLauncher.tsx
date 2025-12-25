@@ -977,9 +977,16 @@ const styles = StyleSheet.create({
   trigger: {
     overflow: "hidden",
     elevation: 12,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
+    ...Platform.select({
+      web: {
+        boxShadow: "0px 4px 24px rgba(0, 0, 0, 0.5)",
+      },
+      default: {
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.5,
+        shadowRadius: 12,
+      },
+    }),
   },
   triggerGradient: {
     width: "100%",
@@ -1024,9 +1031,16 @@ const styles = StyleSheet.create({
   iconContainer: {
     overflow: "hidden",
     elevation: 6,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    ...Platform.select({
+      web: {
+        boxShadow: "0px 2px 12px rgba(0, 0, 0, 0.3)",
+      },
+      default: {
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 6,
+      },
+    }),
   },
   iconGradient: {
     width: "100%",
@@ -1052,10 +1066,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 2,
+    ...Platform.select({
+      web: {
+        boxShadow: "0px 1px 4px rgba(0, 0, 0, 0.3)",
+      },
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.3,
+        shadowRadius: 2,
+      },
+    }),
   },
   doneButtonFloat: {
     position: "absolute",

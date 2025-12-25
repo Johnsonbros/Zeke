@@ -42,24 +42,63 @@ const AUDIO_SAMPLE_RATE = 16000;
 const AUDIO_CHANNELS = 1;
 const BITS_PER_SAMPLE = 16;
 
-interface ClientMessage {
+// Legacy message format (backward compatible)
+interface LegacyClientMessage {
   type: "START" | "AUDIO_CHUNK" | "STOP";
   deviceId?: string;
   data?: string;
 }
 
+// New spec-compliant message format
+interface ConfigMessage {
+  type: "config";
+  codec: "opus" | "pcm";
+  sample_rate: number;
+  frame_format: "raw_opus_packets" | "pcm_16bit";
+  device_type: "omi" | "limitless" | "phone_mic";
+  device_id: string;
+}
+
+interface AudioMessage {
+  type: "audio";
+  data: string; // base64 encoded
+}
+
+interface SilenceMessage {
+  type: "silence";
+}
+
+interface HeartbeatMessage {
+  type: "heartbeat";
+  battery_level?: number;
+  signal_strength?: number;
+}
+
+interface StopMessage {
+  type: "stop";
+}
+
+type ClientMessage = LegacyClientMessage | ConfigMessage | AudioMessage | SilenceMessage | HeartbeatMessage | StopMessage;
+
 interface ServerMessage {
-  type: "TRANSCRIPTION" | "ERROR";
+  type: "TRANSCRIPTION" | "ERROR" | "WARNING" | "config_ack" | "heartbeat_ack";
   text?: string;
   isFinal?: boolean;
   message?: string;
+  timestamp?: string;
 }
 
 interface AudioSession {
   deviceId: string;
+  deviceType: string;
+  codec: string;
+  sampleRate: number;
   audioChunks: Buffer[];
   transcriptionInterval: ReturnType<typeof setInterval> | null;
   fullTranscript: string;
+  lastHeartbeat: Date;
+  consecutiveFallbacks: number;
+  totalFallbacks: number;
 }
 
 const sessions = new Map<WebSocket, AudioSession>();
@@ -190,13 +229,111 @@ function handleStart(ws: WebSocket, deviceId: string): void {
 
   sessions.set(ws, {
     deviceId,
+    deviceType: "unknown",
+    codec: "pcm",
+    sampleRate: AUDIO_SAMPLE_RATE,
     audioChunks: [],
     transcriptionInterval: null,
     fullTranscript: "",
+    lastHeartbeat: new Date(),
+    consecutiveFallbacks: 0,
+    totalFallbacks: 0,
   });
 
   startTranscriptionInterval(ws);
   console.log(`Audio streaming started for device: ${deviceId}`);
+}
+
+// New spec-compliant config handler
+function handleConfig(ws: WebSocket, config: ConfigMessage): void {
+  const existingSession = sessions.get(ws);
+  if (existingSession) {
+    stopTranscriptionInterval(ws);
+  }
+
+  sessions.set(ws, {
+    deviceId: config.device_id,
+    deviceType: config.device_type,
+    codec: config.codec,
+    sampleRate: config.sample_rate,
+    audioChunks: [],
+    transcriptionInterval: null,
+    fullTranscript: "",
+    lastHeartbeat: new Date(),
+    consecutiveFallbacks: 0,
+    totalFallbacks: 0,
+  });
+
+  startTranscriptionInterval(ws);
+  
+  sendMessage(ws, {
+    type: "config_ack",
+    message: "Configuration accepted",
+    timestamp: new Date().toISOString(),
+  });
+
+  console.log(`[Audio] Session configured: device=${config.device_id}, type=${config.device_type}, codec=${config.codec}`);
+}
+
+// Handle heartbeat messages
+function handleHeartbeat(ws: WebSocket, heartbeat: HeartbeatMessage): void {
+  const session = sessions.get(ws);
+  if (!session) {
+    sendMessage(ws, {
+      type: "ERROR",
+      message: "No active session. Send config message first.",
+    });
+    return;
+  }
+
+  session.lastHeartbeat = new Date();
+  
+  // Update device status in database (async, don't block)
+  if (heartbeat.battery_level !== undefined || heartbeat.signal_strength !== undefined) {
+    updateDeviceStatus(session.deviceId, {
+      batteryLevel: heartbeat.battery_level,
+      signalStrength: heartbeat.signal_strength,
+      lastHeartbeat: session.lastHeartbeat,
+    }).catch(err => console.error("[Audio] Failed to update device status:", err));
+  }
+
+  sendMessage(ws, {
+    type: "heartbeat_ack",
+    timestamp: new Date().toISOString(),
+  });
+}
+
+// Handle silence marker
+function handleSilence(ws: WebSocket): void {
+  const session = sessions.get(ws);
+  if (!session) return;
+
+  // When silence is detected, trigger transcription of buffered audio
+  if (session.audioChunks.length > 0) {
+    processAudioChunks(ws, false).catch(err => 
+      console.error("[Audio] Error processing audio on silence:", err)
+    );
+  }
+}
+
+// Update device status in database
+async function updateDeviceStatus(
+  deviceId: string, 
+  status: { batteryLevel?: number; signalStrength?: number; lastHeartbeat?: Date }
+): Promise<void> {
+  // Import dynamically to avoid circular dependency
+  const { db } = await import("./db");
+  const { devices } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+  
+  await db.update(devices)
+    .set({
+      batteryLevel: status.batteryLevel,
+      signalStrength: status.signalStrength,
+      lastHeartbeat: status.lastHeartbeat,
+      isConnected: true,
+    })
+    .where(eq(devices.id, deviceId));
 }
 
 function handleAudioChunk(ws: WebSocket, base64Data: string): void {
@@ -218,6 +355,110 @@ function handleAudioChunk(ws: WebSocket, base64Data: string): void {
       type: "ERROR",
       message: "Invalid base64 audio data",
     });
+  }
+}
+
+/**
+ * Check if a buffer contains JSON data (starts with '{' or '[')
+ */
+function isJsonBuffer(data: Buffer): boolean {
+  if (data.length === 0) return false;
+  const firstByte = data[0];
+  return firstByte === 0x7b || firstByte === 0x5b; // '{' or '['
+}
+
+/**
+ * Handle binary Opus frames directly (spec-compliant format)
+ * Decodes Opus to PCM using the opus-decoder service before storing
+ */
+async function handleBinaryOpusFrame(ws: WebSocket, opusData: Buffer): Promise<void> {
+  const session = sessions.get(ws);
+  if (!session) {
+    sendMessage(ws, {
+      type: "ERROR",
+      message: "No active session. Send config message first.",
+    });
+    return;
+  }
+
+  // If session is configured for Opus codec, decode to PCM
+  if (session.codec === "opus") {
+    try {
+      const { getOpusDecoder } = await import("./services/opus-decoder");
+      const decoder = getOpusDecoder();
+      const frame = await decoder.decodeFrame(new Uint8Array(opusData));
+      
+      if (frame && frame.pcmData) {
+        if (frame.isFallback) {
+          // Track fallback events for monitoring
+          session.consecutiveFallbacks++;
+          session.totalFallbacks++;
+          
+          // After 10 consecutive fallbacks, notify client and tear down session
+          const MAX_CONSECUTIVE_FALLBACKS = 10;
+          if (session.consecutiveFallbacks >= MAX_CONSECUTIVE_FALLBACKS) {
+            console.error(`[Audio] CRITICAL: ${MAX_CONSECUTIVE_FALLBACKS} consecutive decode failures for device ${session.deviceId} - terminating session`);
+            sendMessage(ws, {
+              type: "ERROR",
+              message: `Audio decoder failed after ${MAX_CONSECUTIVE_FALLBACKS} consecutive attempts. Session terminated.`,
+            });
+            cleanupSession(ws);
+            ws.close(1011, "Decoder failure threshold exceeded");
+            return;
+          }
+          
+          // Send warning on first fallback to notify client early
+          if (session.totalFallbacks === 1) {
+            sendMessage(ws, {
+              type: "WARNING",
+              message: "Audio decoder using fallback mode. Some audio data may be lost.",
+            });
+          }
+          
+          // Skip fallback frames - simulated PCM should not be sent to transcription
+          console.warn(`[Audio] Skipping fallback frame (simulated PCM) - ${opusData.length} bytes from device ${session.deviceId} (consecutive: ${session.consecutiveFallbacks})`);
+          return;
+        }
+        
+        // Reset consecutive fallback counter on successful decode
+        session.consecutiveFallbacks = 0;
+        
+        // Convert Int16Array to Buffer with correct byte length (Int16 = 2 bytes per sample)
+        const byteLength = frame.pcmData.length * Int16Array.BYTES_PER_ELEMENT;
+        const pcmBuffer = Buffer.from(frame.pcmData.buffer, frame.pcmData.byteOffset, byteLength);
+        session.audioChunks.push(pcmBuffer);
+        console.log(`[Audio] Decoded Opus frame (WASM): ${opusData.length} bytes → ${pcmBuffer.length} PCM bytes from device ${session.deviceId}`);
+      }
+    } catch (error) {
+      // Do NOT store raw Opus data - it will corrupt transcription
+      console.error(`[Audio] Opus decode error for device ${session.deviceId}:`, error);
+      session.consecutiveFallbacks++;
+      session.totalFallbacks++;
+      
+      // Send warning on first failure to notify client
+      if (session.totalFallbacks === 1) {
+        sendMessage(ws, {
+          type: "WARNING",
+          message: "Audio decode error encountered. Some audio data may be lost.",
+        });
+      }
+      
+      // Apply same threshold as fallback frames
+      const MAX_CONSECUTIVE_FALLBACKS = 10;
+      if (session.consecutiveFallbacks >= MAX_CONSECUTIVE_FALLBACKS) {
+        console.error(`[Audio] CRITICAL: ${MAX_CONSECUTIVE_FALLBACKS} consecutive decode failures for device ${session.deviceId} - terminating session`);
+        sendMessage(ws, {
+          type: "ERROR",
+          message: `Audio decoder failed after ${MAX_CONSECUTIVE_FALLBACKS} consecutive attempts. Session terminated.`,
+        });
+        cleanupSession(ws);
+        ws.close(1011, "Decoder failure threshold exceeded");
+      }
+    }
+  } else {
+    // Store raw frame directly (PCM or unknown codec)
+    session.audioChunks.push(opusData);
+    console.log(`[Audio] Received binary frame: ${opusData.length} bytes from device ${session.deviceId} (total chunks: ${session.audioChunks.length})`);
   }
 }
 
@@ -333,33 +574,68 @@ function setupAudioWebSocket(server: Server): WebSocketServer {
 
     ws.on("message", async (data: Buffer | string) => {
       try {
+        // Handle binary Opus frames directly (spec-compliant format)
+        if (Buffer.isBuffer(data) && !isJsonBuffer(data)) {
+          await handleBinaryOpusFrame(ws, data);
+          return;
+        }
+
         const messageStr = typeof data === "string" ? data : data.toString();
         const message: ClientMessage = JSON.parse(messageStr);
 
         switch (message.type) {
+          // Legacy message types (backward compatible)
           case "START":
-            if (!message.deviceId) {
+            if (!(message as LegacyClientMessage).deviceId) {
               sendMessage(ws, {
                 type: "ERROR",
                 message: "deviceId is required for START message",
               });
               return;
             }
-            handleStart(ws, message.deviceId);
+            handleStart(ws, (message as LegacyClientMessage).deviceId!);
             break;
 
           case "AUDIO_CHUNK":
-            if (!message.data) {
+            if (!(message as LegacyClientMessage).data) {
               sendMessage(ws, {
                 type: "ERROR",
                 message: "data is required for AUDIO_CHUNK message",
               });
               return;
             }
-            handleAudioChunk(ws, message.data);
+            handleAudioChunk(ws, (message as LegacyClientMessage).data!);
             break;
 
           case "STOP":
+            await handleStop(ws);
+            break;
+
+          // New spec-compliant message types
+          case "config":
+            handleConfig(ws, message as ConfigMessage);
+            break;
+
+          case "audio":
+            if (!(message as AudioMessage).data) {
+              sendMessage(ws, {
+                type: "ERROR",
+                message: "data is required for audio message",
+              });
+              return;
+            }
+            handleAudioChunk(ws, (message as AudioMessage).data);
+            break;
+
+          case "silence":
+            handleSilence(ws);
+            break;
+
+          case "heartbeat":
+            handleHeartbeat(ws, message as HeartbeatMessage);
+            break;
+
+          case "stop":
             await handleStop(ws);
             break;
 

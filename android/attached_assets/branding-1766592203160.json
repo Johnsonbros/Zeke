@@ -1,0 +1,124 @@
+{
+  "colorScheme": "light",
+  "fonts": [
+    {
+      "family": "-apple-system",
+      "count": 124
+    },
+    {
+      "family": "BlinkMacSystemFont",
+      "count": 124
+    },
+    {
+      "family": "Segoe UI",
+      "count": 124
+    },
+    {
+      "family": "Noto Sans",
+      "count": 124
+    },
+    {
+      "family": "Helvetica",
+      "count": 124
+    },
+    {
+      "family": "Arial",
+      "count": 124
+    },
+    {
+      "family": "sans-serif",
+      "count": 124
+    },
+    {
+      "family": "Apple Color Emoji",
+      "count": 124
+    },
+    {
+      "family": "Segoe UI Emoji",
+      "count": 124
+    }
+  ],
+  "colors": {
+    "primary": "#59636E",
+    "accent": "#1F883D",
+    "background": "#E9EDF0",
+    "textPrimary": "#1F2328",
+    "link": "#1F883D"
+  },
+  "typography": {
+    "fontFamilies": {
+      "primary": "-apple-system",
+      "heading": "-apple-system"
+    },
+    "fontStacks": {
+      "body": [
+        "-apple-system",
+        "BlinkMacSystemFont",
+        "Segoe UI",
+        "Noto Sans",
+        "Helvetica",
+        "Arial",
+        "sans-serif",
+        "Apple Color Emoji",
+        "Segoe UI Emoji"
+      ],
+      "heading": [
+        "-apple-system",
+        "BlinkMacSystemFont",
+        "Segoe UI",
+        "Noto Sans",
+        "Helvetica",
+        "Arial",
+        "sans-serif",
+        "Apple Color Emoji",
+        "Segoe UI Emoji"
+      ],
+      "paragraph": [
+        "-apple-system",
+        "BlinkMacSystemFont",
+        "Segoe UI",
+        "Noto Sans",
+        "Helvetica",
+        "Arial",
+        "sans-serif",
+        "Apple Color Emoji",
+        "Segoe UI Emoji"
+      ]
+    },
+    "fontSizes": {
+      "h1": "32px",
+      "h2": "24px",
+      "body": "14px"
+    }
+  },
+  "spacing": {
+    "baseUnit": 8,
+    "borderRadius": "6px"
+  },
+  "components": {
+    "input": {
+      "background": "transparent",
+      "textColor": "#1F2328",
+      "borderColor": null,
+      "borderRadius": "0px",
+      "borderRadiusCorners": {
+        "topLeft": "0px",
+        "topRight": "0px",
+        "bottomRight": "0px",
+        "bottomLeft": "0px"
+      },
+      "shadow": "none"
+    }
+  },
+  "images": {
+    "logo": null,
+    "favicon": "https://github.com/fluidicon.png",
+    "ogImage": "https://repository-images.githubusercontent.com/776121034/abcde48a-a04a-47bc-b146-8998b829fc5e"
+  },
+  "__framework_hints": [],
+  "confidence": {
+    "buttons": 0,
+    "colors": 0,
+    "overall": 0
+  }
+}

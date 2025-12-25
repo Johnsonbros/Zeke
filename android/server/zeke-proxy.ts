@@ -59,7 +59,7 @@ interface ProxyResult {
   latencyMs?: number;
 }
 
-function extractForwardHeaders(reqHeaders: IncomingHttpHeaders): Record<string, string> {
+export function extractForwardHeaders(reqHeaders: IncomingHttpHeaders): Record<string, string> {
   const headers: Record<string, string> = {};
   
   for (const key of FORWARD_HEADERS) {
@@ -72,7 +72,7 @@ function extractForwardHeaders(reqHeaders: IncomingHttpHeaders): Record<string, 
   return headers;
 }
 
-async function proxyToZeke(
+export async function proxyToZeke(
   method: string,
   path: string,
   body?: any,

@@ -9,6 +9,8 @@ const STORAGE_KEYS = {
   RECENT_SEARCHES: "@zeke/recent_searches",
   OMI_API_KEY: "@zeke/omi_api_key",
   LIMITLESS_API_KEY: "@zeke/limitless_api_key",
+  PROFILE_PICTURE: "@zeke/profile_picture",
+  PROFILE_PICTURE_REMINDER: "@zeke/profile_picture_reminder",
 };
 
 export interface NotificationSettings {
@@ -187,5 +189,87 @@ export async function clearAllData(): Promise<void> {
     await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
   } catch (error) {
     console.error("Error clearing all data:", error);
+  }
+}
+
+export interface ProfilePictureData {
+  uri: string;
+  capturedAt: string;
+  sentToZeke: boolean;
+}
+
+export interface ProfilePictureReminder {
+  lastCapturedAt: string | null;
+  nextReminderAt: string | null;
+  reminderEnabled: boolean;
+}
+
+const DEFAULT_REMINDER: ProfilePictureReminder = {
+  lastCapturedAt: null,
+  nextReminderAt: null,
+  reminderEnabled: true,
+};
+
+export async function getProfilePicture(): Promise<ProfilePictureData | null> {
+  try {
+    const data = await AsyncStorage.getItem(STORAGE_KEYS.PROFILE_PICTURE);
+    return data ? JSON.parse(data) : null;
+  } catch (error) {
+    console.error("Error getting profile picture:", error);
+    return null;
+  }
+}
+
+export async function saveProfilePicture(data: ProfilePictureData): Promise<void> {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEYS.PROFILE_PICTURE, JSON.stringify(data));
+  } catch (error) {
+    console.error("Error saving profile picture:", error);
+  }
+}
+
+export async function getProfilePictureReminder(): Promise<ProfilePictureReminder> {
+  try {
+    const data = await AsyncStorage.getItem(STORAGE_KEYS.PROFILE_PICTURE_REMINDER);
+    return data ? { ...DEFAULT_REMINDER, ...JSON.parse(data) } : DEFAULT_REMINDER;
+  } catch (error) {
+    console.error("Error getting profile picture reminder:", error);
+    return DEFAULT_REMINDER;
+  }
+}
+
+export async function saveProfilePictureReminder(reminder: Partial<ProfilePictureReminder>): Promise<void> {
+  try {
+    const current = await getProfilePictureReminder();
+    await AsyncStorage.setItem(
+      STORAGE_KEYS.PROFILE_PICTURE_REMINDER,
+      JSON.stringify({ ...current, ...reminder })
+    );
+  } catch (error) {
+    console.error("Error saving profile picture reminder:", error);
+  }
+}
+
+export function calculateNextReminderDate(): Date {
+  const minDays = 7;
+  const maxDays = 14;
+  const randomDays = Math.floor(Math.random() * (maxDays - minDays + 1)) + minDays;
+  const nextDate = new Date();
+  nextDate.setDate(nextDate.getDate() + randomDays);
+  return nextDate;
+}
+
+export async function shouldShowProfilePictureReminder(): Promise<boolean> {
+  try {
+    const reminder = await getProfilePictureReminder();
+    if (!reminder.reminderEnabled) return false;
+    if (!reminder.nextReminderAt) return true;
+    
+    const now = new Date();
+    const nextReminder = new Date(reminder.nextReminderAt);
+    return now >= nextReminder;
+  } catch (error) {
+    console.error("Error checking profile picture reminder:", error);
+    return false;
   }
 }

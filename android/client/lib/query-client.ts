@@ -255,10 +255,12 @@ export function getApiUrl(): string {
 }
 
 /**
- * Check if we're in sync mode (connected to external ZEKE backend)
+ * Check if we're in sync mode (connected to external ZEKE backend via proxy)
+ * This uses runtime detection based on whether the proxy origin has been verified,
+ * rather than a build-time environment variable which isn't available in client bundles.
  */
 export function isZekeSyncMode(): boolean {
-  return !!process.env.EXPO_PUBLIC_ZEKE_BACKEND_URL;
+  return !!cachedProxyOrigin;
 }
 
 /**

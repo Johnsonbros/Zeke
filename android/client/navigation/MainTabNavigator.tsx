@@ -88,7 +88,7 @@ function ZekeLauncherWrapper({ navigation }: ZekeLauncherWrapperProps) {
       gradientColors: Gradients.accent,
       onPress: () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        navigation.navigate("HomeTab", { screen: "AudioUpload" });
+        navigation.navigate("HomeTab", { screen: "FileUpload" });
       },
     },
     {

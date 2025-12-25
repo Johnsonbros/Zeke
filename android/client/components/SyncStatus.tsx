@@ -1,5 +1,5 @@
 import React from "react";
-import { View, StyleSheet, Pressable } from "react-native";
+import { View, StyleSheet, Pressable, Platform } from "react-native";
 import { ThemedText } from "./ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
@@ -101,11 +101,18 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   dot: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
     elevation: 2,
+    ...Platform.select({
+      web: {
+        boxShadow: "0px 1px 4px rgba(0, 0, 0, 0.2)",
+      },
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 2,
+      },
+    }),
   },
   label: {
     fontWeight: "500",

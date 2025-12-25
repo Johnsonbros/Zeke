@@ -22,6 +22,10 @@ type Device = {
       characteristic: Characteristic | null,
     ) => void,
   ) => void;
+  readCharacteristicForService: (
+    serviceUUID: string,
+    charUUID: string,
+  ) => Promise<Characteristic>;
   cancelConnection: () => Promise<void>;
 };
 
@@ -1011,6 +1015,8 @@ class BluetoothService {
       this.connectedDevice = device;
       this.connectionState = "connected";
       await this.saveConnectedDevice(device);
+
+      await this.setupBatteryMonitoring();
       this.notifyConnectionStateChange();
       console.log("Successfully connected to", device.name);
 
@@ -1102,6 +1108,65 @@ class BluetoothService {
       console.error("Failed to setup Omi notifications:", error);
       throw error;
     }
+  }
+
+  private async setupBatteryMonitoring(): Promise<void> {
+    if (!this.connectedBleDevice) {
+      console.log("[Battery] No connected device for battery monitoring");
+      return;
+    }
+
+    try {
+      const batteryLevel = await this.readBatteryLevel();
+      if (batteryLevel !== null && this.connectedDevice) {
+        this.connectedDevice.batteryLevel = batteryLevel;
+        console.log(`[Battery] Initial battery level: ${batteryLevel}%`);
+        await this.saveConnectedDevice(this.connectedDevice);
+      }
+
+      this.connectedBleDevice.monitorCharacteristicForService(
+        BATTERY_SERVICE_UUID,
+        BATTERY_LEVEL_CHAR_UUID,
+        (error, characteristic) => {
+          if (error) {
+            console.log("[Battery] Monitoring not available:", error.message);
+            return;
+          }
+
+          if (characteristic?.value && this.connectedDevice) {
+            const buffer = Buffer.from(characteristic.value, "base64");
+            const level = buffer[0];
+            this.connectedDevice.batteryLevel = level;
+            console.log(`[Battery] Updated battery level: ${level}%`);
+            this.saveConnectedDevice(this.connectedDevice).catch((err) =>
+              console.error("[Battery] Failed to persist battery level:", err)
+            );
+          }
+        },
+      );
+      console.log("[Battery] Battery level monitoring enabled");
+    } catch (error) {
+      console.log("[Battery] Battery monitoring not supported by device");
+    }
+  }
+
+  private async readBatteryLevel(): Promise<number | null> {
+    if (!this.connectedBleDevice) return null;
+
+    try {
+      const characteristic = await this.connectedBleDevice.readCharacteristicForService(
+        BATTERY_SERVICE_UUID,
+        BATTERY_LEVEL_CHAR_UUID,
+      );
+      
+      if (characteristic?.value) {
+        const buffer = Buffer.from(characteristic.value, "base64");
+        return buffer[0];
+      }
+    } catch (error) {
+      console.log("[Battery] Could not read battery level");
+    }
+    return null;
   }
 
   public async disconnect(): Promise<void> {

@@ -1,0 +1,111 @@
+Android App Tasks & Prompts for Developer
+Here's the complete list of what the Android app needs to implement, with prompts for the developer:
+
+1. Omi BLE Connection & Audio Streaming
+Prompt for Android Developer:
+Implement Omi pendant BLE connection and audio streaming. The Omi pendant broadcasts audio via BLE notifications at ~10ms intervals. Audio is Opus-encoded at 16kHz mono, with raw Opus packets (~40 bytes each, TOC byte at start of each frame).
+Requirements:
+	•	Scan for Omi devices (BLE service UUID from Omi SDK)
+	•	Handle BLE pairing and bonding
+	•	Subscribe to audio characteristic for notifications
+	•	Extract raw Opus frames from BLE packets
+	•	Stream Opus packets to ZEKE backend via WebSocket at wss://<backend>/ws/audio
+
+2. WebSocket Audio Protocol
+Prompt for Android Developer:
+Connect to ZEKE's WebSocket audio endpoint and stream Opus packets. The backend expects:
+Connection: wss://zekeai.replit.app/ws/audio
+Initial Config Message (JSON):
+{
+"type": "config",
+"codec": "opus",
+"sample_rate": 16000,
+"frame_format": "raw_opus_packets",
+"device_type": "omi",
+"device_id": "<mac_address>"
+}
+
+Audio Messages: Binary Opus packets (raw, no container)
+Receive: Transcript events from backend as JSON
+
+3. Voice Activity Detection (VAD)
+Prompt for Android Developer:
+Implement client-side Voice Activity Detection to filter silence before streaming. This reduces bandwidth and transcription costs by ~50%.
+Options:
+	•	WebRTC VAD (lightweight, built into many Android audio libs)
+	•	Silero VAD (more accurate, requires TensorFlow Lite)
+Only stream audio when voice is detected. Send a "silence" marker message when VAD detects pause.
+
+4. Device Pairing Flow
+Prompt for Android Developer:
+Create a device pairing UI flow:
+	1	Scan for nearby Omi/Limitless devices
+	2	Display discovered devices with signal strength
+	3	Handle pairing with user confirmation
+	4	Register paired device with backend: POST /api/devices
+{
+"type": "omi",
+"mac_address": "XX:XX:XX:XX:XX:XX",
+"name": "Omi Pendant",
+"firmware_version": "1.0.0"
+}
+
+	5	Store pairing locally for auto-reconnect
+	6	Handle connection loss and automatic reconnection
+
+5. Voice Enrollment Capture
+Prompt for Android Developer:
+Implement voice enrollment UI for speaker identification:
+	1	Prompt user to speak sample phrases (e.g., "Hey Zeke, this is my voice")
+	2	Record 10-30 seconds of voice samples
+	3	Upload to backend: POST /api/voice/enroll
+{
+"label": "Nate",
+"samples": [<base64_opus_audio>],
+"device_type": "phone_mic"
+}
+
+	4	Show enrollment status and allow re-enrollment
+
+6. Multi-Device Support
+Prompt for Android Developer:
+Support multiple audio sources with device identification:
+	•	omi: Omi pendant via BLE
+	•	limitless: Limitless pendant (if direct BLE supported in future)
+	•	phone_mic: Phone's built-in microphone
+Include device_type and device_id in all WebSocket messages so backend can route and tag transcripts appropriately.
+
+7. Connection Status & Health Monitoring
+Prompt for Android Developer:
+Monitor and report device connection status:
+	•	Report battery level (from BLE characteristic)
+	•	Track connection quality/signal strength
+	•	Send heartbeat to backend every 30 seconds
+	•	Handle timeout and reconnection gracefully
+	•	Update backend device status: PATCH /api/devices/:id
+
+API Contract Summary
+Endpoint
+Method
+Purpose
+wss://backend/ws/audio
+WebSocket
+Stream audio + receive transcripts
+POST /api/devices
+HTTP
+Register new device
+GET /api/devices
+HTTP
+List paired devices
+PATCH /api/devices/:id
+HTTP
+Update device status
+DELETE /api/devices/:id
+HTTP
+Unpair device
+POST /api/voice/enroll
+HTTP
+Upload voice samples
+GET /api/voice/profiles
+HTTP
+List enrolled voices
