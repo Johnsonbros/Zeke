@@ -37,6 +37,7 @@ import DevicesPage from "@/pages/devices";
 import VoiceProfilesPage from "@/pages/voice-profiles";
 import LoginPage from "@/pages/login";
 import ApplyPage from "@/pages/apply";
+import LandingPage from "@/pages/landing";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 
@@ -142,8 +143,12 @@ function AuthGate() {
     return <ApplyPage />;
   }
 
+  if (location === "/about") {
+    return <LandingPage />;
+  }
+
   if (!authenticated) {
-    return <Redirect to="/login" />;
+    return <Redirect to="/about" />;
   }
 
   return (
