@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean, varchar, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, varchar, numeric, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -4008,6 +4008,72 @@ export const insertDeviceSchema = createInsertSchema(devices).omit({
 
 export type InsertDevice = z.infer<typeof insertDeviceSchema>;
 export type Device = typeof devices.$inferSelect;
+
+// Wearable health metrics - time-series data from Omi and other wearables
+export const wearableHealthMetrics = pgTable("wearable_health_metrics", {
+  id: text("id").primaryKey(),
+  deviceId: text("device_id").notNull(),
+  metricType: text("metric_type", { enum: ["battery", "session_time", "recording_quality", "connection_strength", "temperature"] as const }).notNull(),
+  value: real("value").notNull(),
+  unit: text("unit"),
+  recordedAt: text("recorded_at").notNull(),
+  metadata: text("metadata"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertWearableHealthMetricSchema = createInsertSchema(wearableHealthMetrics).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertWearableHealthMetric = z.infer<typeof insertWearableHealthMetricSchema>;
+export type WearableHealthMetric = typeof wearableHealthMetrics.$inferSelect;
+
+// Captured Android notifications - for context awareness
+export const capturedNotifications = pgTable("captured_notifications", {
+  id: text("id").primaryKey(),
+  packageName: text("package_name").notNull(),
+  appName: text("app_name"),
+  title: text("title"),
+  body: text("body"),
+  category: text("category"),
+  priority: integer("priority"),
+  isOngoing: boolean("is_ongoing").default(false),
+  postedAt: text("posted_at").notNull(),
+  processedAt: text("processed_at"),
+  actionTaken: text("action_taken"),
+  metadata: text("metadata"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertCapturedNotificationSchema = createInsertSchema(capturedNotifications).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCapturedNotification = z.infer<typeof insertCapturedNotificationSchema>;
+export type CapturedNotification = typeof capturedNotifications.$inferSelect;
+
+// Health data from Google Fit / Health Connect
+export const healthMetrics = pgTable("health_metrics", {
+  id: text("id").primaryKey(),
+  metricType: text("metric_type", { enum: ["steps", "heart_rate", "sleep", "calories", "distance", "active_minutes", "weight", "blood_pressure", "blood_glucose", "oxygen_saturation"] as const }).notNull(),
+  value: real("value").notNull(),
+  unit: text("unit"),
+  source: text("source"), // e.g., "google_fit", "health_connect", "manual"
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time"),
+  metadata: text("metadata"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertHealthMetricSchema = createInsertSchema(healthMetrics).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertHealthMetric = z.infer<typeof insertHealthMetricSchema>;
+export type HealthMetric = typeof healthMetrics.$inferSelect;
 
 // Voice profiles table - stores voice enrollment for speaker identification
 export const voiceProfiles = pgTable("voice_profiles", {

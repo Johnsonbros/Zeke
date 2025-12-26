@@ -191,6 +191,14 @@ import type {
   BriefingDeliveryLog,
   InsertBriefingDeliveryLog,
   CalendarEvent,
+  WearableHealthMetric,
+  InsertWearableHealthMetric,
+  CapturedNotification,
+  InsertCapturedNotification,
+  HealthMetric,
+  InsertHealthMetric,
+  PushToken,
+  InsertPushToken,
 } from "@shared/schema";
 import { MASTER_ADMIN_PHONE, defaultPermissionsByLevel } from "@shared/schema";
 
@@ -5207,6 +5215,132 @@ export async function registerPushToken(data: InsertPushToken): Promise<PushToke
   await db.insert(schema.pushTokens).values({ ...data, id, createdAt: now, updatedAt: now });
   const [result] = await db.select().from(schema.pushTokens).where(eq(schema.pushTokens.id, id)).limit(1);
   return result;
+}
+
+// Wearable Health Metrics Functions
+export async function createWearableHealthMetric(data: InsertWearableHealthMetric): Promise<WearableHealthMetric> {
+  const id = uuidv4();
+  const now = getNow();
+  await db.insert(schema.wearableHealthMetrics).values({ ...data, id, createdAt: now });
+  const [result] = await db.select().from(schema.wearableHealthMetrics).where(eq(schema.wearableHealthMetrics.id, id)).limit(1);
+  return result;
+}
+
+export async function getWearableHealthMetrics(deviceId: string, limit = 100): Promise<WearableHealthMetric[]> {
+  return await db.select().from(schema.wearableHealthMetrics)
+    .where(eq(schema.wearableHealthMetrics.deviceId, deviceId))
+    .orderBy(desc(schema.wearableHealthMetrics.recordedAt))
+    .limit(limit);
+}
+
+export async function getWearableHealthMetricsByType(deviceId: string, metricType: string, limit = 100): Promise<WearableHealthMetric[]> {
+  return await db.select().from(schema.wearableHealthMetrics)
+    .where(and(
+      eq(schema.wearableHealthMetrics.deviceId, deviceId),
+      eq(schema.wearableHealthMetrics.metricType, metricType as any)
+    ))
+    .orderBy(desc(schema.wearableHealthMetrics.recordedAt))
+    .limit(limit);
+}
+
+export async function getLatestWearableMetric(deviceId: string, metricType: string): Promise<WearableHealthMetric | undefined> {
+  const [result] = await db.select().from(schema.wearableHealthMetrics)
+    .where(and(
+      eq(schema.wearableHealthMetrics.deviceId, deviceId),
+      eq(schema.wearableHealthMetrics.metricType, metricType as any)
+    ))
+    .orderBy(desc(schema.wearableHealthMetrics.recordedAt))
+    .limit(1);
+  return result;
+}
+
+// Captured Notifications Functions
+export async function createCapturedNotification(data: InsertCapturedNotification): Promise<CapturedNotification> {
+  const id = uuidv4();
+  const now = getNow();
+  await db.insert(schema.capturedNotifications).values({ ...data, id, createdAt: now });
+  const [result] = await db.select().from(schema.capturedNotifications).where(eq(schema.capturedNotifications.id, id)).limit(1);
+  return result;
+}
+
+export async function getCapturedNotifications(limit = 100): Promise<CapturedNotification[]> {
+  return await db.select().from(schema.capturedNotifications)
+    .orderBy(desc(schema.capturedNotifications.postedAt))
+    .limit(limit);
+}
+
+export async function getRecentNotificationsByApp(packageName: string, limit = 50): Promise<CapturedNotification[]> {
+  return await db.select().from(schema.capturedNotifications)
+    .where(eq(schema.capturedNotifications.packageName, packageName))
+    .orderBy(desc(schema.capturedNotifications.postedAt))
+    .limit(limit);
+}
+
+export async function markNotificationProcessed(id: string, actionTaken?: string): Promise<CapturedNotification | undefined> {
+  const now = getNow();
+  await db.update(schema.capturedNotifications)
+    .set({ processedAt: now, actionTaken })
+    .where(eq(schema.capturedNotifications.id, id));
+  const [result] = await db.select().from(schema.capturedNotifications).where(eq(schema.capturedNotifications.id, id)).limit(1);
+  return result;
+}
+
+// Health Metrics Functions (Google Fit / Health Connect)
+export async function createHealthMetric(data: InsertHealthMetric): Promise<HealthMetric> {
+  const id = uuidv4();
+  const now = getNow();
+  await db.insert(schema.healthMetrics).values({ ...data, id, createdAt: now });
+  const [result] = await db.select().from(schema.healthMetrics).where(eq(schema.healthMetrics.id, id)).limit(1);
+  return result;
+}
+
+export async function getHealthMetrics(metricType: string, limit = 100): Promise<HealthMetric[]> {
+  return await db.select().from(schema.healthMetrics)
+    .where(eq(schema.healthMetrics.metricType, metricType as any))
+    .orderBy(desc(schema.healthMetrics.startTime))
+    .limit(limit);
+}
+
+export async function getHealthMetricsInRange(metricType: string, startDate: string, endDate: string): Promise<HealthMetric[]> {
+  return await db.select().from(schema.healthMetrics)
+    .where(and(
+      eq(schema.healthMetrics.metricType, metricType as any),
+      gte(schema.healthMetrics.startTime, startDate),
+      lte(schema.healthMetrics.startTime, endDate)
+    ))
+    .orderBy(desc(schema.healthMetrics.startTime));
+}
+
+export async function getLatestHealthMetric(metricType: string): Promise<HealthMetric | undefined> {
+  const [result] = await db.select().from(schema.healthMetrics)
+    .where(eq(schema.healthMetrics.metricType, metricType as any))
+    .orderBy(desc(schema.healthMetrics.startTime))
+    .limit(1);
+  return result;
+}
+
+export async function getTodayHealthSummary(): Promise<{
+  steps: number;
+  calories: number;
+  activeMinutes: number;
+  heartRateAvg: number | null;
+}> {
+  const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  
+  const stepsData = await getHealthMetricsInRange('steps', today, tomorrow);
+  const caloriesData = await getHealthMetricsInRange('calories', today, tomorrow);
+  const activeData = await getHealthMetricsInRange('active_minutes', today, tomorrow);
+  const heartRateData = await getHealthMetricsInRange('heart_rate', today, tomorrow);
+  
+  const steps = stepsData.reduce((sum, m) => sum + m.value, 0);
+  const calories = caloriesData.reduce((sum, m) => sum + m.value, 0);
+  const activeMinutes = activeData.reduce((sum, m) => sum + m.value, 0);
+  const heartRateAvg = heartRateData.length > 0 
+    ? heartRateData.reduce((sum, m) => sum + m.value, 0) / heartRateData.length 
+    : null;
+  
+  return { steps, calories, activeMinutes, heartRateAvg };
 }
 
 // Journal Entry Functions  

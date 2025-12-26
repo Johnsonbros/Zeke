@@ -254,7 +254,18 @@ export async function sendWakeTriggeredBriefing(): Promise<void> {
     const data = await gatherBriefingData();
     const briefingText = await generateAIBriefing(data);
     
+    // Send SMS
     await sendSmsToMaster(briefingText);
+    
+    // Also send push notification with summary
+    try {
+      const { sendBriefingNotification } = await import("./services/pushNotificationService");
+      const summary = `${data.tasksDueToday} tasks today, ${data.meetingsToday.length} meetings`;
+      await sendBriefingNotification("morning", summary);
+      log("[MorningBriefing] Push notification sent", "voice");
+    } catch (pushError: any) {
+      log(`[MorningBriefing] Push notification failed: ${pushError.message}`, "voice");
+    }
     
     // Record that briefing was sent
     setPreference({

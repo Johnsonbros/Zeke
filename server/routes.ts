@@ -12256,6 +12256,443 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/mobile/push-tokens/list - List all push tokens (admin)
+  app.get("/api/mobile/push-tokens/list", async (req, res) => {
+    try {
+      const { getActivePushTokens } = await import("./services/pushNotificationService");
+      const tokens = await getActivePushTokens();
+      res.json({ 
+        count: tokens.length, 
+        tokens: tokens.map(t => ({
+          id: t.id,
+          platform: t.platform,
+          deviceId: t.deviceId,
+          deviceName: t.deviceName,
+          enabled: t.enabled,
+          lastUsedAt: t.lastUsedAt,
+        }))
+      });
+    } catch (error: any) {
+      console.error("[Mobile] List push tokens error:", error);
+      res.status(500).json(createMobileError(
+        "INTERNAL_ERROR",
+        error.message || "Failed to list push tokens"
+      ));
+    }
+  });
+
+  // POST /api/mobile/push-test - Send a test push notification
+  app.post("/api/mobile/push-test", async (req, res) => {
+    try {
+      const { title, body, deviceId } = req.body;
+      
+      if (!title || !body) {
+        return res.status(400).json(createMobileError(
+          "MISSING_REQUIRED_FIELD",
+          "title and body are required"
+        ));
+      }
+      
+      const { sendPushNotification } = await import("./services/pushNotificationService");
+      const result = await sendPushNotification(
+        { title, body, data: { type: "test" } },
+        deviceId ? [deviceId] : undefined
+      );
+      
+      res.json({ success: true, ...result });
+    } catch (error: any) {
+      console.error("[Mobile] Test push error:", error);
+      res.status(500).json(createMobileError(
+        "INTERNAL_ERROR",
+        error.message || "Failed to send test push"
+      ));
+    }
+  });
+
+  // POST /api/mobile/push-briefing - Send daily briefing push notification
+  app.post("/api/mobile/push-briefing", async (req, res) => {
+    try {
+      const { type = "morning", summary } = req.body;
+      
+      if (!summary) {
+        return res.status(400).json(createMobileError(
+          "MISSING_REQUIRED_FIELD",
+          "summary is required"
+        ));
+      }
+      
+      const { sendBriefingNotification } = await import("./services/pushNotificationService");
+      const result = await sendBriefingNotification(type, summary);
+      
+      res.json({ success: true, ...result });
+    } catch (error: any) {
+      console.error("[Mobile] Briefing push error:", error);
+      res.status(500).json(createMobileError(
+        "INTERNAL_ERROR",
+        error.message || "Failed to send briefing push"
+      ));
+    }
+  });
+
+  // ============================================
+  // WEARABLE HEALTH METRICS ENDPOINTS
+  // ============================================
+
+  // POST /api/wearable/metrics - Record wearable health metrics
+  app.post("/api/wearable/metrics", async (req, res) => {
+    try {
+      const { insertWearableHealthMetricSchema } = await import("@shared/schema");
+      
+      // Prepare data with proper metadata handling
+      const inputData = {
+        ...req.body,
+        recordedAt: req.body.recordedAt || new Date().toISOString(),
+        metadata: req.body.metadata 
+          ? (typeof req.body.metadata === "string" ? req.body.metadata : JSON.stringify(req.body.metadata))
+          : null,
+      };
+      
+      const parseResult = insertWearableHealthMetricSchema.safeParse(inputData);
+      if (!parseResult.success) {
+        return res.status(400).json({ message: "Validation failed", errors: parseResult.error.format() });
+      }
+      
+      const { createWearableHealthMetric } = await import("./db");
+      const metric = await createWearableHealthMetric(parseResult.data);
+      
+      res.status(201).json(metric);
+    } catch (error: any) {
+      console.error("[Wearable] Error recording metric:", error);
+      res.status(500).json({ message: "Failed to record metric" });
+    }
+  });
+
+  // POST /api/wearable/metrics/batch - Record multiple metrics at once
+  app.post("/api/wearable/metrics/batch", async (req, res) => {
+    try {
+      const { metrics } = req.body;
+      
+      if (!Array.isArray(metrics) || metrics.length === 0) {
+        return res.status(400).json({ message: "metrics array is required" });
+      }
+      
+      const { insertWearableHealthMetricSchema } = await import("@shared/schema");
+      const { createWearableHealthMetric } = await import("./db");
+      const results = [];
+      const errors = [];
+      
+      for (let i = 0; i < metrics.length; i++) {
+        const m = metrics[i];
+        const inputData = {
+          ...m,
+          recordedAt: m.recordedAt || new Date().toISOString(),
+          metadata: m.metadata 
+            ? (typeof m.metadata === "string" ? m.metadata : JSON.stringify(m.metadata))
+            : null,
+        };
+        
+        const parseResult = insertWearableHealthMetricSchema.safeParse(inputData);
+        if (!parseResult.success) {
+          errors.push({ index: i, errors: parseResult.error.format() });
+          continue;
+        }
+        
+        const metric = await createWearableHealthMetric(parseResult.data);
+        results.push(metric);
+      }
+      
+      res.status(201).json({ count: results.length, metrics: results, validationErrors: errors });
+    } catch (error: any) {
+      console.error("[Wearable] Error recording batch metrics:", error);
+      res.status(500).json({ message: "Failed to record metrics" });
+    }
+  });
+
+  // GET /api/wearable/metrics/:deviceId - Get metrics for a device
+  app.get("/api/wearable/metrics/:deviceId", async (req, res) => {
+    try {
+      const { deviceId } = req.params;
+      const { type, limit = "100" } = req.query;
+      
+      const { getWearableHealthMetrics, getWearableHealthMetricsByType } = await import("./db");
+      
+      const metrics = type 
+        ? await getWearableHealthMetricsByType(deviceId, type as string, parseInt(limit as string))
+        : await getWearableHealthMetrics(deviceId, parseInt(limit as string));
+      
+      res.json(metrics);
+    } catch (error: any) {
+      console.error("[Wearable] Error fetching metrics:", error);
+      res.status(500).json({ message: "Failed to fetch metrics" });
+    }
+  });
+
+  // GET /api/wearable/metrics/:deviceId/latest - Get latest metrics for a device
+  app.get("/api/wearable/metrics/:deviceId/latest", async (req, res) => {
+    try {
+      const { deviceId } = req.params;
+      
+      const { getLatestWearableMetric } = await import("./db");
+      
+      const metricTypes = ["battery", "session_time", "recording_quality", "connection_strength"];
+      const latest: Record<string, any> = {};
+      
+      for (const type of metricTypes) {
+        const metric = await getLatestWearableMetric(deviceId, type);
+        if (metric) {
+          latest[type] = metric;
+        }
+      }
+      
+      res.json(latest);
+    } catch (error: any) {
+      console.error("[Wearable] Error fetching latest metrics:", error);
+      res.status(500).json({ message: "Failed to fetch latest metrics" });
+    }
+  });
+
+  // ============================================
+  // CAPTURED NOTIFICATIONS ENDPOINTS
+  // ============================================
+
+  // POST /api/notifications/capture - Capture Android notification
+  app.post("/api/notifications/capture", async (req, res) => {
+    try {
+      const { insertCapturedNotificationSchema } = await import("@shared/schema");
+      
+      // Prepare data with proper metadata handling
+      const inputData = {
+        ...req.body,
+        isOngoing: req.body.isOngoing || false,
+        metadata: req.body.metadata 
+          ? (typeof req.body.metadata === "string" ? req.body.metadata : JSON.stringify(req.body.metadata))
+          : null,
+      };
+      
+      const parseResult = insertCapturedNotificationSchema.safeParse(inputData);
+      if (!parseResult.success) {
+        return res.status(400).json({ message: "Validation failed", errors: parseResult.error.format() });
+      }
+      
+      const { createCapturedNotification } = await import("./db");
+      const notification = await createCapturedNotification(parseResult.data);
+      
+      res.status(201).json(notification);
+    } catch (error: any) {
+      console.error("[Notifications] Error capturing notification:", error);
+      res.status(500).json({ message: "Failed to capture notification" });
+    }
+  });
+
+  // POST /api/notifications/capture/batch - Capture multiple notifications
+  app.post("/api/notifications/capture/batch", async (req, res) => {
+    try {
+      const { notifications } = req.body;
+      
+      if (!Array.isArray(notifications) || notifications.length === 0) {
+        return res.status(400).json({ message: "notifications array is required" });
+      }
+      
+      const { insertCapturedNotificationSchema } = await import("@shared/schema");
+      const { createCapturedNotification } = await import("./db");
+      const results = [];
+      const errors = [];
+      
+      for (let i = 0; i < notifications.length; i++) {
+        const n = notifications[i];
+        const inputData = {
+          ...n,
+          isOngoing: n.isOngoing || false,
+          metadata: n.metadata 
+            ? (typeof n.metadata === "string" ? n.metadata : JSON.stringify(n.metadata))
+            : null,
+        };
+        
+        const parseResult = insertCapturedNotificationSchema.safeParse(inputData);
+        if (!parseResult.success) {
+          errors.push({ index: i, errors: parseResult.error.format() });
+          continue;
+        }
+        
+        const notification = await createCapturedNotification(parseResult.data);
+        results.push(notification);
+      }
+      
+      res.status(201).json({ count: results.length, notifications: results, validationErrors: errors });
+    } catch (error: any) {
+      console.error("[Notifications] Error capturing batch:", error);
+      res.status(500).json({ message: "Failed to capture notifications" });
+    }
+  });
+
+  // GET /api/notifications/captured - Get captured notifications
+  app.get("/api/notifications/captured", async (req, res) => {
+    try {
+      const { app: appFilter, limit = "100" } = req.query;
+      
+      const { getCapturedNotifications, getRecentNotificationsByApp } = await import("./db");
+      
+      const notifications = appFilter 
+        ? await getRecentNotificationsByApp(appFilter as string, parseInt(limit as string))
+        : await getCapturedNotifications(parseInt(limit as string));
+      
+      res.json(notifications);
+    } catch (error: any) {
+      console.error("[Notifications] Error fetching captured:", error);
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  // PATCH /api/notifications/captured/:id/process - Mark notification as processed
+  app.patch("/api/notifications/captured/:id/process", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { actionTaken } = req.body;
+      
+      const { markNotificationProcessed } = await import("./db");
+      const notification = await markNotificationProcessed(id, actionTaken);
+      
+      if (!notification) {
+        return res.status(404).json({ message: "Notification not found" });
+      }
+      
+      res.json(notification);
+    } catch (error: any) {
+      console.error("[Notifications] Error marking processed:", error);
+      res.status(500).json({ message: "Failed to mark notification processed" });
+    }
+  });
+
+  // ============================================
+  // HEALTH METRICS ENDPOINTS (Google Fit / Health Connect)
+  // ============================================
+
+  // POST /api/health/metrics - Record health metric
+  app.post("/api/health/metrics", async (req, res) => {
+    try {
+      const { insertHealthMetricSchema } = await import("@shared/schema");
+      
+      // Prepare data with proper metadata handling
+      const inputData = {
+        ...req.body,
+        source: req.body.source || "android",
+        metadata: req.body.metadata 
+          ? (typeof req.body.metadata === "string" ? req.body.metadata : JSON.stringify(req.body.metadata))
+          : null,
+      };
+      
+      const parseResult = insertHealthMetricSchema.safeParse(inputData);
+      if (!parseResult.success) {
+        return res.status(400).json({ message: "Validation failed", errors: parseResult.error.format() });
+      }
+      
+      const { createHealthMetric } = await import("./db");
+      const metric = await createHealthMetric(parseResult.data);
+      
+      res.status(201).json(metric);
+    } catch (error: any) {
+      console.error("[Health] Error recording metric:", error);
+      res.status(500).json({ message: "Failed to record metric" });
+    }
+  });
+
+  // POST /api/health/metrics/batch - Record multiple health metrics
+  app.post("/api/health/metrics/batch", async (req, res) => {
+    try {
+      const { metrics } = req.body;
+      
+      if (!Array.isArray(metrics) || metrics.length === 0) {
+        return res.status(400).json({ message: "metrics array is required" });
+      }
+      
+      const { insertHealthMetricSchema } = await import("@shared/schema");
+      const { createHealthMetric } = await import("./db");
+      const results = [];
+      const errors = [];
+      
+      for (let i = 0; i < metrics.length; i++) {
+        const m = metrics[i];
+        const inputData = {
+          ...m,
+          source: m.source || "android",
+          metadata: m.metadata 
+            ? (typeof m.metadata === "string" ? m.metadata : JSON.stringify(m.metadata))
+            : null,
+        };
+        
+        const parseResult = insertHealthMetricSchema.safeParse(inputData);
+        if (!parseResult.success) {
+          errors.push({ index: i, errors: parseResult.error.format() });
+          continue;
+        }
+        
+        const metric = await createHealthMetric(parseResult.data);
+        results.push(metric);
+      }
+      
+      res.status(201).json({ count: results.length, metrics: results, validationErrors: errors });
+    } catch (error: any) {
+      console.error("[Health] Error recording batch:", error);
+      res.status(500).json({ message: "Failed to record metrics" });
+    }
+  });
+
+  // GET /api/health/metrics - Get health metrics by type
+  app.get("/api/health/metrics", async (req, res) => {
+    try {
+      const { type, startDate, endDate, limit = "100" } = req.query;
+      
+      if (!type) {
+        return res.status(400).json({ message: "type query parameter is required" });
+      }
+      
+      const { getHealthMetrics, getHealthMetricsInRange } = await import("./db");
+      
+      const metrics = startDate && endDate 
+        ? await getHealthMetricsInRange(type as string, startDate as string, endDate as string)
+        : await getHealthMetrics(type as string, parseInt(limit as string));
+      
+      res.json(metrics);
+    } catch (error: any) {
+      console.error("[Health] Error fetching metrics:", error);
+      res.status(500).json({ message: "Failed to fetch metrics" });
+    }
+  });
+
+  // GET /api/health/summary/today - Get today's health summary
+  app.get("/api/health/summary/today", async (req, res) => {
+    try {
+      const { getTodayHealthSummary } = await import("./db");
+      const summary = await getTodayHealthSummary();
+      res.json(summary);
+    } catch (error: any) {
+      console.error("[Health] Error fetching summary:", error);
+      res.status(500).json({ message: "Failed to fetch health summary" });
+    }
+  });
+
+  // GET /api/health/metrics/latest - Get latest health metrics
+  app.get("/api/health/metrics/latest", async (req, res) => {
+    try {
+      const { getLatestHealthMetric } = await import("./db");
+      
+      const metricTypes = ["steps", "heart_rate", "sleep", "calories", "distance", "active_minutes"];
+      const latest: Record<string, any> = {};
+      
+      for (const type of metricTypes) {
+        const metric = await getLatestHealthMetric(type);
+        if (metric) {
+          latest[type] = metric;
+        }
+      }
+      
+      res.json(latest);
+    } catch (error: any) {
+      console.error("[Health] Error fetching latest:", error);
+      res.status(500).json({ message: "Failed to fetch latest metrics" });
+    }
+  });
+
   // GET /api/sync/state - Get sync state for delta queries
   app.get("/api/sync/state", (_req, res) => {
     try {

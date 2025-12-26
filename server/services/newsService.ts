@@ -10,6 +10,7 @@ import {
   getBriefingSetting,
 } from "../db";
 import type { NewsTopic, NewsStory, NewsFeedback } from "@shared/schema";
+import { sendNewsNotification, sendAlertNotification } from "./pushNotificationService";
 
 const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
 
@@ -94,8 +95,25 @@ Format as JSON array with fields: headline, summary, source, url, urgency`,
  */
 async function handleBreakingNews(stories: NewsQueryResult[]): Promise<void> {
   const breakingStories = stories.filter((s) => s.urgency === "breaking");
-  if (breakingStories.length === 0 || !sendSmsCallback) return;
+  if (breakingStories.length === 0) return;
 
+  for (const story of breakingStories) {
+    // Send push notification for breaking news
+    try {
+      await sendAlertNotification(
+        "BREAKING NEWS",
+        `${story.headline}\n${story.summary}`,
+        "breaking_news",
+        { source: story.source, url: story.url }
+      );
+      console.log(`[NewsService] Sent breaking news push notification: ${story.headline}`);
+    } catch (error) {
+      console.error(`[NewsService] Failed to send breaking news push:`, error);
+    }
+  }
+
+  // Also send SMS if configured
+  if (!sendSmsCallback) return;
   const recipients = await getBriefingRecipientsByType("news_curated");
   for (const story of breakingStories) {
     for (const recipient of recipients) {
@@ -109,9 +127,9 @@ async function handleBreakingNews(stories: NewsQueryResult[]): Promise<void> {
           twilioMessageId: messageId,
           status: "sent",
         });
-        console.log(`[NewsService] Sent breaking news to ${recipient.phoneNumber}`);
+        console.log(`[NewsService] Sent breaking news SMS to ${recipient.phoneNumber}`);
       } catch (error) {
-        console.error(`[NewsService] Failed to send breaking news to ${recipient.phoneNumber}:`, error);
+        console.error(`[NewsService] Failed to send breaking news SMS to ${recipient.phoneNumber}:`, error);
       }
     }
   }
@@ -136,6 +154,21 @@ async function storeNewsStories(stories: NewsQueryResult[], storyType: "curated"
       stored.push(newsStory);
     } catch (error) {
       console.error("[NewsService] Error storing story:", error);
+    }
+  }
+
+  // Send push notification for new curated stories (but not breaking - those are sent separately)
+  if (storyType === "curated" && stored.length > 0) {
+    const topStory = stored[0];
+    try {
+      await sendNewsNotification(
+        topStory.headline,
+        topStory.summary || "",
+        topStory.id
+      );
+      console.log(`[NewsService] Sent news push notification: ${topStory.headline}`);
+    } catch (error) {
+      console.error("[NewsService] Failed to send news push notification:", error);
     }
   }
 
