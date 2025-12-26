@@ -249,6 +249,9 @@ def check_memory_db() -> str:
         return "error"
 
 
+STARTUP_GRACE_PERIOD_SECONDS = 30.0
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
     """
@@ -260,8 +263,14 @@ async def health_check() -> HealthResponse:
     - Memory database status
     - Active run count
     - Service uptime
+    
+    Note: During the startup grace period (first 30 seconds), warnings about
+    Node.js bridge unavailability are suppressed since both services start
+    concurrently and Node.js may not be ready yet.
     """
     bridge = get_bridge()
+    uptime = _service_state.get_uptime()
+    in_startup_grace_period = uptime < STARTUP_GRACE_PERIOD_SECONDS
     
     bridge_result = await bridge.health_check()
     
@@ -269,10 +278,12 @@ async def health_check() -> HealthResponse:
         node_status = "connected"
     elif bridge_result.get("http_ok"):
         node_status = "degraded"
-        logger.warning(f"Node.js bridge returned non-JSON: {bridge_result.get('error')}")
+        if not in_startup_grace_period:
+            logger.warning(f"Node.js bridge returned non-JSON: {bridge_result.get('error')}")
     else:
         node_status = "disconnected"
-        logger.warning(f"Node.js bridge health check failed: {bridge_result.get('error')}")
+        if not in_startup_grace_period:
+            logger.warning(f"Node.js bridge health check failed: {bridge_result.get('error')}")
     
     overall_status = "healthy"
     if node_status == "disconnected":
