@@ -10,9 +10,6 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useHeaderHeight } from "@react-navigation/elements";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
@@ -21,6 +18,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { ThemedText } from "@/components/ThemedText";
 import { EmptyState } from "@/components/EmptyState";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
+import { usePageLayoutDimensions } from "@/components/PageLayout";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, Colors, BorderRadius } from "@/constants/theme";
 import { queryClient } from "@/lib/query-client";
@@ -402,9 +400,7 @@ const viewToggleStyles = StyleSheet.create({
 });
 
 export default function CalendarScreen() {
-  const insets = useSafeAreaInsets();
-  const headerHeight = useHeaderHeight();
-  const tabBarHeight = useBottomTabBarHeight();
+  const { insets, contentPaddingTop, contentPaddingBottom, horizontalPadding } = usePageLayoutDimensions();
   const { theme } = useTheme();
 
   const [viewType, setViewType] = useState<CalendarViewType>("day");
@@ -716,7 +712,7 @@ export default function CalendarScreen() {
           style={[
             styles.headerControls,
             {
-              marginTop: headerHeight + Spacing.md,
+              marginTop: contentPaddingTop + Spacing.md,
             },
           ]}
         >
@@ -730,7 +726,7 @@ export default function CalendarScreen() {
         <View
           style={[
             styles.emptyContainer,
-            { paddingBottom: tabBarHeight + Spacing.xl },
+            { paddingBottom: contentPaddingBottom },
           ]}
         >
           <EmptyState
@@ -763,7 +759,7 @@ export default function CalendarScreen() {
           style={[
             styles.headerControls,
             {
-              marginTop: headerHeight + Spacing.md,
+              marginTop: contentPaddingTop + Spacing.md,
             },
           ]}
         >
@@ -777,7 +773,7 @@ export default function CalendarScreen() {
         <View
           style={[
             styles.emptyContainer,
-            { paddingBottom: tabBarHeight + Spacing.xl },
+            { paddingBottom: contentPaddingBottom },
           ]}
         >
           <EmptyState
@@ -808,7 +804,7 @@ export default function CalendarScreen() {
         style={[
           styles.headerControls,
           {
-            marginTop: headerHeight + Spacing.md,
+            marginTop: contentPaddingTop + Spacing.md,
           },
         ]}
       >
@@ -963,7 +959,7 @@ export default function CalendarScreen() {
       ) : viewType === "week" ? (
         <ScrollView
           contentContainerStyle={{
-            paddingBottom: tabBarHeight + Spacing.xl,
+            paddingBottom: contentPaddingBottom,
           }}
           scrollIndicatorInsets={{ bottom: insets.bottom }}
           refreshControl={
@@ -1114,7 +1110,7 @@ export default function CalendarScreen() {
       ) : viewType === "month" ? (
         <ScrollView
           contentContainerStyle={{
-            paddingBottom: tabBarHeight + Spacing.xl,
+            paddingBottom: contentPaddingBottom,
           }}
           scrollIndicatorInsets={{ bottom: insets.bottom }}
           refreshControl={
@@ -1292,7 +1288,7 @@ export default function CalendarScreen() {
         <View
           style={[
             styles.emptyContainer,
-            { paddingBottom: tabBarHeight + Spacing.xl },
+            { paddingBottom: contentPaddingBottom },
           ]}
         >
           <EmptyState
@@ -1304,7 +1300,7 @@ export default function CalendarScreen() {
       ) : (
         <ScrollView
           contentContainerStyle={{
-            paddingBottom: tabBarHeight + Spacing.xl,
+            paddingBottom: contentPaddingBottom,
           }}
           scrollIndicatorInsets={{ bottom: insets.bottom }}
           refreshControl={

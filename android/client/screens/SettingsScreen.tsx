@@ -1,17 +1,13 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   StyleSheet,
   Alert,
-  ScrollView,
   Pressable,
   ActivityIndicator,
   Platform,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useHeaderHeight } from "@react-navigation/elements";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -22,6 +18,7 @@ import { Image } from "expo-image";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 
 import { ThemedText } from "@/components/ThemedText";
+import { PageLayout } from "@/components/PageLayout";
 import { SettingsRow, SettingsSection } from "@/components/SettingsRow";
 import { DeviceCard, DeviceInfo } from "@/components/DeviceCard";
 import { useTheme } from "@/hooks/useTheme";
@@ -76,21 +73,10 @@ function mapZekeDeviceToDeviceInfo(zekeDevice: ZekeDevice): DeviceInfo {
 }
 
 export default function SettingsScreen() {
-  const insets = useSafeAreaInsets();
-  const headerHeight = useHeaderHeight();
-  const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
   const navigation =
     useNavigation<NativeStackNavigationProp<SettingsStackParamList>>();
   const { unpairDevice } = useAuth();
-  const scrollViewRef = useRef<ScrollView>(null);
-
-  // Reset scroll position when screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      scrollViewRef.current?.scrollTo({ y: 0, animated: false });
-    }, [])
-  );
 
   const queryClient = useQueryClient();
 
@@ -383,17 +369,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView
-      ref={scrollViewRef}
-      style={{ flex: 1, backgroundColor: theme.backgroundRoot }}
-      contentContainerStyle={{
-        paddingTop: headerHeight + Spacing.md,
-        paddingBottom: tabBarHeight + Spacing.lg + 20,
-        paddingHorizontal: Spacing.lg,
-      }}
-      scrollIndicatorInsets={{ bottom: insets.bottom }}
-      showsVerticalScrollIndicator={false}
-    >
+    <PageLayout extraBottomPadding={20}>
       <View style={styles.profileSection}>
         <Pressable 
           onPress={handleTakeProfilePicture}
@@ -657,7 +633,7 @@ export default function SettingsScreen() {
       <ThemedText type="caption" secondary style={styles.version}>
         ZEKE AI Companion v1.0.0
       </ThemedText>
-    </ScrollView>
+    </PageLayout>
   );
 }
 
