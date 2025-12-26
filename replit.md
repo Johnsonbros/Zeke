@@ -52,6 +52,7 @@ Key architectural decisions and features include:
 - **Wearable Health Metrics**: Database storage for Omi/Limitless pendant health data (battery level, session time, connection strength, recording quality). API: `/api/wearable/metrics`.
 - **Android Notification Capture**: Captures and stores phone notifications from Android app for context awareness and proactive assistance. API: `/api/notifications/capture`.
 - **Health Data Sync (Google Fit/Health Connect)**: Receives and stores health metrics (steps, heart rate, sleep, calories) from Android Health Connect. API: `/api/health/metrics`, `/api/health/summary/today`.
+- **Mobile App Layout System (Dec 2024)**: Standardized layout handling using `PageLayout` component and `usePageLayoutDimensions` hook (`android/client/components/PageLayout.tsx`). Provides consistent header height, tab bar height, and keyboard-aware bottom padding across all screens. Key screens updated: HomeScreen, SettingsScreen, TasksScreen, CalendarScreen, ChatScreen, ContactsScreen, GroceryScreen.
 
 ## External Dependencies
 - **OpenAI API**: AI responses, agent logic, and text embeddings.
