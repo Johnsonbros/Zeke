@@ -146,9 +146,15 @@ const DraggableShortcut = forwardRef<HTMLDivElement, DraggableItemProps>(functio
     }
   };
 
-  const handleTouchStart = useCallback(() => {
+  const touchStartPos = useRef<{ x: number; y: number } | null>(null);
+  const didMove = useRef(false);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (isEditing) return;
     didLongPress.current = false;
+    didMove.current = false;
+    const touch = e.touches[0];
+    touchStartPos.current = { x: touch.clientX, y: touch.clientY };
     longPressRef.current = setTimeout(() => {
       didLongPress.current = true;
       onStartEditing();
@@ -160,16 +166,26 @@ const DraggableShortcut = forwardRef<HTMLDivElement, DraggableItemProps>(functio
       clearTimeout(longPressRef.current);
       longPressRef.current = null;
     }
-    if (didLongPress.current) {
+    // Prevent navigation if long-pressed or moved significantly
+    if (didLongPress.current || didMove.current) {
       e.preventDefault();
       e.stopPropagation();
     }
+    touchStartPos.current = null;
   }, []);
 
-  const handleTouchMove = useCallback(() => {
-    if (longPressRef.current) {
-      clearTimeout(longPressRef.current);
-      longPressRef.current = null;
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!touchStartPos.current) return;
+    const touch = e.touches[0];
+    const deltaX = Math.abs(touch.clientX - touchStartPos.current.x);
+    const deltaY = Math.abs(touch.clientY - touchStartPos.current.y);
+    // Only cancel long-press if moved more than 15px (increased threshold)
+    if (deltaX > 15 || deltaY > 15) {
+      didMove.current = true;
+      if (longPressRef.current) {
+        clearTimeout(longPressRef.current);
+        longPressRef.current = null;
+      }
     }
   }, []);
 
@@ -225,8 +241,16 @@ const DraggableShortcut = forwardRef<HTMLDivElement, DraggableItemProps>(functio
     );
   }
 
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    // Prevent navigation if we moved or long-pressed
+    if (didMove.current || didLongPress.current) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, []);
+
   return (
-    <Link href={shortcut.href}>
+    <Link href={shortcut.href} onClick={handleClick}>
       <motion.div
         layout
         className="flex flex-col items-center gap-1.5"
