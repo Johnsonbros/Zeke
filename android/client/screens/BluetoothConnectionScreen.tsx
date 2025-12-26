@@ -345,9 +345,18 @@ export default function BluetoothConnectionScreen() {
                     />
                   </View>
                   <View style={styles.deviceInfo}>
-                    <ThemedText type="body" style={{ fontWeight: "600" }}>
-                      {displayName}
-                    </ThemedText>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: Spacing.sm }}>
+                      <ThemedText type="body" style={{ fontWeight: "600" }}>
+                        {displayName}
+                      </ThemedText>
+                      {isMockMode && (
+                        <View style={[styles.simulatedBadge, { backgroundColor: Colors.dark.warning + "30" }]}>
+                          <ThemedText type="caption" style={{ color: Colors.dark.warning, fontSize: 10 }}>
+                            SIMULATED
+                          </ThemedText>
+                        </View>
+                      )}
+                    </View>
                     <View style={styles.deviceMeta}>
                       <Feather
                         name={getSignalIcon(device.signalStrength)}
@@ -581,6 +590,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginTop: 2,
+  },
+  simulatedBadge: {
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
   },
   instructionsSection: {
     marginBottom: Spacing.xl,
