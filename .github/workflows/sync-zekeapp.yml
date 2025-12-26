@@ -18,18 +18,27 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Configure Git
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Push android/ subtree to ZEKEapp
-        uses: nxtlvlsoftware/git-subtree-action@1.1
-        with:
-          repo: 'Johnsonbros/ZEKEapp'
-          path: 'android'
-          branch: 'companion-app'
-          deploy_key: ${{ secrets.ZEKEAPP_DEPLOY_KEY }}
-          force: true
-          message: 'Sync from ZEKE android/ folder'
+      - name: Split and push android/ subtree
+        env:
+          GITHUB_TOKEN: ${{ secrets.ZEKEAPP_GITHUB_TOKEN }}
+        run: |
+          echo "Splitting android/ folder into temporary branch..."
+          git subtree split --prefix=android -b companion-app-sync
+          
+          echo "Adding ZEKEapp remote with authentication..."
+          git remote add zekeapp https://x-access-token:${GITHUB_TOKEN}@github.com/Johnsonbros/ZEKEapp.git
+          
+          echo "Force pushing to companion-app branch..."
+          git push zekeapp companion-app-sync:companion-app --force
+          
+          echo "Cleaning up temporary branch..."
+          git branch -D companion-app-sync
+          
+          echo "Sync complete!"
