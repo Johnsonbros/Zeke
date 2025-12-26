@@ -1,0 +1,250 @@
+You are ZEKE (a coding agent) working inside the repo: https://github.com/Johnsonbros/Zeke
+
+MISSION
+Build a “drop-dead simple” agentic trading module that uses:
+- OpenAI Agents SDK for decisioning
+- Alpaca via MCP for broker/data access (paper-first)
+- Streamlit dashboard for visualization
+- CSV (or SQLite) logging for replay/debug
+
+HARD SAFETY CONSTRAINTS (NON-NEGOTIABLE)
+1) DO NOT enable live trading by default. PAPER mode only unless explicitly unlocked.
+2) Live trading requires a dual latch:
+   - TRADING_MODE=live
+   - LIVE_TRADING_ENABLED=true
+   If either is missing/false -> refuse to place live orders.
+3) Add SHADOW mode (decide + log, but NEVER place orders).
+4) No secrets in code, logs, screenshots, or git history. Use env vars / secrets only.
+5) The LLM/agent NEVER directly executes trades without passing a deterministic risk gate.
+
+BUILD APPROACH
+- Implement in small, testable steps. After each step, run tests and provide output.
+- Keep changes isolated to a new module folder so existing ZEKE functionality is untouched.
+
+TARGET OUTCOME (DEFINITION OF DONE)
+A) `python -m zeke_trader.main` runs a loop:
+   - fetches minimal market snapshot
+   - asks the agent for a structured decision
+   - validates schema
+   - runs deterministic risk checks
+   - in PAPER mode: sends order via Alpaca MCP only if allowed
+   - logs every decision/order/equity snapshot
+B) `streamlit run zeke_trader/dashboard/app.py` shows:
+   - equity curve
+   - last decisions
+   - last trades
+   - current positions
+   - risk blocks count
+C) Paper/shadow/live modes work exactly as specified (live locked by default).
+
+========================================================
+1) CREATE A NEW MODULE INSIDE ZEKE
+========================================================
+
+Add a top-level package folder:
+
+zeke_trader/
+  __init__.py
+  main.py
+  config.py
+  schemas.py
+  agent.py
+  risk.py
+  broker_mcp.py
+  logger.py
+  metrics.py
+  dashboard/
+    app.py
+  logs/                 # created at runtime if missing
+  README.md
+
+Do NOT refactor unrelated parts of ZEKE unless required. If integration points are needed, add minimal hooks.
+
+========================================================
+2) ENVIRONMENT VARIABLES (CREATE .env.example ONLY)
+========================================================
+
+Create `zeke_trader/.env.example` (placeholders only; no real keys):
+
+OPENAI_API_KEY=
+
+ALPACA_KEY_ID=
+ALPACA_SECRET_KEY=
+
+# paper | shadow | live
+TRADING_MODE=paper
+LIVE_TRADING_ENABLED=false
+
+ALLOWED_SYMBOLS=NVDA,SPY,META,GOOGL,AVGO,BRK.A,GOOG,BRK.B,AMZN
+
+MAX_DOLLARS_PER_TRADE=25
+MAX_OPEN_POSITIONS=3
+MAX_TRADES_PER_DAY=5
+MAX_DAILY_LOSS=25
+
+LOOP_SECONDS=60
+LOG_DIR=zeke_trader/logs
+
+========================================================
+3) TRADE DECISION CONTRACT (STRICT SCHEMA)
+========================================================
+
+In `schemas.py` define Pydantic models:
+
+A) NoTrade:
+{ "action": "NO_TRADE", "reason": "...", "confidence": 0.0-1.0 }
+
+B) TradeIntent (NOTIONAL-BASED):
+{
+  "action": "TRADE",
+  "symbol": "NVDA",
+  "side": "buy"|"sell",
+  "notional_usd": float > 0,
+  "order_type": "market",
+  "time_in_force": "day",
+  "confidence": 0.0-1.0,
+  "reason": "short explanation"
+}
+
+Union type: Decision = TradeIntent | NoTrade
+
+If the model outputs anything else, treat as invalid, log it, and return NO_TRADE.
+
+========================================================
+4) DECISION STYLE (SIMPLE, LOW-FREQUENCY TREND FOLLOWING)
+========================================================
+
+The agent should be conservative:
+- Default to NO_TRADE most loops
+- Max 1 trade per loop
+- Prefer SPY or NVDA initially
+- Use only allowlisted symbols
+- Use basic trend/momentum heuristics (e.g., price above moving average / positive recent return)
+- Avoid day-trading/scalping logic
+
+========================================================
+5) RISK GATE (DETERMINISTIC, MUST RUN BEFORE ANY ORDER)
+========================================================
+
+In `risk.py` implement:
+risk_check(decision, snapshot, cfg) -> (allowed: bool, notes: str, possibly_modified_decision)
+
+Minimum rules:
+- If NO_TRADE: allowed
+- If TRADE:
+  - symbol must be in ALLOWED_SYMBOLS
+  - notional_usd <= MAX_DOLLARS_PER_TRADE
+  - enforce MAX_OPEN_POSITIONS (block if too many)
+  - enforce MAX_TRADES_PER_DAY (track from logs)
+  - enforce MAX_DAILY_LOSS (use equity/pnl logs; if breached -> block all trades)
+Return human-readable notes explaining allow/block.
+
+========================================================
+6) ALPACA VIA MCP (PAPER-FIRST)
+========================================================
+
+In `broker_mcp.py` implement a small wrapper that calls the Alpaca MCP server tools.
+- Do NOT hardcode the MCP server URL; read from env if needed (e.g., ALPACA_MCP_URL).
+- Provide:
+  - get_account()
+  - get_positions()
+  - get_latest_quote(symbol) or get_bars(symbol, timeframe, limit)
+  - place_order_notional(symbol, side, notional_usd, order_type="market", tif="day")
+  - list_orders(...) optional
+
+Execution rules:
+- If TRADING_MODE=shadow: do not call place_order; log “shadow_no_execute”
+- If TRADING_MODE=live: require LIVE_TRADING_ENABLED=true or refuse
+- Start with TRADING_MODE=paper default and verify paper orders only
+
+If Alpaca MCP is not reachable, fail gracefully:
+- log error
+- return NO_TRADE
+- do not crash loop
+
+========================================================
+7) LOGGING (OBSERVABILITY FIRST)
+========================================================
+
+In `logger.py`, write CSV logs (simple to start):
+- decisions.csv: ts, mode, symbol, action, side, notional_usd, confidence, reason, risk_allowed, risk_notes, error
+- trades.csv: ts, symbol, side, notional_usd, status, order_id, filled_avg_price, error
+- equity.csv: ts, equity, cash, pnl_day (if available)
+
+Log every loop even if NO_TRADE.
+
+========================================================
+8) MAIN LOOP
+========================================================
+
+In `main.py` implement:
+- load cfg
+- init broker + agent
+- loop forever:
+  - gather snapshot:
+    - timestamp
+    - allowlist
+    - account summary (if available)
+    - positions (if available)
+    - minimal market data for 1-3 symbols (SPY/NVDA + one more)
+  - ask agent for Decision (structured)
+  - validate schema; on failure -> NO_TRADE
+  - run risk_check -> allow/block/resize
+  - if allowed and action=TRADE:
+      - if mode=paper: place_order_notional via MCP
+      - if mode=shadow: do not execute
+      - if mode=live: only if dual latch
+  - log decision + trade outcome
+  - sleep LOOP_SECONDS
+
+========================================================
+9) STREAMLIT DASHBOARD
+========================================================
+
+In `dashboard/app.py` show:
+- Equity curve (from equity.csv)
+- Latest decisions (from decisions.csv)
+- Latest trades (from trades.csv)
+- Current positions (from broker if available; otherwise last known)
+Auto-refresh every ~2 seconds.
+
+========================================================
+10) TESTS / QUALITY
+========================================================
+
+Add minimal tests (pytest if repo uses it; otherwise basic smoke checks):
+- schema validation tests
+- risk_check tests
+- config safety latch test (live mode without enabled flag must error)
+- smoke test that main loop can run one iteration without broker connectivity (returns NO_TRADE)
+
+========================================================
+11) DOCUMENTATION
+========================================================
+
+Create `zeke_trader/README.md` with:
+- What it does
+- Setup steps (Replit + local)
+- Where to put secrets (env vars / Replit secrets)
+- Run commands:
+  - python -m zeke_trader.main
+  - streamlit run zeke_trader/dashboard/app.py --server.port 8501 --server.address 0.0.0.0
+- Explain paper/shadow/live + dual latch
+
+========================================================
+12) OUTPUT REQUIREMENTS (WHAT YOU MUST REPORT BACK)
+========================================================
+
+After implementation:
+1) Print the final file tree you created
+2) Provide exact run commands
+3) Explain how to set env vars (names only, no secrets)
+4) Confirm live trading is disabled by default and protected by dual latch
+5) List any TODOs left and why
+
+START NOW
+- Create the module with stubs first (so it runs).
+- Then wire logging + dashboard.
+- Then add agent logic.
+- Then integrate Alpaca MCP in PAPER mode.
+- Keep changes minimal and incremental.
