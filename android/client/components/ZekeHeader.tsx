@@ -13,9 +13,9 @@ export function ZekeHeaderTitle() {
   const { data: health, isSuccess } = useQuery({
     queryKey: ["/api/health"],
     queryFn: () => getHealthStatus(),
-    refetchInterval: 15000,
+    refetchInterval: 60000,
     retry: 1,
-    staleTime: 10000,
+    staleTime: 30000,
   });
 
   const isOnline = isSuccess && health?.connected === true;

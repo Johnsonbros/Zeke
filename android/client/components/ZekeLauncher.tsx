@@ -226,7 +226,7 @@ function TriggerButton({
               width: skin.trigger.size,
               height: skin.trigger.size,
               borderRadius: skin.trigger.borderRadius,
-              shadowColor: skin.trigger.shadowColor,
+              ...(Platform.OS !== "web" ? { shadowColor: skin.trigger.shadowColor } : {}),
             },
             triggerAnimatedStyle,
           ]}
@@ -482,7 +482,7 @@ function LauncherIcon({
               width: skin.icon.size,
               height: skin.icon.size,
               borderRadius: skin.icon.borderRadius,
-              shadowColor: skin.icon.shadowColor,
+              ...(Platform.OS !== "web" ? { shadowColor: skin.icon.shadowColor } : {}),
             },
           ]}
         >

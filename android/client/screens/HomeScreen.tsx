@@ -709,47 +709,61 @@ export default function HomeScreen() {
               </ThemedText>
             </View>
           ) : (
-            activities.map((activity, index) => (
-              <View
-                key={activity.id}
-                style={[
-                  styles.activityItem,
-                  index === activities.length - 1 ? { marginBottom: 0 } : null,
-                ]}
-              >
+            <>
+              {activities.slice(0, 3).map((activity, index, arr) => (
                 <View
+                  key={activity.id}
                   style={[
-                    styles.activityIconContainer,
-                    { backgroundColor: `${Colors.dark.primary}20` },
+                    styles.activityItem,
+                    index === arr.length - 1 ? { marginBottom: 0 } : null,
                   ]}
                 >
-                  <Feather
-                    name={activity.icon}
-                    size={14}
-                    color={Colors.dark.primary}
-                  />
+                  <View
+                    style={[
+                      styles.activityIconContainer,
+                      { backgroundColor: `${Colors.dark.primary}20` },
+                    ]}
+                  >
+                    <Feather
+                      name={activity.icon}
+                      size={14}
+                      color={Colors.dark.primary}
+                    />
+                  </View>
+                  <View style={styles.activityContent}>
+                    <ThemedText type="small" numberOfLines={1}>
+                      {activity.action}
+                    </ThemedText>
+                    <ThemedText type="caption" secondary>
+                      {activity.timestamp}
+                    </ThemedText>
+                    {activity.speakers && activity.speakers.length > 0 ? (
+                      <View style={styles.activitySpeakers}>
+                        <SpeakerTagList
+                          speakers={activity.speakers.map((name, i) => ({
+                            label: name,
+                            color: getSpeakerColor(i),
+                          }))}
+                          size="small"
+                        />
+                      </View>
+                    ) : null}
+                  </View>
                 </View>
-                <View style={styles.activityContent}>
-                  <ThemedText type="small" numberOfLines={1}>
-                    {activity.action}
-                  </ThemedText>
-                  <ThemedText type="caption" secondary>
-                    {activity.timestamp}
-                  </ThemedText>
-                  {activity.speakers && activity.speakers.length > 0 ? (
-                    <View style={styles.activitySpeakers}>
-                      <SpeakerTagList
-                        speakers={activity.speakers.map((name, i) => ({
-                          label: name,
-                          color: getSpeakerColor(i),
-                        }))}
-                        size="small"
-                      />
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-            ))
+              ))}
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  navigation.navigate("ActivityHistory");
+                }}
+                style={styles.seeAllButton}
+              >
+                <ThemedText type="small" style={{ color: Colors.dark.primary }}>
+                  View full history
+                </ThemedText>
+                <Feather name="chevron-right" size={16} color={Colors.dark.primary} />
+              </Pressable>
+            </>
           )}
         </View>
 
@@ -1352,5 +1366,15 @@ const styles = StyleSheet.create({
   loadingContainer: {
     padding: Spacing.xl,
     alignItems: "center",
+  },
+  seeAllButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: Spacing.md,
+    marginTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.1)",
+    gap: Spacing.xs,
   },
 });

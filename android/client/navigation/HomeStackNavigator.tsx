@@ -7,6 +7,7 @@ import NotificationSettingsScreen from "@/screens/NotificationSettingsScreen";
 import BluetoothConnectionScreen from "@/screens/BluetoothConnectionScreen";
 import LocationScreen from "@/screens/LocationScreen";
 import DeviceFeaturesScreen from "@/screens/DeviceFeaturesScreen";
+import ActivityHistoryScreen from "@/screens/ActivityHistoryScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { ZekeHeaderTitle, ZekeHeaderButtons } from "@/components/ZekeHeader";
 import { createZekeSubHeader } from "@/components/ZekeSubHeader";
@@ -19,6 +20,7 @@ export type HomeStackParamList = {
   BluetoothConnection: undefined;
   Location: undefined;
   DeviceFeatures: undefined;
+  ActivityHistory: undefined;
 };
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
@@ -80,6 +82,13 @@ export default function HomeStackNavigator() {
         component={DeviceFeaturesScreen}
         options={{
           headerTitle: createZekeSubHeader("Device Features"),
+        }}
+      />
+      <Stack.Screen
+        name="ActivityHistory"
+        component={ActivityHistoryScreen}
+        options={{
+          headerTitle: createZekeSubHeader("Activity History"),
         }}
       />
     </Stack.Navigator>
