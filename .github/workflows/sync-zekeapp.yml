@@ -1,44 +1,77 @@
-name: Sync Android to ZEKEapp
+# ==============================================================================
+# ZEKEAPP ANDROID SYNC WORKFLOW - CURRENTLY DISABLED
+# ==============================================================================
+#
+# PURPOSE:
+# This workflow automatically syncs the android/ folder from this main ZEKE
+# repository to the separate ZEKEapp GitHub repository whenever changes are
+# pushed to android/**. This keeps the companion app code in sync across both
+# repos.
+#
+# HOW IT WORKS:
+# 1. Triggers on pushes to main/master that modify android/** files
+# 2. Uses git subtree split to extract only the android/ folder
+# 3. Force pushes the extracted content to ZEKEapp's companion-app branch
+#
+# REQUIREMENTS TO ENABLE:
+# 1. The ZEKEAPP_GITHUB_TOKEN secret must be added to this repo's GitHub Actions
+#    secrets (Settings → Secrets and variables → Actions)
+# 2. The token needs 'repo' scope for pushing to ZEKEapp
+# 3. IMPORTANT: The Replit-connected GitHub token needs 'workflow' scope to
+#    push changes to this file. Without it, git push will be rejected.
+#
+# MANUAL ALTERNATIVE:
+# You can run the sync manually using: npx tsx scripts/zekeapp-sync.ts
+# This works without any workflow scope requirements.
+#
+# TO RE-ENABLE:
+# 1. Ensure your GitHub token has 'workflow' scope
+# 2. Uncomment all lines below (remove the # at the start of each line)
+# 3. Push the changes
+#
+# ==============================================================================
 
-on:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - 'android/**'
-  workflow_dispatch:
-
-jobs:
-  sync-to-zekeapp:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Configure Git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Split and push android/ subtree
-        env:
-          GITHUB_TOKEN: ${{ secrets.ZEKEAPP_GITHUB_TOKEN }}
-        run: |
-          echo "Splitting android/ folder into temporary branch..."
-          git subtree split --prefix=android -b companion-app-sync
-          
-          echo "Adding ZEKEapp remote with authentication..."
-          git remote add zekeapp https://x-access-token:${GITHUB_TOKEN}@github.com/Johnsonbros/ZEKEapp.git
-          
-          echo "Force pushing to companion-app branch..."
-          git push zekeapp companion-app-sync:companion-app --force
-          
-          echo "Cleaning up temporary branch..."
-          git branch -D companion-app-sync
-          
-          echo "Sync complete!"
+# name: Sync Android to ZEKEapp
+# 
+# on:
+#   push:
+#     branches:
+#       - main
+#       - master
+#     paths:
+#       - 'android/**'
+#   workflow_dispatch:
+# 
+# jobs:
+#   sync-to-zekeapp:
+#     runs-on: ubuntu-latest
+#     
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
+#         with:
+#           fetch-depth: 0
+#           persist-credentials: false
+# 
+#       - name: Configure Git
+#         run: |
+#           git config --global user.name "github-actions[bot]"
+#           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+# 
+#       - name: Split and push android/ subtree
+#         env:
+#           GITHUB_TOKEN: ${{ secrets.ZEKEAPP_GITHUB_TOKEN }}
+#         run: |
+#           echo "Splitting android/ folder into temporary branch..."
+#           git subtree split --prefix=android -b companion-app-sync
+#           
+#           echo "Adding ZEKEapp remote with authentication..."
+#           git remote add zekeapp https://x-access-token:${GITHUB_TOKEN}@github.com/Johnsonbros/ZEKEapp.git
+#           
+#           echo "Force pushing to companion-app branch..."
+#           git push zekeapp companion-app-sync:companion-app --force
+#           
+#           echo "Cleaning up temporary branch..."
+#           git branch -D companion-app-sync
+#           
+#           echo "Sync complete!"
