@@ -51,7 +51,7 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
 const DEFAULT_SETTINGS: Settings = {
   autoSync: true,
   notifications: true,
-  dataRetentionDays: 30,
+  dataRetentionDays: -1,
   notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
 };
 

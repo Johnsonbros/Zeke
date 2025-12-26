@@ -313,7 +313,7 @@ export function NewsBriefingSection({
           >
             <Feather name="rss" size={16} color="#FFFFFF" />
           </LinearGradient>
-          <ThemedText type="h4">Morning Briefing</ThemedText>
+          <ThemedText type="h4">News</ThemedText>
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.dark.primary} />
@@ -337,7 +337,7 @@ export function NewsBriefingSection({
           >
             <Feather name="rss" size={16} color="#FFFFFF" />
           </LinearGradient>
-          <ThemedText type="h4">Morning Briefing</ThemedText>
+          <ThemedText type="h4">News</ThemedText>
         </View>
         <View style={styles.errorContainer}>
           <Feather name="alert-circle" size={24} color={Colors.dark.error} />
@@ -368,7 +368,7 @@ export function NewsBriefingSection({
           >
             <Feather name="rss" size={16} color="#FFFFFF" />
           </LinearGradient>
-          <ThemedText type="h4">Morning Briefing</ThemedText>
+          <ThemedText type="h4">News</ThemedText>
         </View>
         <View style={styles.emptyContainer}>
           <Feather name="inbox" size={32} color={theme.textSecondary} />
@@ -391,7 +391,7 @@ export function NewsBriefingSection({
         >
           <Feather name="rss" size={16} color="#FFFFFF" />
         </LinearGradient>
-        <ThemedText type="h4">Morning Briefing</ThemedText>
+        <ThemedText type="h4">News</ThemedText>
         <ThemedText type="caption" secondary style={styles.storyCount}>
           Top {stories.length} stories
         </ThemedText>

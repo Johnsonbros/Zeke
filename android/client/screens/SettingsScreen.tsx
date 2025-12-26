@@ -34,7 +34,9 @@ import {
   shouldShowProfilePictureReminder,
   calculateNextReminderDate,
   ProfilePictureData,
+  getSettings,
 } from "@/lib/storage";
+import { getRetentionLabel } from "@/screens/DataRetentionScreen";
 import { getZekeDevices, ZekeDevice } from "@/lib/zeke-api-adapter";
 import { SettingsStackParamList } from "@/navigation/SettingsStackNavigator";
 import { useAuth } from "@/context/AuthContext";
@@ -112,11 +114,23 @@ export default function SettingsScreen() {
   const [profilePicture, setProfilePicture] = useState<ProfilePictureData | null>(null);
   const [showReminderBadge, setShowReminderBadge] = useState(false);
   const [isTakingPhoto, setIsTakingPhoto] = useState(false);
+  const [dataRetentionDays, setDataRetentionDays] = useState<number>(-1);
 
   useEffect(() => {
     loadProfilePicture();
     checkReminder();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadDataRetention();
+    }, [])
+  );
+
+  const loadDataRetention = async () => {
+    const stored = await getSettings();
+    setDataRetentionDays(stored.dataRetentionDays);
+  };
 
   const loadProfilePicture = async () => {
     const saved = await getProfilePicture();
@@ -590,10 +604,11 @@ export default function SettingsScreen() {
           <SettingsRow
             icon="database"
             label="Data Retention"
-            value="30 days"
-            onPress={() =>
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-            }
+            value={getRetentionLabel(dataRetentionDays)}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              navigation.navigate("DataRetention");
+            }}
           />
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <SettingsRow
