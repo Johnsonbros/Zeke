@@ -10,6 +10,7 @@ import {
   Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
@@ -21,7 +22,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ThemedText } from "@/components/ThemedText";
 import { ChatBubble, Message, TypingIndicator } from "@/components/ChatBubble";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
-import { usePageLayoutDimensions } from "@/components/PageLayout";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, Colors, BorderRadius, Gradients } from "@/constants/theme";
 import { queryClient, isZekeSyncMode } from "@/lib/query-client";
@@ -65,7 +65,7 @@ function mapApiMessageToMessage(msg: ApiChatMessage): Message {
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
-  const { contentPaddingTop } = usePageLayoutDimensions();
+  const headerHeight = useHeaderHeight();
   const { theme } = useTheme();
   const flatListRef = useRef<FlatList>(null);
 
@@ -417,7 +417,7 @@ export default function ChatScreen() {
         ref={flatListRef}
         style={styles.messagesList}
         contentContainerStyle={{
-          paddingTop: contentPaddingTop + Spacing.md,
+          paddingTop: headerHeight + Spacing.lg,
           paddingBottom: insets.bottom + 100 + Spacing.lg,
           paddingHorizontal: Spacing.lg,
           flexGrow: 1,

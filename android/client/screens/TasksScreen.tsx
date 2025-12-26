@@ -9,6 +9,9 @@ import {
   Alert,
   SectionList,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useHeaderHeight } from "@react-navigation/elements";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -24,7 +27,6 @@ import { ThemedText } from "@/components/ThemedText";
 import { EmptyState } from "@/components/EmptyState";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
-import { usePageLayoutDimensions } from "@/components/PageLayout";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, Colors, BorderRadius } from "@/constants/theme";
 import { queryClient, isZekeSyncMode } from "@/lib/query-client";
@@ -190,7 +192,9 @@ function TaskItemRow({ item, onToggle, onDelete, theme }: TaskItemRowProps) {
 }
 
 export default function TasksScreen() {
-  const { insets, contentPaddingTop, contentPaddingBottom, horizontalPadding } = usePageLayoutDimensions();
+  const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
+  const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
   const isSyncMode = isZekeSyncMode();
 
@@ -345,8 +349,8 @@ export default function TasksScreen() {
           styles.container,
           {
             backgroundColor: theme.backgroundRoot,
-            paddingTop: contentPaddingTop + Spacing.md,
-            paddingBottom: contentPaddingBottom,
+            paddingTop: headerHeight + Spacing.xl,
+            paddingBottom: tabBarHeight + Spacing.xl,
           },
         ]}
       >
@@ -365,7 +369,7 @@ export default function TasksScreen() {
         style={[
           styles.headerControls,
           {
-            marginTop: contentPaddingTop + Spacing.md,
+            marginTop: headerHeight + Spacing.md,
           },
         ]}
       >
@@ -436,7 +440,7 @@ export default function TasksScreen() {
         <View
           style={[
             styles.emptyContainer,
-            { paddingBottom: contentPaddingBottom },
+            { paddingBottom: tabBarHeight + Spacing.xl },
           ]}
         >
           <EmptyState
@@ -474,8 +478,8 @@ export default function TasksScreen() {
             </View>
           )}
           contentContainerStyle={{
-            paddingHorizontal: horizontalPadding,
-            paddingBottom: contentPaddingBottom,
+            paddingHorizontal: Spacing.lg,
+            paddingBottom: tabBarHeight + Spacing.xl,
           }}
           refreshControl={
             <RefreshControl

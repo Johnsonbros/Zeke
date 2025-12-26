@@ -9,6 +9,9 @@ import {
   Alert,
   Platform,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useHeaderHeight } from "@react-navigation/elements";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -22,7 +25,6 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { SearchBar } from "@/components/SearchBar";
 import { EmptyState } from "@/components/EmptyState";
-import { usePageLayoutDimensions } from "@/components/PageLayout";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, Colors, BorderRadius } from "@/constants/theme";
 import { queryClient } from "@/lib/query-client";
@@ -161,7 +163,9 @@ function ContactRow({ contact, onPress, onCall, onMessage }: ContactRowProps) {
 }
 
 export default function ContactsScreen() {
-  const { insets, contentPaddingTop, contentPaddingBottom, horizontalPadding } = usePageLayoutDimensions();
+  const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
+  const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
   const navigation = useNavigation<ContactsNavProp>();
 
@@ -358,8 +362,8 @@ export default function ContactsScreen() {
       <FlatList
         style={{ flex: 1 }}
         contentContainerStyle={{
-          paddingTop: contentPaddingTop + Spacing.md,
-          paddingBottom: contentPaddingBottom + 80,
+          paddingTop: headerHeight + Spacing.xl,
+          paddingBottom: tabBarHeight + Spacing.xl + 80,
           flexGrow: 1,
         }}
         scrollIndicatorInsets={{ bottom: insets.bottom }}
@@ -390,7 +394,7 @@ export default function ContactsScreen() {
         onPress={handleAddContact}
         style={({ pressed }) => [
           styles.fab,
-          { bottom: contentPaddingBottom, opacity: pressed ? 0.8 : 1 },
+          { bottom: tabBarHeight + Spacing.lg, opacity: pressed ? 0.8 : 1 },
         ]}
       >
         <View style={styles.fabInner}>

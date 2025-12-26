@@ -1,12 +1,17 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import {
   View,
+  ScrollView,
   StyleSheet,
+  RefreshControl,
   Pressable,
   ActivityIndicator,
   Platform,
 } from "react-native";
 import * as Battery from "expo-battery";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useHeaderHeight } from "@react-navigation/elements";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
@@ -31,7 +36,6 @@ import { SpeakerTagList } from "@/components/SpeakerTag";
 import { OmiHealthCard } from "@/components/OmiHealthCard";
 import { NewsBriefingSection, type NewsStory } from "@/components/NewsBriefingCard";
 import { ZekeAlertStack, type ZekeAlert } from "@/components/ZekeAlertBanner";
-import { PageLayout } from "@/components/PageLayout";
 import { getSpeakerColor } from "@/lib/speaker-matcher";
 import { useTheme } from "@/hooks/useTheme";
 import { useLocation } from "@/hooks/useLocation";
@@ -181,10 +185,20 @@ function QuickActionButton({
 }
 
 export default function HomeScreen() {
+  const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
+  const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
   const navigation = useNavigation<HomeScreenNavigationProp>();
   const isSyncMode = isZekeSyncMode();
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  // Reset scroll position when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: false });
+    }, [])
+  );
 
   const {
     location,
@@ -399,30 +413,26 @@ export default function HomeScreen() {
   const isLiveTranscribing = devices.some(
     (d) => d.isConnected && d.isRecording,
   );
+  const isRefreshing = isLoadingDevices;
 
   const onRefresh = useCallback(async () => {
-    setIsRefreshing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      await queryClient.invalidateQueries({
-        queryKey: ["zeke-recent-activities"],
-      });
-      if (isSyncMode) {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["zeke-connection-status"] }),
-          queryClient.invalidateQueries({ queryKey: ["zeke-dashboard-summary"] }),
-          queryClient.invalidateQueries({ queryKey: ["zeke-today-events"] }),
-          queryClient.invalidateQueries({ queryKey: ["zeke-pending-tasks"] }),
-          queryClient.invalidateQueries({ queryKey: ["zeke-grocery-items"] }),
-          queryClient.invalidateQueries({ queryKey: ["zeke-news-briefing"] }),
-          queryClient.invalidateQueries({ queryKey: ["zeke-notifications"] }),
-          queryClient.invalidateQueries({ queryKey: ["omi-pendant-health"] }),
-        ]);
-      } else {
-        await queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
-      }
-    } finally {
-      setIsRefreshing(false);
+    await queryClient.invalidateQueries({
+      queryKey: ["zeke-recent-activities"],
+    });
+    if (isSyncMode) {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["zeke-connection-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["zeke-dashboard-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["zeke-today-events"] }),
+        queryClient.invalidateQueries({ queryKey: ["zeke-pending-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["zeke-grocery-items"] }),
+        queryClient.invalidateQueries({ queryKey: ["zeke-news-briefing"] }),
+        queryClient.invalidateQueries({ queryKey: ["zeke-notifications"] }),
+        queryClient.invalidateQueries({ queryKey: ["omi-pendant-health"] }),
+      ]);
+    } else {
+      await queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
     }
   }, [isSyncMode]);
 
@@ -435,11 +445,25 @@ export default function HomeScreen() {
   );
 
   return (
-    <PageLayout
-      refreshing={isRefreshing}
-      onRefresh={onRefresh}
-      extraBottomPadding={40}
-    >
+    <View style={{ flex: 1, backgroundColor: theme.backgroundRoot }}>
+      <ScrollView
+        ref={scrollViewRef}
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingTop: headerHeight - Spacing.lg,
+          paddingBottom: tabBarHeight + Spacing.lg + 40,
+          paddingHorizontal: Spacing.lg,
+        }}
+        scrollIndicatorInsets={{ bottom: insets.bottom }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.dark.primary}
+          />
+        }
+      >
         {/* ZEKE Alert Notifications Stack */}
         {isSyncMode && zekeAlerts.length > 0 ? (
           <ZekeAlertStack
@@ -1102,7 +1126,8 @@ export default function HomeScreen() {
           </LinearGradient>
         </Pressable>
         </View>
-    </PageLayout>
+      </ScrollView>
+    </View>
   );
 }
 
