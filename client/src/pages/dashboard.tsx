@@ -54,8 +54,9 @@ import {
   TrendingUp,
   BarChart3,
 } from "lucide-react";
-import type { Task, GroceryItem, MemoryNote, Conversation, Message, ChatResponse } from "@shared/schema";
-import { format, isPast, isToday, parseISO, isWithinInterval, startOfDay, endOfDay } from "date-fns";
+import type { Task, GroceryItem, MemoryNote, Conversation, Message, ChatResponse, NewsStory, NewsTopic } from "@shared/schema";
+import { format, isPast, isToday, parseISO, isWithinInterval, startOfDay, endOfDay, formatDistanceToNow } from "date-fns";
+import { Newspaper, ExternalLink } from "lucide-react";
 
 interface CalendarEvent {
   id: string;
@@ -1311,6 +1312,109 @@ function NotificationSettingsWidget({
   );
 }
 
+function NewsWidget({
+  stories,
+  topics,
+  isLoading,
+}: {
+  stories: NewsStory[];
+  topics: NewsTopic[];
+  isLoading: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+          <CardTitle className="text-sm sm:text-base font-medium flex items-center gap-2">
+            <Newspaper className="h-4 w-4" />
+            News Updates
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-16" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const activeTopics = topics.filter(t => t.isActive);
+  const hasStories = stories.length > 0;
+  const hasTopics = activeTopics.length > 0;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+        <CardTitle className="text-sm sm:text-base font-medium flex items-center gap-2">
+          <Newspaper className="h-4 w-4" />
+          News Updates
+        </CardTitle>
+        {hasTopics && (
+          <Badge variant="secondary" className="text-xs">
+            {activeTopics.length} topic{activeTopics.length !== 1 ? 's' : ''}
+          </Badge>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {!hasStories && !hasTopics && (
+          <div className="text-center py-6 text-muted-foreground">
+            <Newspaper className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">No news updates yet</p>
+            <p className="text-xs mt-1">Configure topics in Settings to start receiving news</p>
+          </div>
+        )}
+        
+        {!hasStories && hasTopics && (
+          <div className="text-center py-4 text-muted-foreground">
+            <p className="text-sm">Tracking {activeTopics.length} topic{activeTopics.length !== 1 ? 's' : ''}</p>
+            <p className="text-xs mt-1">News updates will appear here</p>
+            <div className="flex flex-wrap justify-center gap-1 mt-2">
+              {activeTopics.slice(0, 5).map(topic => (
+                <Badge key={topic.id} variant="outline" className="text-xs">
+                  {topic.topic}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {hasStories && (
+          <div className="space-y-3">
+            {stories.slice(0, 5).map((story) => (
+              <div key={story.id} className="border-b border-border pb-3 last:border-0 last:pb-0">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-medium leading-tight line-clamp-2">{story.headline}</h4>
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{story.summary}</p>
+                    <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
+                      <span>{story.source}</span>
+                      <span className="opacity-50">|</span>
+                      <span>{formatDistanceToNow(new Date(story.createdAt), { addSuffix: true })}</span>
+                    </div>
+                  </div>
+                  {story.url && (
+                    <a 
+                      href={story.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ProactiveInsightsWidget({
   insights,
   isLoading,
@@ -1707,6 +1811,14 @@ export default function DashboardPage() {
   });
   const insights = insightsData?.insights;
 
+  const { data: newsStories, isLoading: newsStoriesLoading } = useQuery<NewsStory[]>({
+    queryKey: ["/api/news/stories?limit=10"],
+  });
+
+  const { data: newsTopics, isLoading: newsTopicsLoading } = useQuery<NewsTopic[]>({
+    queryKey: ["/api/news/topics"],
+  });
+
   const { data: notificationStatus, isLoading: notificationStatusLoading } = useQuery<NotificationStatus>({
     queryKey: ["/api/notifications/status"],
   });
@@ -2037,6 +2149,14 @@ export default function DashboardPage() {
             onSnooze={handleSnoozeInsight}
             onRefresh={handleRefreshInsights}
             isRefreshing={refreshInsightsMutation.isPending}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
+          <NewsWidget
+            stories={newsStories || []}
+            topics={newsTopics || []}
+            isLoading={newsStoriesLoading || newsTopicsLoading}
           />
         </div>
 

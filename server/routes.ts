@@ -199,6 +199,11 @@ import {
   deleteRecipe,
   incrementRecipeCooked,
   getMostCookedMeals,
+  getRecentNewsStories,
+  getNewsTopics,
+  createNewsTopic,
+  updateNewsTopic,
+  deleteNewsTopic,
   createContactNote,
   getContactNotes,
   getContactNotesByType,
@@ -448,7 +453,7 @@ import {
   getNLAutomationStats as getNLAutomationStatsDb,
 } from "./db";
 import type { EntityDomain, EntityType, InsightCategory, InsightStatus, InsightPriority, ActivityType } from "@shared/schema";
-import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertContactNoteSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, insertFoodPreferenceSchema, insertDietaryRestrictionSchema, insertSavedRecipeSchema, updateSavedRecipeSchema, insertMealHistorySchema, type Automation, type InsertAutomation, getContactFullName } from "@shared/schema";
+import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertContactNoteSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, insertFoodPreferenceSchema, insertDietaryRestrictionSchema, insertSavedRecipeSchema, updateSavedRecipeSchema, insertMealHistorySchema, insertNewsTopicSchema, type Automation, type InsertAutomation, getContactFullName } from "@shared/schema";
 import { getTwilioClient, getTwilioFromPhoneNumber, isTwilioConfigured, validateTwilioSignature } from "./twilioClient";
 import { z } from "zod";
 import { listCalendarEvents, getTodaysEvents, getUpcomingEvents, createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, listCalendars, type CalendarEvent, type CalendarInfo } from "./googleCalendar";
@@ -3777,6 +3782,105 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Send SMS error:", error);
       res.status(500).json({ message: error.message || "Failed to send SMS" });
+    }
+  });
+  
+  // === NEWS MODULE API ROUTES ===
+  
+  // Get recent news stories
+  app.get("/api/news/stories", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const stories = await getRecentNewsStories(limit);
+      res.json(stories);
+    } catch (error) {
+      console.error("[News] Error getting stories:", error);
+      res.status(500).json({ message: "Failed to get news stories" });
+    }
+  });
+  
+  // Get news topics
+  app.get("/api/news/topics", async (req, res) => {
+    try {
+      const activeOnly = req.query.active !== "false";
+      const topics = await getNewsTopics(activeOnly);
+      res.json(topics);
+    } catch (error) {
+      console.error("[News] Error getting topics:", error);
+      res.status(500).json({ message: "Failed to get news topics" });
+    }
+  });
+  
+  // Create a news topic
+  app.post("/api/news/topics", async (req, res) => {
+    try {
+      // Prepare data - stringify keywords if array
+      const data = { ...req.body };
+      if (data.keywords && Array.isArray(data.keywords)) {
+        data.keywords = JSON.stringify(data.keywords);
+      }
+      
+      // Validate with Zod schema
+      const validationResult = insertNewsTopicSchema.safeParse(data);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: validationResult.error.flatten().fieldErrors 
+        });
+      }
+      
+      const newTopic = await createNewsTopic(validationResult.data);
+      res.json(newTopic);
+    } catch (error) {
+      console.error("[News] Error creating topic:", error);
+      res.status(500).json({ message: "Failed to create topic" });
+    }
+  });
+  
+  // Update a news topic
+  app.patch("/api/news/topics/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = { ...req.body };
+      
+      // Stringify keywords if array
+      if (updates.keywords && Array.isArray(updates.keywords)) {
+        updates.keywords = JSON.stringify(updates.keywords);
+      }
+      
+      // Partial validation - create a partial schema for updates
+      const partialSchema = insertNewsTopicSchema.partial();
+      const validationResult = partialSchema.safeParse(updates);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: validationResult.error.flatten().fieldErrors 
+        });
+      }
+      
+      const updated = await updateNewsTopic(id, validationResult.data);
+      if (!updated) {
+        return res.status(404).json({ message: "Topic not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("[News] Error updating topic:", error);
+      res.status(500).json({ message: "Failed to update topic" });
+    }
+  });
+  
+  // Delete a news topic
+  app.delete("/api/news/topics/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await deleteNewsTopic(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Topic not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[News] Error deleting topic:", error);
+      res.status(500).json({ message: "Failed to delete topic" });
     }
   });
   
