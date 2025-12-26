@@ -1,0 +1,35 @@
+name: Sync Android to ZEKEapp
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'android/**'
+  workflow_dispatch:
+
+jobs:
+  sync-to-zekeapp:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Push android/ subtree to ZEKEapp
+        uses: nxtlvlsoftware/git-subtree-action@1.1
+        with:
+          repo: 'Johnsonbros/ZEKEapp'
+          path: 'android'
+          branch: 'companion-app'
+          deploy_key: ${{ secrets.ZEKEAPP_DEPLOY_KEY }}
+          force: true
+          message: 'Sync from ZEKE android/ folder'
