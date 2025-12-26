@@ -48,6 +48,10 @@ Key architectural decisions and features include:
 - **Hardware Device Registry**: Multi-device support for Omi and Limitless pendants with tracking of device status, battery level, firmware version, and last seen timestamps. API: `/api/devices`.
 - **Limitless Integration**: REST API client for Limitless pendant cloud (`api.limitless.ai/v1`) with lifelog fetching, audio download, and scheduled sync job (`server/services/limitless.ts`, `server/services/limitlessSync.ts`).
 - **Voice Enrollment System**: Voice profile management with speaker identification support. Stores voice samples and embedding vectors for future speaker recognition. API: `/api/voice/profiles`.
+- **Push Notification Service (Dec 2024)**: Expo-based push notification delivery for Android companion app with automatic token management and unregistered token cleanup. Supports news alerts, insights, briefings, and reminders. Service: `server/services/pushNotificationService.ts`.
+- **Wearable Health Metrics**: Database storage for Omi/Limitless pendant health data (battery level, session time, connection strength, recording quality). API: `/api/wearable/metrics`.
+- **Android Notification Capture**: Captures and stores phone notifications from Android app for context awareness and proactive assistance. API: `/api/notifications/capture`.
+- **Health Data Sync (Google Fit/Health Connect)**: Receives and stores health metrics (steps, heart rate, sleep, calories) from Android Health Connect. API: `/api/health/metrics`, `/api/health/summary/today`.
 
 ## External Dependencies
 - **OpenAI API**: AI responses, agent logic, and text embeddings.
