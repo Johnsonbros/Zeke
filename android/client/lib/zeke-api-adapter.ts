@@ -1819,28 +1819,11 @@ export async function dismissNotification(notificationId: string): Promise<boole
   }
 }
 
-export async function registerPushToken(
-  token: string,
-  deviceId: string,
-  platform: "expo" | "fcm" | "apns" = "expo"
-): Promise<boolean> {
+export async function registerPushToken(token: string): Promise<boolean> {
   try {
     await apiClient.post<void>(
       "/api/zeke/push/register",
-      { token, deviceId, platform },
-      { timeoutMs: 5000 },
-    );
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export async function unregisterPushToken(deviceId: string): Promise<boolean> {
-  try {
-    await apiClient.post<void>(
-      "/api/zeke/push/unregister",
-      { deviceId },
+      { token, platform: "expo" },
       { timeoutMs: 5000 },
     );
     return true;

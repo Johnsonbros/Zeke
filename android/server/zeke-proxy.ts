@@ -856,59 +856,11 @@ export function registerZekeProxyRoutes(app: Express): void {
     if (!token || !deviceId) {
       return res.status(400).json({ error: "token and deviceId are required" });
     }
-    
-    // Store locally first
-    try {
-      const { db } = await import("./db");
-      const { pushTokens } = await import("@shared/schema");
-      const { eq, and } = await import("drizzle-orm");
-      
-      // Upsert: delete existing token for this device, then insert new one
-      await db.delete(pushTokens).where(eq(pushTokens.deviceId, deviceId));
-      await db.insert(pushTokens).values({
-        deviceId,
-        token,
-        platform: platform || "expo",
-      });
-      console.log(`[Push Token] Stored locally: deviceId=${deviceId}, platform=${platform || "expo"}`);
-    } catch (dbError) {
-      console.error("[Push Token] Failed to store locally:", dbError);
-    }
-    
-    // Forward to ZEKE backend with explicit payload
-    const backendPayload = { token, deviceId, platform: platform || "expo" };
-    const result = await proxyToZeke("POST", "/api/push/register", backendPayload, headers);
+    const result = await proxyToZeke("POST", "/api/push/register", req.body, headers);
     if (!result.success) {
       // Accept registration locally even if backend doesn't support it yet
-      console.log(`[Push Token] Backend registration pending: deviceId=${deviceId}`);
-      return res.json({ success: true, message: "Push token registered locally" });
-    }
-    res.json(result.data);
-  });
-  
-  app.post("/api/zeke/push/unregister", async (req: Request, res: Response) => {
-    const headers = extractForwardHeaders(req.headers);
-    const { deviceId } = req.body;
-    if (!deviceId) {
-      return res.status(400).json({ error: "deviceId is required" });
-    }
-    
-    // Remove locally
-    try {
-      const { db } = await import("./db");
-      const { pushTokens } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-      
-      await db.delete(pushTokens).where(eq(pushTokens.deviceId, deviceId));
-      console.log(`[Push Token] Removed locally: deviceId=${deviceId}`);
-    } catch (dbError) {
-      console.error("[Push Token] Failed to remove locally:", dbError);
-    }
-    
-    // Forward to ZEKE backend
-    const result = await proxyToZeke("DELETE", "/api/push/unregister", req.body, headers);
-    if (!result.success) {
-      return res.json({ success: true, message: "Push token removed locally" });
+      console.log(`[Push Token Registered] deviceId=${deviceId}, platform=${platform}`);
+      return res.json({ success: true, message: "Push token registered" });
     }
     res.json(result.data);
   });
