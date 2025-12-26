@@ -50,8 +50,10 @@ class TradingLoop:
         allowed, notes, final_decision = risk_check(decision, snapshot, self.cfg)
         print(f"   Allowed: {allowed}")
         print(f"   Notes: {notes}")
+        if not allowed and isinstance(decision, TradeIntent):
+            print(f"   BLOCKED: Original trade {decision.symbol} ${decision.notional_usd} converted to NO_TRADE")
         
-        self.logger.log_decision(decision, allowed, notes)
+        self.logger.log_decision(final_decision, allowed, notes)
         
         if allowed and isinstance(final_decision, TradeIntent):
             print("\n4. Executing trade...")
