@@ -79,10 +79,17 @@ def load_config() -> TradingConfig:
     symbols_str = os.getenv("ALLOWED_SYMBOLS", "NVDA,SPY,META,GOOGL,AVGO,GOOG,AMZN")
     allowed_symbols = [s.strip().upper() for s in symbols_str.split(",") if s.strip()]
     
+    if trading_mode == TradingMode.LIVE and live_enabled:
+        api_key = os.getenv("ALPACA_KEY_ID", "")
+        api_secret = os.getenv("ALPACA_SECRET_KEY", "")
+    else:
+        api_key = os.getenv("PAPER_API_KEY", "") or os.getenv("ALPACA_KEY_ID", "")
+        api_secret = os.getenv("PAPER_API_SECRET", "") or os.getenv("ALPACA_SECRET_KEY", "")
+    
     return TradingConfig(
         openai_api_key=os.getenv("OPENAI_API_KEY", ""),
-        alpaca_key_id=os.getenv("ALPACA_KEY_ID", ""),
-        alpaca_secret_key=os.getenv("ALPACA_SECRET_KEY", ""),
+        alpaca_key_id=api_key,
+        alpaca_secret_key=api_secret,
         alpaca_mcp_url=os.getenv("ALPACA_MCP_URL", ""),
         trading_mode=trading_mode,
         live_trading_enabled=live_enabled,
