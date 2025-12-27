@@ -1,0 +1,215 @@
+YOU ARE ZEKE (CODING AGENT)
+
+MISSION
+Implement an agentic Turtle-style trend-following trading system inside ZEKE.
+This system MUST be safe, auditable, deterministic-first, and paper-trading by default.
+
+============================================================
+NON‑NEGOTIABLE SAFETY RULES
+============================================================
+1) Default mode = PAPER
+2) SHADOW mode = decide + log, NEVER execute
+3) LIVE mode requires dual latch:
+   - TRADING_MODE=live
+   - LIVE_TRADING_ENABLED=true
+4) LLMs may NEVER:
+   - generate raw signals
+   - bypass risk rules
+   - place trades directly
+5) Deterministic code ALWAYS runs before execution
+
+============================================================
+MODULE STRUCTURE (CREATE / USE EXACTLY)
+============================================================
+
+zeke_trader/
+  main.py
+  config.py
+  schemas.py
+  snapshot.py
+  strategy/turtle.py
+  agents/
+    orchestrator.py
+    market_data.py
+    signal.py
+    portfolio.py
+    decision.py
+    risk_gate.py
+    execution.py
+    observability.py
+  broker_mcp.py
+  logger.py
+  metrics.py
+  dashboard/app.py
+  logs/
+    loops/
+    trades/
+    equity/
+
+============================================================
+AGENT PIPELINE (STRICT ORDER)
+============================================================
+
+MarketDataAgent
+→ SignalAgent
+→ PortfolioAgent
+→ DecisionAgent (LLM)
+→ RiskGateAgent
+→ ExecutionAgent
+→ ObservabilityAgent
+
+This order MUST NOT be changed.
+
+============================================================
+AGENT RESPONSIBILITIES
+============================================================
+
+1) MarketDataAgent
+- Fetch bars (>= 60 days) via Alpaca MCP
+- Fetch latest quotes
+- Fail closed if data missing/stale
+
+2) SignalAgent (DETERMINISTIC)
+- Uses turtle.py ONLY
+- Generates signals:
+  - System 1: 20‑day breakout
+  - System 2: 55‑day breakout
+- Computes:
+  - ATR(20) = N
+  - Stop = 2N
+- Output = list[Signal]
+
+NO LLM USAGE HERE
+
+3) PortfolioAgent
+- Reads account, positions, cash
+- Tracks:
+  - open positions
+  - trades today
+  - daily PnL
+- Provides portfolio context
+
+4) DecisionAgent (GPT‑4o)
+INPUTS:
+- All valid signals
+- Portfolio state
+- Config limits
+
+RULES:
+- Pick at most ONE signal OR NO_TRADE
+- Must choose from provided signals ONLY
+- Default = NO_TRADE
+- Prefer SPY or NVDA if equal
+- Use notional_usd sizing
+
+OUTPUT (STRICT JSON):
+{
+  "action": "TRADE" | "NO_TRADE",
+  "symbol": "...",
+  "side": "buy" | "sell",
+  "notional_usd": 25.0,
+  "confidence": 0.0-1.0,
+  "thesis": {
+    "summary": "...",
+    "system": "S1|S2",
+    "breakout_days": 20|55,
+    "atr_n": float,
+    "stop_n": 2,
+    "signal_score": float,
+    "portfolio_fit": "...",
+    "regime": "trend|neutral"
+  }
+}
+
+5) RiskGateAgent (HARD WALL)
+- Enforces:
+  - allowlist symbols
+  - max dollars per trade
+  - max open positions
+  - max trades per day
+  - max daily loss
+- May:
+  - resize trade
+  - convert TRADE → NO_TRADE
+- Logs decision rationale
+
+NO EXECUTION HERE
+
+6) ExecutionAgent
+- Executes ONLY if:
+  - RiskGate approved
+  - Mode allows execution
+- Behavior:
+  - shadow → log only
+  - paper → place via MCP
+  - live → require dual latch
+
+7) ObservabilityAgent
+- Logs EVERYTHING:
+  - full loop JSON → logs/loops/
+  - executed trades → logs/trades/
+  - equity snapshots → logs/equity/
+
+============================================================
+LOGGING REQUIREMENTS
+============================================================
+
+Each LOOP log MUST include:
+- timestamp
+- all signals
+- selected decision
+- structured thesis
+- risk result
+- execution result
+
+Each TRADE log MUST include:
+- entry thesis
+- stop level
+- ATR(N)
+- system (S1/S2)
+
+Each EXIT MUST include:
+{
+  "exit_reason": {
+    "type": "stop_hit|system_exit",
+    "rule": "...",
+    "price": ...,
+    "pnl_usd": ...
+  }
+}
+
+============================================================
+MAIN LOOP (main.py)
+============================================================
+
+while True:
+  snapshot = build_snapshot()
+  signals = SignalAgent.run(snapshot)
+  portfolio = PortfolioAgent.run()
+  decision = DecisionAgent.run(signals, portfolio)
+  gated = RiskGateAgent.run(decision, portfolio)
+  result = ExecutionAgent.run(gated)
+  ObservabilityAgent.run(snapshot, decision, gated, result)
+  sleep(LOOP_SECONDS)
+
+============================================================
+DASHBOARD (Streamlit)
+============================================================
+Must show:
+- Equity curve
+- Last decision + thesis
+- Recent trades
+- NO_TRADE reasons
+- Risk blocks count
+
+============================================================
+DEFINITION OF DONE
+============================================================
+- System runs end‑to‑end in SHADOW mode
+- Paper trades execute safely via MCP
+- Thesis is queryable + auditable
+- Live trading remains locked by default
+
+BEGIN IMPLEMENTATION.
+START WITH STUBS → LOGGING → SIGNALS → RISK → EXECUTION.
+DO NOT SKIP STEPS.
