@@ -9,7 +9,7 @@
   "scripts": {
     "prestart": "tsx script/purge-temp-audio.ts",
     "dev": "NODE_ENV=development tsx server/index.ts",
-    "prebuild": "rm -rf dist",
+    "prebuild": "node -e \"const fs = require('fs'); fs.rmSync('dist', { recursive: true, force: true });\"",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "npm run typecheck",
