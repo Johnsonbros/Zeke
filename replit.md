@@ -53,6 +53,13 @@ Key architectural decisions and features include:
 - **Android Notification Capture**: Captures and stores phone notifications from Android app for context awareness and proactive assistance. API: `/api/notifications/capture`.
 - **Health Data Sync (Google Fit/Health Connect)**: Receives and stores health metrics (steps, heart rate, sleep, calories) from Android Health Connect. API: `/api/health/metrics`, `/api/health/summary/today`.
 - **Mobile App Layout System (Dec 2024)**: Standardized layout handling using `PageLayout` component and `usePageLayoutDimensions` hook (`android/client/components/PageLayout.tsx`). Provides consistent header height, tab bar height, and keyboard-aware bottom padding across all screens. Key screens updated: HomeScreen, SettingsScreen, TasksScreen, CalendarScreen, ChatScreen, ContactsScreen, GroceryScreen.
+- **Stock Trading Module (Dec 2024)**: Self-contained `zeke_trader/` module for Alpaca paper/live trading with deterministic risk controls. Features:
+  - Paper trading (default) with $100k simulated account; live trading requires explicit unlock
+  - Risk limits: $25 max per trade, 3 max positions, 5 trades/day, -$25 daily loss limit
+  - Watchlist: NVDA, SPY, META, GOOGL, AVGO, GOOG, AMZN
+  - Trading Dashboard at `/trading` with account overview, real-time quotes, position management, and trade execution
+  - API: `/api/trading/account`, `/api/trading/positions`, `/api/trading/quotes`, `/api/trading/orders`, `/api/trading/order`, `/api/trading/risk-limits`
+  - Requires: `PAPER_API_KEY`, `PAPER_API_SECRET` (Alpaca paper trading credentials)
 
 ## External Dependencies
 - **OpenAI API**: AI responses, agent logic, and text embeddings.
