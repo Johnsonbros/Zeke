@@ -83,7 +83,7 @@ export type SmsMessageContext =
 function formatSmsMessage(code: string, context: SmsMessageContext): string {
   switch (context.type) {
     case 'device_pairing':
-      return `ZEKE Pairing Code: ${code}\n\nEnter this code in the app to pair "${context.deviceName}". Expires in 5 minutes.`;
+      return `ZEKE Pairing Code: ${code}\n\nEnter this 6-digit code in the app to pair "${context.deviceName}". Expires in 5 minutes.`;
     case 'web_login':
       return `ZEKE Dashboard Login Code: ${code}\n\nEnter this code to access your dashboard. Expires in 5 minutes.`;
     case 'custom':
