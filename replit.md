@@ -64,16 +64,16 @@ Key architectural decisions and features include:
   - Overnight Batch Analyzer: Generates daily_report.json, trade_critiques.jsonl, recommended_thresholds.json
   - Trading Dashboard at `/trading` with account overview, real-time quotes, position management, and trade execution
   - Mobile Trading Screen with agent status, decision logs, scored signals visualization, Turtle strategy info
-  - **ZEKETrade Public Dashboard (Dec 2024)**: Public-facing page at `/zeketrade` showcasing the trading system's operations for exposure. Features:
-    - Hero section with "AI-Powered Turtle Trading" branding
-    - Real-time stats: portfolio value, today's P&L, open positions, trades executed
-    - Live watchlist with current prices from Alpaca
-    - Agent status display (Conductor, DecisionAgent, RiskGateAgent, ExecutionAgent)
-    - Positions tab showing current holdings with entry prices and P&L
-    - Strategy tab explaining Turtle Trading methodology (20/55-day breakouts, scoring formula, risk management)
-    - Performance charts: equity curve with drawdown visualization
-    - Market status and clock display
-    - Security: Read-only page with no mutation controls or exposed secrets
+  - **ZEKETrade Public Pages (Dec 2024)**: Two-page public showcase for the trading system:
+    - `/zeketrade` - Marketing landing page with hero section, "How it works" agent workflow, Turtle Strategy explanation, live risk limits from API, and CTA
+    - `/zeketrade/dashboard` - Full transparency dashboard with 5 tabs:
+      - Live: Agent status, risk limits usage, watchlist with live prices, account summary
+      - Positions: Current holdings with entry prices, P&L, and exit monitoring
+      - History: Complete trade log with order details and fill prices
+      - Signals: Pending trades with AI reasoning and scoring
+      - Analytics: Equity curve, drawdown charts, and key metrics
+    - All data fetched from existing `/api/trading/*` endpoints
+    - Security: Read-only pages with no mutation controls or exposed secrets
   - API: `/api/trading/*` (account, positions, quotes, orders), `/agent/*` (status, decisions, pending-trades), `/batch/*` (analyze, reports)
   - Requires: `PAPER_API_KEY`, `PAPER_API_SECRET` (Alpaca paper trading credentials)
 
