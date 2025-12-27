@@ -92,11 +92,13 @@ export function registerSmsPairingEndpoints(app: Express): void {
       const sessionId = generateSessionId();
       const expiresAt = new Date(Date.now() + SMS_VERIFICATION_CONFIG.CODE_EXPIRY_SECONDS * 1000).toISOString();
       
+      console.log(`[SMS PAIRING] Generated ${code.length}-digit code for device: ${deviceName}`);
+      
       createPairingCode(sessionId, code, deviceName, expiresAt);
       
       await sendVerificationSms(masterPhone, code, { type: 'device_pairing', deviceName });
       
-      console.log(`[SMS PAIRING] Code requested for device: ${deviceName}, session: ${sessionId.substring(0, 8)}...`);
+      console.log(`[SMS PAIRING] Code sent for device: ${deviceName}, session: ${sessionId.substring(0, 8)}...`);
       
       const response: SmsCodeRequestSuccessResponse = {
         success: true,
