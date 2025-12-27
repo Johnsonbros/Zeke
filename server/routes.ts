@@ -13093,7 +13093,7 @@ try:
         }
     elif endpoint == "order" and method == "POST" and body:
         from zeke_trader.risk import risk_check
-        from zeke_trader.schemas import TradeIntent
+        from zeke_trader.schemas import TradeIntent, MarketSnapshot
         
         intent = TradeIntent(
             decision="trade",
@@ -13104,7 +13104,9 @@ try:
             reason="User initiated trade from dashboard"
         )
         
-        allowed, reason = risk_check(intent, cfg)
+        snapshot = broker.get_market_snapshot([body["symbol"]])
+        
+        allowed, reason, _ = risk_check(intent, snapshot, cfg)
         if not allowed:
             result = {"success": False, "error": reason, "mode": cfg.trading_mode.value}
         else:
