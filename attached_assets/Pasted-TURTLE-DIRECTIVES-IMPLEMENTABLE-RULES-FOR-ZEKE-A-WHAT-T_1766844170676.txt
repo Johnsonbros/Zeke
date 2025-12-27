@@ -1,0 +1,159 @@
+TURTLE DIRECTIVES (IMPLEMENTABLE RULES FOR ZEKE)
+
+A) WHAT THE TURTLES ARE DOING
+1) They do NOT predict. They follow trends.
+2) Entries are breakouts (price proving direction).
+3) Exits are “trend failure” + hard stops.
+4) Most trades are small losses; a few big winners make the system.
+5) Risk/position sizing is as important as entries.
+
+------------------------------------------------------------
+B) CANDIDATE SELECTION (WHO IS ELIGIBLE TO BUY/SELL)
+Universe: only allowlisted symbols.
+
+For each symbol, compute:
+- Breakout levels:
+  - S1 entry: 20-day high (long), 20-day low (short)
+  - S2 entry: 55-day high (long), 55-day low (short)
+- Exit levels:
+  - S1 exit: 10-day low (for longs), 10-day high (for shorts)
+  - S2 exit: 20-day low (for longs), 20-day high (for shorts)
+- Volatility N: ATR(20) (or ATR-like) = N
+
+A symbol becomes a BUY candidate when:
+- (Long) last_price > prior_20_day_high (S1) OR > prior_55_day_high (S2)
+A symbol becomes a SELL/SHORT candidate when:
+- (Short) last_price < prior_20_day_low (S1) OR < prior_55_day_low (S2)
+
+Optional but common filters for sanity (still Turtle-consistent):
+- Only trade if data is fresh and liquid enough
+- Avoid trading when market is closed or spreads are extreme
+
+------------------------------------------------------------
+C) WHEN TO SELL (EXITS) — STANDARD TURTLE WAY
+For an OPEN LONG position:
+1) HARD STOP (always)
+   - Initial stop = entry_price - 2N
+   - If price hits stop → exit immediately (no debate)
+2) SYSTEM EXIT (trend failure)
+   - If entered via S1: exit when price < prior_10_day_low
+   - If entered via S2: exit when price < prior_20_day_low
+
+For an OPEN SHORT position:
+1) HARD STOP
+   - Initial stop = entry_price + 2N
+2) SYSTEM EXIT (trend failure)
+   - If S1 short: exit when price > prior_10_day_high
+   - If S2 short: exit when price > prior_20_day_high
+
+Important: Turtles did NOT “take profit early” by default. They let winners run and exit on rules.
+
+------------------------------------------------------------
+D) “SELL EARLY” VS “LET IT RUN” (HOW ZEKE DECIDES)
+Default Turtle rule: DO NOT sell early.
+The system already has “sell early” built in via:
+- stop loss, and
+- breakout-based exits (10/20-day channel)
+
+If you want a controlled “sell early” option, make it deterministic and rare:
+Allowed early-exit triggers (examples):
+- Risk event: MAX_DAILY_LOSS breached → close risk / reduce exposure
+- Data integrity: stale data / broker errors → reduce/exit
+- Regime kill switch: if SPY breaks major trend filter → reduce new entries (and optionally tighten exits)
+
+Do NOT let the LLM freestyle early exits. If you add early exits, codify them.
+
+------------------------------------------------------------
+E) IF ZEKE HAS 2–10 BUY SIGNALS, HOW DOES IT PICK THE WINNER?
+This is where most people get sloppy. Keep it rule-based.
+
+Step 1: HARD ELIMINATIONS (must pass)
+- Symbol in allowlist
+- Not already at max positions
+- Trade would not violate max daily loss / max trades/day
+- Notional sizing feasible
+
+Step 2: RANKING (pick best 1)
+Use a simple score made from Turtle-compatible features:
+
+Recommended ranking criteria (in priority order):
+1) Breakout strength (distance beyond the breakout)
+   - strength = (price - breakout_level) / N   [for longs]
+   - bigger = “cleaner breakout”
+2) System priority
+   - Prefer S2 (55-day) over S1 (20-day) if both fire
+   - Rationale: longer-term breakout is often more meaningful
+3) Volatility-adjusted momentum (recent return per unit N)
+   - e.g. 20-day return / N (or 10-day return / N)
+4) Portfolio fit (diversification / concentration control)
+   - Prefer candidate that reduces concentration:
+     - don’t stack too many highly correlated names
+     - don’t exceed per-symbol/per-sector exposure caps
+5) Tie-breakers
+   - Prefer the more liquid / tighter spread instrument
+   - Prefer SPY as “safer” baseline if everything else is equal
+
+A dead-simple scoring function ZEKE can implement:
+score = 3.0*(breakout_strength) + 1.0*(system_bonus) + 1.0*(mom_per_N) - 1.0*(correlation_penalty)
+
+Where:
+- system_bonus = 1 if S2 else 0
+- correlation_penalty increases if you already hold similar exposures
+
+Then: pick the highest score.
+
+Key point:
+- The FINAL decision should be made by deterministic ranking + risk gate.
+- The LLM (DecisionAgent) can explain the choice, but it should NOT invent the criteria.
+
+------------------------------------------------------------
+F) ONCE ZEKE BUYS, HOW DOES IT TRACK AND DECIDE WHEN TO SELL?
+For every open position, store a PositionState record:
+
+PositionState:
+- symbol
+- entry_time
+- entry_price
+- system_used: S1 or S2
+- N_at_entry
+- stop_price (initial and current)
+- exit_channel_level (10-day or 20-day, depending on system)
+- highest_close_since_entry (for longs) / lowest_close (for shorts) [optional]
+- status: open/closing/closed
+- thesis (structured)
+- last_update_ts
+
+Every loop:
+1) Recompute current N (ATR) and exit channels.
+2) Update trailing stop rules ONLY if you explicitly add them.
+   - Classic turtles: keep stop at 2N from entry (plus pyramiding rules if used).
+3) Check exits in this order:
+   a) Hard stop hit? → exit
+   b) System exit hit? → exit
+   c) (Optional) risk/regime kill switch? → reduce/exit per deterministic rule
+
+Do NOT “keep its position” by opinion.
+You keep it if it has NOT triggered an exit rule.
+
+------------------------------------------------------------
+G) WHO MAKES THE FINAL DECISION IN ZEKE?
+Make it unambiguous:
+
+- Strategy (deterministic) generates candidates + features + preliminary score.
+- DecisionAgent (LLM) may:
+  - select among candidates using the scoring summary
+  - write a structured thesis
+  - but must choose from provided candidates only
+- RiskGate (deterministic) is the final authority:
+  - can block, resize, or force NO_TRADE
+- Execution executes only if RiskGate approves and mode allows.
+
+That’s the safest “agentic Turtle” setup.
+
+------------------------------------------------------------
+H) RECOMMENDED MVP BEHAVIOR (SO IT DOESN’t OVERTRADE)
+- Max 1 new entry per loop
+- Default NO_TRADE
+- No pyramiding at first
+- Exits strictly rule-based
+- Prefer S2 breakouts when competing signals exist
