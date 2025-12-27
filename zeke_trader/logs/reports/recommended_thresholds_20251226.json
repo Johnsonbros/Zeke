@@ -1,0 +1,24 @@
+{
+  "date": "2025-12-26",
+  "recommended_changes": [
+    {
+      "name": "correlation_penalty_weight",
+      "current": 1.0,
+      "suggested": 1.0,
+      "impact_hypothesis": "Current correlation penalty appears adequate",
+      "confidence": "low",
+      "based_on": [
+        "No concentrated losses in correlated positions"
+      ]
+    }
+  ],
+  "do_not_change_automatically": [
+    "risk limits (MAX_DAILY_LOSS etc.)",
+    "execution behavior",
+    "mode switches (paper/shadow/live)"
+  ],
+  "notes": [
+    "All recommendations require human review before updating config.",
+    "Based on analysis of 0 trade(s) from 2025-12-26."
+  ]
+}
