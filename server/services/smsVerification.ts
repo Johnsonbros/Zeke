@@ -17,9 +17,12 @@ export const SMS_VERIFICATION_CONFIG = {
 } as const;
 
 export function generateVerificationCode(): string {
-  const min = Math.pow(10, SMS_VERIFICATION_CONFIG.CODE_LENGTH - 1);
-  const max = Math.pow(10, SMS_VERIFICATION_CONFIG.CODE_LENGTH) - 1;
-  return crypto.randomInt(min, max + 1).toString();
+  const codeLength = SMS_VERIFICATION_CONFIG.CODE_LENGTH;
+  const min = Math.pow(10, codeLength - 1);
+  const max = Math.pow(10, codeLength) - 1;
+  const code = crypto.randomInt(min, max + 1).toString();
+  console.log(`[SMS Verification] generateVerificationCode: config.CODE_LENGTH=${codeLength}, min=${min}, max=${max}, generatedLength=${code.length}`);
+  return code;
 }
 
 export function generateSessionId(): string {
