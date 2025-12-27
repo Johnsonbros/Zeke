@@ -1831,3 +1831,210 @@ export async function registerPushToken(token: string): Promise<boolean> {
     return false;
   }
 }
+
+// ============================================================================
+// Trading API - ZEKE Autonomous Trading System
+// ============================================================================
+
+export interface TradingAccount {
+  equity: string;
+  cash: string;
+  buying_power: string;
+  portfolio_value: string;
+  last_equity: string;
+  pnl_day: number;
+  pnl_day_pct: number;
+}
+
+export interface TradingPosition {
+  symbol: string;
+  qty: string;
+  avg_entry_price: string;
+  market_value: string;
+  current_price: string;
+  unrealized_pl: string;
+  unrealized_plpc: string;
+  side: string;
+}
+
+export interface TradingQuote {
+  symbol: string;
+  price: number;
+  change: number;
+  change_pct: number;
+  timestamp: string;
+}
+
+export interface TradingOrder {
+  id: string;
+  symbol: string;
+  side: string;
+  qty: string;
+  notional: string | null;
+  status: string;
+  created_at: string;
+  filled_avg_price: string | null;
+  type: string;
+}
+
+export interface AgentStatus {
+  enabled: boolean;
+  autonomy_tier: string;
+  mode: string;
+  next_loop_in_seconds: number | null;
+  last_loop_at: string | null;
+  market_open: boolean;
+  trades_today: number;
+  daily_pnl: number;
+}
+
+export interface ScoredSignal {
+  symbol: string;
+  direction: string;
+  system: string;
+  total_score: number;
+  breakout_strength: number;
+  system_bonus: number;
+  momentum_per_n: number;
+  correlation_penalty: number;
+  current_price: number;
+  entry_ref: number;
+  stop_price: number;
+  atr_n: number;
+  reason: string;
+}
+
+export interface DecisionLog {
+  id: string;
+  timestamp: string;
+  decision_type: "entry" | "exit" | "no_trade";
+  symbol: string | null;
+  side: string | null;
+  reason: string;
+  signals_considered: number;
+  scored_signals?: ScoredSignal[];
+  confidence?: number;
+  thesis?: string;
+}
+
+export interface RiskLimits {
+  max_dollars_per_trade: number;
+  max_open_positions: number;
+  max_trades_per_day: number;
+  max_daily_loss: number;
+}
+
+export interface TradingPerformanceCharts {
+  equity_curve: Array<{ date: string; value: number }>;
+  trade_distribution: Array<{ symbol: string; count: number; fill: string }>;
+  win_loss: { wins: number; losses: number };
+  signal_confidence: Array<{ label: string; value: number }>;
+}
+
+export async function getTradingAccount(): Promise<TradingAccount | null> {
+  try {
+    const data = await apiClient.get<TradingAccount>(
+      "/api/trading/account",
+      { timeoutMs: 10000 },
+    );
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export async function getTradingPositions(): Promise<TradingPosition[]> {
+  try {
+    const data = await apiClient.get<TradingPosition[]>(
+      "/api/trading/positions",
+      { timeoutMs: 10000 },
+    );
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getTradingQuotes(): Promise<TradingQuote[]> {
+  try {
+    const data = await apiClient.get<TradingQuote[]>(
+      "/api/trading/quotes",
+      { timeoutMs: 15000 },
+    );
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getTradingOrders(): Promise<TradingOrder[]> {
+  try {
+    const data = await apiClient.get<TradingOrder[]>(
+      "/api/trading/orders",
+      { timeoutMs: 10000 },
+    );
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getAgentStatus(): Promise<AgentStatus | null> {
+  try {
+    const data = await apiClient.get<AgentStatus>(
+      "/api/trading/agent/status",
+      { timeoutMs: 10000 },
+    );
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export async function getRiskLimits(): Promise<RiskLimits | null> {
+  try {
+    const data = await apiClient.get<RiskLimits>(
+      "/api/trading/risk-limits",
+      { timeoutMs: 10000 },
+    );
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export async function getDecisionLogs(): Promise<DecisionLog[]> {
+  try {
+    const data = await apiClient.get<{ decisions: DecisionLog[] }>(
+      "/api/trading/agent/decisions",
+      { timeoutMs: 10000 },
+    );
+    return data?.decisions || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getTradingPerformanceCharts(): Promise<TradingPerformanceCharts | null> {
+  try {
+    const data = await apiClient.get<TradingPerformanceCharts>(
+      "/api/trading/charts/performance",
+      { timeoutMs: 10000 },
+    );
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export async function getPendingTrades(): Promise<any[]> {
+  try {
+    const data = await apiClient.get<{ pending: any[] }>(
+      "/api/trading/agent/pending-trades",
+      { timeoutMs: 10000 },
+    );
+    return data?.pending || [];
+  } catch {
+    return [];
+  }
+}

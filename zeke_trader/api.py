@@ -588,6 +588,102 @@ async def get_recent_loops_history(limit: int = 10):
     return loops
 
 
+class ScoredSignalData(BaseModel):
+    symbol: str
+    direction: str
+    system: str
+    total_score: float
+    breakout_strength: float
+    system_bonus: float
+    momentum_per_n: float
+    correlation_penalty: float
+    current_price: float
+    entry_ref: float
+    stop_price: float
+    atr_n: float
+    reason: str
+
+
+class DecisionLogEntry(BaseModel):
+    id: str
+    timestamp: str
+    decision_type: str
+    symbol: Optional[str] = None
+    side: Optional[str] = None
+    reason: str
+    signals_considered: int
+    scored_signals: Optional[List[ScoredSignalData]] = None
+    confidence: Optional[float] = None
+    thesis: Optional[str] = None
+
+
+@app.get("/agent/decisions")
+async def get_agent_decisions(limit: int = 20):
+    """Get recent agent decision logs for visualization."""
+    from pathlib import Path
+    import json
+    import uuid
+    
+    if not _orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    
+    decisions = []
+    cfg = get_cfg()
+    log_dir = Path(cfg.log_dir)
+    
+    loops_dir = log_dir / "loops"
+    if loops_dir.exists():
+        loop_files = sorted(loops_dir.glob("loop_*.jsonl"), reverse=True)
+        for f in loop_files[:5]:
+            with open(f, "r") as file:
+                for line in file:
+                    if line.strip():
+                        try:
+                            data = json.loads(line)
+                            decision = data.get("decision", {})
+                            action = decision.get("action", "no_trade")
+                            
+                            scored = None
+                            if "scored_signals" in data:
+                                scored = []
+                                for ss in data["scored_signals"]:
+                                    scored.append(ScoredSignalData(
+                                        symbol=ss.get("symbol", ""),
+                                        direction=ss.get("direction", "long"),
+                                        system=ss.get("system", "S1"),
+                                        total_score=ss.get("total_score", 0),
+                                        breakout_strength=ss.get("breakout_strength", 0),
+                                        system_bonus=ss.get("system_bonus", 0),
+                                        momentum_per_n=ss.get("momentum_per_n", 0),
+                                        correlation_penalty=ss.get("correlation_penalty", 0),
+                                        current_price=ss.get("current_price", 0),
+                                        entry_ref=ss.get("entry_ref", 0),
+                                        stop_price=ss.get("stop_price", 0),
+                                        atr_n=ss.get("atr_n", 0),
+                                        reason=ss.get("reason", ""),
+                                    ))
+                            
+                            entry = DecisionLogEntry(
+                                id=data.get("id", str(uuid.uuid4())[:8]),
+                                timestamp=data.get("timestamp", data.get("ts", "")),
+                                decision_type="entry" if action == "trade" else ("exit" if "exit" in action else "no_trade"),
+                                symbol=decision.get("symbol"),
+                                side=decision.get("side"),
+                                reason=decision.get("reason", "No reason provided"),
+                                signals_considered=decision.get("signals_considered", 0),
+                                scored_signals=scored,
+                                confidence=decision.get("confidence"),
+                                thesis=decision.get("thesis", {}).get("summary") if isinstance(decision.get("thesis"), dict) else None,
+                            )
+                            decisions.append(entry)
+                        except Exception as e:
+                            logger.debug(f"Error parsing decision log: {e}")
+                            continue
+    
+    decisions_sorted = sorted(decisions, key=lambda x: x.timestamp, reverse=True)[:limit]
+    return {"decisions": [d.model_dump(mode="json") for d in decisions_sorted]}
+
+
 class ChartDataPoint(BaseModel):
     timestamp: str
     value: float
