@@ -35,6 +35,9 @@ import AiUsagePage from "@/pages/ai-usage";
 import ApplicationsPage from "@/pages/applications";
 import DevicesPage from "@/pages/devices";
 import VoiceProfilesPage from "@/pages/voice-profiles";
+import TradingPage from "@/pages/trading";
+import ZekeTradePage from "@/pages/zeketrade";
+import ZekeTradeDashboard from "@/pages/zeketrade-dashboard";
 import LoginPage from "@/pages/login";
 import ApplyPage from "@/pages/apply";
 import LandingPage from "@/pages/landing";
@@ -68,6 +71,7 @@ function ProtectedRoutes() {
       <Route path="/applications" component={ApplicationsPage} />
       <Route path="/devices" component={DevicesPage} />
       <Route path="/voice-profiles" component={VoiceProfilesPage} />
+      <Route path="/trading" component={TradingPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -145,6 +149,14 @@ function AuthGate() {
 
   if (location === "/about") {
     return <LandingPage />;
+  }
+
+  if (location === "/zeketrade") {
+    return <ZekeTradePage />;
+  }
+
+  if (location === "/zeketrade/dashboard") {
+    return <ZekeTradeDashboard />;
   }
 
   if (!authenticated) {

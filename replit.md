@@ -53,6 +53,29 @@ Key architectural decisions and features include:
 - **Android Notification Capture**: Captures and stores phone notifications from Android app for context awareness and proactive assistance. API: `/api/notifications/capture`.
 - **Health Data Sync (Google Fit/Health Connect)**: Receives and stores health metrics (steps, heart rate, sleep, calories) from Android Health Connect. API: `/api/health/metrics`, `/api/health/summary/today`.
 - **Mobile App Layout System (Dec 2024)**: Standardized layout handling using `PageLayout` component and `usePageLayoutDimensions` hook (`android/client/components/PageLayout.tsx`). Provides consistent header height, tab bar height, and keyboard-aware bottom padding across all screens. Key screens updated: HomeScreen, SettingsScreen, TasksScreen, CalendarScreen, ChatScreen, ContactsScreen, GroceryScreen.
+- **Stock Trading Module (Dec 2024)**: Self-contained `zeke_trader/` module for Alpaca paper/live trading with deterministic risk controls. Features:
+  - Paper trading (default) with $100k simulated account; live trading requires explicit unlock
+  - Risk limits: $25 max per trade, 3 max positions, 5 trades/day, -$25 daily loss limit
+  - Watchlist: NVDA, SPY, META, GOOGL, AVGO, GOOG, AMZN
+  - Multi-agent Turtle Trading System: Conductor orchestrator, DecisionAgent (GPT-4o), RiskGateAgent, ExecutionAgent
+  - Deterministic Turtle strategy: S1 (20-day breakout), S2 (55-day breakout), 2N hard stops, 10/20-day exit channels
+  - Scoring formula: `3.0*breakout_strength + 1.0*system_bonus + 1.0*momentum_per_N - 1.0*correlation_penalty`
+  - Discovery pipeline: Universe scanning, hard filters, qualification gate, opportunity planner (runs daily/weekly)
+  - Overnight Batch Analyzer: Generates daily_report.json, trade_critiques.jsonl, recommended_thresholds.json
+  - Trading Dashboard at `/trading` with account overview, real-time quotes, position management, and trade execution
+  - Mobile Trading Screen with agent status, decision logs, scored signals visualization, Turtle strategy info
+  - **ZEKETrade Public Pages (Dec 2024)**: Two-page public showcase for the trading system:
+    - `/zeketrade` - Marketing landing page with hero section, "How it works" agent workflow, Turtle Strategy explanation, live risk limits from API, and CTA
+    - `/zeketrade/dashboard` - Full transparency dashboard with 5 tabs:
+      - Live: Agent status, risk limits usage, watchlist with live prices, account summary
+      - Positions: Current holdings with entry prices, P&L, and exit monitoring
+      - History: Complete trade log with order details and fill prices
+      - Signals: Pending trades with AI reasoning and scoring
+      - Analytics: Equity curve, drawdown charts, and key metrics
+    - All data fetched from existing `/api/trading/*` endpoints
+    - Security: Read-only pages with no mutation controls or exposed secrets
+  - API: `/api/trading/*` (account, positions, quotes, orders), `/agent/*` (status, decisions, pending-trades), `/batch/*` (analyze, reports)
+  - Requires: `PAPER_API_KEY`, `PAPER_API_SECRET` (Alpaca paper trading credentials)
 
 ## External Dependencies
 - **OpenAI API**: AI responses, agent logic, and text embeddings.

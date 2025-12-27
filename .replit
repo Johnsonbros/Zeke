@@ -1,10 +1,10 @@
-modules = ["nodejs-20", "python-3.11", "web", "bash", "postgresql-16"]
+modules = ["nodejs-20", "python-3.11", "web", "bash", "postgresql-16", "python3"]
 run = "npm run dev"
 hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["libxcrypt", "sqlite", "opensshWithKerberos"]
+packages = ["libxcrypt", "opensshWithKerberos", "sqlite"]
 
 [deployment]
 deploymentTarget = "autoscale"
@@ -26,6 +26,10 @@ author = "agent"
 task = "workflow.run"
 args = "Start application"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Trading Service"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -37,6 +41,18 @@ outputType = "webview"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Trading Service"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python -m uvicorn zeke_trader.api:app --host 0.0.0.0 --port 8000"
+waitForPort = 8000
 
 [agent]
 integrations = ["javascript_openai:1.0.0", "google-calendar:1.0.0", "twilio:1.0.0", "github:1.0.0", "javascript_object_storage:2.0.0", "javascript_database:1.0.0"]
@@ -59,6 +75,16 @@ MORNING_BRIEFING_ENABLED = "true"
 MORNING_BRIEFING_PHONE = "+16176868763"
 KG_ENABLED = "true"
 VITE_KG_ENABLED = "true"
+TRADING_MODE = "paper"
+LIVE_TRADING_ENABLED = "false"
+ALLOWED_SYMBOLS = "NVDA,SPY,META,GOOGL,AVGO,GOOG,AMZN"
+MAX_DOLLARS_PER_TRADE = "25"
+MAX_OPEN_POSITIONS = "3"
+MAX_TRADES_PER_DAY = "5"
+MAX_DAILY_LOSS = "25"
+LOOP_SECONDS = "300"
+LOG_DIR = "zeke_trader/logs"
+AUTONOMY_TIER = "full_agentic"
 
 [[ports]]
 localPort = 5000

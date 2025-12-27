@@ -1,0 +1,135 @@
+AGENTS (OpenAI Agents SDK)
+
+0) OrchestratorAgent (top-level “conductor”)
+- Purpose: run the loop, call sub-agents in order, and return a single “FinalDecision”
+- Inputs: cfg, timestamp
+- Outputs: FinalDecision (TRADE or NO_TRADE) + audit trail
+- Tools it may call: none directly (prefer delegating to sub-agents)
+
+Handoffs (strict order):
+  MarketDataAgent -> SignalAgent -> PortfolioAgent -> RiskGateAgent -> ExecutionAgent -> ObservabilityAgent
+
+------------------------------------------------------------
+
+1) MarketDataAgent (data fetcher)
+- Purpose: fetch minimal bars/quotes needed for breakouts + volatility N
+- Inputs: allowlist, timeframe/limit
+- Outputs: MarketSnapshot.market_data (bars/returns/ATR inputs)
+- Tools (wrap Alpaca MCP):
+  - broker.get_bars(symbol, timeframe, limit)
+  - broker.get_latest_quote(symbol)
+
+Notes:
+- Fail closed: if data missing/stale -> return “DATA_UNAVAILABLE” flag to orchestrator (forces NO_TRADE)
+
+------------------------------------------------------------
+
+2) SignalAgent (Turtle signal generator)
+- Purpose: generate deterministic Turtle signals (System 1 & 2)
+- Inputs: MarketSnapshot.market_data
+- Outputs: list[Signal] (deterministic)
+- Tools (pure local deterministic; no MCP):
+  - strategy.generate_signals(snapshot)  # computes 20/55 breakouts + N + stop distance + exit levels
+
+Critical:
+- This should be *deterministic code*, not LLM reasoning.
+
+Signal schema example:
+  {symbol, direction, system:20|55, entry_ref, N, stop_price, exit_ref, score_hint, reason_hint}
+
+------------------------------------------------------------
+
+3) PortfolioAgent (state + reconciliation)
+- Purpose: pull account + positions; compute exposure; compute today’s trades count from logs
+- Inputs: cfg
+- Outputs: PortfolioState {equity, cash, positions, open_orders?, trades_today, pnl_day}
+- Tools:
+  - broker.get_account()
+  - broker.get_positions()
+  - logger.get_trades_today()          # parse logs
+  - metrics.compute_pnl_day(...)       # optional
+
+Fail closed:
+- If account state is unavailable -> NO_TRADE unless in “shadow” mode.
+
+------------------------------------------------------------
+
+4) DecisionAgent (LLM chooser + explainer, optional but “agentic”)
+- Purpose: choose at most ONE trade from the provided deterministic signals, or NO_TRADE
+- Inputs: signals[], PortfolioState, cfg, high-level market regime hints (optional)
+- Output: Decision (TradeIntent or NoTrade) STRICT SCHEMA
+
+Hard constraints in instructions:
+- Must pick ONLY from provided signals (no inventing symbols/sides)
+- Max 1 trade per loop
+- Default NO_TRADE
+- Prefer SPY or NVDA when multiple equal choices
+- Must use notional_usd sizing (<= MAX_DOLLARS_PER_TRADE; can suggest smaller)
+- Must provide reason
+
+Tools: NONE (it should not talk to broker). It only outputs structured JSON.
+
+------------------------------------------------------------
+
+5) RiskGateAgent (deterministic gatekeeper)
+- Purpose: validate schema + enforce policy + optionally resize/convert to NO_TRADE
+- Inputs: Decision, PortfolioState, cfg
+- Outputs: RiskResult {allowed, notes, final_decision}
+
+Tools (deterministic):
+  - schemas.validate_decision(decision)
+  - risk.risk_check(decision, snapshot, portfolio, cfg) -> (allowed, notes, modified_decision)
+
+Rules enforced:
+- allowlist only
+- notional <= MAX_DOLLARS_PER_TRADE
+- max open positions
+- max trades/day
+- max daily loss
+- optional cooldown / stale-data block
+
+This is the “hard wall” between LLM and execution.
+
+------------------------------------------------------------
+
+6) ExecutionAgent (paper/shadow/live executor; boring on purpose)
+- Purpose: place orders only if RiskGate allowed AND mode allows
+- Inputs: RiskResult.final_decision, cfg
+- Outputs: OrderResult (or “SKIPPED”)
+
+Tools:
+  - executor.execute(final_decision, cfg, broker)   # internally:
+      - if shadow: do not place order
+      - if paper: place_order_notional(...)
+      - if live: require dual latch (TRADING_MODE=live AND LIVE_TRADING_ENABLED=true)
+
+Must:
+- Never execute if decision is NO_TRADE
+- Never execute if risk disallowed
+- Never execute live without latch
+
+------------------------------------------------------------
+
+7) ObservabilityAgent (logger + dashboard feeder)
+- Purpose: log everything every loop; keep audit trail complete
+- Inputs: snapshot, decision, risk_result, order_result, portfolio_state
+- Outputs: none (side effects only)
+
+Tools:
+  - logger.log_decision(...)
+  - logger.log_trade(...)
+  - logger.log_equity(...)
+
+------------------------------------------------------------
+GUARDRAILS (recommended in Agents SDK)
+
+A) Output guardrail on DecisionAgent:
+- Enforce the Decision schema (TradeIntent | NoTrade).
+- Reject tool calls and freeform text.
+
+B) Tool-allowlist guardrail:
+- Only MarketDataAgent/PortfolioAgent/ExecutionAgent can call broker tools.
+- DecisionAgent cannot call broker tools at all.
+
+C) Handoff guardrail:
+- Orchestrator must call RiskGateAgent before ExecutionAgent, always.

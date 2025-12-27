@@ -13018,6 +13018,249 @@ export async function registerRoutes(
   } else {
     console.log("[KnowledgeGraph] Knowledge Graph is DISABLED (KG_ENABLED=false)");
   }
+
+  // ============================================
+  // Trading API Endpoints (zeke_trader integration)
+  // Uses persistent FastAPI trading service on port 8000
+  // ============================================
+  
+  const TRADING_ENABLED = process.env.PAPER_API_KEY || process.env.ALPACA_KEY_ID;
+  const TRADING_SERVICE_URL = "http://localhost:8000";
+  
+  if (TRADING_ENABLED) {
+    console.log("[Trading] Initializing trading API endpoints (using FastAPI service)...");
+    
+    // Helper to call trading service via HTTP
+    async function callTradingService(path: string, method: string = "GET", body?: any): Promise<any> {
+      const url = `${TRADING_SERVICE_URL}${path}`;
+      const options: RequestInit = {
+        method,
+        headers: { "Content-Type": "application/json" },
+      };
+      if (body) {
+        options.body = JSON.stringify(body);
+      }
+      
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Trading service error" }));
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
+      }
+      return response.json();
+    }
+
+    // GET /api/trading/account - Get account info
+    app.get("/api/trading/account", async (_req, res) => {
+      try {
+        const result = await callTradingService("/account");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Account error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/positions - Get open positions
+    app.get("/api/trading/positions", async (_req, res) => {
+      try {
+        const result = await callTradingService("/positions");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Positions error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/orders - Get recent orders
+    app.get("/api/trading/orders", async (_req, res) => {
+      try {
+        const result = await callTradingService("/orders");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Orders error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/quotes - Get market quotes
+    app.get("/api/trading/quotes", async (_req, res) => {
+      try {
+        const result = await callTradingService("/quotes");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Quotes error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/risk-limits - Get risk configuration
+    app.get("/api/trading/risk-limits", async (_req, res) => {
+      try {
+        const result = await callTradingService("/risk-limits");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Risk limits error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/clock - Get market clock
+    app.get("/api/trading/clock", async (_req, res) => {
+      try {
+        const result = await callTradingService("/clock");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Clock error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/bars/:symbol - Get historical bars
+    app.get("/api/trading/bars/:symbol", async (req, res) => {
+      try {
+        const { symbol } = req.params;
+        const timeframe = req.query.timeframe as string || "1Day";
+        const limit = parseInt(req.query.limit as string) || 30;
+        const result = await callTradingService(`/bars/${symbol}?timeframe=${timeframe}&limit=${limit}`);
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Bars error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/snapshot/:symbol - Get stock snapshot
+    app.get("/api/trading/snapshot/:symbol", async (req, res) => {
+      try {
+        const { symbol } = req.params;
+        const result = await callTradingService(`/snapshot/${symbol}`);
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Snapshot error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/news - Get market news
+    app.get("/api/trading/news", async (req, res) => {
+      try {
+        const symbols = req.query.symbols as string || "";
+        const limit = parseInt(req.query.limit as string) || 10;
+        const result = await callTradingService(`/news?symbols=${symbols}&limit=${limit}`);
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] News error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // POST /api/trading/order - Place an order
+    app.post("/api/trading/order", async (req, res) => {
+      try {
+        const { symbol, side, notional } = req.body;
+        
+        if (!symbol || !side || !notional) {
+          return res.status(400).json({ 
+            success: false, 
+            error: "symbol, side, and notional are required" 
+          });
+        }
+        
+        const result = await callTradingService("/order", "POST", { symbol, side, notional });
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Order error:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // === Agent System Endpoints ===
+    
+    // GET /api/trading/agent/status - Get agent system status
+    app.get("/api/trading/agent/status", async (req, res) => {
+      try {
+        const result = await callTradingService("/agent/status");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Agent status error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // POST /api/trading/agent/run-loop - Run one trading loop
+    app.post("/api/trading/agent/run-loop", async (req, res) => {
+      try {
+        const result = await callTradingService("/agent/run-loop", "POST", {});
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Run loop error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/agent/pending-trades - Get pending trades
+    app.get("/api/trading/agent/pending-trades", async (req, res) => {
+      try {
+        const result = await callTradingService("/agent/pending-trades");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Pending trades error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // POST /api/trading/agent/approve-trade/:id - Approve a pending trade
+    app.post("/api/trading/agent/approve-trade/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const result = await callTradingService(`/agent/approve-trade/${id}`, "POST", {});
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Approve trade error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // POST /api/trading/agent/reject-trade/:id - Reject a pending trade
+    app.post("/api/trading/agent/reject-trade/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { reason } = req.body || {};
+        const result = await callTradingService(`/agent/reject-trade/${id}`, "POST", { reason: reason || "" });
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Reject trade error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/agent/recent-loops - Get recent loop history
+    app.get("/api/trading/agent/recent-loops", async (req, res) => {
+      try {
+        const limit = parseInt(req.query.limit as string) || 10;
+        const result = await callTradingService(`/agent/recent-loops?limit=${limit}`);
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Recent loops error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/charts/performance - Get performance chart data
+    app.get("/api/trading/charts/performance", async (req, res) => {
+      try {
+        const result = await callTradingService("/charts/performance");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Charts performance error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    console.log("[Trading] Trading API endpoints registered (FastAPI service on port 8000)");
+  } else {
+    console.log("[Trading] Trading is DISABLED (no API keys configured)");
+  }
   
   return httpServer;
 }

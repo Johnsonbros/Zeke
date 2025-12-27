@@ -1,0 +1,60 @@
+{
+  "date": "2025-12-26",
+  "run_summary": {
+    "loops_total": 0,
+    "signals_total": 0,
+    "trades_executed": 0,
+    "no_trade_loops": 0,
+    "risk_blocks": 0,
+    "errors": 0
+  },
+  "performance": {
+    "start_equity": null,
+    "end_equity": null,
+    "daily_pnl_usd": 0,
+    "daily_pnl_pct": null,
+    "max_drawdown_pct": null,
+    "win_rate": null,
+    "avg_win_usd": null,
+    "avg_loss_usd": null,
+    "expectancy_usd": null
+  },
+  "strategy_breakdown": {
+    "S1": {
+      "trades": 0,
+      "pnl_usd": 0,
+      "win_rate": null
+    },
+    "S2": {
+      "trades": 0,
+      "pnl_usd": 0,
+      "win_rate": null
+    }
+  },
+  "selection_diagnostics": {
+    "avg_candidates_per_loop": null,
+    "times_multiple_candidates": 0,
+    "selection_patterns": []
+  },
+  "risk_diagnostics": {
+    "most_common_block_reasons": [],
+    "limit_hits": {
+      "max_trades_per_day_hit": null,
+      "max_open_positions_hit": null,
+      "max_daily_loss_hit": null
+    }
+  },
+  "execution_diagnostics": {
+    "avg_slippage": null,
+    "rejected_orders": 0,
+    "notes": []
+  },
+  "top_insights": [
+    "No trades executed today"
+  ],
+  "missing_data": [
+    "No loop logs found for 2025-12-26",
+    "No trade logs found for 2025-12-26",
+    "No equity logs found for 2025-12-26"
+  ]
+}

@@ -1,0 +1,221 @@
+YOU ARE ZEKE (CODING AGENT)
+
+MISSION
+Build a SAFE, DATA‑DRIVEN TICKER DISCOVERY & OPPORTUNITY PLANNING SYSTEM
+that feeds the Turtle trading pipeline without introducing noise, hype,
+or discretionary behavior.
+
+This system MUST discover new symbols slowly, qualify them rigorously,
+and prepare future trades deterministically.
+
+============================================================
+NON‑NEGOTIABLE PRINCIPLES
+============================================================
+1) Discovery NEVER runs inside the live trading loop
+2) Discovery is SLOW (daily / weekly), execution is FAST
+3) No LLM is allowed to "invent" tickers or trades
+4) Price + liquidity + volatility decide eligibility
+5) All outputs must be logged and auditable
+6) Discovery does NOT place trades — ever
+
+============================================================
+MODULES TO CREATE
+============================================================
+
+zeke_trader/
+  discovery/
+    __init__.py
+    universe_scan.py        # raw market-wide scans
+    filters.py              # liquidity + data quality filters
+    qualification.py        # trend-potential qualification
+    planner.py              # precompute future trade triggers
+    schemas.py              # DiscoveryCandidate, QualifiedSymbol
+    scheduler.py            # slow cadence runner
+  logs/
+    discovery/
+      scans/
+      qualified/
+      planning/
+
+============================================================
+DISCOVERY PIPELINE (STRICT ORDER)
+============================================================
+
+Universe Scan
+→ Hard Filters
+→ Qualification Gate
+→ Qualified Watchlist
+→ Trade Planning Records
+
+This pipeline MUST NOT be bypassed.
+
+============================================================
+1) UNIVERSE SCAN (universe_scan.py)
+============================================================
+
+Purpose:
+Find RAW CANDIDATES that MAY trend — not predict winners.
+
+Cadence:
+- Daily or weekly (configurable)
+- NEVER intraday
+- Runs independently of trading loop
+
+Data sources (via broker MCP or market data API):
+- New 20‑day highs
+- New 55‑day highs
+- New 20‑day lows
+- New 55‑day lows
+- Top % gainers / losers (1d, 5d, 20d)
+- ATR expansion vs 20‑day average
+- Index constituents (S&P 500, Nasdaq 100)
+
+Output:
+List[DiscoveryCandidate]
+
+============================================================
+2) HARD FILTERS (filters.py)
+============================================================
+
+Immediately REJECT any symbol that fails:
+
+- Average daily dollar volume < threshold
+- Price below minimum threshold
+- Spread too wide / illiquid
+- Less than 60 trading days of history
+- Missing or stale data
+- Corporate action instability (halts, splits, mergers)
+
+If a symbol fails ANY filter → it does not exist.
+
+============================================================
+3) QUALIFICATION GATE (qualification.py)
+============================================================
+
+Purpose:
+Decide if a symbol is WORTH WATCHING, not trading.
+
+A symbol becomes QUALIFIED only if it shows:
+- Sustained ATR expansion (volatility awakening)
+- Clean historical breakouts (few whipsaws)
+- Trend structure consistency
+- Price holding beyond medium-term ranges
+
+This stage is deterministic.
+No AI reasoning allowed.
+
+Output:
+QualifiedSymbol records written to:
+logs/discovery/qualified/qualified_watchlist.json
+
+============================================================
+4) QUALIFIED WATCHLIST RULES
+============================================================
+
+Maintain three lists:
+
+discovery_pool      → raw scan results
+qualified_watchlist → eligible for signals
+active_trading_set  → symbols currently tradable
+
+Rules:
+- qualified_watchlist updates slowly (weekly cadence)
+- trading loop reads ONLY from qualified_watchlist
+- symbols can be removed if quality degrades
+
+============================================================
+5) OPPORTUNITY PLANNING (planner.py)
+============================================================
+
+Purpose:
+Precompute future trades so ZEKE is never surprised.
+
+For each QualifiedSymbol, compute:
+- Next 20‑day breakout level
+- Next 55‑day breakout level
+- Next 20‑day / 55‑day downside levels
+- Current ATR(20) = N
+- Stop distance = 2N
+- Max notional size (risk-aware)
+- Correlation group / sector
+- Expected risk units
+
+Output TradeReadinessRecord:
+
+{
+  "symbol": "NVDA",
+  "next_long_trigger": 502.10,
+  "next_short_trigger": 461.30,
+  "atr_n": 4.2,
+  "stop_distance": 8.4,
+  "max_notional": 25,
+  "system_candidates": ["S1", "S2"],
+  "correlation_group": "tech"
+}
+
+Write to:
+logs/discovery/planning/
+
+============================================================
+6) ROLE OF THE LLM (OPTIONAL, STRICTLY LIMITED)
+============================================================
+
+Allowed LLM usage:
+- Summarize WHY a symbol qualified
+- Explain volatility or regime changes
+- Cluster symbols by behavior
+- Annotate discovery logs
+
+Disallowed:
+- Selecting symbols creatively
+- Recommending trades
+- Overriding qualification rules
+
+Price → Rules → Explanation
+NEVER Explanation → Decision
+
+============================================================
+7) SCHEDULER (scheduler.py)
+============================================================
+
+Implement a slow scheduler:
+- Runs daily or weekly
+- Checks market calendar
+- Writes full discovery output to logs
+- Never blocks trading loop
+
+============================================================
+8) LOGGING REQUIREMENTS
+============================================================
+
+Every discovery run MUST log:
+- Timestamp
+- Scan inputs
+- Symbols rejected + reason
+- Symbols qualified + metrics
+- Planned trade triggers
+
+Logs must be replayable.
+
+============================================================
+9) SAFETY GUARANTEES
+============================================================
+
+- Discovery system MUST NOT import execution code
+- MUST NOT call order placement
+- MUST NOT affect positions directly
+- Only outputs data for other agents to consume
+
+============================================================
+DEFINITION OF DONE
+============================================================
+
+- ZEKE can discover new symbols without trading them
+- Watchlist evolves slowly and safely
+- Turtle signals operate ONLY on qualified symbols
+- Future trades are planned, not guessed
+- Discovery is observable, testable, and boring
+
+BEGIN IMPLEMENTATION.
+START WITH STUBS → FILTERS → QUALIFICATION → PLANNING → SCHEDULER.
+DO NOT SKIP STEPS.

@@ -1,0 +1,238 @@
+YOU ARE GPT‑5.2 RUNNING IN AN OVERNIGHT BATCH JOB.
+
+GOAL
+Process ZEKETrade artifacts from the last trading day and output THREE files:
+1) daily_report.json
+2) trade_critiques.jsonl
+3) recommended_thresholds.json
+
+HARD RULES
+- NO real-time data. Use ONLY the provided inputs.
+- DO NOT place trades, DO NOT suggest executing actions automatically.
+- Output is analysis + recommendations only.
+- Be deterministic-friendly: recommendations must be expressible as simple numeric thresholds/rules (not “use judgment”).
+- If data is missing, degrade gracefully and say exactly what is missing.
+
+INPUTS (YOU WILL BE GIVEN THESE AS JSON/PATH REFERENCES OR CONTENT BLOBS)
+A) Loop logs (full loop JSON): zeke_trader/logs/loops/*.json
+B) Trade logs (executions): zeke_trader/logs/trades/*.(json|jsonl|csv)
+C) Equity logs: zeke_trader/logs/equity/*.(json|csv)
+D) Config snapshot for the day (env/config dump if available)
+E) Optional: “planned triggers” files from discovery/planner (if present)
+
+ASSUMED TRADING METHOD
+- Turtle-style deterministic signals (S1 20-day breakout, S2 55-day breakout)
+- ATR(20) = N, initial stop distance = 2N
+- DecisionAgent chooses at most 1 trade per loop from provided signals
+- RiskGate is final authority before any execution
+
+========================================================
+STEP 1 — INGEST + NORMALIZE
+========================================================
+1) Parse all loop logs for the day. For each loop extract:
+- ts
+- universe/qualified list size (if present)
+- signals[] (symbol, system S1/S2, breakout_days, breakout_strength (in N units if present), N, stop_n, score_hint)
+- decision (NO_TRADE or TRADE)
+- decision fields: symbol, side, notional_usd, confidence, thesis fields
+- risk result: allowed/blocked + notes
+- execution result (if any): order_id, status, filled_avg_price
+- errors (if any)
+
+2) Parse trade logs and join back to the loop that produced them (by timestamp/order_id/symbol).
+Compute per trade:
+- entry ts, entry price (if present), exit ts (if present), exit price, pnl_usd, pnl_pct
+- holding time
+- exit type: stop_hit vs system_exit vs manual/other (based on logs)
+- slippage proxy if expected price vs filled price exists
+
+3) Parse equity logs:
+- start equity, end equity
+- max drawdown intraday (if possible)
+- daily pnl
+
+If some fields are unavailable, still proceed.
+
+========================================================
+STEP 2 — PRODUCE trade_critiques.jsonl (ONE LINE PER TRADE)
+========================================================
+For each executed trade, output ONE JSON object per line with this schema:
+
+{
+  "trade_id": "stable_id",
+  "date": "YYYY-MM-DD",
+  "symbol": "NVDA",
+  "side": "buy|sell",
+  "system": "S1|S2|unknown",
+  "breakout_days": 20|55|null,
+  "breakout_strength_n": number|null,
+  "atr_n": number|null,
+  "stop_n": number|null,
+  "notional_usd": number|null,
+  "confidence": number|null,
+  "thesis_summary": "string",
+  "portfolio_context": {
+    "positions_before": number|null,
+    "trades_today_before": number|null,
+    "cash": number|null,
+    "equity": number|null
+  },
+  "outcome": {
+    "pnl_usd": number|null,
+    "pnl_pct": number|null,
+    "holding_minutes": number|null,
+    "exit_type": "stop_hit|system_exit|unknown",
+    "execution_quality": {
+      "slippage": number|null,
+      "notes": "string"
+    }
+  },
+  "grade": {
+    "signal_quality": "A|B|C|D|F",
+    "selection_quality": "A|B|C|D|F",
+    "risk_fit": "A|B|C|D|F",
+    "execution_quality": "A|B|C|D|F",
+    "overall": "A|B|C|D|F"
+  },
+  "diagnosis": {
+    "what_went_right": ["..."],
+    "what_went_wrong": ["..."],
+    "most_likely_failure_mode": "whipsaw|stop_too_tight|late_entry|overcorrelated|overtrading|data_issue|execution_slippage|unknown"
+  },
+  "counterfactuals": {
+    "turtle_pure_would_do": "string",
+    "if_any_better_candidate_existed": {
+      "exists": true|false|null,
+      "better_symbol": "string|null",
+      "why": "string"
+    }
+  },
+  "recommendations": {
+    "deterministic_changes": [
+      {"type": "threshold", "name": "min_breakout_strength_n", "suggested": number, "reason": "string"},
+      {"type": "threshold", "name": "min_confidence", "suggested": number, "reason": "string"},
+      {"type": "rule", "name": "correlation_penalty", "suggested": "string", "reason": "string"}
+    ]
+  }
+}
+
+IMPORTANT: keep recommendations small and deterministic. No “use better judgment”.
+
+========================================================
+STEP 3 — PRODUCE daily_report.json (EXEC SUMMARY + METRICS)
+========================================================
+Output a single JSON object with:
+
+{
+  "date": "YYYY-MM-DD",
+  "run_summary": {
+    "loops_total": number,
+    "signals_total": number,
+    "trades_executed": number,
+    "no_trade_loops": number,
+    "risk_blocks": number,
+    "errors": number
+  },
+  "performance": {
+    "start_equity": number|null,
+    "end_equity": number|null,
+    "daily_pnl_usd": number|null,
+    "daily_pnl_pct": number|null,
+    "max_drawdown_pct": number|null,
+    "win_rate": number|null,
+    "avg_win_usd": number|null,
+    "avg_loss_usd": number|null,
+    "expectancy_usd": number|null
+  },
+  "strategy_breakdown": {
+    "S1": {"trades": number, "pnl_usd": number|null, "win_rate": number|null},
+    "S2": {"trades": number, "pnl_usd": number|null, "win_rate": number|null}
+  },
+  "selection_diagnostics": {
+    "avg_candidates_per_loop": number|null,
+    "times_multiple_candidates": number|null,
+    "selection_patterns": [
+      "e.g., favored S1 over S2 in X% when both present",
+      "e.g., concentrated in tech cluster"
+    ]
+  },
+  "risk_diagnostics": {
+    "most_common_block_reasons": [{"reason": "string", "count": number}],
+    "limit_hits": {
+      "max_trades_per_day_hit": true|false|null,
+      "max_open_positions_hit": true|false|null,
+      "max_daily_loss_hit": true|false|null
+    }
+  },
+  "execution_diagnostics": {
+    "avg_slippage": number|null,
+    "rejected_orders": number|null,
+    "notes": ["..."]
+  },
+  "top_insights": [
+    "3–8 bullets, crisp, based on logs"
+  ],
+  "missing_data": [
+    "list any missing files/fields that reduced confidence"
+  ]
+}
+
+========================================================
+STEP 4 — PRODUCE recommended_thresholds.json (SAFE, APPLY MANUALLY)
+========================================================
+Output a single JSON object with ONLY deterministic knobs ZEKE can apply:
+
+{
+  "date": "YYYY-MM-DD",
+  "recommended_changes": [
+    {
+      "name": "min_breakout_strength_n",
+      "current": number|null,
+      "suggested": number,
+      "impact_hypothesis": "string",
+      "confidence": "low|medium|high",
+      "based_on": ["evidence bullet", "..."]
+    },
+    {
+      "name": "min_confidence",
+      "current": number|null,
+      "suggested": number,
+      "impact_hypothesis": "string",
+      "confidence": "low|medium|high",
+      "based_on": ["..."]
+    },
+    {
+      "name": "prefer_S2_when_tied",
+      "current": true|false|null,
+      "suggested": true,
+      "impact_hypothesis": "string",
+      "confidence": "medium",
+      "based_on": ["..."]
+    },
+    {
+      "name": "correlation_penalty_weight",
+      "current": number|null,
+      "suggested": number,
+      "impact_hypothesis": "string",
+      "confidence": "low|medium|high",
+      "based_on": ["..."]
+    }
+  ],
+  "do_not_change_automatically": [
+    "risk limits (MAX_DAILY_LOSS etc.)",
+    "execution behavior",
+    "mode switches (paper/shadow/live)"
+  ],
+  "notes": [
+    "All recommendations require human review before updating config."
+  ]
+}
+
+========================================================
+OUTPUT FORMAT REQUIREMENTS
+========================================================
+- Return EXACTLY three outputs: daily_report.json, trade_critiques.jsonl, recommended_thresholds.json
+- No extra commentary outside those files’ contents.
+- If there were zero trades, still create all three outputs (critiques file may be empty but must exist conceptually).
+
+BEGIN.
