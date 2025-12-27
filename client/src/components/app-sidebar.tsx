@@ -54,6 +54,7 @@ import {
   LogOut,
   Bluetooth,
   AudioWaveform,
+  TrendingUp,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import type { Conversation } from "@shared/schema";
@@ -70,6 +71,12 @@ const mainNavItems = [
     icon: Sparkles,
     href: "/profile",
     description: "Help ZEKE understand you",
+  },
+  {
+    title: "Trading",
+    icon: TrendingUp,
+    href: "/trading",
+    description: "Stock trading with ZEKE",
   },
   {
     title: "Grocery List",

@@ -13018,6 +13018,218 @@ export async function registerRoutes(
   } else {
     console.log("[KnowledgeGraph] Knowledge Graph is DISABLED (KG_ENABLED=false)");
   }
+
+  // ============================================
+  // Trading API Endpoints (zeke_trader integration)
+  // ============================================
+  
+  const TRADING_ENABLED = process.env.PAPER_API_KEY || process.env.ALPACA_KEY_ID;
+  
+  if (TRADING_ENABLED) {
+    console.log("[Trading] Initializing trading API endpoints...");
+    
+    // Helper to call Python trading module
+    async function callTradingModule(endpoint: string, method: string = "GET", body?: any): Promise<any> {
+      const { spawn } = await import("child_process");
+      
+      return new Promise((resolve, reject) => {
+        const pythonScript = `
+import sys
+import json
+import os
+
+sys.path.insert(0, '${process.cwd()}')
+
+from zeke_trader.config import load_config
+from zeke_trader.broker_mcp import AlpacaBroker
+
+cfg = load_config()
+broker = AlpacaBroker(cfg)
+
+endpoint = "${endpoint}"
+method = "${method}"
+body = ${body ? JSON.stringify(body) : "None"}
+
+try:
+    if endpoint == "account":
+        result = broker.get_account()
+        if "error" not in result:
+            equity = float(result.get("equity", 0))
+            last_equity = float(result.get("last_equity", equity))
+            result["day_pnl"] = equity - last_equity
+            result["day_pnl_percent"] = ((equity - last_equity) / last_equity * 100) if last_equity > 0 else 0
+            result["trading_mode"] = cfg.trading_mode.value
+            result["live_enabled"] = cfg.live_trading_enabled
+    elif endpoint == "positions":
+        result = broker.get_positions()
+    elif endpoint == "orders":
+        result = broker.list_orders(status="all", limit=20)
+    elif endpoint == "quotes":
+        symbols = cfg.allowed_symbols[:7]
+        result = []
+        for sym in symbols:
+            try:
+                trade_data = broker.get_latest_trade(sym)
+                if "trade" in trade_data:
+                    price = float(trade_data["trade"].get("p", 0))
+                    result.append({
+                        "symbol": sym,
+                        "price": price,
+                        "change": 0,
+                        "change_percent": 0
+                    })
+            except:
+                pass
+    elif endpoint == "risk-limits":
+        from zeke_trader.risk import count_trades_today, get_daily_pnl
+        result = {
+            "max_dollars_per_trade": cfg.max_dollars_per_trade,
+            "max_open_positions": cfg.max_open_positions,
+            "max_trades_per_day": cfg.max_trades_per_day,
+            "max_daily_loss": cfg.max_daily_loss,
+            "allowed_symbols": cfg.allowed_symbols,
+            "trades_today": count_trades_today("zeke_trader/logs"),
+            "daily_pnl": get_daily_pnl("zeke_trader/logs")
+        }
+    elif endpoint == "order" and method == "POST" and body:
+        from zeke_trader.risk import risk_check
+        from zeke_trader.schemas import TradeIntent
+        
+        intent = TradeIntent(
+            decision="trade",
+            symbol=body["symbol"],
+            side=body["side"],
+            notional_usd=float(body["notional"]),
+            confidence=0.9,
+            reason="User initiated trade from dashboard"
+        )
+        
+        allowed, reason = risk_check(intent, cfg)
+        if not allowed:
+            result = {"success": False, "error": reason, "mode": cfg.trading_mode.value}
+        else:
+            trade_result = broker.place_order_notional(
+                symbol=body["symbol"],
+                side=body["side"],
+                notional_usd=float(body["notional"])
+            )
+            result = {
+                "success": trade_result.success,
+                "order_id": trade_result.order_id,
+                "error": trade_result.error,
+                "mode": trade_result.mode
+            }
+    else:
+        result = {"error": "Unknown endpoint"}
+    
+    broker.close()
+    print(json.dumps(result))
+except Exception as e:
+    print(json.dumps({"error": str(e)}))
+`;
+
+        const proc = spawn("python", ["-c", pythonScript]);
+        let stdout = "";
+        let stderr = "";
+        
+        proc.stdout.on("data", (data) => { stdout += data.toString(); });
+        proc.stderr.on("data", (data) => { stderr += data.toString(); });
+        
+        proc.on("close", (code) => {
+          if (code !== 0) {
+            reject(new Error(stderr || "Python process failed"));
+          } else {
+            try {
+              resolve(JSON.parse(stdout.trim()));
+            } catch (e) {
+              reject(new Error("Invalid JSON response: " + stdout));
+            }
+          }
+        });
+        
+        proc.on("error", reject);
+      });
+    }
+
+    // GET /api/trading/account - Get account info
+    app.get("/api/trading/account", async (_req, res) => {
+      try {
+        const result = await callTradingModule("account");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Account error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/positions - Get open positions
+    app.get("/api/trading/positions", async (_req, res) => {
+      try {
+        const result = await callTradingModule("positions");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Positions error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/orders - Get recent orders
+    app.get("/api/trading/orders", async (_req, res) => {
+      try {
+        const result = await callTradingModule("orders");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Orders error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/quotes - Get market quotes
+    app.get("/api/trading/quotes", async (_req, res) => {
+      try {
+        const result = await callTradingModule("quotes");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Quotes error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/risk-limits - Get risk configuration
+    app.get("/api/trading/risk-limits", async (_req, res) => {
+      try {
+        const result = await callTradingModule("risk-limits");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Risk limits error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // POST /api/trading/order - Place an order
+    app.post("/api/trading/order", async (req, res) => {
+      try {
+        const { symbol, side, notional } = req.body;
+        
+        if (!symbol || !side || !notional) {
+          return res.status(400).json({ 
+            success: false, 
+            error: "symbol, side, and notional are required" 
+          });
+        }
+        
+        const result = await callTradingModule("order", "POST", { symbol, side, notional });
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Order error:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    console.log("[Trading] Trading API endpoints registered");
+  } else {
+    console.log("[Trading] Trading is DISABLED (no API keys configured)");
+  }
   
   return httpServer;
 }
