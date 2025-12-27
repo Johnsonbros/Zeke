@@ -36,6 +36,7 @@ import ApplicationsPage from "@/pages/applications";
 import DevicesPage from "@/pages/devices";
 import VoiceProfilesPage from "@/pages/voice-profiles";
 import TradingPage from "@/pages/trading";
+import ZekeTradePage from "@/pages/zeketrade";
 import LoginPage from "@/pages/login";
 import ApplyPage from "@/pages/apply";
 import LandingPage from "@/pages/landing";
@@ -147,6 +148,10 @@ function AuthGate() {
 
   if (location === "/about") {
     return <LandingPage />;
+  }
+
+  if (location === "/zeketrade") {
+    return <ZekeTradePage />;
   }
 
   if (!authenticated) {
