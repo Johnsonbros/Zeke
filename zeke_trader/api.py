@@ -5,6 +5,7 @@ Includes rate limiting middleware to prevent abuse.
 """
 import os
 import time
+import asyncio
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Literal as TypeLiteral
@@ -90,6 +91,8 @@ _rate_limiter = RateLimiter()
 _cfg: Optional[TradingConfig] = None
 _broker: Optional[AlpacaBroker] = None
 _orchestrator: Optional[OrchestratorAgent] = None
+_scheduler_task: Optional[asyncio.Task] = None
+_scheduler_running: bool = False
 
 
 def get_cfg() -> TradingConfig:
@@ -104,9 +107,57 @@ def get_broker() -> AlpacaBroker:
     return _broker
 
 
+async def _run_scheduled_loop():
+    """Background task that runs trading loops at configured intervals."""
+    global _scheduler_running
+    _scheduler_running = True
+    loop_seconds = _cfg.loop_seconds if _cfg else 300
+    
+    logger.info(f"[Scheduler] Started autonomous trading loop (every {loop_seconds}s)")
+    
+    while _scheduler_running:
+        try:
+            kill_switch = os.getenv("TRADING_KILL_SWITCH", "false").lower() == "true"
+            if kill_switch:
+                logger.warning("[Scheduler] Kill switch activated - pausing trading")
+                await asyncio.sleep(60)
+                continue
+            
+            if _orchestrator and _cfg and _cfg.autonomy_tier == AutonomyTier.FULL_AGENTIC:
+                try:
+                    clock = _broker._request("GET", "/v2/clock") if _broker else None
+                    is_market_open = clock.get("is_open", False) if clock else False
+                except Exception:
+                    is_market_open = False
+                
+                if is_market_open:
+                    logger.info("[Scheduler] Running autonomous trading loop...")
+                    try:
+                        result = await asyncio.to_thread(_orchestrator.run_loop)
+                        if result.decision and result.decision.action != "hold":
+                            logger.info(f"[Scheduler] Loop complete: {result.decision.action} {result.decision.symbol}")
+                        else:
+                            logger.info("[Scheduler] Loop complete: No trade signal")
+                    except Exception as e:
+                        logger.error(f"[Scheduler] Loop error: {e}")
+                else:
+                    logger.debug("[Scheduler] Market closed - skipping loop")
+            
+            await asyncio.sleep(loop_seconds)
+            
+        except asyncio.CancelledError:
+            logger.info("[Scheduler] Stopping autonomous trading loop")
+            break
+        except Exception as e:
+            logger.error(f"[Scheduler] Unexpected error: {e}")
+            await asyncio.sleep(60)
+    
+    _scheduler_running = False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _cfg, _broker, _orchestrator
+    global _cfg, _broker, _orchestrator, _scheduler_task
     logger.info("Starting ZEKE Trading Service...")
     _cfg = load_config()
     _broker = AlpacaBroker(_cfg)
@@ -115,7 +166,22 @@ async def lifespan(app: FastAPI):
     logger.info(f"Autonomy tier: {_cfg.autonomy_tier.value}")
     logger.info(f"Allowed symbols: {_cfg.allowed_symbols}")
     logger.info(f"Risk limits: ${_cfg.max_dollars_per_trade}/trade, {_cfg.max_open_positions} positions, {_cfg.max_trades_per_day} trades/day")
+    
+    if _cfg.autonomy_tier == AutonomyTier.FULL_AGENTIC:
+        logger.info("[Scheduler] Full autonomy enabled - starting background scheduler")
+        _scheduler_task = asyncio.create_task(_run_scheduled_loop())
+    
     yield
+    
+    if _scheduler_task:
+        global _scheduler_running
+        _scheduler_running = False
+        _scheduler_task.cancel()
+        try:
+            await _scheduler_task
+        except asyncio.CancelledError:
+            pass
+    
     if _broker:
         _broker.close()
     logger.info("Trading service shutdown complete")

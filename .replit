@@ -82,8 +82,9 @@ MAX_DOLLARS_PER_TRADE = "25"
 MAX_OPEN_POSITIONS = "3"
 MAX_TRADES_PER_DAY = "5"
 MAX_DAILY_LOSS = "25"
-LOOP_SECONDS = "60"
+LOOP_SECONDS = "300"
 LOG_DIR = "zeke_trader/logs"
+AUTONOMY_TIER = "full_agentic"
 
 [[ports]]
 localPort = 5000
