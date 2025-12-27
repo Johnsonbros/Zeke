@@ -104,7 +104,7 @@ export function registerSmsPairingEndpoints(app: Express): void {
         success: true,
         sessionId,
         expiresIn: SMS_VERIFICATION_CONFIG.CODE_EXPIRY_SECONDS,
-        message: "Verification code sent to your phone"
+        message: `Verification code sent to your phone (v6-${Date.now().toString(36)})`
       };
       res.status(200).json(response);
       
