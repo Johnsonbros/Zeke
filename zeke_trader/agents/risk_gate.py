@@ -11,6 +11,7 @@ Rules enforced:
 - max trades/day
 - max daily loss
 - cooldown / stale-data block
+- no pyramiding (Turtle MVP: one entry per symbol)
 """
 import logging
 from typing import List, Tuple
@@ -67,10 +68,16 @@ class RiskGateAgent:
             notes.append(f"Sized down from ${original:.2f} to ${self.config.max_dollars_per_trade:.2f}")
         
         current_positions = len(portfolio.positions)
-        is_new_position = not any(p.symbol == trade.symbol for p in portfolio.positions)
+        existing_position = next(
+            (p for p in portfolio.positions if p.symbol == trade.symbol), 
+            None
+        )
+        is_new_position = existing_position is None
         
-        if trade.side == "buy" and is_new_position:
-            if current_positions >= self.config.max_open_positions:
+        if trade.side == "buy":
+            if not is_new_position:
+                violations.append(f"No pyramiding: already holding {trade.symbol}")
+            elif current_positions >= self.config.max_open_positions:
                 violations.append(f"Max positions reached ({current_positions}/{self.config.max_open_positions})")
         
         if portfolio.trades_today >= self.config.max_trades_per_day:

@@ -15,26 +15,34 @@ The OrchestratorAgent coordinates the loop.
 
 from .schemas import (
     Signal,
+    ScoredSignal,
     TradeIntent,
     NoTrade,
     Decision,
     RiskResult,
     PortfolioState,
+    PositionState,
+    PositionStatus,
     MarketSnapshot,
     OrderResult,
     PendingTrade,
     AutonomyTier,
+    Thesis,
 )
 
 __all__ = [
     "Signal",
+    "ScoredSignal",
     "TradeIntent",
     "NoTrade",
     "Decision",
     "RiskResult",
     "PortfolioState",
+    "PositionState",
+    "PositionStatus",
     "MarketSnapshot",
     "OrderResult",
     "PendingTrade",
     "AutonomyTier",
+    "Thesis",
 ]

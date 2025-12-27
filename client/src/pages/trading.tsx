@@ -904,6 +904,70 @@ export default function TradingPage() {
                   )}
                 </CardContent>
               </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Bot className="h-4 w-4" />
+                    Turtle Strategy Config
+                  </CardTitle>
+                  <CardDescription>
+                    Deterministic Turtle trading rules
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center p-3 rounded-md bg-muted/30">
+                      <p className="text-xs text-muted-foreground">Entry Systems</p>
+                      <div className="mt-1">
+                        <Badge variant="outline" className="mr-1">S1: 20-day</Badge>
+                        <Badge variant="outline">S2: 55-day</Badge>
+                      </div>
+                    </div>
+                    <div className="text-center p-3 rounded-md bg-muted/30">
+                      <p className="text-xs text-muted-foreground">Exit Channels</p>
+                      <div className="mt-1">
+                        <Badge variant="outline" className="mr-1">S1: 10-day</Badge>
+                        <Badge variant="outline">S2: 20-day</Badge>
+                      </div>
+                    </div>
+                    <div className="text-center p-3 rounded-md bg-muted/30">
+                      <p className="text-xs text-muted-foreground">Hard Stop</p>
+                      <p className="text-lg font-bold mt-1">2N</p>
+                      <p className="text-xs text-muted-foreground">from entry</p>
+                    </div>
+                    <div className="text-center p-3 rounded-md bg-muted/30">
+                      <p className="text-xs text-muted-foreground">Pyramiding</p>
+                      <p className="text-lg font-bold mt-1 text-destructive">Disabled</p>
+                      <p className="text-xs text-muted-foreground">MVP rule</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 p-3 rounded-md border">
+                    <p className="text-sm font-medium mb-2">Scoring Formula</p>
+                    <code className="text-xs bg-muted p-2 rounded block">
+                      score = 3.0 * breakout_strength + 1.0 * system_bonus + 1.0 * momentum/N - 1.0 * correlation_penalty
+                    </code>
+                    <div className="grid grid-cols-4 gap-2 mt-3 text-center">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Breakout</p>
+                        <p className="font-bold">3.0x</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">S2 Bonus</p>
+                        <p className="font-bold">1.0x</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Momentum</p>
+                        <p className="font-bold">1.0x</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Correlation</p>
+                        <p className="font-bold text-destructive">-1.0x</p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="positions" className="mt-4">
