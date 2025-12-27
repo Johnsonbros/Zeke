@@ -795,6 +795,102 @@ async def get_performance_charts():
     )
 
 
+class BatchAnalysisRequest(BaseModel):
+    date: Optional[str] = None
+
+
+@app.post("/batch/analyze")
+async def run_batch_analysis(body: BatchAnalysisRequest = None):
+    """
+    Run overnight batch analysis for a trading day.
+    
+    Generates three files:
+    - daily_report.json: Executive summary with metrics
+    - trade_critiques.jsonl: Detailed critique per trade
+    - recommended_thresholds.json: Deterministic config recommendations
+    """
+    from .batch.overnight_analyzer import run_overnight_analysis
+    
+    date = body.date if body else None
+    
+    try:
+        cfg = get_cfg()
+        result = run_overnight_analysis(date=date, log_dir=cfg.log_dir)
+        return result
+    except Exception as e:
+        logger.error(f"Batch analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/batch/reports")
+async def list_batch_reports():
+    """List available batch analysis reports."""
+    from pathlib import Path
+    
+    cfg = get_cfg()
+    reports_dir = Path(cfg.log_dir) / "reports"
+    
+    if not reports_dir.exists():
+        return {"reports": []}
+    
+    reports = []
+    for f in sorted(reports_dir.glob("daily_report_*.json"), reverse=True):
+        try:
+            with open(f, "r") as file:
+                data = json.load(file)
+                reports.append({
+                    "date": data.get("date"),
+                    "file": str(f),
+                    "trades_executed": data.get("run_summary", {}).get("trades_executed", 0),
+                    "daily_pnl_usd": data.get("performance", {}).get("daily_pnl_usd"),
+                })
+        except:
+            continue
+    
+    return {"reports": reports[:30]}
+
+
+@app.get("/batch/report/{date}")
+async def get_batch_report(date: str):
+    """Get a specific batch analysis report by date (YYYYMMDD or YYYY-MM-DD)."""
+    from pathlib import Path
+    
+    cfg = get_cfg()
+    reports_dir = Path(cfg.log_dir) / "reports"
+    
+    date_normalized = date.replace("-", "")
+    
+    daily_report_path = reports_dir / f"daily_report_{date_normalized}.json"
+    critiques_path = reports_dir / f"trade_critiques_{date_normalized}.jsonl"
+    thresholds_path = reports_dir / f"recommended_thresholds_{date_normalized}.json"
+    
+    result = {"date": date}
+    
+    if daily_report_path.exists():
+        with open(daily_report_path, "r") as f:
+            result["daily_report"] = json.load(f)
+    
+    if critiques_path.exists():
+        critiques = []
+        with open(critiques_path, "r") as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        critiques.append(json.loads(line))
+                    except:
+                        continue
+        result["trade_critiques"] = critiques
+    
+    if thresholds_path.exists():
+        with open(thresholds_path, "r") as f:
+            result["recommended_thresholds"] = json.load(f)
+    
+    if len(result) == 1:
+        raise HTTPException(status_code=404, detail=f"No reports found for date {date}")
+    
+    return result
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("TRADING_SERVICE_PORT", "8001"))

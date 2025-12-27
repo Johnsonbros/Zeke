@@ -57,8 +57,14 @@ Key architectural decisions and features include:
   - Paper trading (default) with $100k simulated account; live trading requires explicit unlock
   - Risk limits: $25 max per trade, 3 max positions, 5 trades/day, -$25 daily loss limit
   - Watchlist: NVDA, SPY, META, GOOGL, AVGO, GOOG, AMZN
+  - Multi-agent Turtle Trading System: Conductor orchestrator, DecisionAgent (GPT-4o), RiskGateAgent, ExecutionAgent
+  - Deterministic Turtle strategy: S1 (20-day breakout), S2 (55-day breakout), 2N hard stops, 10/20-day exit channels
+  - Scoring formula: `3.0*breakout_strength + 1.0*system_bonus + 1.0*momentum_per_N - 1.0*correlation_penalty`
+  - Discovery pipeline: Universe scanning, hard filters, qualification gate, opportunity planner (runs daily/weekly)
+  - Overnight Batch Analyzer: Generates daily_report.json, trade_critiques.jsonl, recommended_thresholds.json
   - Trading Dashboard at `/trading` with account overview, real-time quotes, position management, and trade execution
-  - API: `/api/trading/account`, `/api/trading/positions`, `/api/trading/quotes`, `/api/trading/orders`, `/api/trading/order`, `/api/trading/risk-limits`
+  - Mobile Trading Screen with agent status, decision logs, scored signals visualization, Turtle strategy info
+  - API: `/api/trading/*` (account, positions, quotes, orders), `/agent/*` (status, decisions, pending-trades), `/batch/*` (analyze, reports)
   - Requires: `PAPER_API_KEY`, `PAPER_API_SECRET` (Alpaca paper trading credentials)
 
 ## External Dependencies
