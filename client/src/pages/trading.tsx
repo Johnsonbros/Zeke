@@ -82,6 +82,24 @@ interface RiskLimits {
   daily_pnl: number;
 }
 
+interface MarketClock {
+  timestamp: string;
+  is_open: boolean;
+  next_open?: string;
+  next_close?: string;
+}
+
+interface NewsItem {
+  id: number;
+  headline: string;
+  summary: string;
+  author: string;
+  source: string;
+  url: string;
+  symbols: string[];
+  created_at: string;
+}
+
 interface TradeResult {
   success: boolean;
   order_id?: string;
@@ -117,6 +135,16 @@ export default function TradingPage() {
 
   const { data: riskLimits } = useQuery<RiskLimits>({
     queryKey: ["/api/trading/risk-limits"],
+  });
+
+  const { data: marketClock } = useQuery<MarketClock>({
+    queryKey: ["/api/trading/clock"],
+    refetchInterval: 60000,
+  });
+
+  const { data: marketNews } = useQuery<NewsItem[]>({
+    queryKey: ["/api/trading/news"],
+    refetchInterval: 300000,
   });
 
   const placeTradeMutation = useMutation<TradeResult, Error, { symbol: string; side: string; notional: number }>({
@@ -186,6 +214,10 @@ export default function TradingPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Badge variant={marketClock?.is_open ? "default" : "outline"} className="gap-1">
+            <Clock className="h-3 w-3" />
+            {marketClock?.is_open ? "Market Open" : `Opens ${marketClock?.next_open ? format(new Date(marketClock.next_open), "EEE h:mm a") : "Mon"}`}
+          </Badge>
           <Badge variant={isPaperMode ? "secondary" : "destructive"} className="gap-1">
             {isPaperMode ? <ShieldCheck className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
             {isPaperMode ? "Paper Trading" : "LIVE Trading"}
@@ -428,7 +460,10 @@ export default function TradingPage() {
                 Positions ({positions?.length ?? 0})
               </TabsTrigger>
               <TabsTrigger value="orders" data-testid="tab-orders">
-                Recent Orders
+                Orders ({orders?.length ?? 0})
+              </TabsTrigger>
+              <TabsTrigger value="news" data-testid="tab-news">
+                News
               </TabsTrigger>
             </TabsList>
 
@@ -527,6 +562,48 @@ export default function TradingPage() {
                       <Clock className="h-8 w-8 mx-auto mb-2 opacity-50" />
                       <p>No recent orders</p>
                       <p className="text-xs">Your order history will appear here</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="news" className="mt-4">
+              <Card>
+                <CardContent className="pt-4">
+                  {marketNews && marketNews.length > 0 ? (
+                    <div className="space-y-4">
+                      {marketNews.slice(0, 8).map((news) => (
+                        <a
+                          key={news.id}
+                          href={news.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block p-3 rounded-md border hover-elevate"
+                          data-testid={`news-${news.id}`}
+                        >
+                          <p className="font-medium line-clamp-2">{news.headline}</p>
+                          {news.summary && (
+                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{news.summary}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-xs text-muted-foreground">{news.source}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {formatDistanceToNow(new Date(news.created_at), { addSuffix: true })}
+                            </span>
+                            {news.symbols?.slice(0, 3).map((sym) => (
+                              <Badge key={sym} variant="outline" className="text-xs">
+                                {sym}
+                              </Badge>
+                            ))}
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <BarChart3 className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p>No market news available</p>
                     </div>
                   )}
                 </CardContent>

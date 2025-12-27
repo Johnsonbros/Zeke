@@ -1,15 +1,19 @@
 """
 FastAPI Trading Service - Persistent API for ZEKE trading operations.
 Replaces subprocess calls with proper HTTP service.
+Includes rate limiting middleware to prevent abuse.
 """
 import os
+import time
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Literal as TypeLiteral
 from contextlib import asynccontextmanager
+from collections import defaultdict
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .config import load_config, TradingConfig
@@ -23,6 +27,63 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger("zeke_trader")
+
+
+class RateLimiter:
+    """Simple in-memory rate limiter with per-endpoint limits."""
+    
+    def __init__(self):
+        self.requests: Dict[str, List[float]] = defaultdict(list)
+        self.limits = {
+            "/order": (5, 60),
+            "/account": (30, 60),
+            "/positions": (30, 60),
+            "/orders": (30, 60),
+            "/quotes": (60, 60),
+            "/clock": (60, 60),
+            "/bars": (30, 60),
+            "/snapshot": (30, 60),
+            "/news": (20, 60),
+            "/risk-limits": (30, 60),
+            "default": (100, 60),
+        }
+    
+    def _clean_old_requests(self, key: str, window: int):
+        """Remove requests outside the time window."""
+        now = time.time()
+        self.requests[key] = [t for t in self.requests[key] if now - t < window]
+    
+    def is_allowed(self, endpoint: str, client_id: str = "default") -> tuple[bool, int, int]:
+        """Check if request is allowed under rate limit.
+        
+        Returns: (allowed, remaining, retry_after_seconds)
+        """
+        path_key = None
+        for k in self.limits:
+            if k in endpoint:
+                path_key = k
+                break
+        if not path_key:
+            path_key = "default"
+        
+        max_requests, window = self.limits[path_key]
+        key = f"{client_id}:{path_key}"
+        
+        self._clean_old_requests(key, window)
+        
+        current_count = len(self.requests[key])
+        remaining = max_requests - current_count
+        
+        if current_count >= max_requests:
+            oldest = min(self.requests[key]) if self.requests[key] else time.time()
+            retry_after = int(oldest + window - time.time()) + 1
+            return False, 0, retry_after
+        
+        self.requests[key].append(time.time())
+        return True, remaining - 1, 0
+
+
+_rate_limiter = RateLimiter()
 
 _cfg: Optional[TradingConfig] = None
 _broker: Optional[AlpacaBroker] = None
@@ -127,7 +188,30 @@ class StockSnapshot(BaseModel):
 
 
 @app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Rate limiting middleware - checks limits before processing request."""
+    if request.url.path == "/health":
+        return await call_next(request)
+    
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, remaining, retry_after = _rate_limiter.is_allowed(request.url.path, client_ip)
+    
+    if not allowed:
+        logger.warning(f"Rate limit exceeded for {client_ip} on {request.url.path}")
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded", "retry_after": retry_after},
+            headers={"Retry-After": str(retry_after), "X-RateLimit-Remaining": "0"}
+        )
+    
+    response = await call_next(request)
+    response.headers["X-RateLimit-Remaining"] = str(remaining)
+    return response
+
+
+@app.middleware("http")
 async def log_requests(request: Request, call_next):
+    """Request logging middleware."""
     start_time = datetime.utcnow()
     response = await call_next(request)
     duration = (datetime.utcnow() - start_time).total_seconds() * 1000
