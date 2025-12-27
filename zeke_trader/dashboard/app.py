@@ -118,8 +118,42 @@ def main():
         display_cols = ['ts', 'mode', 'action', 'symbol', 'side', 'notional_usd', 'confidence', 'risk_allowed', 'reason']
         available_cols = [c for c in display_cols if c in df.columns]
         st.dataframe(df[available_cols], use_container_width=True, hide_index=True)
+        
+        last_decision = decisions[-1] if decisions else None
+        if last_decision and last_decision.get('thesis'):
+            with st.expander("Last Decision Thesis"):
+                thesis = last_decision['thesis']
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**Summary:** {thesis.get('summary', 'N/A')}")
+                    st.write(f"**System:** {thesis.get('system', 'N/A')} ({thesis.get('breakout_days', 0)}-day)")
+                    st.write(f"**ATR(N):** ${thesis.get('atr_n', 0):.2f}")
+                with col2:
+                    st.write(f"**Signal Score:** {thesis.get('signal_score', 0):.2f}")
+                    st.write(f"**Portfolio Fit:** {thesis.get('portfolio_fit', 'N/A')}")
+                    st.write(f"**Regime:** {thesis.get('regime', 'neutral')}")
     else:
         st.info("No decisions yet. Start the trading loop to generate decisions.")
+    
+    col_no_trade, col_risk = st.columns(2)
+    
+    with col_no_trade:
+        st.subheader("NO_TRADE Reasons")
+        no_trade_decisions = [d for d in decisions if d.get('action') == 'no_trade'] if decisions else []
+        if no_trade_decisions:
+            for d in no_trade_decisions[:5]:
+                st.text(f"{d.get('ts', '')[:19]}: {d.get('reason', 'Unknown')[:80]}")
+        else:
+            st.info("All recent loops resulted in trades.")
+    
+    with col_risk:
+        st.subheader("Risk Blocks")
+        risk_blocked = [d for d in decisions if d.get('risk_allowed') == False] if decisions else []
+        if risk_blocked:
+            for d in risk_blocked[:5]:
+                st.text(f"{d.get('ts', '')[:19]}: {d.get('risk_notes', 'No details')}")
+        else:
+            st.success("No risk blocks in recent history.")
     
     st.subheader("Recent Trades")
     trades = logger.get_recent_trades(limit=10)

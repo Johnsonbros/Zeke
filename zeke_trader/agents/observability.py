@@ -17,6 +17,7 @@ from .schemas import (
     OrderResult,
     PortfolioState,
     Signal,
+    ExitReason,
 )
 from ..config import TradingConfig
 
@@ -85,8 +86,9 @@ class ObservabilityAgent:
         order_id: Optional[str],
         status: str,
         entry_criteria: Optional[dict] = None,
+        thesis: Optional[dict] = None,
     ):
-        """Log individual trade."""
+        """Log individual trade with entry thesis."""
         timestamp = datetime.utcnow()
         date_str = timestamp.strftime("%Y%m%d")
         
@@ -98,6 +100,7 @@ class ObservabilityAgent:
             "order_id": order_id,
             "status": status,
             "entry_criteria": entry_criteria,
+            "thesis": thesis,
         }
         
         trades_file = self.log_dir / "trades" / f"trades_{date_str}.jsonl"
@@ -110,6 +113,42 @@ class ObservabilityAgent:
             
         except Exception as e:
             logger.error(f"Failed to log trade: {e}")
+    
+    def log_exit(
+        self,
+        symbol: str,
+        side: str,
+        exit_reason: ExitReason,
+        order_id: Optional[str] = None,
+        status: str = "filled",
+    ):
+        """Log position exit with structured exit reason."""
+        timestamp = datetime.utcnow()
+        date_str = timestamp.strftime("%Y%m%d")
+        
+        exit_record = {
+            "timestamp": timestamp.isoformat(),
+            "symbol": symbol,
+            "side": side,
+            "order_id": order_id,
+            "status": status,
+            "exit_reason": exit_reason.model_dump() if exit_reason else None,
+        }
+        
+        trades_file = self.log_dir / "trades" / f"trades_{date_str}.jsonl"
+        
+        try:
+            with open(trades_file, "a") as f:
+                f.write(json.dumps(exit_record, default=str) + "\n")
+            
+            logger.info(
+                f"Exit logged: {symbol} {side} | "
+                f"Type: {exit_reason.type} | "
+                f"P&L: ${exit_reason.pnl_usd:.2f}"
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to log exit: {e}")
     
     def log_equity(self, portfolio: PortfolioState):
         """Log equity snapshot for tracking."""

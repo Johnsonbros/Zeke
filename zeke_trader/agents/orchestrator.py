@@ -141,6 +141,7 @@ class OrchestratorAgent:
                     }
                 )
                 
+                thesis_dict = decision.thesis.model_dump() if decision.thesis else None
                 self.observability.log_trade(
                     symbol=decision.symbol,
                     side=decision.side,
@@ -151,6 +152,7 @@ class OrchestratorAgent:
                         "stop_price": decision.stop_price,
                         "exit_ref": decision.exit_trigger,
                     },
+                    thesis=thesis_dict,
                 )
             
             logger.info("[7/7] Logging...")
