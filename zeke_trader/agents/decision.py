@@ -8,7 +8,7 @@ Hard constraints:
 - Default NO_TRADE
 - Prefer SPY or NVDA when multiple equal choices
 - Must use notional_usd sizing (<= MAX_DOLLARS_PER_TRADE)
-- Must provide reason
+- Must provide structured thesis
 """
 import logging
 import json
@@ -22,6 +22,8 @@ from .schemas import (
     Decision,
     PortfolioState,
     SignalDirection,
+    Thesis,
+    MarketRegime,
 )
 from ..config import TradingConfig
 
@@ -40,15 +42,24 @@ HARD RULES:
 
 RESPOND WITH VALID JSON ONLY. No explanation text outside JSON.
 
-For a trade:
+For a trade, include a structured thesis:
 {
   "action": "trade",
   "symbol": "SPY",
   "side": "buy",
   "notional_usd": 25.0,
   "signal_index": 0,
-  "reason": "Strong S1 breakout with good ATR setup",
-  "confidence": 0.7
+  "confidence": 0.7,
+  "thesis": {
+    "summary": "SPY showing strong 20-day breakout with expanding momentum",
+    "system": "S1",
+    "breakout_days": 20,
+    "atr_n": 2.15,
+    "stop_n": 2,
+    "signal_score": 0.72,
+    "portfolio_fit": "Adds broad market exposure, diversifies single-stock risk",
+    "regime": "trend"
+  }
 }
 
 For no trade:
@@ -131,6 +142,18 @@ class DecisionAgent:
         """Process an exit signal into a sell trade."""
         side = "sell" if exit_signal.direction == SignalDirection.EXIT_LONG else "buy"
         
+        system_str = "S1" if exit_signal.system.value == 20 else "S2"
+        thesis = Thesis(
+            summary=exit_signal.reason,
+            system=system_str,
+            breakout_days=exit_signal.system.value,
+            atr_n=exit_signal.atr_n,
+            stop_n=2.0,
+            signal_score=exit_signal.score_hint,
+            portfolio_fit="Exit signal - reducing exposure",
+            regime=MarketRegime.NEUTRAL,
+        )
+        
         return TradeIntent(
             action="trade",
             symbol=exit_signal.symbol,
@@ -140,6 +163,7 @@ class DecisionAgent:
             stop_price=exit_signal.stop_price,
             exit_trigger=exit_signal.exit_ref,
             reason=exit_signal.reason,
+            thesis=thesis,
             confidence=0.95,
         )
     
@@ -216,6 +240,38 @@ Choose ONE trade or NO_TRADE. Respond with JSON only."""
                     self.config.max_dollars_per_trade
                 )
                 
+                thesis = None
+                thesis_data = data.get("thesis")
+                if thesis_data:
+                    regime_str = thesis_data.get("regime", "neutral")
+                    try:
+                        regime = MarketRegime(regime_str)
+                    except ValueError:
+                        regime = MarketRegime.NEUTRAL
+                    
+                    thesis = Thesis(
+                        summary=thesis_data.get("summary", signal.reason),
+                        system=thesis_data.get("system", "S1"),
+                        breakout_days=thesis_data.get("breakout_days", signal.system.value),
+                        atr_n=thesis_data.get("atr_n", signal.atr_n),
+                        stop_n=thesis_data.get("stop_n", 2.0),
+                        signal_score=thesis_data.get("signal_score", signal.score_hint),
+                        portfolio_fit=thesis_data.get("portfolio_fit", "Fits current portfolio"),
+                        regime=regime,
+                    )
+                else:
+                    system_str = "S1" if signal.system.value == 20 else "S2"
+                    thesis = Thesis(
+                        summary=data.get("reason", signal.reason),
+                        system=system_str,
+                        breakout_days=signal.system.value,
+                        atr_n=signal.atr_n,
+                        stop_n=2.0,
+                        signal_score=signal.score_hint,
+                        portfolio_fit="Fits current portfolio",
+                        regime=MarketRegime.NEUTRAL,
+                    )
+                
                 return TradeIntent(
                     action="trade",
                     symbol=signal.symbol,
@@ -224,7 +280,8 @@ Choose ONE trade or NO_TRADE. Respond with JSON only."""
                     signal=signal,
                     stop_price=signal.stop_price,
                     exit_trigger=signal.exit_ref,
-                    reason=data.get("reason", signal.reason),
+                    reason=thesis.summary,
+                    thesis=thesis,
                     confidence=float(data.get("confidence", 0.5)),
                 )
             

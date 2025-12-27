@@ -44,16 +44,49 @@ class Signal(BaseModel):
         use_enum_values = True
 
 
+class MarketRegime(str, Enum):
+    """Market regime classification."""
+    TREND = "trend"
+    NEUTRAL = "neutral"
+    VOLATILE = "volatile"
+
+
+class Thesis(BaseModel):
+    """Structured thesis explaining why a trade was selected."""
+    summary: str = Field(description="Human-readable summary of the trade rationale")
+    system: str = Field(description="S1 or S2")
+    breakout_days: int = Field(description="20 or 55")
+    atr_n: float = Field(description="ATR(20) value used for sizing/stops")
+    stop_n: float = Field(default=2.0, description="Stop distance in ATR multiples")
+    signal_score: float = Field(description="Signal strength 0-1")
+    portfolio_fit: str = Field(description="How this trade fits the portfolio")
+    regime: MarketRegime = Field(default=MarketRegime.NEUTRAL, description="Current market regime")
+    
+    class Config:
+        use_enum_values = True
+
+
+class ExitReason(BaseModel):
+    """Structured reason for exiting a position."""
+    type: str = Field(description="stop_hit, system_exit, manual")
+    rule: str = Field(description="Description of the exit rule triggered")
+    price: float = Field(description="Exit price")
+    pnl_usd: float = Field(description="Realized P&L in USD")
+    pnl_percent: float = Field(default=0.0, description="Realized P&L as percentage")
+    hold_duration_hours: Optional[float] = Field(default=None, description="How long position was held")
+
+
 class TradeIntent(BaseModel):
     """Intention to make a trade (from DecisionAgent)."""
     action: str = "trade"
     symbol: str
     side: str = Field(description="buy or sell")
     notional_usd: float = Field(description="Dollar amount to trade")
-    signal: Signal = Field(description="The signal this trade is based on")
+    signal: Optional[Signal] = Field(default=None, description="The signal this trade is based on")
     stop_price: float = Field(description="Stop loss price locked at entry")
     exit_trigger: float = Field(description="Exit level locked at entry")
     reason: str = Field(description="Why this trade was chosen")
+    thesis: Optional[Thesis] = Field(default=None, description="Structured thesis for the trade")
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     
     class Config:
