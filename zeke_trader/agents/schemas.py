@@ -238,3 +238,112 @@ class LoopResult(BaseModel):
     
     class Config:
         use_enum_values = True
+
+
+class PositionStatus(str, Enum):
+    """Status of a tracked position."""
+    OPEN = "open"
+    CLOSING = "closing"
+    CLOSED = "closed"
+
+
+class PositionState(BaseModel):
+    """
+    Turtle-specific position tracking state.
+    
+    Stores all entry criteria and exit levels for systematic management.
+    Every open position must have a PositionState record.
+    """
+    symbol: str
+    entry_time: datetime = Field(default_factory=datetime.utcnow)
+    entry_price: float
+    system_used: str = Field(description="S1 or S2")
+    n_at_entry: float = Field(description="ATR(20) at entry time")
+    
+    stop_price: float = Field(description="Hard stop price - entry - 2N for longs, entry + 2N for shorts")
+    exit_channel_level: float = Field(description="System exit level - 10-day low (S1) or 20-day low (S2) for longs")
+    
+    side: str = Field(description="long or short")
+    qty: float
+    notional_usd: float
+    
+    highest_close_since_entry: Optional[float] = Field(
+        default=None,
+        description="For trailing stop implementation (optional)"
+    )
+    lowest_close_since_entry: Optional[float] = Field(
+        default=None,
+        description="For trailing stop implementation (optional)"
+    )
+    
+    status: PositionStatus = PositionStatus.OPEN
+    
+    thesis: Optional[Thesis] = None
+    
+    last_update_ts: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        use_enum_values = True
+    
+    def is_stop_hit(self, current_price: float) -> bool:
+        """Check if hard stop is hit based on position side."""
+        if self.side == "long":
+            return current_price <= self.stop_price
+        else:
+            return current_price >= self.stop_price
+    
+    def is_exit_triggered(self, current_price: float) -> bool:
+        """Check if system exit is triggered based on position side."""
+        if self.side == "long":
+            return current_price < self.exit_channel_level
+        else:
+            return current_price > self.exit_channel_level
+    
+    def update_extremes(self, current_close: float):
+        """Update highest/lowest close since entry."""
+        if self.side == "long":
+            if self.highest_close_since_entry is None or current_close > self.highest_close_since_entry:
+                self.highest_close_since_entry = current_close
+        else:
+            if self.lowest_close_since_entry is None or current_close < self.lowest_close_since_entry:
+                self.lowest_close_since_entry = current_close
+        self.last_update_ts = datetime.utcnow()
+
+
+class ScoredSignal(BaseModel):
+    """
+    Signal with deterministic Turtle ranking score.
+    
+    Score formula from Turtle Directives:
+    score = 3.0*(breakout_strength) + 1.0*(system_bonus) + 1.0*(mom_per_N) - 1.0*(correlation_penalty)
+    """
+    signal: Signal
+    breakout_strength: float = Field(
+        default=0.0,
+        description="(price - breakout_level) / N for longs"
+    )
+    system_bonus: float = Field(
+        default=0.0,
+        description="1.0 if S2 (55-day), 0.0 if S1 (20-day)"
+    )
+    momentum_per_n: float = Field(
+        default=0.0,
+        description="20-day return / N"
+    )
+    correlation_penalty: float = Field(
+        default=0.0,
+        description="Increases if already holding similar exposures"
+    )
+    
+    @property
+    def total_score(self) -> float:
+        """Calculate total Turtle ranking score."""
+        return (
+            3.0 * self.breakout_strength +
+            1.0 * self.system_bonus +
+            1.0 * self.momentum_per_n -
+            1.0 * self.correlation_penalty
+        )
+    
+    class Config:
+        use_enum_values = True
