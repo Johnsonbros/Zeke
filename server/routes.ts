@@ -13021,142 +13021,38 @@ export async function registerRoutes(
 
   // ============================================
   // Trading API Endpoints (zeke_trader integration)
+  // Uses persistent FastAPI trading service on port 8000
   // ============================================
   
   const TRADING_ENABLED = process.env.PAPER_API_KEY || process.env.ALPACA_KEY_ID;
+  const TRADING_SERVICE_URL = "http://localhost:8000";
   
   if (TRADING_ENABLED) {
-    console.log("[Trading] Initializing trading API endpoints...");
+    console.log("[Trading] Initializing trading API endpoints (using FastAPI service)...");
     
-    // Helper to call Python trading module
-    async function callTradingModule(endpoint: string, method: string = "GET", body?: any): Promise<any> {
-      const { spawn } = await import("child_process");
+    // Helper to call trading service via HTTP
+    async function callTradingService(path: string, method: string = "GET", body?: any): Promise<any> {
+      const url = `${TRADING_SERVICE_URL}${path}`;
+      const options: RequestInit = {
+        method,
+        headers: { "Content-Type": "application/json" },
+      };
+      if (body) {
+        options.body = JSON.stringify(body);
+      }
       
-      return new Promise((resolve, reject) => {
-        const pythonScript = `
-import sys
-import json
-import os
-
-sys.path.insert(0, '${process.cwd()}')
-
-from zeke_trader.config import load_config
-from zeke_trader.broker_mcp import AlpacaBroker
-
-cfg = load_config()
-broker = AlpacaBroker(cfg)
-
-endpoint = "${endpoint}"
-method = "${method}"
-body = ${body ? JSON.stringify(body) : "None"}
-
-try:
-    if endpoint == "account":
-        result = broker.get_account()
-        if "error" not in result:
-            equity = float(result.get("equity", 0))
-            last_equity = float(result.get("last_equity", equity))
-            result["day_pnl"] = equity - last_equity
-            result["day_pnl_percent"] = ((equity - last_equity) / last_equity * 100) if last_equity > 0 else 0
-            result["trading_mode"] = cfg.trading_mode.value
-            result["live_enabled"] = cfg.live_trading_enabled
-    elif endpoint == "positions":
-        result = broker.get_positions()
-    elif endpoint == "orders":
-        result = broker.list_orders(status="all", limit=20)
-    elif endpoint == "quotes":
-        symbols = cfg.allowed_symbols[:7]
-        result = []
-        for sym in symbols:
-            try:
-                trade_data = broker.get_latest_trade(sym)
-                if "trade" in trade_data:
-                    price = float(trade_data["trade"].get("p", 0))
-                    result.append({
-                        "symbol": sym,
-                        "price": price,
-                        "change": 0,
-                        "change_percent": 0
-                    })
-            except:
-                pass
-    elif endpoint == "risk-limits":
-        from zeke_trader.risk import count_trades_today, get_daily_pnl
-        result = {
-            "max_dollars_per_trade": cfg.max_dollars_per_trade,
-            "max_open_positions": cfg.max_open_positions,
-            "max_trades_per_day": cfg.max_trades_per_day,
-            "max_daily_loss": cfg.max_daily_loss,
-            "allowed_symbols": cfg.allowed_symbols,
-            "trades_today": count_trades_today("zeke_trader/logs"),
-            "daily_pnl": get_daily_pnl("zeke_trader/logs")
-        }
-    elif endpoint == "order" and method == "POST" and body:
-        from zeke_trader.risk import risk_check
-        from zeke_trader.schemas import TradeIntent, MarketSnapshot
-        
-        intent = TradeIntent(
-            decision="trade",
-            symbol=body["symbol"],
-            side=body["side"],
-            notional_usd=float(body["notional"]),
-            confidence=0.9,
-            reason="User initiated trade from dashboard"
-        )
-        
-        snapshot = broker.get_market_snapshot([body["symbol"]])
-        
-        allowed, reason, _ = risk_check(intent, snapshot, cfg)
-        if not allowed:
-            result = {"success": False, "error": reason, "mode": cfg.trading_mode.value}
-        else:
-            trade_result = broker.place_order_notional(
-                symbol=body["symbol"],
-                side=body["side"],
-                notional_usd=float(body["notional"])
-            )
-            result = {
-                "success": trade_result.success,
-                "order_id": trade_result.order_id,
-                "error": trade_result.error,
-                "mode": trade_result.mode
-            }
-    else:
-        result = {"error": "Unknown endpoint"}
-    
-    broker.close()
-    print(json.dumps(result))
-except Exception as e:
-    print(json.dumps({"error": str(e)}))
-`;
-
-        const proc = spawn("python", ["-c", pythonScript]);
-        let stdout = "";
-        let stderr = "";
-        
-        proc.stdout.on("data", (data) => { stdout += data.toString(); });
-        proc.stderr.on("data", (data) => { stderr += data.toString(); });
-        
-        proc.on("close", (code) => {
-          if (code !== 0) {
-            reject(new Error(stderr || "Python process failed"));
-          } else {
-            try {
-              resolve(JSON.parse(stdout.trim()));
-            } catch (e) {
-              reject(new Error("Invalid JSON response: " + stdout));
-            }
-          }
-        });
-        
-        proc.on("error", reject);
-      });
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Trading service error" }));
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
+      }
+      return response.json();
     }
 
     // GET /api/trading/account - Get account info
     app.get("/api/trading/account", async (_req, res) => {
       try {
-        const result = await callTradingModule("account");
+        const result = await callTradingService("/account");
         res.json(result);
       } catch (error: any) {
         console.error("[Trading] Account error:", error);
@@ -13167,7 +13063,7 @@ except Exception as e:
     // GET /api/trading/positions - Get open positions
     app.get("/api/trading/positions", async (_req, res) => {
       try {
-        const result = await callTradingModule("positions");
+        const result = await callTradingService("/positions");
         res.json(result);
       } catch (error: any) {
         console.error("[Trading] Positions error:", error);
@@ -13178,7 +13074,7 @@ except Exception as e:
     // GET /api/trading/orders - Get recent orders
     app.get("/api/trading/orders", async (_req, res) => {
       try {
-        const result = await callTradingModule("orders");
+        const result = await callTradingService("/orders");
         res.json(result);
       } catch (error: any) {
         console.error("[Trading] Orders error:", error);
@@ -13189,7 +13085,7 @@ except Exception as e:
     // GET /api/trading/quotes - Get market quotes
     app.get("/api/trading/quotes", async (_req, res) => {
       try {
-        const result = await callTradingModule("quotes");
+        const result = await callTradingService("/quotes");
         res.json(result);
       } catch (error: any) {
         console.error("[Trading] Quotes error:", error);
@@ -13200,10 +13096,60 @@ except Exception as e:
     // GET /api/trading/risk-limits - Get risk configuration
     app.get("/api/trading/risk-limits", async (_req, res) => {
       try {
-        const result = await callTradingModule("risk-limits");
+        const result = await callTradingService("/risk-limits");
         res.json(result);
       } catch (error: any) {
         console.error("[Trading] Risk limits error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/clock - Get market clock
+    app.get("/api/trading/clock", async (_req, res) => {
+      try {
+        const result = await callTradingService("/clock");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Clock error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/bars/:symbol - Get historical bars
+    app.get("/api/trading/bars/:symbol", async (req, res) => {
+      try {
+        const { symbol } = req.params;
+        const timeframe = req.query.timeframe as string || "1Day";
+        const limit = parseInt(req.query.limit as string) || 30;
+        const result = await callTradingService(`/bars/${symbol}?timeframe=${timeframe}&limit=${limit}`);
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Bars error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/snapshot/:symbol - Get stock snapshot
+    app.get("/api/trading/snapshot/:symbol", async (req, res) => {
+      try {
+        const { symbol } = req.params;
+        const result = await callTradingService(`/snapshot/${symbol}`);
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Snapshot error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/news - Get market news
+    app.get("/api/trading/news", async (req, res) => {
+      try {
+        const symbols = req.query.symbols as string || "";
+        const limit = parseInt(req.query.limit as string) || 10;
+        const result = await callTradingService(`/news?symbols=${symbols}&limit=${limit}`);
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] News error:", error);
         res.status(500).json({ error: error.message });
       }
     });
@@ -13220,7 +13166,7 @@ except Exception as e:
           });
         }
         
-        const result = await callTradingModule("order", "POST", { symbol, side, notional });
+        const result = await callTradingService("/order", "POST", { symbol, side, notional });
         res.json(result);
       } catch (error: any) {
         console.error("[Trading] Order error:", error);
@@ -13228,7 +13174,7 @@ except Exception as e:
       }
     });
 
-    console.log("[Trading] Trading API endpoints registered");
+    console.log("[Trading] Trading API endpoints registered (FastAPI service on port 8000)");
   } else {
     console.log("[Trading] Trading is DISABLED (no API keys configured)");
   }
