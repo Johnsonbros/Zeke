@@ -351,93 +351,93 @@ export default function TradingPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between gap-4 p-4 md:p-6 border-b">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-trading-title">Trading</h1>
-          <p className="text-sm text-muted-foreground">
+      <div className="flex items-center justify-between gap-2 p-3 md:p-6 border-b">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-lg md:text-2xl font-bold" data-testid="text-trading-title">Trading</h1>
+            <Badge variant={marketClock?.is_open ? "default" : "outline"} className="gap-1 text-xs">
+              <Clock className="h-3 w-3" />
+              <span className="hidden sm:inline">{marketClock?.is_open ? "Market Open" : `Opens ${marketClock?.next_open ? format(new Date(marketClock.next_open), "EEE h:mm a") : "Mon"}`}</span>
+              <span className="sm:hidden">{marketClock?.is_open ? "Open" : format(new Date(marketClock?.next_open ?? ""), "EEE")}</span>
+            </Badge>
+            <Badge variant={isPaperMode ? "secondary" : "destructive"} className="gap-1 text-xs">
+              {isPaperMode ? <ShieldCheck className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+              <span className="hidden sm:inline">{isPaperMode ? "Paper Trading" : "LIVE Trading"}</span>
+              <span className="sm:hidden">{isPaperMode ? "Paper" : "LIVE"}</span>
+            </Badge>
+          </div>
+          <p className="text-xs md:text-sm text-muted-foreground hidden md:block">
             Trade stocks with ZEKE's intelligent assistance
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant={marketClock?.is_open ? "default" : "outline"} className="gap-1">
-            <Clock className="h-3 w-3" />
-            {marketClock?.is_open ? "Market Open" : `Opens ${marketClock?.next_open ? format(new Date(marketClock.next_open), "EEE h:mm a") : "Mon"}`}
-          </Badge>
-          <Badge variant={isPaperMode ? "secondary" : "destructive"} className="gap-1">
-            {isPaperMode ? <ShieldCheck className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
-            {isPaperMode ? "Paper Trading" : "LIVE Trading"}
-          </Badge>
-          <Button size="icon" variant="ghost" onClick={refreshAll} data-testid="button-refresh-trading">
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </div>
+        <Button size="icon" variant="ghost" onClick={refreshAll} data-testid="button-refresh-trading">
+          <RefreshCw className="h-4 w-4" />
+        </Button>
       </div>
 
       <ScrollArea className="flex-1">
         <div className="p-4 md:p-6 space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
             <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <Wallet className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Equity</span>
+              <CardContent className="p-3 md:pt-4 md:px-6">
+                <div className="flex items-center gap-1.5">
+                  <Wallet className="h-3.5 w-3.5 md:h-4 md:w-4 text-muted-foreground" />
+                  <span className="text-xs md:text-sm text-muted-foreground">Equity</span>
                 </div>
                 {accountLoading ? (
-                  <Skeleton className="h-7 w-24 mt-1" />
+                  <Skeleton className="h-6 w-20 mt-1" />
                 ) : (
-                  <p className="text-xl font-bold mt-1" data-testid="text-equity">
-                    ${account?.equity?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? "0.00"}
+                  <p className="text-base md:text-xl font-bold mt-1" data-testid="text-equity">
+                    ${account?.equity?.toLocaleString(undefined, { maximumFractionDigits: 0 }) ?? "0"}
                   </p>
                 )}
               </CardContent>
             </Card>
 
             <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <Banknote className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Cash</span>
+              <CardContent className="p-3 md:pt-4 md:px-6">
+                <div className="flex items-center gap-1.5">
+                  <Banknote className="h-3.5 w-3.5 md:h-4 md:w-4 text-muted-foreground" />
+                  <span className="text-xs md:text-sm text-muted-foreground">Cash</span>
                 </div>
                 {accountLoading ? (
-                  <Skeleton className="h-7 w-24 mt-1" />
+                  <Skeleton className="h-6 w-20 mt-1" />
                 ) : (
-                  <p className="text-xl font-bold mt-1" data-testid="text-cash">
-                    ${account?.cash?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? "0.00"}
+                  <p className="text-base md:text-xl font-bold mt-1" data-testid="text-cash">
+                    ${account?.cash?.toLocaleString(undefined, { maximumFractionDigits: 0 }) ?? "0"}
                   </p>
                 )}
               </CardContent>
             </Card>
 
             <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Buying Power</span>
+              <CardContent className="p-3 md:pt-4 md:px-6">
+                <div className="flex items-center gap-1.5">
+                  <Target className="h-3.5 w-3.5 md:h-4 md:w-4 text-muted-foreground" />
+                  <span className="text-xs md:text-sm text-muted-foreground">Buying Power</span>
                 </div>
                 {accountLoading ? (
-                  <Skeleton className="h-7 w-24 mt-1" />
+                  <Skeleton className="h-6 w-20 mt-1" />
                 ) : (
-                  <p className="text-xl font-bold mt-1" data-testid="text-buying-power">
-                    ${account?.buying_power?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? "0.00"}
+                  <p className="text-base md:text-xl font-bold mt-1" data-testid="text-buying-power">
+                    ${account?.buying_power?.toLocaleString(undefined, { maximumFractionDigits: 0 }) ?? "0"}
                   </p>
                 )}
               </CardContent>
             </Card>
 
             <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Day P&L</span>
+              <CardContent className="p-3 md:pt-4 md:px-6">
+                <div className="flex items-center gap-1.5">
+                  <Activity className="h-3.5 w-3.5 md:h-4 md:w-4 text-muted-foreground" />
+                  <span className="text-xs md:text-sm text-muted-foreground">Day P&L</span>
                 </div>
                 {accountLoading ? (
-                  <Skeleton className="h-7 w-24 mt-1" />
+                  <Skeleton className="h-6 w-20 mt-1" />
                 ) : (
-                  <div className="flex items-center gap-2 mt-1">
-                    <p className={`text-xl font-bold ${(account?.day_pnl ?? 0) >= 0 ? "text-green-500" : "text-red-500"}`} data-testid="text-day-pnl">
-                      {(account?.day_pnl ?? 0) >= 0 ? "+" : ""}${account?.day_pnl?.toFixed(2) ?? "0.00"}
-                    </p>
-                  </div>
+                  <p className={`text-base md:text-xl font-bold mt-1 ${(account?.day_pnl ?? 0) >= 0 ? "text-green-500" : "text-red-500"}`} data-testid="text-day-pnl">
+                    {(account?.day_pnl ?? 0) >= 0 ? "+" : ""}${account?.day_pnl?.toFixed(2) ?? "0.00"}
+                  </p>
                 )}
               </CardContent>
             </Card>
@@ -599,40 +599,45 @@ export default function TradingPage() {
             </Card>
           </div>
 
-          <Tabs defaultValue="positions" className="w-full">
-            <TabsList>
-              <TabsTrigger value="analytics" data-testid="tab-analytics">
+          <Tabs defaultValue="analytics" className="w-full">
+            <TabsList className="w-full flex flex-wrap gap-1 h-auto p-1">
+              <TabsTrigger value="analytics" className="flex-1 min-w-fit text-xs md:text-sm" data-testid="tab-analytics">
                 <BarChart3 className="h-3 w-3 mr-1" />
-                Analytics
+                <span className="hidden sm:inline">Analytics</span>
+                <span className="sm:hidden">Charts</span>
               </TabsTrigger>
-              <TabsTrigger value="positions" data-testid="tab-positions">
-                Positions ({positions?.length ?? 0})
+              <TabsTrigger value="positions" className="flex-1 min-w-fit text-xs md:text-sm" data-testid="tab-positions">
+                <span className="hidden sm:inline">Positions</span>
+                <span className="sm:hidden">Pos</span>
+                <span className="ml-1">({positions?.length ?? 0})</span>
               </TabsTrigger>
-              <TabsTrigger value="orders" data-testid="tab-orders">
-                Orders ({orders?.length ?? 0})
+              <TabsTrigger value="orders" className="flex-1 min-w-fit text-xs md:text-sm" data-testid="tab-orders">
+                <span className="hidden sm:inline">Orders</span>
+                <span className="sm:hidden">Ord</span>
+                <span className="ml-1">({orders?.length ?? 0})</span>
               </TabsTrigger>
-              <TabsTrigger value="news" data-testid="tab-news">
+              <TabsTrigger value="news" className="flex-1 min-w-fit text-xs md:text-sm" data-testid="tab-news">
                 News
               </TabsTrigger>
-              <TabsTrigger value="agent" data-testid="tab-agent">
+              <TabsTrigger value="agent" className="flex-1 min-w-fit text-xs md:text-sm" data-testid="tab-agent">
                 Agent {pendingTrades && pendingTrades.length > 0 && `(${pendingTrades.length})`}
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="analytics" className="mt-4 space-y-4">
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-base">
+                    <CardTitle className="flex items-center gap-2 text-sm md:text-base">
                       <TrendingUp className="h-4 w-4" />
                       Equity Curve
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="p-3 md:p-6 pt-0">
                     {chartsLoading ? (
-                      <Skeleton className="h-48 w-full" />
+                      <Skeleton className="h-32 md:h-48 w-full" />
                     ) : performanceCharts?.equity_curve && performanceCharts.equity_curve.length > 0 ? (
-                      <ResponsiveContainer width="100%" height={200}>
+                      <ResponsiveContainer width="100%" height={150}>
                         <AreaChart data={performanceCharts.equity_curve.map(d => ({ 
                           time: d.timestamp.slice(5, 16), 
                           equity: d.value 
@@ -644,8 +649,8 @@ export default function TradingPage() {
                             </linearGradient>
                           </defs>
                           <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                          <XAxis dataKey="time" tick={{ fontSize: 10 }} className="text-muted-foreground" />
-                          <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} className="text-muted-foreground" />
+                          <XAxis dataKey="time" tick={{ fontSize: 9 }} className="text-muted-foreground" />
+                          <YAxis tick={{ fontSize: 9 }} domain={['auto', 'auto']} className="text-muted-foreground" width={45} />
                           <Tooltip 
                             contentStyle={{ 
                               backgroundColor: 'hsl(var(--card))', 
@@ -658,10 +663,11 @@ export default function TradingPage() {
                         </AreaChart>
                       </ResponsiveContainer>
                     ) : (
-                      <div className="h-48 flex items-center justify-center text-muted-foreground">
-                        <div className="text-center">
-                          <LineChart className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                          <p className="text-sm">No equity data yet</p>
+                      <div className="h-32 md:h-48 flex items-center justify-center text-muted-foreground bg-muted/30 rounded-md">
+                        <div className="text-center p-4">
+                          <LineChart className="h-6 w-6 md:h-8 md:w-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-xs md:text-sm">No equity data yet</p>
+                          <p className="text-xs text-muted-foreground mt-1">Run trading loop to generate data</p>
                         </div>
                       </div>
                     )}
@@ -670,16 +676,16 @@ export default function TradingPage() {
 
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-base">
+                    <CardTitle className="flex items-center gap-2 text-sm md:text-base">
                       <Activity className="h-4 w-4" />
                       Drawdown
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="p-3 md:p-6 pt-0">
                     {chartsLoading ? (
-                      <Skeleton className="h-48 w-full" />
+                      <Skeleton className="h-32 md:h-48 w-full" />
                     ) : performanceCharts?.drawdown && performanceCharts.drawdown.length > 0 ? (
-                      <ResponsiveContainer width="100%" height={200}>
+                      <ResponsiveContainer width="100%" height={150}>
                         <AreaChart data={performanceCharts.drawdown.map(d => ({ 
                           time: d.timestamp.slice(5, 16), 
                           dd: d.value 
@@ -691,8 +697,8 @@ export default function TradingPage() {
                             </linearGradient>
                           </defs>
                           <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                          <XAxis dataKey="time" tick={{ fontSize: 10 }} className="text-muted-foreground" />
-                          <YAxis tick={{ fontSize: 10 }} domain={[0, 'auto']} className="text-muted-foreground" />
+                          <XAxis dataKey="time" tick={{ fontSize: 9 }} className="text-muted-foreground" />
+                          <YAxis tick={{ fontSize: 9 }} domain={[0, 'auto']} className="text-muted-foreground" width={35} />
                           <Tooltip 
                             contentStyle={{ 
                               backgroundColor: 'hsl(var(--card))', 
@@ -705,10 +711,11 @@ export default function TradingPage() {
                         </AreaChart>
                       </ResponsiveContainer>
                     ) : (
-                      <div className="h-48 flex items-center justify-center text-muted-foreground">
-                        <div className="text-center">
-                          <TrendingDown className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                          <p className="text-sm">No drawdown data yet</p>
+                      <div className="h-32 md:h-48 flex items-center justify-center text-muted-foreground bg-muted/30 rounded-md">
+                        <div className="text-center p-4">
+                          <TrendingDown className="h-6 w-6 md:h-8 md:w-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-xs md:text-sm">No drawdown data yet</p>
+                          <p className="text-xs text-muted-foreground mt-1">Tracks peak-to-trough declines</p>
                         </div>
                       </div>
                     )}
@@ -716,27 +723,27 @@ export default function TradingPage() {
                 </Card>
               </div>
 
-              <div className="grid md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-base">
+                    <CardTitle className="flex items-center gap-2 text-sm md:text-base">
                       <DollarSign className="h-4 w-4" />
                       P&L by Trade
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="p-3 md:p-6 pt-0">
                     {chartsLoading ? (
-                      <Skeleton className="h-40 w-full" />
+                      <Skeleton className="h-28 md:h-40 w-full" />
                     ) : performanceCharts?.daily_pnl && performanceCharts.daily_pnl.length > 0 ? (
-                      <ResponsiveContainer width="100%" height={160}>
+                      <ResponsiveContainer width="100%" height={120}>
                         <BarChart data={performanceCharts.daily_pnl.map((d, i) => ({ 
                           idx: i + 1, 
                           pnl: d.value,
                           symbol: d.label
                         }))}>
                           <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                          <XAxis dataKey="idx" tick={{ fontSize: 10 }} className="text-muted-foreground" />
-                          <YAxis tick={{ fontSize: 10 }} className="text-muted-foreground" />
+                          <XAxis dataKey="idx" tick={{ fontSize: 9 }} className="text-muted-foreground" />
+                          <YAxis tick={{ fontSize: 9 }} className="text-muted-foreground" width={35} />
                           <Tooltip 
                             contentStyle={{ 
                               backgroundColor: 'hsl(var(--card))', 
@@ -756,10 +763,10 @@ export default function TradingPage() {
                         </BarChart>
                       </ResponsiveContainer>
                     ) : (
-                      <div className="h-40 flex items-center justify-center text-muted-foreground">
-                        <div className="text-center">
-                          <BarChart3 className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                          <p className="text-sm">No P&L data yet</p>
+                      <div className="h-28 md:h-40 flex items-center justify-center text-muted-foreground bg-muted/30 rounded-md">
+                        <div className="text-center p-4">
+                          <BarChart3 className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                          <p className="text-xs md:text-sm">No P&L data yet</p>
                         </div>
                       </div>
                     )}
@@ -768,16 +775,16 @@ export default function TradingPage() {
 
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-base">
+                    <CardTitle className="flex items-center gap-2 text-sm md:text-base">
                       <PieChart className="h-4 w-4" />
                       Trades by Symbol
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="p-3 md:p-6 pt-0">
                     {chartsLoading ? (
-                      <Skeleton className="h-40 w-full" />
+                      <Skeleton className="h-28 md:h-40 w-full" />
                     ) : performanceCharts?.trade_distribution && performanceCharts.trade_distribution.length > 0 ? (
-                      <ResponsiveContainer width="100%" height={160}>
+                      <ResponsiveContainer width="100%" height={120}>
                         <RechartsPie>
                           <Pie
                             data={performanceCharts.trade_distribution}
@@ -785,7 +792,7 @@ export default function TradingPage() {
                             nameKey="symbol"
                             cx="50%"
                             cy="50%"
-                            outerRadius={60}
+                            outerRadius={45}
                             label={({ symbol, percent }) => `${symbol} ${(percent * 100).toFixed(0)}%`}
                             labelLine={false}
                           >
@@ -803,40 +810,40 @@ export default function TradingPage() {
                         </RechartsPie>
                       </ResponsiveContainer>
                     ) : (
-                      <div className="h-40 flex items-center justify-center text-muted-foreground">
-                        <div className="text-center">
-                          <PieChart className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                          <p className="text-sm">No trade data yet</p>
+                      <div className="h-28 md:h-40 flex items-center justify-center text-muted-foreground bg-muted/30 rounded-md">
+                        <div className="text-center p-4">
+                          <PieChart className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                          <p className="text-xs md:text-sm">No trade data yet</p>
                         </div>
                       </div>
                     )}
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="sm:col-span-2 md:col-span-1">
                   <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-base">
+                    <CardTitle className="flex items-center gap-2 text-sm md:text-base">
                       <Target className="h-4 w-4" />
                       Win/Loss Ratio
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="p-3 md:p-6 pt-0">
                     {chartsLoading ? (
-                      <Skeleton className="h-40 w-full" />
+                      <Skeleton className="h-28 md:h-40 w-full" />
                     ) : performanceCharts?.win_loss && (performanceCharts.win_loss.wins > 0 || performanceCharts.win_loss.losses > 0) ? (
-                      <div className="h-40 flex flex-col items-center justify-center">
-                        <div className="flex items-center gap-4 mb-4">
+                      <div className="h-28 md:h-40 flex flex-col items-center justify-center">
+                        <div className="flex items-center gap-4 mb-3">
                           <div className="text-center">
-                            <p className="text-2xl font-bold text-green-500">{performanceCharts.win_loss.wins}</p>
+                            <p className="text-xl md:text-2xl font-bold text-green-500">{performanceCharts.win_loss.wins}</p>
                             <p className="text-xs text-muted-foreground">Wins</p>
                           </div>
-                          <div className="text-2xl text-muted-foreground">/</div>
+                          <div className="text-xl md:text-2xl text-muted-foreground">/</div>
                           <div className="text-center">
-                            <p className="text-2xl font-bold text-red-500">{performanceCharts.win_loss.losses}</p>
+                            <p className="text-xl md:text-2xl font-bold text-red-500">{performanceCharts.win_loss.losses}</p>
                             <p className="text-xs text-muted-foreground">Losses</p>
                           </div>
                         </div>
-                        <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
+                        <div className="w-full bg-muted rounded-full h-2.5 overflow-hidden">
                           <div 
                             className="h-full bg-green-500 transition-all"
                             style={{ 
@@ -844,15 +851,15 @@ export default function TradingPage() {
                             }}
                           />
                         </div>
-                        <p className="text-sm text-muted-foreground mt-2">
+                        <p className="text-xs md:text-sm text-muted-foreground mt-2">
                           {((performanceCharts.win_loss.wins / (performanceCharts.win_loss.wins + performanceCharts.win_loss.losses)) * 100).toFixed(0)}% Win Rate
                         </p>
                       </div>
                     ) : (
-                      <div className="h-40 flex items-center justify-center text-muted-foreground">
-                        <div className="text-center">
-                          <Target className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                          <p className="text-sm">No win/loss data yet</p>
+                      <div className="h-28 md:h-40 flex items-center justify-center text-muted-foreground bg-muted/30 rounded-md">
+                        <div className="text-center p-4">
+                          <Target className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                          <p className="text-xs md:text-sm">No win/loss data yet</p>
                         </div>
                       </div>
                     )}
@@ -862,24 +869,24 @@ export default function TradingPage() {
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base">
+                  <CardTitle className="flex items-center gap-2 text-sm md:text-base">
                     <Zap className="h-4 w-4" />
                     Signal Confidence History
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-3 md:p-6 pt-0">
                   {chartsLoading ? (
-                    <Skeleton className="h-32 w-full" />
+                    <Skeleton className="h-24 md:h-32 w-full" />
                   ) : performanceCharts?.signal_confidence && performanceCharts.signal_confidence.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={120}>
+                    <ResponsiveContainer width="100%" height={100}>
                       <RechartsLine data={performanceCharts.signal_confidence.map((d, i) => ({ 
                         idx: i + 1, 
                         score: d.value,
                         symbol: d.label 
                       }))}>
                         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                        <XAxis dataKey="idx" tick={{ fontSize: 10 }} className="text-muted-foreground" />
-                        <YAxis tick={{ fontSize: 10 }} domain={[0, 1]} className="text-muted-foreground" />
+                        <XAxis dataKey="idx" tick={{ fontSize: 9 }} className="text-muted-foreground" />
+                        <YAxis tick={{ fontSize: 9 }} domain={[0, 1]} className="text-muted-foreground" width={30} />
                         <Tooltip 
                           contentStyle={{ 
                             backgroundColor: 'hsl(var(--card))', 
@@ -891,14 +898,15 @@ export default function TradingPage() {
                             props.payload.symbol || 'Confidence'
                           ]}
                         />
-                        <Line type="monotone" dataKey="score" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} />
+                        <Line type="monotone" dataKey="score" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 2 }} />
                       </RechartsLine>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="h-32 flex items-center justify-center text-muted-foreground">
-                      <div className="text-center">
-                        <Zap className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">No signal confidence data yet</p>
+                    <div className="h-24 md:h-32 flex items-center justify-center text-muted-foreground bg-muted/30 rounded-md">
+                      <div className="text-center p-4">
+                        <Zap className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                        <p className="text-xs md:text-sm">No signal confidence data yet</p>
+                        <p className="text-xs text-muted-foreground mt-1">Tracks AI decision confidence</p>
                       </div>
                     </div>
                   )}
@@ -907,62 +915,62 @@ export default function TradingPage() {
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base">
+                  <CardTitle className="flex items-center gap-2 text-sm md:text-base">
                     <Bot className="h-4 w-4" />
                     Turtle Strategy Config
                   </CardTitle>
-                  <CardDescription>
+                  <CardDescription className="text-xs md:text-sm">
                     Deterministic Turtle trading rules
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="text-center p-3 rounded-md bg-muted/30">
-                      <p className="text-xs text-muted-foreground">Entry Systems</p>
-                      <div className="mt-1">
-                        <Badge variant="outline" className="mr-1">S1: 20-day</Badge>
-                        <Badge variant="outline">S2: 55-day</Badge>
+                <CardContent className="p-3 md:p-6 pt-0">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
+                    <div className="text-center p-2 md:p-3 rounded-md bg-muted/30">
+                      <p className="text-xs text-muted-foreground">Entry</p>
+                      <div className="mt-1 flex flex-col gap-1">
+                        <Badge variant="outline" className="text-xs">S1: 20d</Badge>
+                        <Badge variant="outline" className="text-xs">S2: 55d</Badge>
                       </div>
                     </div>
-                    <div className="text-center p-3 rounded-md bg-muted/30">
-                      <p className="text-xs text-muted-foreground">Exit Channels</p>
-                      <div className="mt-1">
-                        <Badge variant="outline" className="mr-1">S1: 10-day</Badge>
-                        <Badge variant="outline">S2: 20-day</Badge>
+                    <div className="text-center p-2 md:p-3 rounded-md bg-muted/30">
+                      <p className="text-xs text-muted-foreground">Exit</p>
+                      <div className="mt-1 flex flex-col gap-1">
+                        <Badge variant="outline" className="text-xs">S1: 10d</Badge>
+                        <Badge variant="outline" className="text-xs">S2: 20d</Badge>
                       </div>
                     </div>
-                    <div className="text-center p-3 rounded-md bg-muted/30">
+                    <div className="text-center p-2 md:p-3 rounded-md bg-muted/30">
                       <p className="text-xs text-muted-foreground">Hard Stop</p>
-                      <p className="text-lg font-bold mt-1">2N</p>
+                      <p className="text-base md:text-lg font-bold mt-1">2N</p>
                       <p className="text-xs text-muted-foreground">from entry</p>
                     </div>
-                    <div className="text-center p-3 rounded-md bg-muted/30">
+                    <div className="text-center p-2 md:p-3 rounded-md bg-muted/30">
                       <p className="text-xs text-muted-foreground">Pyramiding</p>
-                      <p className="text-lg font-bold mt-1 text-destructive">Disabled</p>
+                      <p className="text-base md:text-lg font-bold mt-1 text-destructive">Off</p>
                       <p className="text-xs text-muted-foreground">MVP rule</p>
                     </div>
                   </div>
-                  <div className="mt-4 p-3 rounded-md border">
-                    <p className="text-sm font-medium mb-2">Scoring Formula</p>
-                    <code className="text-xs bg-muted p-2 rounded block">
-                      score = 3.0 * breakout_strength + 1.0 * system_bonus + 1.0 * momentum/N - 1.0 * correlation_penalty
+                  <div className="mt-3 md:mt-4 p-2 md:p-3 rounded-md border">
+                    <p className="text-xs md:text-sm font-medium mb-2">Scoring Formula</p>
+                    <code className="text-xs bg-muted p-1.5 md:p-2 rounded block overflow-x-auto whitespace-nowrap">
+                      3.0*breakout + 1.0*S2_bonus + 1.0*momentum/N - 1.0*correlation
                     </code>
-                    <div className="grid grid-cols-4 gap-2 mt-3 text-center">
+                    <div className="grid grid-cols-4 gap-1 md:gap-2 mt-2 md:mt-3 text-center">
                       <div>
                         <p className="text-xs text-muted-foreground">Breakout</p>
-                        <p className="font-bold">3.0x</p>
+                        <p className="text-sm md:text-base font-bold">3.0x</p>
                       </div>
                       <div>
-                        <p className="text-xs text-muted-foreground">S2 Bonus</p>
-                        <p className="font-bold">1.0x</p>
+                        <p className="text-xs text-muted-foreground">S2</p>
+                        <p className="text-sm md:text-base font-bold">1.0x</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Momentum</p>
-                        <p className="font-bold">1.0x</p>
+                        <p className="text-sm md:text-base font-bold">1.0x</p>
                       </div>
                       <div>
-                        <p className="text-xs text-muted-foreground">Correlation</p>
-                        <p className="font-bold text-destructive">-1.0x</p>
+                        <p className="text-xs text-muted-foreground">Corr</p>
+                        <p className="text-sm md:text-base font-bold text-destructive">-1.0x</p>
                       </div>
                     </div>
                   </div>
