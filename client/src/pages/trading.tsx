@@ -28,6 +28,10 @@ import {
   Banknote,
   Target,
   Zap,
+  Play,
+  CheckCircle,
+  XCircle,
+  Bot,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -107,6 +111,47 @@ interface TradeResult {
   mode: string;
 }
 
+interface AgentStatus {
+  mode: string;
+  autonomy: string;
+  allowed_symbols: string[];
+  risk_limits: {
+    max_per_trade: number;
+    max_positions: number;
+    max_trades_day: number;
+    max_daily_loss: number;
+  };
+  can_execute: boolean;
+}
+
+interface PendingTrade {
+  id: string;
+  trade_intent: {
+    symbol: string;
+    side: string;
+    notional_usd: number;
+    reason: string;
+    confidence: number;
+    stop_price: number;
+    exit_trigger: number;
+  };
+  status: string;
+  created_at: string;
+  expires_at: string;
+}
+
+interface LoopResult {
+  loop_id: string;
+  timestamp: string;
+  signals_count: number;
+  decision: any;
+  risk_allowed: boolean;
+  order_status: string;
+  pending_trade_id: string | null;
+  duration_ms: number;
+  errors: string[];
+}
+
 export default function TradingPage() {
   const { toast } = useToast();
   const [selectedSymbol, setSelectedSymbol] = useState("SPY");
@@ -145,6 +190,69 @@ export default function TradingPage() {
   const { data: marketNews } = useQuery<NewsItem[]>({
     queryKey: ["/api/trading/news"],
     refetchInterval: 300000,
+  });
+
+  const { data: agentStatus } = useQuery<AgentStatus>({
+    queryKey: ["/api/trading/agent/status"],
+    refetchInterval: 30000,
+  });
+
+  const { data: pendingTrades, refetch: refetchPendingTrades } = useQuery<PendingTrade[]>({
+    queryKey: ["/api/trading/agent/pending-trades"],
+    refetchInterval: 10000,
+  });
+
+  const runLoopMutation = useMutation<LoopResult, Error>({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/trading/agent/run-loop", {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Analysis Complete",
+        description: `Found ${data.signals_count} signals. ${data.pending_trade_id ? "Trade pending approval." : "No trade recommended."}`,
+      });
+      refetchPendingTrades();
+      queryClient.invalidateQueries({ queryKey: ["/api/trading/agent/status"] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Analysis Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const approveTradeMutation = useMutation<any, Error, string>({
+    mutationFn: async (tradeId) => {
+      const res = await apiRequest("POST", `/api/trading/agent/approve-trade/${tradeId}`, {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: data.executed ? "Trade Executed" : "Approval Failed",
+        description: data.message,
+        variant: data.executed ? "default" : "destructive",
+      });
+      refetchPendingTrades();
+      queryClient.invalidateQueries({ queryKey: ["/api/trading/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trading/positions"] });
+    },
+  });
+
+  const rejectTradeMutation = useMutation<any, Error, string>({
+    mutationFn: async (tradeId) => {
+      const res = await apiRequest("POST", `/api/trading/agent/reject-trade/${tradeId}`, { reason: "User rejected" });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Trade Rejected",
+        description: "The pending trade has been rejected.",
+      });
+      refetchPendingTrades();
+    },
   });
 
   const placeTradeMutation = useMutation<TradeResult, Error, { symbol: string; side: string; notional: number }>({
@@ -465,6 +573,9 @@ export default function TradingPage() {
               <TabsTrigger value="news" data-testid="tab-news">
                 News
               </TabsTrigger>
+              <TabsTrigger value="agent" data-testid="tab-agent">
+                Agent {pendingTrades && pendingTrades.length > 0 && `(${pendingTrades.length})`}
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="positions" className="mt-4">
@@ -604,6 +715,142 @@ export default function TradingPage() {
                     <div className="text-center py-8 text-muted-foreground">
                       <BarChart3 className="h-8 w-8 mx-auto mb-2 opacity-50" />
                       <p>No market news available</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="agent" className="mt-4 space-y-4">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center justify-between gap-2 text-base">
+                    <div className="flex items-center gap-2">
+                      <Bot className="h-4 w-4" />
+                      Turtle Trading Agent
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">
+                        {agentStatus?.autonomy === "manual" ? "Manual" : 
+                         agentStatus?.autonomy === "moderate" ? "Moderate" : 
+                         agentStatus?.autonomy === "full_agentic" ? "Full Auto" : "Manual"}
+                      </Badge>
+                      <Button
+                        size="sm"
+                        onClick={() => runLoopMutation.mutate()}
+                        disabled={runLoopMutation.isPending}
+                        data-testid="button-run-analysis"
+                      >
+                        <Play className="h-3 w-3 mr-1" />
+                        {runLoopMutation.isPending ? "Analyzing..." : "Run Analysis"}
+                      </Button>
+                    </div>
+                  </CardTitle>
+                  <CardDescription>
+                    Autonomous Turtle strategy with 3 autonomy tiers
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div className="p-2 rounded-md bg-muted/30">
+                      <p className="text-muted-foreground">Mode</p>
+                      <p className="font-medium">{agentStatus?.mode ?? "paper"}</p>
+                    </div>
+                    <div className="p-2 rounded-md bg-muted/30">
+                      <p className="text-muted-foreground">Can Execute</p>
+                      <p className="font-medium">{agentStatus?.can_execute ? "Yes" : "No"}</p>
+                    </div>
+                    <div className="p-2 rounded-md bg-muted/30">
+                      <p className="text-muted-foreground">Max/Trade</p>
+                      <p className="font-medium">${agentStatus?.risk_limits?.max_per_trade ?? 25}</p>
+                    </div>
+                    <div className="p-2 rounded-md bg-muted/30">
+                      <p className="text-muted-foreground">Max Positions</p>
+                      <p className="font-medium">{agentStatus?.risk_limits?.max_positions ?? 3}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Clock className="h-4 w-4" />
+                    Pending Trades
+                  </CardTitle>
+                  <CardDescription>
+                    Trades awaiting your approval
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {pendingTrades && pendingTrades.length > 0 ? (
+                    <div className="space-y-3">
+                      {pendingTrades.map((trade) => (
+                        <div
+                          key={trade.id}
+                          className="p-4 rounded-md border"
+                          data-testid={`pending-trade-${trade.id.slice(0, 8)}`}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
+                                trade.trade_intent.side === "buy" 
+                                  ? "bg-green-500/20 text-green-500" 
+                                  : "bg-red-500/20 text-red-500"
+                              }`}>
+                                {trade.trade_intent.side === "buy" 
+                                  ? <ArrowUpRight className="h-4 w-4" /> 
+                                  : <ArrowDownRight className="h-4 w-4" />}
+                              </div>
+                              <div>
+                                <p className="font-bold">{trade.trade_intent.symbol}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {trade.trade_intent.side.toUpperCase()} ${trade.trade_intent.notional_usd.toFixed(2)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() => approveTradeMutation.mutate(trade.id)}
+                                disabled={approveTradeMutation.isPending}
+                                data-testid={`button-approve-${trade.id.slice(0, 8)}`}
+                              >
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => rejectTradeMutation.mutate(trade.id)}
+                                disabled={rejectTradeMutation.isPending}
+                                data-testid={`button-reject-${trade.id.slice(0, 8)}`}
+                              >
+                                <XCircle className="h-3 w-3 mr-1" />
+                                Reject
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="text-sm text-muted-foreground space-y-1">
+                            <p>{trade.trade_intent.reason}</p>
+                            <div className="flex items-center gap-4 text-xs">
+                              <span>Stop: ${trade.trade_intent.stop_price?.toFixed(2) ?? "—"}</span>
+                              <span>Exit: ${trade.trade_intent.exit_trigger?.toFixed(2) ?? "—"}</span>
+                              <span>Confidence: {((trade.trade_intent.confidence ?? 0.5) * 100).toFixed(0)}%</span>
+                              <span>
+                                Expires {formatDistanceToNow(new Date(trade.expires_at), { addSuffix: true })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Bot className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p>No pending trades</p>
+                      <p className="text-xs">Run analysis to generate trade recommendations</p>
                     </div>
                   )}
                 </CardContent>

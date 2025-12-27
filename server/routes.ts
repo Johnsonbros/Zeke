@@ -13174,6 +13174,78 @@ export async function registerRoutes(
       }
     });
 
+    // === Agent System Endpoints ===
+    
+    // GET /api/trading/agent/status - Get agent system status
+    app.get("/api/trading/agent/status", async (req, res) => {
+      try {
+        const result = await callTradingService("/agent/status");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Agent status error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // POST /api/trading/agent/run-loop - Run one trading loop
+    app.post("/api/trading/agent/run-loop", async (req, res) => {
+      try {
+        const result = await callTradingService("/agent/run-loop", "POST", {});
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Run loop error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/agent/pending-trades - Get pending trades
+    app.get("/api/trading/agent/pending-trades", async (req, res) => {
+      try {
+        const result = await callTradingService("/agent/pending-trades");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Pending trades error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // POST /api/trading/agent/approve-trade/:id - Approve a pending trade
+    app.post("/api/trading/agent/approve-trade/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const result = await callTradingService(`/agent/approve-trade/${id}`, "POST", {});
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Approve trade error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // POST /api/trading/agent/reject-trade/:id - Reject a pending trade
+    app.post("/api/trading/agent/reject-trade/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { reason } = req.body || {};
+        const result = await callTradingService(`/agent/reject-trade/${id}`, "POST", { reason: reason || "" });
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Reject trade error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/agent/recent-loops - Get recent loop history
+    app.get("/api/trading/agent/recent-loops", async (req, res) => {
+      try {
+        const limit = parseInt(req.query.limit as string) || 10;
+        const result = await callTradingService(`/agent/recent-loops?limit=${limit}`);
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Recent loops error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
     console.log("[Trading] Trading API endpoints registered (FastAPI service on port 8000)");
   } else {
     console.log("[Trading] Trading is DISABLED (no API keys configured)");

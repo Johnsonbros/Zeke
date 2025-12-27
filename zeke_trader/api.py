@@ -16,10 +16,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from .config import load_config, TradingConfig
+from .config import load_config, TradingConfig, AutonomyTier
 from .broker_mcp import AlpacaBroker
 from .risk import risk_check, count_trades_today, get_daily_pnl
 from .schemas import TradeIntent, MarketSnapshot
+from .agents.orchestrator import OrchestratorAgent
+from .agents.schemas import PendingTradeStatus
 
 logging.basicConfig(
     level=logging.INFO,
@@ -87,6 +89,7 @@ _rate_limiter = RateLimiter()
 
 _cfg: Optional[TradingConfig] = None
 _broker: Optional[AlpacaBroker] = None
+_orchestrator: Optional[OrchestratorAgent] = None
 
 
 def get_cfg() -> TradingConfig:
@@ -103,11 +106,13 @@ def get_broker() -> AlpacaBroker:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _cfg, _broker
+    global _cfg, _broker, _orchestrator
     logger.info("Starting ZEKE Trading Service...")
     _cfg = load_config()
     _broker = AlpacaBroker(_cfg)
+    _orchestrator = OrchestratorAgent(_cfg)
     logger.info(f"Trading mode: {_cfg.trading_mode.value}")
+    logger.info(f"Autonomy tier: {_cfg.autonomy_tier.value}")
     logger.info(f"Allowed symbols: {_cfg.allowed_symbols}")
     logger.info(f"Risk limits: ${_cfg.max_dollars_per_trade}/trade, {_cfg.max_open_positions} positions, {_cfg.max_trades_per_day} trades/day")
     yield
@@ -408,6 +413,113 @@ async def get_news_feed(symbols: Optional[str] = None, limit: int = 10):
     
     news_items = result.get("news", [])
     return news_items
+
+
+class AutonomyTierRequest(BaseModel):
+    tier: str
+
+
+@app.get("/agent/status")
+async def get_agent_status():
+    """Get current agent system status."""
+    if not _orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    
+    status = _orchestrator.get_status()
+    return status
+
+
+@app.post("/agent/run-loop")
+async def run_agent_loop():
+    """Run one trading loop through the agent system."""
+    if not _orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    
+    logger.info("Running agent loop...")
+    result = await _orchestrator.run_loop()
+    
+    response = {
+        "loop_id": result.loop_id,
+        "timestamp": result.timestamp.isoformat(),
+        "signals_count": len(result.signals),
+        "decision": result.decision.model_dump() if result.decision else None,
+        "risk_allowed": result.risk_result.allowed if result.risk_result else None,
+        "order_status": result.order_result.status if result.order_result else None,
+        "pending_trade_id": result.pending_trade.id if result.pending_trade else None,
+        "duration_ms": result.duration_ms,
+        "errors": result.errors,
+    }
+    
+    return response
+
+
+@app.get("/agent/pending-trades")
+async def get_pending_trades_list():
+    """Get all pending trades awaiting approval."""
+    if not _orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    
+    pending = _orchestrator.get_pending_trades()
+    return [p.model_dump(mode="json") for p in pending]
+
+
+@app.post("/agent/approve-trade/{trade_id}")
+async def approve_pending_trade(trade_id: str):
+    """Approve a pending trade for execution."""
+    if not _orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    
+    logger.info(f"Approving trade: {trade_id}")
+    result = _orchestrator.approve_trade(trade_id)
+    
+    return {
+        "executed": result.executed,
+        "order_id": result.order_id,
+        "status": result.status,
+        "message": result.message,
+    }
+
+
+class RejectTradeRequest(BaseModel):
+    reason: str = ""
+
+
+@app.post("/agent/reject-trade/{trade_id}")
+async def reject_pending_trade(trade_id: str, body: RejectTradeRequest = None):
+    """Reject a pending trade."""
+    if not _orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    
+    reason = body.reason if body else ""
+    logger.info(f"Rejecting trade: {trade_id} - {reason}")
+    success = _orchestrator.reject_trade(trade_id, reason)
+    
+    return {"success": success, "trade_id": trade_id}
+
+
+@app.post("/agent/set-autonomy")
+async def set_autonomy_tier(body: AutonomyTierRequest):
+    """Set the autonomy tier (requires restart to take effect)."""
+    try:
+        tier = AutonomyTier(body.tier.lower())
+        logger.info(f"Autonomy tier change requested: {tier.value}")
+        return {
+            "message": f"Set AUTONOMY_TIER={tier.value} environment variable and restart service",
+            "current": get_cfg().autonomy_tier.value,
+            "requested": tier.value,
+        }
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid tier: {body.tier}. Use: manual, moderate, full_agentic")
+
+
+@app.get("/agent/recent-loops")
+async def get_recent_loops_history(limit: int = 10):
+    """Get recent loop results for review."""
+    if not _orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    
+    loops = _orchestrator.observability.get_recent_loops(limit)
+    return loops
 
 
 if __name__ == "__main__":

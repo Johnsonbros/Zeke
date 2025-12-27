@@ -13,6 +13,12 @@ class TradingMode(str, Enum):
     LIVE = "live"
 
 
+class AutonomyTier(str, Enum):
+    MANUAL = "manual"
+    MODERATE = "moderate"
+    FULL_AGENTIC = "full_agentic"
+
+
 @dataclass
 class TradingConfig:
     openai_api_key: str = ""
@@ -22,6 +28,7 @@ class TradingConfig:
     
     trading_mode: TradingMode = TradingMode.PAPER
     live_trading_enabled: bool = False
+    autonomy_tier: AutonomyTier = AutonomyTier.MANUAL
     
     allowed_symbols: List[str] = field(default_factory=lambda: ["NVDA", "SPY", "META", "GOOGL", "AVGO", "GOOG", "AMZN"])
     
@@ -86,6 +93,12 @@ def load_config() -> TradingConfig:
         api_key = os.getenv("PAPER_API_KEY", "") or os.getenv("ALPACA_KEY_ID", "")
         api_secret = os.getenv("PAPER_API_SECRET", "") or os.getenv("ALPACA_SECRET_KEY", "")
     
+    autonomy_str = os.getenv("AUTONOMY_TIER", "manual").lower()
+    try:
+        autonomy_tier = AutonomyTier(autonomy_str)
+    except ValueError:
+        autonomy_tier = AutonomyTier.MANUAL
+    
     return TradingConfig(
         openai_api_key=os.getenv("OPENAI_API_KEY", ""),
         alpaca_key_id=api_key,
@@ -93,6 +106,7 @@ def load_config() -> TradingConfig:
         alpaca_mcp_url=os.getenv("ALPACA_MCP_URL", ""),
         trading_mode=trading_mode,
         live_trading_enabled=live_enabled,
+        autonomy_tier=autonomy_tier,
         allowed_symbols=allowed_symbols,
         max_dollars_per_trade=float(os.getenv("MAX_DOLLARS_PER_TRADE", "25")),
         max_open_positions=int(os.getenv("MAX_OPEN_POSITIONS", "3")),
