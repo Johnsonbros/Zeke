@@ -32,8 +32,25 @@ import {
   CheckCircle,
   XCircle,
   Bot,
+  PieChart,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
+import {
+  LineChart as RechartsLine,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  PieChart as RechartsPie,
+  Pie,
+  Cell,
+  AreaChart,
+  Area,
+} from "recharts";
 
 interface TradingAccount {
   status: string;
@@ -152,6 +169,21 @@ interface LoopResult {
   errors: string[];
 }
 
+interface ChartDataPoint {
+  timestamp: string;
+  value: number;
+  label?: string;
+}
+
+interface PerformanceCharts {
+  equity_curve: ChartDataPoint[];
+  daily_pnl: ChartDataPoint[];
+  trade_distribution: { symbol: string; count: number; fill: string }[];
+  signal_confidence: ChartDataPoint[];
+  win_loss: { wins: number; losses: number };
+  drawdown: ChartDataPoint[];
+}
+
 export default function TradingPage() {
   const { toast } = useToast();
   const [selectedSymbol, setSelectedSymbol] = useState("SPY");
@@ -200,6 +232,11 @@ export default function TradingPage() {
   const { data: pendingTrades, refetch: refetchPendingTrades } = useQuery<PendingTrade[]>({
     queryKey: ["/api/trading/agent/pending-trades"],
     refetchInterval: 10000,
+  });
+
+  const { data: performanceCharts, isLoading: chartsLoading } = useQuery<PerformanceCharts>({
+    queryKey: ["/api/trading/charts/performance"],
+    refetchInterval: 60000,
   });
 
   const runLoopMutation = useMutation<LoopResult, Error>({
@@ -564,6 +601,10 @@ export default function TradingPage() {
 
           <Tabs defaultValue="positions" className="w-full">
             <TabsList>
+              <TabsTrigger value="analytics" data-testid="tab-analytics">
+                <BarChart3 className="h-3 w-3 mr-1" />
+                Analytics
+              </TabsTrigger>
               <TabsTrigger value="positions" data-testid="tab-positions">
                 Positions ({positions?.length ?? 0})
               </TabsTrigger>
@@ -577,6 +618,293 @@ export default function TradingPage() {
                 Agent {pendingTrades && pendingTrades.length > 0 && `(${pendingTrades.length})`}
               </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="analytics" className="mt-4 space-y-4">
+              <div className="grid md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <TrendingUp className="h-4 w-4" />
+                      Equity Curve
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {chartsLoading ? (
+                      <Skeleton className="h-48 w-full" />
+                    ) : performanceCharts?.equity_curve && performanceCharts.equity_curve.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={200}>
+                        <AreaChart data={performanceCharts.equity_curve.map(d => ({ 
+                          time: d.timestamp.slice(5, 16), 
+                          equity: d.value 
+                        }))}>
+                          <defs>
+                            <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                              <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                          <XAxis dataKey="time" tick={{ fontSize: 10 }} className="text-muted-foreground" />
+                          <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} className="text-muted-foreground" />
+                          <Tooltip 
+                            contentStyle={{ 
+                              backgroundColor: 'hsl(var(--card))', 
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: '6px'
+                            }}
+                            formatter={(value: number) => [`$${value.toLocaleString()}`, 'Equity']}
+                          />
+                          <Area type="monotone" dataKey="equity" stroke="hsl(var(--primary))" fill="url(#equityGradient)" strokeWidth={2} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-48 flex items-center justify-center text-muted-foreground">
+                        <div className="text-center">
+                          <LineChart className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">No equity data yet</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Activity className="h-4 w-4" />
+                      Drawdown
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {chartsLoading ? (
+                      <Skeleton className="h-48 w-full" />
+                    ) : performanceCharts?.drawdown && performanceCharts.drawdown.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={200}>
+                        <AreaChart data={performanceCharts.drawdown.map(d => ({ 
+                          time: d.timestamp.slice(5, 16), 
+                          dd: d.value 
+                        }))}>
+                          <defs>
+                            <linearGradient id="ddGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="hsl(var(--destructive))" stopOpacity={0.3}/>
+                              <stop offset="95%" stopColor="hsl(var(--destructive))" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                          <XAxis dataKey="time" tick={{ fontSize: 10 }} className="text-muted-foreground" />
+                          <YAxis tick={{ fontSize: 10 }} domain={[0, 'auto']} className="text-muted-foreground" />
+                          <Tooltip 
+                            contentStyle={{ 
+                              backgroundColor: 'hsl(var(--card))', 
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: '6px'
+                            }}
+                            formatter={(value: number) => [`${value.toFixed(2)}%`, 'Drawdown']}
+                          />
+                          <Area type="monotone" dataKey="dd" stroke="hsl(var(--destructive))" fill="url(#ddGradient)" strokeWidth={2} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-48 flex items-center justify-center text-muted-foreground">
+                        <div className="text-center">
+                          <TrendingDown className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">No drawdown data yet</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <DollarSign className="h-4 w-4" />
+                      P&L by Trade
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {chartsLoading ? (
+                      <Skeleton className="h-40 w-full" />
+                    ) : performanceCharts?.daily_pnl && performanceCharts.daily_pnl.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={160}>
+                        <BarChart data={performanceCharts.daily_pnl.map((d, i) => ({ 
+                          idx: i + 1, 
+                          pnl: d.value,
+                          symbol: d.label
+                        }))}>
+                          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                          <XAxis dataKey="idx" tick={{ fontSize: 10 }} className="text-muted-foreground" />
+                          <YAxis tick={{ fontSize: 10 }} className="text-muted-foreground" />
+                          <Tooltip 
+                            contentStyle={{ 
+                              backgroundColor: 'hsl(var(--card))', 
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: '6px'
+                            }}
+                            formatter={(value: number, name: string, props: any) => [
+                              `$${value.toFixed(2)}`, 
+                              props.payload.symbol || 'P&L'
+                            ]}
+                          />
+                          <Bar 
+                            dataKey="pnl" 
+                            fill="hsl(var(--primary))"
+                            radius={[2, 2, 0, 0]}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-40 flex items-center justify-center text-muted-foreground">
+                        <div className="text-center">
+                          <BarChart3 className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">No P&L data yet</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <PieChart className="h-4 w-4" />
+                      Trades by Symbol
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {chartsLoading ? (
+                      <Skeleton className="h-40 w-full" />
+                    ) : performanceCharts?.trade_distribution && performanceCharts.trade_distribution.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={160}>
+                        <RechartsPie>
+                          <Pie
+                            data={performanceCharts.trade_distribution}
+                            dataKey="count"
+                            nameKey="symbol"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={60}
+                            label={({ symbol, percent }) => `${symbol} ${(percent * 100).toFixed(0)}%`}
+                            labelLine={false}
+                          >
+                            {performanceCharts.trade_distribution.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.fill} />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            contentStyle={{ 
+                              backgroundColor: 'hsl(var(--card))', 
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: '6px'
+                            }}
+                          />
+                        </RechartsPie>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-40 flex items-center justify-center text-muted-foreground">
+                        <div className="text-center">
+                          <PieChart className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">No trade data yet</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Target className="h-4 w-4" />
+                      Win/Loss Ratio
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {chartsLoading ? (
+                      <Skeleton className="h-40 w-full" />
+                    ) : performanceCharts?.win_loss && (performanceCharts.win_loss.wins > 0 || performanceCharts.win_loss.losses > 0) ? (
+                      <div className="h-40 flex flex-col items-center justify-center">
+                        <div className="flex items-center gap-4 mb-4">
+                          <div className="text-center">
+                            <p className="text-2xl font-bold text-green-500">{performanceCharts.win_loss.wins}</p>
+                            <p className="text-xs text-muted-foreground">Wins</p>
+                          </div>
+                          <div className="text-2xl text-muted-foreground">/</div>
+                          <div className="text-center">
+                            <p className="text-2xl font-bold text-red-500">{performanceCharts.win_loss.losses}</p>
+                            <p className="text-xs text-muted-foreground">Losses</p>
+                          </div>
+                        </div>
+                        <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
+                          <div 
+                            className="h-full bg-green-500 transition-all"
+                            style={{ 
+                              width: `${(performanceCharts.win_loss.wins / (performanceCharts.win_loss.wins + performanceCharts.win_loss.losses)) * 100}%` 
+                            }}
+                          />
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-2">
+                          {((performanceCharts.win_loss.wins / (performanceCharts.win_loss.wins + performanceCharts.win_loss.losses)) * 100).toFixed(0)}% Win Rate
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="h-40 flex items-center justify-center text-muted-foreground">
+                        <div className="text-center">
+                          <Target className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">No win/loss data yet</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Zap className="h-4 w-4" />
+                    Signal Confidence History
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {chartsLoading ? (
+                    <Skeleton className="h-32 w-full" />
+                  ) : performanceCharts?.signal_confidence && performanceCharts.signal_confidence.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={120}>
+                      <RechartsLine data={performanceCharts.signal_confidence.map((d, i) => ({ 
+                        idx: i + 1, 
+                        score: d.value,
+                        symbol: d.label 
+                      }))}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                        <XAxis dataKey="idx" tick={{ fontSize: 10 }} className="text-muted-foreground" />
+                        <YAxis tick={{ fontSize: 10 }} domain={[0, 1]} className="text-muted-foreground" />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: 'hsl(var(--card))', 
+                            border: '1px solid hsl(var(--border))',
+                            borderRadius: '6px'
+                          }}
+                          formatter={(value: number, name: string, props: any) => [
+                            `${(value * 100).toFixed(0)}%`, 
+                            props.payload.symbol || 'Confidence'
+                          ]}
+                        />
+                        <Line type="monotone" dataKey="score" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} />
+                      </RechartsLine>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-32 flex items-center justify-center text-muted-foreground">
+                      <div className="text-center">
+                        <Zap className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">No signal confidence data yet</p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
 
             <TabsContent value="positions" className="mt-4">
               <Card>

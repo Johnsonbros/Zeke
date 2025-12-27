@@ -13246,6 +13246,17 @@ export async function registerRoutes(
       }
     });
 
+    // GET /api/trading/charts/performance - Get performance chart data
+    app.get("/api/trading/charts/performance", async (req, res) => {
+      try {
+        const result = await callTradingService("/charts/performance");
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Charts performance error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
     console.log("[Trading] Trading API endpoints registered (FastAPI service on port 8000)");
   } else {
     console.log("[Trading] Trading is DISABLED (no API keys configured)");

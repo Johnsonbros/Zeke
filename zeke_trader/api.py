@@ -588,6 +588,117 @@ async def get_recent_loops_history(limit: int = 10):
     return loops
 
 
+class ChartDataPoint(BaseModel):
+    timestamp: str
+    value: float
+    label: Optional[str] = None
+
+
+class PerformanceCharts(BaseModel):
+    equity_curve: List[ChartDataPoint]
+    daily_pnl: List[ChartDataPoint]
+    trade_distribution: List[Dict[str, Any]]
+    signal_confidence: List[ChartDataPoint]
+    win_loss: Dict[str, int]
+    drawdown: List[ChartDataPoint]
+
+
+@app.get("/charts/performance", response_model=PerformanceCharts)
+async def get_performance_charts():
+    """Get aggregated chart data for performance visualizations."""
+    if not _orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    
+    from pathlib import Path
+    import json
+    
+    cfg = get_cfg()
+    log_dir = Path(cfg.log_dir)
+    
+    equity_curve = []
+    equity_dir = log_dir / "equity"
+    if equity_dir.exists():
+        for f in sorted(equity_dir.glob("equity_*.jsonl")):
+            with open(f, "r") as file:
+                for line in file:
+                    if line.strip():
+                        try:
+                            data = json.loads(line)
+                            equity_curve.append(ChartDataPoint(
+                                timestamp=data.get("ts", data.get("timestamp", "")),
+                                value=float(data.get("equity", 0)),
+                            ))
+                        except:
+                            continue
+    
+    daily_pnl = []
+    signal_confidence = []
+    trade_counts_by_symbol: Dict[str, int] = {}
+    wins = 0
+    losses = 0
+    
+    trades_dir = log_dir / "trades"
+    if trades_dir.exists():
+        for f in sorted(trades_dir.glob("trades_*.jsonl")):
+            with open(f, "r") as file:
+                for line in file:
+                    if line.strip():
+                        try:
+                            data = json.loads(line)
+                            symbol = data.get("symbol", "UNKNOWN")
+                            trade_counts_by_symbol[symbol] = trade_counts_by_symbol.get(symbol, 0) + 1
+                            
+                            pnl = data.get("pnl", 0)
+                            if pnl != 0:
+                                daily_pnl.append(ChartDataPoint(
+                                    timestamp=data.get("timestamp", ""),
+                                    value=float(pnl),
+                                    label=symbol,
+                                ))
+                                if pnl > 0:
+                                    wins += 1
+                                else:
+                                    losses += 1
+                            
+                            thesis = data.get("thesis")
+                            if thesis:
+                                score = thesis.get("signal_score", 0)
+                                if score:
+                                    signal_confidence.append(ChartDataPoint(
+                                        timestamp=data.get("timestamp", ""),
+                                        value=float(score),
+                                        label=symbol,
+                                    ))
+                        except:
+                            continue
+    
+    trade_distribution = [
+        {"symbol": sym, "count": cnt, "fill": f"hsl({i * 45 % 360}, 70%, 50%)"}
+        for i, (sym, cnt) in enumerate(trade_counts_by_symbol.items())
+    ]
+    
+    drawdown = []
+    if equity_curve:
+        peak = 0
+        for pt in equity_curve:
+            if pt.value > peak:
+                peak = pt.value
+            dd = ((peak - pt.value) / peak * 100) if peak > 0 else 0
+            drawdown.append(ChartDataPoint(
+                timestamp=pt.timestamp,
+                value=dd,
+            ))
+    
+    return PerformanceCharts(
+        equity_curve=equity_curve[-100:] if len(equity_curve) > 100 else equity_curve,
+        daily_pnl=daily_pnl[-30:] if len(daily_pnl) > 30 else daily_pnl,
+        trade_distribution=trade_distribution,
+        signal_confidence=signal_confidence[-50:] if len(signal_confidence) > 50 else signal_confidence,
+        win_loss={"wins": wins, "losses": losses},
+        drawdown=drawdown[-100:] if len(drawdown) > 100 else drawdown,
+    )
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("TRADING_SERVICE_PORT", "8001"))
