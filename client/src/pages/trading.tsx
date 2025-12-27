@@ -358,7 +358,7 @@ export default function TradingPage() {
             <Badge variant={marketClock?.is_open ? "default" : "outline"} className="gap-1 text-xs">
               <Clock className="h-3 w-3" />
               <span className="hidden sm:inline">{marketClock?.is_open ? "Market Open" : `Opens ${marketClock?.next_open ? format(new Date(marketClock.next_open), "EEE h:mm a") : "Mon"}`}</span>
-              <span className="sm:hidden">{marketClock?.is_open ? "Open" : format(new Date(marketClock?.next_open ?? ""), "EEE")}</span>
+              <span className="sm:hidden">{marketClock?.is_open ? "Open" : (marketClock?.next_open ? format(new Date(marketClock.next_open), "EEE") : "Mon")}</span>
             </Badge>
             <Badge variant={isPaperMode ? "secondary" : "destructive"} className="gap-1 text-xs">
               {isPaperMode ? <ShieldCheck className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
