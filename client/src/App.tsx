@@ -36,6 +36,7 @@ import ApplicationsPage from "@/pages/applications";
 import DevicesPage from "@/pages/devices";
 import VoiceProfilesPage from "@/pages/voice-profiles";
 import TradingPage from "@/pages/trading";
+import NewsPage from "@/pages/news";
 import ZekeTradePage from "@/pages/zeketrade";
 import ZekeTradeDashboard from "@/pages/zeketrade-dashboard";
 import LoginPage from "@/pages/login";
@@ -72,6 +73,7 @@ function ProtectedRoutes() {
       <Route path="/devices" component={DevicesPage} />
       <Route path="/voice-profiles" component={VoiceProfilesPage} />
       <Route path="/trading" component={TradingPage} />
+      <Route path="/news" component={NewsPage} />
       <Route component={NotFound} />
     </Switch>
   );

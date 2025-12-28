@@ -204,6 +204,9 @@ import {
   createNewsTopic,
   updateNewsTopic,
   deleteNewsTopic,
+  createNewsFeedback,
+  getNewsFeedback,
+  getNewsFeedbackStats,
   createContactNote,
   getContactNotes,
   getContactNotesByType,
@@ -3881,6 +3884,59 @@ export async function registerRoutes(
     } catch (error) {
       console.error("[News] Error deleting topic:", error);
       res.status(500).json({ message: "Failed to delete topic" });
+    }
+  });
+  
+  // POST /api/news/feedback - Submit feedback on a news story (works from mobile and web)
+  app.post("/api/news/feedback", async (req, res) => {
+    try {
+      const { storyId, feedbackType, reason, topicId, source } = req.body;
+      
+      if (!storyId || !feedbackType) {
+        return res.status(400).json({ message: "storyId and feedbackType are required" });
+      }
+      
+      if (!["thumbs_up", "thumbs_down"].includes(feedbackType)) {
+        return res.status(400).json({ message: "feedbackType must be 'thumbs_up' or 'thumbs_down'" });
+      }
+      
+      const feedback = await createNewsFeedback({
+        storyId,
+        feedbackType,
+        reason: reason || null,
+        topicId: topicId || null,
+        sourcePhone: null,
+        source: source || "web",
+      });
+      
+      console.log(`[News] Feedback recorded: ${feedbackType} for story ${storyId} from ${source || "web"}`);
+      res.json({ success: true, feedback });
+    } catch (error) {
+      console.error("[News] Error creating feedback:", error);
+      res.status(500).json({ message: "Failed to submit feedback" });
+    }
+  });
+  
+  // GET /api/news/feedback/:storyId - Get feedback for a specific story
+  app.get("/api/news/feedback/:storyId", async (req, res) => {
+    try {
+      const { storyId } = req.params;
+      const feedback = await getNewsFeedback(storyId);
+      res.json(feedback);
+    } catch (error) {
+      console.error("[News] Error getting feedback:", error);
+      res.status(500).json({ message: "Failed to get feedback" });
+    }
+  });
+  
+  // GET /api/news/feedback-stats - Get overall feedback statistics
+  app.get("/api/news/feedback-stats", async (req, res) => {
+    try {
+      const stats = await getNewsFeedbackStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("[News] Error getting feedback stats:", error);
+      res.status(500).json({ message: "Failed to get feedback stats" });
     }
   });
   

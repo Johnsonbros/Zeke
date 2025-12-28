@@ -4141,6 +4141,8 @@ export const newsTopics = pgTable("news_topics", {
   keywords: text("keywords"), // JSON array of related keywords
   priority: integer("priority").notNull().default(5), // 1-10, higher = more important
   isActive: boolean("is_active").notNull().default(true),
+  forceInclude: boolean("force_include").notNull().default(false), // Always include even if low engagement - prevents echo chamber
+  isChallengePerspective: boolean("is_challenge_perspective").notNull().default(false), // Topic that challenges usual viewpoints
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -4186,7 +4188,9 @@ export const newsFeedback = pgTable("news_feedback", {
   storyId: text("story_id").notNull(),
   topicId: text("topic_id"),
   feedbackType: text("feedback_type", { enum: newsFeedbackTypes }).notNull(),
+  reason: text("reason"), // Optional reason for thumbs down feedback
   sourcePhone: text("source_phone"),
+  source: text("source", { enum: ["mobile", "web", "sms"] }).default("web"), // Track where feedback came from
   createdAt: text("created_at").notNull(),
 });
 

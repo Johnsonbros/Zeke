@@ -55,6 +55,7 @@ import {
   Bluetooth,
   AudioWaveform,
   TrendingUp,
+  Rss,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import type { Conversation } from "@shared/schema";
@@ -77,6 +78,12 @@ const mainNavItems = [
     icon: TrendingUp,
     href: "/trading",
     description: "Stock trading with ZEKE",
+  },
+  {
+    title: "News",
+    icon: Rss,
+    href: "/news",
+    description: "Curated news & topics",
   },
   {
     title: "Grocery List",
