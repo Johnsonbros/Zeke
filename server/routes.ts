@@ -3887,6 +3887,8 @@ export async function registerRoutes(
   // GET /api/news/briefing - Mobile app news briefing endpoint
   // Returns structured JSON with news stories for mobile consumption
   // Protected: requires x-zeke-device-token header for mobile app authentication
+  // Note: Global middleware handles HMAC auth, but device token validation is required
+  // to ensure device scoping even when both headers are present
   app.get("/api/news/briefing", validateDeviceToken, async (req, res) => {
     try {
       res.setHeader("Content-Type", "application/json");

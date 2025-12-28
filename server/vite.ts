@@ -31,6 +31,15 @@ export async function setupVite(server: Server, app: Express) {
 
   app.use(vite.middlewares);
 
+  // Return JSON 404 for unmatched API routes (prevents HTML being served to mobile clients)
+  app.use("/api/*", (_req, res) => {
+    res.status(404).json({ 
+      error: "Not Found", 
+      message: "API endpoint not found",
+      path: _req.originalUrl 
+    });
+  });
+
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
 
