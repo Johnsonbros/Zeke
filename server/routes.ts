@@ -207,6 +207,18 @@ import {
   createNewsFeedback,
   getNewsFeedback,
   getNewsFeedbackStats,
+  getAllNewsTags,
+  getNewsTag,
+  createNewsTag,
+  updateNewsTag,
+  deleteNewsTag,
+  getStoryTags,
+  addStoryTag,
+  removeStoryTag,
+  incrementTagFeedback,
+  getAllTagEvolutionRequests,
+  createTagEvolutionRequest,
+  resolveTagEvolutionRequest,
   createContactNote,
   getContactNotes,
   getContactNotesByType,
@@ -3937,6 +3949,192 @@ export async function registerRoutes(
     } catch (error) {
       console.error("[News] Error getting feedback stats:", error);
       res.status(500).json({ message: "Failed to get feedback stats" });
+    }
+  });
+
+  // ============================================================================
+  // News Tags API - AI-curated semantic tagging system
+  // ============================================================================
+
+  // GET /api/news/tags - Get all news tags
+  app.get("/api/news/tags", async (req, res) => {
+    try {
+      const tags = await getAllNewsTags();
+      res.json(tags);
+    } catch (error) {
+      console.error("[NewsTags] Error fetching tags:", error);
+      res.status(500).json({ message: "Failed to fetch tags" });
+    }
+  });
+
+  // POST /api/news/tags - Create a new tag
+  app.post("/api/news/tags", async (req, res) => {
+    try {
+      const { name, displayName, description, weight, isSystemTag } = req.body;
+      if (!displayName) {
+        return res.status(400).json({ message: "displayName is required" });
+      }
+      const tag = await createNewsTag({
+        name: name || displayName,
+        displayName,
+        description,
+        weight,
+        isSystemTag,
+      });
+      console.log(`[NewsTags] Created tag: ${displayName}`);
+      res.json(tag);
+    } catch (error) {
+      console.error("[NewsTags] Error creating tag:", error);
+      res.status(500).json({ message: "Failed to create tag" });
+    }
+  });
+
+  // PATCH /api/news/tags/:id - Update a tag
+  app.patch("/api/news/tags/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { displayName, description, weight, isActive } = req.body;
+      
+      const currentTag = await getNewsTag(id);
+      if (!currentTag) {
+        return res.status(404).json({ message: "Tag not found" });
+      }
+      
+      // Track weight evolution
+      let evolutionHistory = [];
+      try {
+        evolutionHistory = JSON.parse(currentTag.evolutionHistory || "[]");
+      } catch {}
+      
+      if (weight !== undefined && weight !== currentTag.weight) {
+        evolutionHistory.push({
+          date: new Date().toISOString(),
+          action: "weight_updated",
+          oldWeight: currentTag.weight,
+          newWeight: weight,
+          source: "manual",
+        });
+      }
+      
+      const updated = await updateNewsTag(id, {
+        ...(displayName !== undefined && { displayName }),
+        ...(description !== undefined && { description }),
+        ...(weight !== undefined && { weight }),
+        ...(isActive !== undefined && { isActive }),
+        evolutionHistory: JSON.stringify(evolutionHistory),
+      });
+      
+      console.log(`[NewsTags] Updated tag: ${id}`);
+      res.json(updated);
+    } catch (error) {
+      console.error("[NewsTags] Error updating tag:", error);
+      res.status(500).json({ message: "Failed to update tag" });
+    }
+  });
+
+  // DELETE /api/news/tags/:id - Delete a tag
+  app.delete("/api/news/tags/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const tag = await getNewsTag(id);
+      if (!tag) {
+        return res.status(404).json({ message: "Tag not found" });
+      }
+      if (tag.isSystemTag) {
+        return res.status(400).json({ message: "Cannot delete system tags" });
+      }
+      await deleteNewsTag(id);
+      console.log(`[NewsTags] Deleted tag: ${tag.displayName}`);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[NewsTags] Error deleting tag:", error);
+      res.status(500).json({ message: "Failed to delete tag" });
+    }
+  });
+
+  // GET /api/news/stories/:storyId/tags - Get tags for a story
+  app.get("/api/news/stories/:storyId/tags", async (req, res) => {
+    try {
+      const { storyId } = req.params;
+      const storyTags = await getStoryTags(storyId);
+      res.json(storyTags.map(st => ({ ...st.storyTag, tag: st.tag })));
+    } catch (error) {
+      console.error("[NewsTags] Error fetching story tags:", error);
+      res.status(500).json({ message: "Failed to fetch story tags" });
+    }
+  });
+
+  // POST /api/news/stories/:storyId/tags - Add tag to a story
+  app.post("/api/news/stories/:storyId/tags", async (req, res) => {
+    try {
+      const { storyId } = req.params;
+      const { tagId, confidence, appliedBy } = req.body;
+      if (!tagId) {
+        return res.status(400).json({ message: "tagId is required" });
+      }
+      const storyTag = await addStoryTag(storyId, tagId, confidence ?? 80, appliedBy ?? "manual");
+      res.json(storyTag);
+    } catch (error) {
+      console.error("[NewsTags] Error adding story tag:", error);
+      res.status(500).json({ message: "Failed to add story tag" });
+    }
+  });
+
+  // DELETE /api/news/stories/:storyId/tags/:tagId - Remove tag from story
+  app.delete("/api/news/stories/:storyId/tags/:tagId", async (req, res) => {
+    try {
+      const { storyId, tagId } = req.params;
+      await removeStoryTag(storyId, tagId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[NewsTags] Error removing story tag:", error);
+      res.status(500).json({ message: "Failed to remove story tag" });
+    }
+  });
+
+  // GET /api/news/tag-evolution - Get tag evolution requests
+  app.get("/api/news/tag-evolution", async (req, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const requests = await getAllTagEvolutionRequests(status);
+      res.json(requests);
+    } catch (error) {
+      console.error("[NewsTags] Error fetching evolution requests:", error);
+      res.status(500).json({ message: "Failed to fetch evolution requests" });
+    }
+  });
+
+  // POST /api/news/tag-evolution/:id/resolve - Resolve a tag evolution request
+  app.post("/api/news/tag-evolution/:id/resolve", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, userResponse } = req.body;
+      if (!status || !["approved", "rejected"].includes(status)) {
+        return res.status(400).json({ message: "status must be 'approved' or 'rejected'" });
+      }
+      
+      const updated = await resolveTagEvolutionRequest(id, status, userResponse);
+      if (!updated) {
+        return res.status(404).json({ message: "Evolution request not found" });
+      }
+      
+      // If approved, apply the change
+      if (status === "approved") {
+        try {
+          const change = JSON.parse(updated.proposedChange);
+          if (updated.requestType === "update_weight" && updated.tagId) {
+            await updateNewsTag(updated.tagId, { weight: change.newWeight });
+            console.log(`[NewsTags] Applied weight change for tag ${updated.tagId}: ${change.newWeight}`);
+          }
+        } catch (e) {
+          console.error("[NewsTags] Error applying evolution change:", e);
+        }
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("[NewsTags] Error resolving evolution request:", error);
+      res.status(500).json({ message: "Failed to resolve evolution request" });
     }
   });
   

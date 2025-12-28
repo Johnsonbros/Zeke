@@ -4524,6 +4524,146 @@ export async function getNewsFeedbackStats(): Promise<{ thumbsUp: number; thumbs
   return { thumbsUp, thumbsDown, byTopic };
 }
 
+// ============================================================================
+// News Tags - AI-curated semantic tagging system
+// ============================================================================
+
+export async function getAllNewsTags(): Promise<schema.NewsTag[]> {
+  return await db.select().from(schema.newsTags).orderBy(desc(schema.newsTags.weight));
+}
+
+export async function getNewsTag(id: string): Promise<schema.NewsTag | undefined> {
+  const [result] = await db.select().from(schema.newsTags).where(eq(schema.newsTags.id, id));
+  return result;
+}
+
+export async function createNewsTag(data: Partial<schema.InsertNewsTag>): Promise<schema.NewsTag> {
+  const now = getNow();
+  const id = uuidv4();
+  const name = (data.name || data.displayName || "untitled").toLowerCase().replace(/\s+/g, "-");
+  const [result] = await db.insert(schema.newsTags).values({
+    id,
+    name,
+    displayName: data.displayName || data.name || "Untitled",
+    description: data.description || null,
+    weight: data.weight ?? 50,
+    usageCount: 0,
+    positiveCount: 0,
+    negativeCount: 0,
+    isSystemTag: data.isSystemTag ?? false,
+    isActive: data.isActive ?? true,
+    evolutionHistory: JSON.stringify([{ date: now, action: "created", weight: data.weight ?? 50 }]),
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  return result;
+}
+
+export async function updateNewsTag(id: string, data: Partial<schema.NewsTag>): Promise<schema.NewsTag | undefined> {
+  const [result] = await db.update(schema.newsTags)
+    .set({ ...data, updatedAt: getNow() })
+    .where(eq(schema.newsTags.id, id))
+    .returning();
+  return result;
+}
+
+export async function deleteNewsTag(id: string): Promise<boolean> {
+  // First delete associated story tags
+  await db.delete(schema.newsStoryTags).where(eq(schema.newsStoryTags.tagId, id));
+  const result = await db.delete(schema.newsTags).where(eq(schema.newsTags.id, id));
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function incrementTagUsage(tagId: string): Promise<void> {
+  const now = getNow();
+  await db.update(schema.newsTags).set({
+    usageCount: sql`${schema.newsTags.usageCount} + 1`,
+    lastUsedAt: now,
+    updatedAt: now,
+  }).where(eq(schema.newsTags.id, tagId));
+}
+
+export async function incrementTagFeedback(tagId: string, isPositive: boolean): Promise<void> {
+  const now = getNow();
+  if (isPositive) {
+    await db.update(schema.newsTags).set({
+      positiveCount: sql`${schema.newsTags.positiveCount} + 1`,
+      updatedAt: now,
+    }).where(eq(schema.newsTags.id, tagId));
+  } else {
+    await db.update(schema.newsTags).set({
+      negativeCount: sql`${schema.newsTags.negativeCount} + 1`,
+      updatedAt: now,
+    }).where(eq(schema.newsTags.id, tagId));
+  }
+}
+
+export async function getStoryTags(storyId: string): Promise<Array<{ storyTag: schema.NewsStoryTag; tag: schema.NewsTag | null }>> {
+  const results = await db.select({
+    storyTag: schema.newsStoryTags,
+    tag: schema.newsTags,
+  })
+  .from(schema.newsStoryTags)
+  .leftJoin(schema.newsTags, eq(schema.newsStoryTags.tagId, schema.newsTags.id))
+  .where(eq(schema.newsStoryTags.storyId, storyId));
+  return results;
+}
+
+export async function addStoryTag(storyId: string, tagId: string, confidence: number = 80, appliedBy: "agent" | "manual" = "agent"): Promise<schema.NewsStoryTag> {
+  const now = getNow();
+  const id = uuidv4();
+  const [result] = await db.insert(schema.newsStoryTags).values({
+    id,
+    storyId,
+    tagId,
+    confidence,
+    appliedBy,
+    createdAt: now,
+  }).returning();
+  
+  // Update tag usage
+  await incrementTagUsage(tagId);
+  
+  return result;
+}
+
+export async function removeStoryTag(storyId: string, tagId: string): Promise<boolean> {
+  const result = await db.delete(schema.newsStoryTags)
+    .where(and(eq(schema.newsStoryTags.storyId, storyId), eq(schema.newsStoryTags.tagId, tagId)));
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function getAllTagEvolutionRequests(status?: string): Promise<schema.TagEvolutionRequest[]> {
+  if (status) {
+    return await db.select().from(schema.tagEvolutionRequests)
+      .where(eq(schema.tagEvolutionRequests.status, status as schema.TagEvolutionRequest["status"]))
+      .orderBy(desc(schema.tagEvolutionRequests.createdAt));
+  }
+  return await db.select().from(schema.tagEvolutionRequests)
+    .orderBy(desc(schema.tagEvolutionRequests.createdAt));
+}
+
+export async function createTagEvolutionRequest(data: schema.InsertTagEvolutionRequest): Promise<schema.TagEvolutionRequest> {
+  const now = getNow();
+  const id = uuidv4();
+  const [result] = await db.insert(schema.tagEvolutionRequests).values({
+    ...data,
+    id,
+    createdAt: now,
+  }).returning();
+  return result;
+}
+
+export async function resolveTagEvolutionRequest(id: string, status: "approved" | "rejected", userResponse?: string): Promise<schema.TagEvolutionRequest | undefined> {
+  const now = getNow();
+  const [result] = await db.update(schema.tagEvolutionRequests).set({
+    status,
+    userResponse: userResponse || null,
+    resolvedAt: now,
+  }).where(eq(schema.tagEvolutionRequests.id, id)).returning();
+  return result;
+}
+
 export async function getBriefingSettingByKey(key: string): Promise<string | null> {
   const [result] = await db.select({ settingValue: schema.briefingSettings.settingValue })
     .from(schema.briefingSettings)

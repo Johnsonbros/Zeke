@@ -4202,6 +4202,74 @@ export const insertNewsFeedbackSchema = createInsertSchema(newsFeedback).omit({
 export type InsertNewsFeedback = z.infer<typeof insertNewsFeedbackSchema>;
 export type NewsFeedback = typeof newsFeedback.$inferSelect;
 
+// News tags - AI-curated semantic tags for stories
+export const newsTags = pgTable("news_tags", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(), // Short tag name like "ai-agents", "market-trends"
+  displayName: text("display_name").notNull(), // Human readable: "AI Agents", "Market Trends"
+  description: text("description"), // What this tag represents
+  weight: integer("weight").notNull().default(50), // 0-100, higher = more relevant to user interests
+  usageCount: integer("usage_count").notNull().default(0), // How many times this tag has been applied
+  positiveCount: integer("positive_count").notNull().default(0), // Thumbs up on stories with this tag
+  negativeCount: integer("negative_count").notNull().default(0), // Thumbs down on stories with this tag
+  lastUsedAt: text("last_used_at"), // When tag was last applied to a story
+  evolutionHistory: text("evolution_history"), // JSON array of weight changes with reasons
+  isSystemTag: boolean("is_system_tag").notNull().default(false), // Core tags that shouldn't be deleted
+  isActive: boolean("is_active").notNull().default(true), // Whether to use this tag
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertNewsTagSchema = createInsertSchema(newsTags).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertNewsTag = z.infer<typeof insertNewsTagSchema>;
+export type NewsTag = typeof newsTags.$inferSelect;
+
+// News story tags - junction table linking stories to tags
+export const newsStoryTags = pgTable("news_story_tags", {
+  id: text("id").primaryKey(),
+  storyId: text("story_id").notNull(),
+  tagId: text("tag_id").notNull(),
+  confidence: integer("confidence").notNull().default(80), // 0-100, how confident the agent is in this tag
+  appliedBy: text("applied_by", { enum: ["agent", "manual"] }).notNull().default("agent"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertNewsStoryTagSchema = createInsertSchema(newsStoryTags).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertNewsStoryTag = z.infer<typeof insertNewsStoryTagSchema>;
+export type NewsStoryTag = typeof newsStoryTags.$inferSelect;
+
+// Tag evolution requests - agent's proposals for tag changes (requires approval or auto-applies slowly)
+export const tagEvolutionRequests = pgTable("tag_evolution_requests", {
+  id: text("id").primaryKey(),
+  tagId: text("tag_id"), // null if proposing new tag
+  requestType: text("request_type", { enum: ["create", "update_weight", "merge", "delete", "rename"] }).notNull(),
+  proposedChange: text("proposed_change").notNull(), // JSON describing the change
+  reasoning: text("reasoning").notNull(), // Why the agent thinks this change is needed
+  dataPoints: integer("data_points").notNull().default(0), // How much feedback data supports this
+  status: text("status", { enum: ["pending", "approved", "rejected", "auto_applied"] }).notNull().default("pending"),
+  smsMessageId: text("sms_message_id"), // If we texted Nate about this
+  userResponse: text("user_response"), // Nate's response if any
+  createdAt: text("created_at").notNull(),
+  resolvedAt: text("resolved_at"),
+});
+
+export const insertTagEvolutionRequestSchema = createInsertSchema(tagEvolutionRequests).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTagEvolutionRequest = z.infer<typeof insertTagEvolutionRequestSchema>;
+export type TagEvolutionRequest = typeof tagEvolutionRequests.$inferSelect;
+
 // Briefing settings - configurable delivery settings
 export const briefingSettings = pgTable("briefing_settings", {
   id: text("id").primaryKey(),
