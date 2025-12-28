@@ -37,6 +37,13 @@ import { extractCardsFromResponse } from "./cardExtractor";
 import { syncGitHubRepo, pushToGitHub, createGitHubWebhook } from "./github";
 import * as graphService from "./graph-service";
 import { 
+  processFeedbackForTagEvolution, 
+  analyzeTagPatterns, 
+  proposeWeightEvolution, 
+  generatePatternAlertMessage,
+  autoTagRecentStories,
+} from "./services/newsTaggingAgent";
+import { 
   createConversation, 
   getConversation, 
   getAllConversations,
@@ -3921,6 +3928,18 @@ export async function registerRoutes(
         source: source || "web",
       });
       
+      // Tag feedback is processed async (fire-and-forget) intentionally:
+      // - Primary feedback record is saved synchronously above
+      // - Tag counts are derived data, eventually consistent on next feedback
+      // - Non-blocking to maintain responsive UX
+      processFeedbackForTagEvolution(storyId, feedbackType)
+        .then(() => {
+          console.log(`[News] Tag feedback processed for story ${storyId}`);
+        })
+        .catch(err => {
+          console.error("[News] Error processing tag feedback (counts will sync on next feedback):", err);
+        });
+      
       console.log(`[News] Feedback recorded: ${feedbackType} for story ${storyId} from ${source || "web"}`);
       res.json({ success: true, feedback });
     } catch (error) {
@@ -4135,6 +4154,60 @@ export async function registerRoutes(
     } catch (error) {
       console.error("[NewsTags] Error resolving evolution request:", error);
       res.status(500).json({ message: "Failed to resolve evolution request" });
+    }
+  });
+
+  // GET /api/news/tag-patterns - Analyze tag patterns for insights
+  app.get("/api/news/tag-patterns", async (req, res) => {
+    try {
+      const insights = await analyzeTagPatterns();
+      res.json({ insights });
+    } catch (error) {
+      console.error("[NewsTags] Error analyzing patterns:", error);
+      res.status(500).json({ message: "Failed to analyze patterns" });
+    }
+  });
+
+  // POST /api/news/tags/evolve - Trigger tag weight evolution analysis
+  app.post("/api/news/tags/evolve", async (req, res) => {
+    try {
+      const requests = await proposeWeightEvolution();
+      console.log(`[NewsTags] Created ${requests.length} evolution requests`);
+      res.json({ 
+        created: requests.length,
+        requests: requests.map(r => ({
+          id: r.id,
+          tagId: r.tagId,
+          status: r.status,
+          reasoning: r.reasoning,
+        })),
+      });
+    } catch (error) {
+      console.error("[NewsTags] Error proposing evolution:", error);
+      res.status(500).json({ message: "Failed to propose evolution" });
+    }
+  });
+
+  // POST /api/news/tags/auto-tag - Auto-tag recent stories
+  app.post("/api/news/tags/auto-tag", async (req, res) => {
+    try {
+      const limit = req.body.limit || 10;
+      const tagged = await autoTagRecentStories(limit);
+      res.json({ tagged, limit });
+    } catch (error) {
+      console.error("[NewsTags] Error auto-tagging:", error);
+      res.status(500).json({ message: "Failed to auto-tag stories" });
+    }
+  });
+
+  // GET /api/news/pattern-alert - Get pattern alert message (for proactive SMS)
+  app.get("/api/news/pattern-alert", async (req, res) => {
+    try {
+      const message = await generatePatternAlertMessage();
+      res.json({ hasAlert: !!message, message });
+    } catch (error) {
+      console.error("[NewsTags] Error generating alert:", error);
+      res.status(500).json({ message: "Failed to generate alert" });
     }
   });
   

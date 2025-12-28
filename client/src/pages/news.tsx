@@ -27,6 +27,9 @@ import {
   Check,
   Pencil,
   Zap,
+  Tag,
+  Brain,
+  Activity,
 } from "lucide-react";
 import {
   Dialog,
@@ -53,7 +56,7 @@ import {
   FormLabel,
   FormDescription,
 } from "@/components/ui/form";
-import type { NewsTopic, NewsStory } from "@shared/schema";
+import type { NewsTopic, NewsStory, NewsTag, TagEvolutionRequest } from "@shared/schema";
 import { format } from "date-fns";
 
 interface NewsStoryWithMeta {
@@ -400,6 +403,18 @@ export default function NewsPage() {
     queryKey: ["/api/news/feedback-stats"],
   });
 
+  const { data: tags = [], isLoading: tagsLoading, refetch: refetchTags } = useQuery<NewsTag[]>({
+    queryKey: ["/api/news/tags"],
+  });
+
+  const { data: evolutionRequests = [] } = useQuery<TagEvolutionRequest[]>({
+    queryKey: ["/api/news/tag-evolution"],
+  });
+
+  const { data: patterns } = useQuery<{ insights: Array<{ type: string; description: string; affectedTags: string[]; dataPoints: number; suggestedAction?: string }> }>({
+    queryKey: ["/api/news/tag-patterns"],
+  });
+
   const feedbackMutation = useMutation({
     mutationFn: async ({ storyId, feedbackType, reason }: { storyId: string; feedbackType: "thumbs_up" | "thumbs_down"; reason?: string }) => {
       return apiRequest("/api/news/feedback", {
@@ -471,6 +486,33 @@ export default function NewsPage() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to delete topic", variant: "destructive" });
+    },
+  });
+
+  const resolveEvolutionMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: "approved" | "rejected" }) => {
+      return apiRequest(`/api/news/tag-evolution/${id}/resolve`, { method: "POST", body: { status } });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/news/tag-evolution"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/news/tags"] });
+      toast({ title: "Evolution request resolved" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to resolve request", variant: "destructive" });
+    },
+  });
+
+  const autoTagMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("/api/news/tags/auto-tag", { method: "POST", body: { limit: 20 } });
+    },
+    onSuccess: (data: { tagged: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/news/tags"] });
+      toast({ title: `Auto-tagged ${data.tagged} stories` });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to auto-tag stories", variant: "destructive" });
     },
   });
 
@@ -559,6 +601,10 @@ export default function NewsPage() {
               <TabsTrigger value="topics" data-testid="tab-topics">
                 <Settings2 className="h-4 w-4 mr-2" />
                 Topics
+              </TabsTrigger>
+              <TabsTrigger value="tags" data-testid="tab-tags">
+                <Tag className="h-4 w-4 mr-2" />
+                AI Tags
               </TabsTrigger>
             </TabsList>
 
@@ -681,6 +727,198 @@ export default function NewsPage() {
                     onDelete={() => deleteTopicMutation.mutate(topic.id)}
                     onToggle={(field, value) => handleToggleTopic(topic, field, value)}
                   />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="tags" className="mt-6">
+            <Card className="mb-6">
+              <CardContent className="pt-6">
+                <div className="flex items-start gap-3">
+                  <Brain className="h-5 w-5 text-indigo-500 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h4 className="font-medium mb-1">AI-Powered Semantic Tags</h4>
+                    <p className="text-sm text-muted-foreground">
+                      ZEKE analyzes news stories and applies semantic tags. Tag weights evolve slowly based on your feedback patterns.
+                      The agent gathers extensive data before suggesting weight changes.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {evolutionRequests.filter(r => r.status === "pending").length > 0 && (
+              <Card className="mb-6 border-amber-500/30 bg-amber-500/5">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-amber-500" />
+                    Pending Weight Evolution Requests
+                  </CardTitle>
+                  <CardDescription>
+                    ZEKE has detected patterns and is proposing these tag weight changes
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {evolutionRequests.filter(r => r.status === "pending").map((request) => {
+                    let change = { oldWeight: 0, newWeight: 0 };
+                    try { change = JSON.parse(request.proposedChange); } catch {}
+                    const tag = tags.find(t => t.id === request.tagId);
+                    
+                    return (
+                      <div key={request.id} className="flex items-center justify-between gap-4 p-3 bg-background rounded-lg border">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge variant="secondary" className="bg-indigo-500/20 text-indigo-400">
+                              {tag?.displayName || "Unknown Tag"}
+                            </Badge>
+                            <span className="text-sm text-muted-foreground">
+                              {change.oldWeight} → {change.newWeight}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {request.reasoning}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Based on {request.dataPointsCount} data points
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-green-500"
+                            onClick={() => resolveEvolutionMutation.mutate({ id: request.id, status: "approved" })}
+                            disabled={resolveEvolutionMutation.isPending}
+                            data-testid={`button-approve-evolution-${request.id}`}
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-500"
+                            onClick={() => resolveEvolutionMutation.mutate({ id: request.id, status: "rejected" })}
+                            disabled={resolveEvolutionMutation.isPending}
+                            data-testid={`button-reject-evolution-${request.id}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            )}
+
+            {patterns?.insights && patterns.insights.length > 0 && (
+              <Card className="mb-6 border-violet-500/30 bg-violet-500/5">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Scale className="h-4 w-4 text-violet-500" />
+                    Pattern Insights
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {patterns.insights.map((insight, idx) => (
+                    <div key={idx} className="text-sm p-2 bg-background rounded border">
+                      <p className="font-medium mb-1">
+                        {insight.type === "echo_chamber_risk" && "Echo Chamber Risk"}
+                        {insight.type === "new_interest" && "Growing Interest"}
+                        {insight.type === "declining_interest" && "Declining Interest"}
+                        {insight.type === "pattern_shift" && "Pattern Shift"}
+                      </p>
+                      <p className="text-muted-foreground text-xs">{insight.description}</p>
+                      {insight.suggestedAction && (
+                        <p className="text-xs text-primary mt-1">{insight.suggestedAction}</p>
+                      )}
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-medium">Tags ({tags.length})</h3>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => autoTagMutation.mutate()}
+                disabled={autoTagMutation.isPending}
+                data-testid="button-auto-tag"
+              >
+                <Brain className={`h-4 w-4 mr-2 ${autoTagMutation.isPending ? "animate-pulse" : ""}`} />
+                Auto-Tag Stories
+              </Button>
+            </div>
+
+            {tagsLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : tags.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Tag className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="font-medium mb-2">No tags yet</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Tags will be created automatically as ZEKE analyzes your news stories.
+                  </p>
+                  <Button
+                    onClick={() => autoTagMutation.mutate()}
+                    disabled={autoTagMutation.isPending}
+                    data-testid="button-auto-tag-first"
+                  >
+                    <Brain className="h-4 w-4 mr-2" />
+                    Auto-Tag Recent Stories
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {tags.map((tag) => (
+                  <Card key={tag.id} className="overflow-visible">
+                    <CardContent className="pt-4 pb-3">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <Badge variant="secondary" className="bg-indigo-500/20 text-indigo-400">
+                          {tag.displayName}
+                        </Badge>
+                        {tag.isSystemTag && (
+                          <Badge variant="outline" className="text-xs">System</Badge>
+                        )}
+                      </div>
+                      
+                      <div className="mb-2">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                          <span>Weight</span>
+                          <span>{tag.weight}%</span>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-indigo-500 rounded-full transition-all"
+                            style={{ width: `${tag.weight}%` }}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Used {tag.usageCount}x</span>
+                        <div className="flex items-center gap-2">
+                          <span className="flex items-center gap-1">
+                            <ThumbsUp className="h-3 w-3 text-green-500" />
+                            {tag.positiveCount}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <ThumbsDown className="h-3 w-3 text-red-500" />
+                            {tag.negativeCount}
+                          </span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
             )}
