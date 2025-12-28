@@ -10,7 +10,6 @@ import CommunicationStackNavigator from "@/navigation/CommunicationStackNavigato
 import CalendarStackNavigator from "@/navigation/CalendarStackNavigator";
 import GeoStackNavigator from "@/navigation/GeoStackNavigator";
 import TasksStackNavigator from "@/navigation/TasksStackNavigator";
-import TradingStackNavigator from "@/navigation/TradingStackNavigator";
 import { ZekeLauncher, LauncherItem } from "@/components/ZekeLauncher";
 import { Gradients } from "@/constants/theme";
 import type { HomeStackParamList } from "@/navigation/HomeStackNavigator";
@@ -21,7 +20,6 @@ export type MainTabParamList = {
   CalendarTab: undefined;
   GeoTab: undefined;
   TasksTab: undefined;
-  TradingTab: undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -81,16 +79,6 @@ function ZekeLauncherWrapper({ navigation }: ZekeLauncherWrapperProps) {
       onPress: () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         navigation.navigate("TasksTab");
-      },
-    },
-    {
-      id: "trading",
-      icon: "trending-up",
-      label: "Trading",
-      gradientColors: ["#10B981", "#059669"],
-      onPress: () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        navigation.navigate("TradingTab");
       },
     },
     {
@@ -185,16 +173,6 @@ export default function MainTabNavigator() {
             title: "Tasks",
             tabBarIcon: ({ color, size }) => (
               <Feather name="check-square" size={size} color={color} />
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="TradingTab"
-          component={TradingStackNavigator}
-          options={{
-            title: "Trading",
-            tabBarIcon: ({ color, size }) => (
-              <Feather name="trending-up" size={size} color={color} />
             ),
           }}
         />
