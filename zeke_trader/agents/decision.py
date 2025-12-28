@@ -10,11 +10,14 @@ Hard constraints:
 - Must use notional_usd sizing (<= MAX_DOLLARS_PER_TRADE)
 - Must provide structured thesis
 - Exit signals always take priority over entries
+- Considers news context for market sentiment
 """
 import logging
 import json
 from typing import List, Optional
 from openai import OpenAI
+
+from ..services.news_client import fetch_trading_news_sync, TradingNewsContext
 
 from .schemas import (
     Signal,
@@ -43,6 +46,11 @@ HARD RULES:
 6. Never exceed the max_dollars_per_trade limit.
 7. Exit signals (stop losses, exit breakouts) are NOT shown here - they are handled separately.
 8. Consider portfolio exposure - don't add correlated positions.
+9. Use NEWS CONTEXT to inform decisions:
+   - Positive news for a symbol supports entries
+   - Negative news suggests caution or NO_TRADE
+   - Bearish market sentiment warrants extra caution
+   - News about Fed/interest rates affects broad market (SPY)
 
 RESPOND WITH VALID JSON ONLY. No explanation text outside JSON.
 
@@ -77,11 +85,28 @@ For no trade:
 class DecisionAgent:
     """LLM-based decision maker that picks one trade from scored signals."""
     
-    def __init__(self, config: TradingConfig):
+    def __init__(self, config: TradingConfig, include_news: bool = True):
         self.config = config
         self.client = OpenAI(api_key=config.openai_api_key)
         self.scorer = TurtleScorer()
         self.min_score_threshold = 3.0
+        self.include_news = include_news
+        self._cached_news: Optional[TradingNewsContext] = None
+    
+    def _fetch_news_context(self) -> Optional[TradingNewsContext]:
+        """Fetch news context from ZEKE news system."""
+        if not self.include_news:
+            return None
+        
+        try:
+            news = fetch_trading_news_sync(hours_back=24)
+            if news:
+                logger.info(f"Fetched {len(news.stories)} news stories, sentiment: {news.market_sentiment}")
+                self._cached_news = news
+            return news
+        except Exception as e:
+            logger.warning(f"Failed to fetch news context: {e}")
+            return None
     
     def make_decision(
         self,
@@ -143,7 +168,8 @@ class DecisionAgent:
                 signals_considered=len(signals),
             )
         
-        prompt = self._build_scored_prompt(scored_signals, portfolio)
+        news_context = self._fetch_news_context()
+        prompt = self._build_scored_prompt(scored_signals, portfolio, news_context)
         
         try:
             response = self.client.chat.completions.create(
@@ -345,8 +371,9 @@ Choose ONE trade or NO_TRADE. Respond with JSON only."""
         self,
         scored_signals: List[ScoredSignal],
         portfolio: PortfolioState,
+        news_context: Optional[TradingNewsContext] = None,
     ) -> str:
-        """Build prompt with scored signals for LLM."""
+        """Build prompt with scored signals and news context for LLM."""
         signals_text = []
         for i, ss in enumerate(scored_signals):
             sig = ss.signal
@@ -368,6 +395,10 @@ Choose ONE trade or NO_TRADE. Respond with JSON only."""
             for p in portfolio.positions
         ])
         
+        news_section = ""
+        if news_context and news_context.stories:
+            news_section = f"\n{news_context.to_prompt_section()}\n"
+        
         return f"""PORTFOLIO STATE:
 - Equity: ${portfolio.equity:.2f}
 - Cash: ${portfolio.cash:.2f}
@@ -381,10 +412,11 @@ RISK LIMITS:
 - Max positions: {self.config.max_open_positions}
 - Max trades/day: {self.config.max_trades_per_day}
 - Max daily loss: ${self.config.max_daily_loss}
-
+{news_section}
 SCORED SIGNALS ({len(scored_signals)} above threshold, ranked by score):
 {chr(10).join(signals_text)}
 
+Consider the news context when making your decision. Positive news for a symbol may support entries, while negative news suggests caution.
 Choose ONE trade (prefer higher scores) or NO_TRADE. Respond with JSON only."""
 
     def _parse_scored_response(

@@ -527,6 +527,7 @@ import {
   getProcessedKeysCount,
 } from "./idempotency";
 import { analyzeMmsImage, downloadMmsImage, type ImageAnalysisResult, type PersonPhotoAnalysisResult } from "./services/fileProcessor";
+import { getTradingNewsContext, formatNewsForTrading, ensureStockTopicsExist } from "./services/tradingNewsService";
 import { processAndStoreMmsImage } from "./services/imageStorageService";
 import { processMmsImages, type MmsProcessingResult } from "./services/mmsProcessor";
 import { setPendingPlaceSave, hasPendingPlaceSave, completePendingPlaceSave, cleanupExpiredPendingPlaces } from "./pendingPlaceSave";
@@ -13583,7 +13584,7 @@ export async function registerRoutes(
       }
     });
 
-    // GET /api/trading/news - Get market news
+    // GET /api/trading/news - Get market news (from Alpaca)
     app.get("/api/trading/news", async (req, res) => {
       try {
         const symbols = req.query.symbols as string || "";
@@ -13593,6 +13594,29 @@ export async function registerRoutes(
       } catch (error: any) {
         console.error("[Trading] News error:", error);
         res.status(500).json({ error: error.message });
+      }
+    });
+
+    // GET /api/trading/zeke-news - Get ZEKE news context for trading decisions
+    app.get("/api/trading/zeke-news", async (req, res) => {
+      try {
+        const hoursBack = parseInt(req.query.hours as string) || 24;
+        const format = req.query.format as string || "json";
+        
+        const context = await getTradingNewsContext(hoursBack);
+        
+        if (format === "text") {
+          res.json({ 
+            success: true,
+            formatted: formatNewsForTrading(context),
+            context 
+          });
+        } else {
+          res.json({ success: true, context });
+        }
+      } catch (error: any) {
+        console.error("[Trading] ZEKE news error:", error);
+        res.status(500).json({ success: false, error: error.message });
       }
     });
 
