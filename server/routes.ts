@@ -28,7 +28,7 @@ import {
   deleteVoiceSample as deleteVoiceSampleFromDb,
 } from "./db";
 import type { TranscriptSegmentEvent } from "@shared/schema";
-import { createMobileAuthMiddleware, registerSecurityLogsEndpoint, registerPairingEndpoints } from "./mobileAuth";
+import { createMobileAuthMiddleware, registerSecurityLogsEndpoint, registerPairingEndpoints, validateDeviceToken } from "./mobileAuth";
 import { registerSmsPairingEndpoints } from "./sms-pairing";
 import { registerWebAuthEndpoints } from "./web-auth";
 import { registerApplicationEndpoints } from "./applications";
@@ -3881,6 +3881,119 @@ export async function registerRoutes(
     } catch (error) {
       console.error("[News] Error deleting topic:", error);
       res.status(500).json({ message: "Failed to delete topic" });
+    }
+  });
+  
+  // GET /api/news/briefing - Mobile app news briefing endpoint
+  // Returns structured JSON with news stories for mobile consumption
+  // Protected: requires x-zeke-device-token header for mobile app authentication
+  app.get("/api/news/briefing", validateDeviceToken, async (req, res) => {
+    try {
+      res.setHeader("Content-Type", "application/json");
+      
+      const now = new Date();
+      const nextRefresh = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour from now
+      
+      // Try to fetch from NewsAPI.org first
+      const NEWS_API_KEY = process.env.NEWS_API_KEY;
+      let stories: Array<{
+        id: string;
+        headline: string;
+        summary: string;
+        source: string;
+        sourceUrl: string;
+        category: string;
+        publishedAt: string;
+        imageUrl?: string;
+        urgency: "normal" | "breaking";
+      }> = [];
+      
+      if (NEWS_API_KEY) {
+        try {
+          // Fetch top headlines from NewsAPI
+          const categories = ["technology", "business", "science", "health"];
+          const category = categories[Math.floor(Date.now() / 3600000) % categories.length]; // Rotate category each hour
+          
+          const newsApiResponse = await fetch(
+            `https://newsapi.org/v2/top-headlines?country=us&category=${category}&pageSize=10&apiKey=${NEWS_API_KEY}`
+          );
+          
+          if (newsApiResponse.ok) {
+            const newsData = await newsApiResponse.json() as {
+              status: string;
+              articles: Array<{
+                title: string;
+                description: string | null;
+                source: { name: string };
+                url: string;
+                urlToImage: string | null;
+                publishedAt: string;
+              }>;
+            };
+            
+            if (newsData.status === "ok" && newsData.articles) {
+              stories = newsData.articles
+                .filter(article => article.title && article.description)
+                .map((article, index) => ({
+                  id: `newsapi-${Date.now()}-${index}`,
+                  headline: article.title,
+                  summary: article.description || "",
+                  source: article.source?.name || "Unknown",
+                  sourceUrl: article.url,
+                  category: category.charAt(0).toUpperCase() + category.slice(1),
+                  publishedAt: article.publishedAt,
+                  imageUrl: article.urlToImage || undefined,
+                  urgency: "normal" as const,
+                }));
+              
+              console.log(`[NewsBriefing] Fetched ${stories.length} stories from NewsAPI (${category})`);
+            }
+          } else {
+            console.warn(`[NewsBriefing] NewsAPI returned status ${newsApiResponse.status}`);
+          }
+        } catch (newsApiError) {
+          console.error("[NewsBriefing] Error fetching from NewsAPI:", newsApiError);
+        }
+      }
+      
+      // Fallback to existing Perplexity-based stories if NewsAPI failed or not configured
+      if (stories.length === 0) {
+        try {
+          const existingStories = await getRecentNewsStories(10);
+          stories = existingStories.map(story => ({
+            id: story.id,
+            headline: story.headline,
+            summary: story.summary || "",
+            source: story.source || "ZEKE AI",
+            sourceUrl: story.url || "",
+            category: "General",
+            publishedAt: story.createdAt,
+            imageUrl: undefined,
+            urgency: "normal" as const,
+          }));
+          console.log(`[NewsBriefing] Using ${stories.length} fallback stories from database`);
+        } catch (fallbackError) {
+          console.error("[NewsBriefing] Error fetching fallback stories:", fallbackError);
+        }
+      }
+      
+      const response = {
+        generatedAt: now.toISOString(),
+        nextRefreshAt: nextRefresh.toISOString(),
+        stories,
+      };
+      
+      res.json(response);
+    } catch (error) {
+      console.error("[NewsBriefing] Error generating briefing:", error);
+      const now = new Date();
+      const nextRefresh = new Date(now.getTime() + 60 * 60 * 1000);
+      res.status(200).json({ 
+        generatedAt: now.toISOString(),
+        nextRefreshAt: nextRefresh.toISOString(),
+        stories: [],
+        error: "Failed to generate news briefing"
+      });
     }
   });
   
