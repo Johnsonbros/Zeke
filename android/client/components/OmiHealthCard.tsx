@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { View, StyleSheet, ActivityIndicator } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -9,6 +9,7 @@ import { PulsingDot } from "@/components/PulsingDot";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius, Colors, Gradients } from "@/constants/theme";
 import { getOmiPendantHealth, type OmiPendantHealth } from "@/lib/zeke-api-adapter";
+import { audioStreamer, type StreamingMetrics } from "@/lib/audioStreamer";
 
 interface OmiHealthCardProps {
   onPress?: () => void;
@@ -78,6 +79,16 @@ function getBatteryColor(level: number | undefined): string {
 
 export function OmiHealthCard({ onPress }: OmiHealthCardProps) {
   const { theme } = useTheme();
+  const [streamingMetrics, setStreamingMetrics] = useState<StreamingMetrics | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = audioStreamer.onMetricsUpdate((metrics) => {
+      setStreamingMetrics(metrics);
+      setIsStreaming(audioStreamer.isStreaming());
+    });
+    return unsubscribe;
+  }, []);
   
   const { data: health, isLoading, isError } = useQuery<OmiPendantHealth>({
     queryKey: ["omi-pendant-health"],
@@ -233,6 +244,25 @@ export function OmiHealthCard({ onPress }: OmiHealthCardProps) {
               </ThemedText>
             </View>
           ) : null}
+
+          {isStreaming && streamingMetrics ? (
+            <View style={[styles.streamingIndicator, { backgroundColor: theme.backgroundSecondary }]}>
+              <PulsingDot color={Colors.dark.success} size={6} />
+              <ThemedText type="caption" style={{ color: Colors.dark.success, fontWeight: "600" }}>
+                Streaming
+              </ThemedText>
+              <View style={styles.streamingDivider} />
+              <Feather name="mic" size={12} color={theme.textSecondary} />
+              <ThemedText type="caption" secondary>
+                {streamingMetrics.framesReceived}
+              </ThemedText>
+              <Feather name="arrow-right" size={10} color={theme.textSecondary} />
+              <Feather name="upload-cloud" size={12} color={theme.textSecondary} />
+              <ThemedText type="caption" secondary>
+                {streamingMetrics.framesSent}
+              </ThemedText>
+            </View>
+          ) : null}
         </View>
       )}
     </View>
@@ -385,5 +415,20 @@ const styles = StyleSheet.create({
   errorBannerText: {
     flex: 1,
     color: Colors.dark.warning,
+  },
+  streamingIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    marginTop: Spacing.sm,
+  },
+  streamingDivider: {
+    width: 1,
+    height: 12,
+    backgroundColor: Colors.dark.border,
+    marginHorizontal: Spacing.xs,
   },
 });

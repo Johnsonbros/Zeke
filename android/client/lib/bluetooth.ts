@@ -973,16 +973,27 @@ class BluetoothService {
     if (this.isMockMode) {
       return new Promise((resolve) => {
         setTimeout(async () => {
-          this.connectedDevice = device;
-          this.connectionState = "connected";
-          await this.saveConnectedDevice(device);
-          this.notifyConnectionStateChange();
+          try {
+            this.connectedDevice = device;
+            this.connectionState = "connected";
+            await this.saveConnectedDevice(device);
+            this.notifyConnectionStateChange();
 
-          if (device.type === "limitless") {
-            await this.initializeLimitlessDevice();
+            if (device.type === "limitless") {
+              const initSuccess = await this.initializeLimitlessDevice();
+              if (!initSuccess) {
+                console.warn("Limitless mock initialization failed, but connection was established");
+              }
+            }
+
+            resolve(true);
+          } catch (error) {
+            console.error("Mock connection initialization failed:", error);
+            this.connectionState = "disconnected";
+            this.connectedDevice = null;
+            this.notifyConnectionStateChange();
+            resolve(false);
           }
-
-          resolve(true);
         }, 1500);
       });
     }
@@ -1021,7 +1032,10 @@ class BluetoothService {
       console.log("Successfully connected to", device.name);
 
       if (device.type === "limitless") {
-        await this.initializeLimitlessDevice();
+        const initSuccess = await this.initializeLimitlessDevice();
+        if (!initSuccess) {
+          console.warn("Limitless initialization failed, but connection was established");
+        }
       } else if (device.type === "omi") {
         console.log("Omi device ready for audio streaming");
         this.audioStreamState = "streaming";

@@ -26,6 +26,8 @@ import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius, Colors, Gradients } from "@/constants/theme";
 import { bluetoothService, BLEDevice, ConnectionState } from "@/lib/bluetooth";
+import { audioStreamer } from "@/lib/audioStreamer";
+import { AudioStreamingStatus } from "@/components/AudioStreamingStatus";
 
 export default function BluetoothConnectionScreen() {
   const insets = useSafeAreaInsets();
@@ -39,16 +41,23 @@ export default function BluetoothConnectionScreen() {
   const [connectingDeviceId, setConnectingDeviceId] = useState<string | null>(
     null,
   );
+  const [showStreamingStatus, setShowStreamingStatus] = useState(false);
 
   const scanPulse = useSharedValue(1);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMountedRef = useRef(true);
+  const hasNavigatedRef = useRef(false);
 
   const isMockMode = bluetoothService.getIsMockMode();
   const bleStatus = bluetoothService.getBleStatus();
 
   useEffect(() => {
+    isMountedRef.current = true;
+    hasNavigatedRef.current = false;
+
     const unsubscribeDiscovery = bluetoothService.onDeviceDiscovered(
       (device) => {
+        if (!isMountedRef.current) return;
         setNearbyDevices((prev) => {
           if (prev.find((d) => d.id === device.id)) return prev;
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -59,6 +68,7 @@ export default function BluetoothConnectionScreen() {
 
     const unsubscribeConnection = bluetoothService.onConnectionStateChange(
       (state, device) => {
+        if (!isMountedRef.current) return;
         setConnectionState(state);
         if (state === "connected" && device) {
           setConnectingDeviceId(null);
@@ -66,9 +76,17 @@ export default function BluetoothConnectionScreen() {
       },
     );
 
+    const unsubscribeMetrics = audioStreamer.onMetricsUpdate(() => {
+      if (isMountedRef.current) {
+        setShowStreamingStatus(audioStreamer.isStreaming());
+      }
+    });
+
     return () => {
+      isMountedRef.current = false;
       unsubscribeDiscovery();
       unsubscribeConnection();
+      unsubscribeMetrics();
       bluetoothService.stopScan();
       if (scanIntervalRef.current) {
         clearInterval(scanIntervalRef.current);
@@ -116,6 +134,13 @@ export default function BluetoothConnectionScreen() {
       clearInterval(scanIntervalRef.current);
     }
     scanIntervalRef.current = setInterval(() => {
+      if (!isMountedRef.current) {
+        if (scanIntervalRef.current) {
+          clearInterval(scanIntervalRef.current);
+          scanIntervalRef.current = null;
+        }
+        return;
+      }
       if (!bluetoothService.getIsScanning()) {
         setIsScanning(false);
         scanPulse.value = withTiming(1);
@@ -161,31 +186,58 @@ export default function BluetoothConnectionScreen() {
           {
             text: "Connect",
             onPress: async () => {
+              if (!isMountedRef.current || hasNavigatedRef.current) return;
               setConnectingDeviceId(device.id);
-              const success = await bluetoothService.connect(device.id);
-              if (success) {
-                Haptics.notificationAsync(
-                  Haptics.NotificationFeedbackType.Success,
-                );
-                Alert.alert(
-                  "Connected!",
-                  `Successfully connected to ${displayName}${isMockMode ? " (simulated)" : ""}.`,
-                  [
-                    {
-                      text: "OK",
-                      onPress: () => navigation.goBack(),
-                    },
-                  ],
-                );
-              } else {
+              
+              try {
+                const success = await bluetoothService.connect(device.id);
+                
+                if (!isMountedRef.current || hasNavigatedRef.current) return;
+                
+                if (success) {
+                  Haptics.notificationAsync(
+                    Haptics.NotificationFeedbackType.Success,
+                  );
+                  Alert.alert(
+                    "Connected!",
+                    `Successfully connected to ${displayName}${isMockMode ? " (simulated)" : ""}.`,
+                    [
+                      {
+                        text: "OK",
+                        onPress: () => {
+                          if (navigation.canGoBack()) {
+                            hasNavigatedRef.current = true;
+                            navigation.goBack();
+                          }
+                        },
+                      },
+                    ],
+                  );
+                } else {
+                  Haptics.notificationAsync(
+                    Haptics.NotificationFeedbackType.Error,
+                  );
+                  Alert.alert(
+                    "Connection Failed",
+                    "Could not connect to the device. Please try again.",
+                  );
+                  if (isMountedRef.current) {
+                    setConnectingDeviceId(null);
+                  }
+                }
+              } catch (error) {
+                console.error("Connection error:", error);
+                if (!isMountedRef.current) return;
                 Haptics.notificationAsync(
                   Haptics.NotificationFeedbackType.Error,
                 );
                 Alert.alert(
-                  "Connection Failed",
-                  "Could not connect to the device. Please try again.",
+                  "Connection Error",
+                  "An unexpected error occurred. Please try again.",
                 );
-                setConnectingDeviceId(null);
+                if (isMountedRef.current) {
+                  setConnectingDeviceId(null);
+                }
               }
             },
           },
@@ -264,6 +316,12 @@ export default function BluetoothConnectionScreen() {
           </View>
         </View>
       </View>
+
+      {showStreamingStatus ? (
+        <View style={{ marginBottom: Spacing.xl }}>
+          <AudioStreamingStatus />
+        </View>
+      ) : null}
 
       <View style={styles.scanSection}>
         <Animated.View style={[styles.scanButtonWrapper, scanAnimatedStyle]}>

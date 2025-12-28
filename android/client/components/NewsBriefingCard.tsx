@@ -284,12 +284,28 @@ export function NewsBriefingCard({
   );
 }
 
+function formatRelativeTimeShort(dateStr: string | undefined): string {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+
+  if (diffMins < 1) return "Updated just now";
+  if (diffMins < 60) return `Updated ${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `Updated ${diffHours}h ago`;
+  return `Updated ${Math.floor(diffHours / 24)}d ago`;
+}
+
 interface NewsBriefingSectionProps {
   stories: NewsStory[];
   onFeedback: (storyId: string, feedback: "up" | "down", reason?: string) => Promise<void>;
   isLoading?: boolean;
   error?: string | null;
   onRefresh?: () => void;
+  isOffline?: boolean;
+  generatedAt?: string;
 }
 
 export function NewsBriefingSection({
@@ -298,6 +314,8 @@ export function NewsBriefingSection({
   isLoading = false,
   error = null,
   onRefresh,
+  isOffline = false,
+  generatedAt,
 }: NewsBriefingSectionProps) {
   const { theme } = useTheme();
 
@@ -392,9 +410,19 @@ export function NewsBriefingSection({
           <Feather name="rss" size={16} color="#FFFFFF" />
         </LinearGradient>
         <ThemedText type="h4">News</ThemedText>
-        <ThemedText type="caption" secondary style={styles.storyCount}>
-          Top {stories.length} stories
-        </ThemedText>
+        <View style={styles.headerMeta}>
+          {isOffline ? (
+            <View style={styles.offlineBadge}>
+              <Feather name="wifi-off" size={10} color={Colors.dark.warning} />
+              <ThemedText type="caption" style={{ color: Colors.dark.warning }}>
+                Offline
+              </ThemedText>
+            </View>
+          ) : null}
+          <ThemedText type="caption" secondary style={styles.storyCount}>
+            {generatedAt ? formatRelativeTimeShort(generatedAt) : `Top ${stories.length} stories`}
+          </ThemedText>
+        </View>
       </View>
       <ScrollView
         horizontal
@@ -557,6 +585,21 @@ const styles = StyleSheet.create({
   },
   storyCount: {
     marginLeft: "auto",
+  },
+  headerMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: "auto",
+    gap: Spacing.sm,
+  },
+  offlineBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.xs,
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
   },
   loadingContainer: {
     alignItems: "center",

@@ -3,6 +3,19 @@ import { getApiUrl } from "./query-client";
 
 export type TranscriptionCallback = (text: string, isFinal: boolean) => void;
 export type WarningCallback = (message: string) => void;
+export type MetricsCallback = (metrics: StreamingMetrics) => void;
+
+export interface StreamingMetrics {
+  framesReceived: number;
+  framesSent: number;
+  bytesReceived: number;
+  bytesSent: number;
+  transcriptionsReceived: number;
+  lastFrameTimestamp: number;
+  lastTranscriptionTimestamp: number;
+  wsConnected: boolean;
+  configAcknowledged: boolean;
+}
 
 export interface AudioStreamer {
   start(
@@ -12,6 +25,8 @@ export interface AudioStreamer {
   ): Promise<void>;
   stop(): Promise<string>;
   isStreaming(): boolean;
+  getMetrics(): StreamingMetrics;
+  onMetricsUpdate(callback: MetricsCallback): () => void;
 }
 
 interface ServerMessage {
@@ -43,6 +58,38 @@ class AudioStreamerImpl implements AudioStreamer {
   private deviceType: DeviceType = "omi";
   private resolveStop: ((value: string) => void) | null = null;
   private pendingChunks: Uint8Array[] = [];
+  private metricsCallbacks: Set<MetricsCallback> = new Set();
+  private metrics: StreamingMetrics = this.createEmptyMetrics();
+
+  private createEmptyMetrics(): StreamingMetrics {
+    return {
+      framesReceived: 0,
+      framesSent: 0,
+      bytesReceived: 0,
+      bytesSent: 0,
+      transcriptionsReceived: 0,
+      lastFrameTimestamp: 0,
+      lastTranscriptionTimestamp: 0,
+      wsConnected: false,
+      configAcknowledged: false,
+    };
+  }
+
+  private notifyMetricsUpdate(): void {
+    this.metricsCallbacks.forEach((callback) => callback({ ...this.metrics }));
+  }
+
+  public getMetrics(): StreamingMetrics {
+    return { ...this.metrics };
+  }
+
+  public onMetricsUpdate(callback: MetricsCallback): () => void {
+    this.metricsCallbacks.add(callback);
+    callback({ ...this.metrics });
+    return () => {
+      this.metricsCallbacks.delete(callback);
+    };
+  }
 
   public async start(
     deviceId: string,
@@ -60,6 +107,8 @@ class AudioStreamerImpl implements AudioStreamer {
     this.fullTranscript = "";
     this.isConfigured = false;
     this.pendingChunks = [];
+    this.metrics = this.createEmptyMetrics();
+    this.notifyMetricsUpdate();
 
     const connectedDevice = await bluetoothService.getConnectedDevice();
     this.deviceType = connectedDevice?.type || "omi";
@@ -72,12 +121,18 @@ class AudioStreamerImpl implements AudioStreamer {
 
       this.ws.onopen = () => {
         console.log("[AudioStreamer] WebSocket connected");
+        this.metrics.wsConnected = true;
+        this.notifyMetricsUpdate();
 
         this.sendConfig();
 
         this.unsubscribeAudioChunk = bluetoothService.onAudioChunk(
           (chunk: AudioChunk) => {
+            this.metrics.framesReceived++;
+            this.metrics.bytesReceived += chunk.data.length;
+            this.metrics.lastFrameTimestamp = Date.now();
             this.sendBinaryOpus(chunk.data);
+            this.notifyMetricsUpdate();
           },
         );
 
@@ -103,6 +158,8 @@ class AudioStreamerImpl implements AudioStreamer {
 
       this.ws.onclose = () => {
         console.log("WebSocket closed");
+        this.metrics.wsConnected = false;
+        this.notifyMetricsUpdate();
         this.cleanup();
       };
     });
@@ -191,6 +248,8 @@ class AudioStreamerImpl implements AudioStreamer {
     }
 
     this.ws.send(opusData);
+    this.metrics.framesSent++;
+    this.metrics.bytesSent += opusData.length;
   }
 
   private flushPendingChunks(): void {
@@ -207,6 +266,8 @@ class AudioStreamerImpl implements AudioStreamer {
     switch (message.type) {
       case "config_ack":
         this.isConfigured = true;
+        this.metrics.configAcknowledged = true;
+        this.notifyMetricsUpdate();
         this.flushPendingChunks();
         this.startHeartbeat();
         console.log("[AudioStreamer] Config acknowledged, ready for audio");
@@ -216,6 +277,9 @@ class AudioStreamerImpl implements AudioStreamer {
         if (message.text) {
           this.fullTranscript +=
             (this.fullTranscript ? " " : "") + message.text;
+          this.metrics.transcriptionsReceived++;
+          this.metrics.lastTranscriptionTimestamp = Date.now();
+          this.notifyMetricsUpdate();
           this.transcriptionCallback?.(message.text, message.isFinal || false);
         }
 
@@ -263,6 +327,9 @@ class AudioStreamerImpl implements AudioStreamer {
 
     this.streaming = false;
     this.isConfigured = false;
+    this.metrics.wsConnected = false;
+    this.metrics.configAcknowledged = false;
+    this.notifyMetricsUpdate();
     this.transcriptionCallback = null;
     this.warningCallback = null;
   }

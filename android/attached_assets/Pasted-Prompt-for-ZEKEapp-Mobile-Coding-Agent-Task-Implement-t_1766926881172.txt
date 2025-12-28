@@ -1,0 +1,53 @@
+Prompt for ZEKEapp Mobile Coding Agent
+Task: Implement the News Briefing feature to consume the /api/news/briefing endpoint.
+
+API Details
+Endpoint: GET /api/news/briefing
+
+Required Headers:
+
+x-zeke-device-token: <device_token> (same token used for other authenticated endpoints)
+Content-Type: application/json
+Response Format:
+
+interface NewsBriefingResponse {
+  generatedAt: string;      // ISO timestamp when data was generated
+  nextRefreshAt: string;    // ISO timestamp - when to refresh next
+  stories: NewsStory[];
+  error?: string;           // Only present if there was an error
+}
+interface NewsStory {
+  id: string;
+  headline: string;
+  summary: string;
+  source: string;           // e.g. "TechCrunch", "Reuters"
+  sourceUrl: string;        // Full URL to original article
+  category: string;         // "Technology", "Business", "Science", "Health", "General"
+  publishedAt: string;      // ISO timestamp
+  imageUrl?: string;        // Optional thumbnail image URL
+  urgency: "normal" | "breaking";
+}
+Error Responses:
+
+401 Unauthorized with {"error":"Unauthorized","reason":"Missing device token"} - Device token header missing or invalid
+Implementation Requirements
+Fetch news on screen load using the existing authenticated HTTP client with the device token header
+Smart refresh logic: Use nextRefreshAt to determine when to automatically refetch. Don't poll on a fixed interval - instead schedule the next fetch based on this timestamp (typically 1 hour)
+Display each story card with:
+Headline (primary text, bold)
+Summary (secondary text, max 2-3 lines with ellipsis)
+Source name and publishedAt as relative time ("2 hours ago")
+Category as a small badge/chip
+Thumbnail from imageUrl if available, otherwise show a category-appropriate icon
+Tap behavior: Open sourceUrl in the device's browser when user taps a story
+Pull-to-refresh: Allow manual refresh but respect nextRefreshAt - show "Updated X minutes ago" in the header
+Offline support: Cache the last successful response locally. Show cached data immediately, then fetch fresh in background if past nextRefreshAt
+Error handling:
+401 error: Trigger device re-authentication flow
+Network error: Show cached data with "Offline" indicator
+Empty stories array: Show "No news available right now" placeholder
+Loading state: Show skeleton/shimmer cards while fetching
+Notes
+The endpoint rotates through categories (tech, business, science, health) hourly
+Images may be null - always handle gracefully
+The urgency field is currently always "normal" but design for "breaking" to have visual distinction (red badge, etc.) for future use

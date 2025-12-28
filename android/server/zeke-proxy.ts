@@ -763,45 +763,64 @@ export function registerZekeProxyRoutes(app: Express): void {
   app.get("/api/zeke/news/briefing", async (req: Request, res: Response) => {
     const headers = extractForwardHeaders(req.headers);
     const result = await proxyToZeke("GET", "/api/news/briefing", undefined, headers);
-    if (!result.success || typeof result.data === 'string') {
-      // Return placeholder data if backend doesn't support this endpoint yet
-      return res.json({
-        generatedAt: new Date().toISOString(),
-        stories: [
-          {
-            id: "news-1",
-            headline: "AI Technology Advances in Healthcare",
-            summary: "New AI systems are helping doctors diagnose diseases earlier and more accurately than ever before.",
-            category: "Technology",
-            source: "Tech Daily",
-            sourceUrl: "https://example.com/ai-healthcare",
-            publishedAt: new Date().toISOString(),
-            urgency: "normal",
-          },
-          {
-            id: "news-2",
-            headline: "Market Update: Tech Stocks Rally",
-            summary: "Major technology companies see gains as investors remain optimistic about Q4 earnings.",
-            category: "Business",
-            source: "Financial Times",
-            sourceUrl: "https://example.com/market-update",
-            publishedAt: new Date(Date.now() - 3600000).toISOString(),
-            urgency: "normal",
-          },
-          {
-            id: "news-3",
-            headline: "Weather Alert: Storm System Approaching",
-            summary: "Meteorologists warn of severe weather conditions expected across the region this weekend.",
-            category: "World",
-            source: "Weather Service",
-            sourceUrl: "https://example.com/weather-alert",
-            publishedAt: new Date(Date.now() - 7200000).toISOString(),
-            urgency: "breaking",
-          },
-        ],
-      });
+    
+    // Extract data from either nested or flat response
+    const rawData = result.data?.briefing || result.data;
+    
+    // Validate: must be object with stories array
+    const hasValidStories = result.success && 
+      typeof rawData === 'object' && 
+      rawData !== null &&
+      Array.isArray(rawData.stories);
+    
+    if (hasValidStories) {
+      console.log(`[News Briefing] Backend returned ${rawData.stories.length} stories`);
+      return res.json(rawData);
     }
-    res.json(result.data);
+    
+    // Fallback to placeholder data if backend doesn't return valid JSON
+    console.log(`[News Briefing] Falling back to placeholder data. Reason: ${
+      !result.success ? `request failed (${result.error || 'unknown error'})` :
+      typeof result.data === 'string' ? 'response was HTML/text instead of JSON' :
+      'response missing stories array'
+    }`);
+    
+    return res.json({
+      generatedAt: new Date().toISOString(),
+      nextRefreshAt: new Date(Date.now() + 3600000).toISOString(),
+      stories: [
+        {
+          id: "news-1",
+          headline: "AI Technology Advances in Healthcare",
+          summary: "New AI systems are helping doctors diagnose diseases earlier and more accurately than ever before.",
+          category: "Technology",
+          source: "Tech Daily",
+          sourceUrl: "https://example.com/ai-healthcare",
+          publishedAt: new Date().toISOString(),
+          urgency: "normal",
+        },
+        {
+          id: "news-2",
+          headline: "Market Update: Tech Stocks Rally",
+          summary: "Major technology companies see gains as investors remain optimistic about Q4 earnings.",
+          category: "Business",
+          source: "Financial Times",
+          sourceUrl: "https://example.com/market-update",
+          publishedAt: new Date(Date.now() - 3600000).toISOString(),
+          urgency: "normal",
+        },
+        {
+          id: "news-3",
+          headline: "Weather Alert: Storm System Approaching",
+          summary: "Meteorologists warn of severe weather conditions expected across the region this weekend.",
+          category: "World",
+          source: "Weather Service",
+          sourceUrl: "https://example.com/weather-alert",
+          publishedAt: new Date(Date.now() - 7200000).toISOString(),
+          urgency: "breaking",
+        },
+      ],
+    });
   });
 
   app.post("/api/zeke/news/feedback", async (req: Request, res: Response) => {
@@ -813,15 +832,7 @@ export function registerZekeProxyRoutes(app: Express): void {
     if (feedback === "down" && (!reason || reason.trim().length === 0)) {
       return res.status(400).json({ error: "reason is required for negative feedback" });
     }
-    // Transform mobile feedback format to backend format
-    const feedbackType = feedback === "up" ? "thumbs_up" : "thumbs_down";
-    const transformedBody = {
-      storyId,
-      feedbackType,
-      reason: reason || undefined,
-      source: "mobile",
-    };
-    const result = await proxyToZeke("POST", "/api/news/feedback", transformedBody, headers);
+    const result = await proxyToZeke("POST", "/api/news/feedback", req.body, headers);
     if (!result.success || typeof result.data === 'string') {
       // Accept feedback locally even if backend doesn't support it yet
       console.log(`[News Feedback] storyId=${storyId}, feedback=${feedback}, reason=${reason || "none"}`);

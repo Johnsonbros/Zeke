@@ -38,6 +38,7 @@ import {
 } from "@/lib/storage";
 import { getRetentionLabel } from "@/screens/DataRetentionScreen";
 import { getZekeDevices, ZekeDevice } from "@/lib/zeke-api-adapter";
+import { bluetoothService, type ConnectionState, type BLEDevice } from "@/lib/bluetooth";
 import { SettingsStackParamList } from "@/navigation/SettingsStackNavigator";
 import { useAuth } from "@/context/AuthContext";
 import { checkCalendarConnection, type CalendarConnectionStatus } from "@/lib/zeke-api-adapter";
@@ -108,13 +109,44 @@ export default function SettingsScreen() {
     staleTime: 30000,
   });
 
-  const devices: DeviceInfo[] = zekeDevices.map(mapZekeDeviceToDeviceInfo);
+  const devices: DeviceInfo[] = zekeDevices.map((zekeDevice) => {
+    const baseDevice = mapZekeDeviceToDeviceInfo(zekeDevice);
+    
+    const isBleConnected = bleConnectionState === "connected" && bleConnectedDevice !== null;
+    const bleDeviceTypeMatches = bleConnectedDevice?.type === baseDevice.type;
+    
+    const realIsConnected = isBleConnected && bleDeviceTypeMatches;
+    
+    return {
+      ...baseDevice,
+      isConnected: realIsConnected,
+      batteryLevel: realIsConnected && bleConnectedDevice?.batteryLevel !== undefined 
+        ? bleConnectedDevice.batteryLevel 
+        : baseDevice.batteryLevel,
+      lastSync: realIsConnected ? "Now" : baseDevice.lastSync,
+    };
+  });
   const [autoSync, setAutoSync] = useState(true);
   const [isConnectingCalendar, setIsConnectingCalendar] = useState(false);
   const [profilePicture, setProfilePicture] = useState<ProfilePictureData | null>(null);
   const [showReminderBadge, setShowReminderBadge] = useState(false);
   const [isTakingPhoto, setIsTakingPhoto] = useState(false);
   const [dataRetentionDays, setDataRetentionDays] = useState<number>(-1);
+
+  const [bleConnectionState, setBleConnectionState] = useState<ConnectionState>(
+    bluetoothService.getConnectionState()
+  );
+  const [bleConnectedDevice, setBleConnectedDevice] = useState<BLEDevice | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = bluetoothService.onConnectionStateChange(
+      (state, device) => {
+        setBleConnectionState(state);
+        setBleConnectedDevice(device);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     loadProfilePicture();

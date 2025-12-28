@@ -1710,6 +1710,38 @@ export interface NewsBriefing {
   stories: NewsStory[];
   generatedAt: string;
   nextRefreshAt?: string;
+  isOffline?: boolean;
+}
+
+const NEWS_CACHE_KEY = "zeke-news-briefing-cache";
+
+async function getCachedNewsBriefing(): Promise<NewsBriefing | null> {
+  try {
+    const AsyncStorage = await getAsyncStorage();
+    const cached = await AsyncStorage.getItem(NEWS_CACHE_KEY);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch (error) {
+    console.log("[News Cache] Failed to read cache:", error);
+  }
+  return null;
+}
+
+async function cacheNewsBriefing(briefing: NewsBriefing): Promise<void> {
+  try {
+    const AsyncStorage = await getAsyncStorage();
+    await AsyncStorage.setItem(NEWS_CACHE_KEY, JSON.stringify(briefing));
+    console.log("[News Cache] Cached briefing with", briefing.stories.length, "stories");
+  } catch (error) {
+    console.log("[News Cache] Failed to cache:", error);
+  }
+}
+
+export function shouldRefreshNews(briefing: NewsBriefing): boolean {
+  if (!briefing.nextRefreshAt) return true;
+  const nextRefresh = new Date(briefing.nextRefreshAt).getTime();
+  return Date.now() >= nextRefresh;
 }
 
 export async function getNewsBriefing(): Promise<NewsBriefing> {
@@ -1718,11 +1750,20 @@ export async function getNewsBriefing(): Promise<NewsBriefing> {
       "/api/zeke/news/briefing",
       { timeoutMs: 10000 },
     );
-    if ("briefing" in data && data.briefing) {
-      return data.briefing;
+    const briefing = ("briefing" in data && data.briefing) ? data.briefing : data as NewsBriefing;
+    
+    if (briefing.stories && briefing.stories.length > 0) {
+      await cacheNewsBriefing(briefing);
     }
-    return data as NewsBriefing;
-  } catch {
+    
+    return briefing;
+  } catch (error) {
+    console.log("[News Briefing] Fetch failed, checking cache:", error);
+    const cached = await getCachedNewsBriefing();
+    if (cached && cached.stories.length > 0) {
+      console.log("[News Briefing] Returning cached data with", cached.stories.length, "stories");
+      return { ...cached, isOffline: true };
+    }
     return {
       stories: [],
       generatedAt: new Date().toISOString(),

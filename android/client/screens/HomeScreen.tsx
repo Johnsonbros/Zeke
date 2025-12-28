@@ -34,6 +34,7 @@ import { PulsingDot } from "@/components/PulsingDot";
 import { SyncStatusBar } from "@/components/SyncStatusBar";
 import { SpeakerTagList } from "@/components/SpeakerTag";
 import { OmiHealthCard } from "@/components/OmiHealthCard";
+import { LimitlessHealthCard } from "@/components/LimitlessHealthCard";
 import { NewsBriefingSection, type NewsStory } from "@/components/NewsBriefingCard";
 import { ZekeAlertStack, type ZekeAlert } from "@/components/ZekeAlertBanner";
 import { getSpeakerColor } from "@/lib/speaker-matcher";
@@ -49,6 +50,7 @@ import {
   getGroceryItems,
   getRecentActivities,
   getNewsBriefing,
+  shouldRefreshNews,
   submitNewsFeedback,
   getZekeNotifications,
   dismissNotification,
@@ -363,7 +365,15 @@ export default function HomeScreen() {
     queryFn: getNewsBriefing,
     enabled: isSyncMode,
     staleTime: 300000,
-    refetchInterval: 600000,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data || shouldRefreshNews(data)) {
+        return 60000;
+      }
+      const nextRefresh = new Date(data.nextRefreshAt!).getTime();
+      const delay = Math.max(nextRefresh - Date.now(), 60000);
+      return Math.min(delay, 3600000);
+    },
   });
 
   const { data: notifications = [] } = useQuery<ZekeNotification[]>({
@@ -649,9 +659,12 @@ export default function HomeScreen() {
           </View>
         </Pressable>
 
-        {/* Omi Pendant Health Status */}
-        {isSyncMode ? (
+        {/* Wearable Health Status - Show based on connected device type */}
+        {isSyncMode && connectedBleDevice?.type === "omi" ? (
           <OmiHealthCard />
+        ) : null}
+        {isSyncMode && connectedBleDevice?.type === "limitless" ? (
+          <LimitlessHealthCard />
         ) : null}
 
         {/* Morning News Briefing */}
@@ -662,6 +675,8 @@ export default function HomeScreen() {
             isLoading={isLoadingNews}
             error={newsError ? "Unable to load news briefing" : null}
             onRefresh={() => refetchNews()}
+            isOffline={newsBriefing?.isOffline}
+            generatedAt={newsBriefing?.generatedAt}
           />
         ) : null}
 
