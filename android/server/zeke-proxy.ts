@@ -813,7 +813,15 @@ export function registerZekeProxyRoutes(app: Express): void {
     if (feedback === "down" && (!reason || reason.trim().length === 0)) {
       return res.status(400).json({ error: "reason is required for negative feedback" });
     }
-    const result = await proxyToZeke("POST", "/api/news/feedback", req.body, headers);
+    // Transform mobile feedback format to backend format
+    const feedbackType = feedback === "up" ? "thumbs_up" : "thumbs_down";
+    const transformedBody = {
+      storyId,
+      feedbackType,
+      reason: reason || undefined,
+      source: "mobile",
+    };
+    const result = await proxyToZeke("POST", "/api/news/feedback", transformedBody, headers);
     if (!result.success || typeof result.data === 'string') {
       // Accept feedback locally even if backend doesn't support it yet
       console.log(`[News Feedback] storyId=${storyId}, feedback=${feedback}, reason=${reason || "none"}`);
