@@ -762,7 +762,23 @@ export function registerZekeProxyRoutes(app: Express): void {
   // ============================================================================
   app.get("/api/zeke/news/briefing", async (req: Request, res: Response) => {
     const headers = extractForwardHeaders(req.headers);
+    
+    // Debug: Log the device token being sent
+    const deviceToken = headers["x-zeke-device-token"];
+    console.log(`[News Briefing] Request starting. Device token present: ${!!deviceToken}, token preview: ${deviceToken ? deviceToken.substring(0, 8) + '...' : 'NONE'}`);
+    
     const result = await proxyToZeke("GET", "/api/news/briefing", undefined, headers);
+    
+    // Debug: Log the raw response details
+    console.log(`[News Briefing] Response received:`, {
+      success: result.success,
+      status: result.status,
+      dataType: typeof result.data,
+      isString: typeof result.data === 'string',
+      bodyPreview: typeof result.data === 'string' 
+        ? result.data.substring(0, 500) 
+        : (result.data?.stories ? `JSON with ${result.data.stories.length} stories` : JSON.stringify(result.data).substring(0, 500))
+    });
     
     // Extract data from either nested or flat response
     const rawData = result.data?.briefing || result.data;
@@ -779,11 +795,12 @@ export function registerZekeProxyRoutes(app: Express): void {
     }
     
     // Fallback to placeholder data if backend doesn't return valid JSON
-    console.log(`[News Briefing] Falling back to placeholder data. Reason: ${
-      !result.success ? `request failed (${result.error || 'unknown error'})` :
-      typeof result.data === 'string' ? 'response was HTML/text instead of JSON' :
-      'response missing stories array'
-    }`);
+    const reason = !result.success 
+      ? `request failed (status ${result.status}: ${result.error || 'unknown error'})` 
+      : typeof result.data === 'string' 
+        ? `response was HTML/text instead of JSON. First 200 chars: ${result.data.substring(0, 200)}` 
+        : `response missing stories array. Keys: ${Object.keys(result.data || {}).join(', ')}`;
+    console.log(`[News Briefing] Falling back to placeholder data. Reason: ${reason}`);
     
     return res.json({
       generatedAt: new Date().toISOString(),
