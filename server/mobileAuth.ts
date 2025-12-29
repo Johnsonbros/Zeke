@@ -295,6 +295,11 @@ export function validateDeviceToken(req: Request, res: Response, next: NextFunct
 
   if (!deviceToken) {
     const latencyMs = Date.now() - startTime;
+    console.log(`[DEVICE TOKEN AUTH] === REJECTED: Missing Token ===`);
+    console.log(`[DEVICE TOKEN AUTH] Path: ${req.path}, Method: ${req.method}`);
+    console.log(`[DEVICE TOKEN AUTH] All headers:`, Object.keys(req.headers));
+    console.log(`[DEVICE TOKEN AUTH] IP: ${clientIp}, RequestId: ${requestId}`);
+    
     addAuditEntry({
       requestId,
       timestamp: Date.now(),
@@ -314,6 +319,11 @@ export function validateDeviceToken(req: Request, res: Response, next: NextFunct
     const device = getDeviceTokenByToken(deviceToken);
     if (!device) {
       const latencyMs = Date.now() - startTime;
+      console.log(`[DEVICE TOKEN AUTH] === REJECTED: Invalid Token ===`);
+      console.log(`[DEVICE TOKEN AUTH] Path: ${req.path}, Method: ${req.method}`);
+      console.log(`[DEVICE TOKEN AUTH] Token (first 8 chars): ${deviceToken.substring(0, 8)}...`);
+      console.log(`[DEVICE TOKEN AUTH] IP: ${clientIp}, RequestId: ${requestId}`);
+      
       addAuditEntry({
         requestId,
         timestamp: Date.now(),

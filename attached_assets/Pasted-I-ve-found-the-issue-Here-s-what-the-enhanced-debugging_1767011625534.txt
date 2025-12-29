@@ -1,0 +1,41 @@
+I've found the issue. Here's what the enhanced debugging reveals:
+
+Root Cause Identified:
+
+The ZEKE backend at https://zekeai.replit.app/api/news/briefing is returning the ZEKE web app's HTML page (index.html) instead of JSON:
+
+[News Briefing] Response received: {
+  success: true,
+  status: 200,
+  dataType: 'string',
+  isString: true,
+  bodyPreview: '<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <title>ZEKE - Personal AI Assistant</title>...'
+}
+What this means:
+
+The device token IS being sent correctly: x-zeke-device-token: b96a3e3ea3647ece08373e09fad9245fd6cf57ccc0d42f6f4cc3a724eeab7b91
+The request URL IS correct: https://zekeai.replit.app/api/news/briefing
+HTTP status 200 is returned (not 401 or 404)
+BUT the ZEKE backend is returning its SPA's index.html instead of JSON
+This is NOT a mobile app issue - it's a ZEKE backend issue. The ZEKE backend's API route /api/news/briefing appears to be falling through to the SPA's catch-all route, which serves index.html for all unmatched paths.
+
+For ZEKE backend team to check:
+
+Verify the /api/news/briefing route is registered BEFORE the SPA catch-all route
+Ensure the route exists and returns JSON (not being overwritten by wildcard routing)
+Check if there's a typo in route registration (e.g., /news/briefing vs /api/news/briefing)
+The debugging confirms the mobile app is working correctly. The issue is on the ZEKE backend side - here's what to tell the ZEKE backend team:
+
+Response for ZEKE Backend Team:
+
+The mobile app's request is correct:
+
+URL: https://zekeai.replit.app/api/news/briefing ✓
+Device token header: x-zeke-device-token: b96a3e3ea3647ece08373e09fad9245fd6cf57ccc0d42f6f4cc3a724eeab7b91 ✓
+Response status: 200 ✓
+However, the response body is your web app's index.html (title: "ZEKE - Personal AI Assistant") instead of JSON. This typically happens when:
+
+The /api/news/briefing route isn't registered, so it falls through to the SPA's catch-all route
+Route order issue - the wildcard route (app.get('*', ...)) is defined before the API routes
+The route is registered as /news/briefing instead of /api/news/briefing
+The 200 status with HTML content (instead of 404 JSON) strongly suggests a SPA catch-all routing issue on your server.

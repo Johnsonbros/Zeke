@@ -4218,6 +4218,23 @@ export async function registerRoutes(
   // Note: Global middleware handles HMAC auth, but device token validation is required
   // to ensure device scoping even when both headers are present
   app.get("/api/news/briefing", validateDeviceToken, async (req, res) => {
+    const requestId = `briefing-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const startTime = Date.now();
+    
+    // Diagnostic logging for mobile app debugging
+    console.log(`[NewsBriefing][${requestId}] === REQUEST START ===`);
+    console.log(`[NewsBriefing][${requestId}] Headers:`, {
+      'x-zeke-device-token': req.headers['x-zeke-device-token'] ? 'present' : 'missing',
+      'x-zeke-hmac': req.headers['x-zeke-hmac'] ? 'present' : 'missing',
+      'x-zeke-timestamp': req.headers['x-zeke-timestamp'],
+      'x-zeke-request-id': req.headers['x-zeke-request-id'],
+      'content-type': req.headers['content-type'],
+      'accept': req.headers['accept'],
+      'user-agent': req.headers['user-agent'],
+    });
+    console.log(`[NewsBriefing][${requestId}] Device ID: ${(req as any).zekeDeviceId || 'unknown'}`);
+    console.log(`[NewsBriefing][${requestId}] Device Name: ${(req as any).zekeDeviceName || 'unknown'}`);
+    
     try {
       res.setHeader("Content-Type", "application/json");
       
@@ -4313,9 +4330,18 @@ export async function registerRoutes(
         stories,
       };
       
+      const latencyMs = Date.now() - startTime;
+      console.log(`[NewsBriefing][${requestId}] === SUCCESS RESPONSE ===`);
+      console.log(`[NewsBriefing][${requestId}] Stories: ${stories.length}, Latency: ${latencyMs}ms`);
+      console.log(`[NewsBriefing][${requestId}] Response type: application/json`);
+      
       res.json(response);
     } catch (error) {
-      console.error("[NewsBriefing] Error generating briefing:", error);
+      const latencyMs = Date.now() - startTime;
+      console.error(`[NewsBriefing][${requestId}] === ERROR RESPONSE ===`);
+      console.error(`[NewsBriefing][${requestId}] Error:`, error);
+      console.error(`[NewsBriefing][${requestId}] Latency: ${latencyMs}ms`);
+      
       const now = new Date();
       const nextRefresh = new Date(now.getTime() + 60 * 60 * 1000);
       res.status(200).json({ 
