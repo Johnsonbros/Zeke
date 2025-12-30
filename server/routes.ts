@@ -790,6 +790,47 @@ export async function registerRoutes(
     vadEnabled: boolean;
     lastHeartbeat: number;
   }>();
+
+  // ============================================
+  // ZEKE Mobile WebSocket: /ws/zeke
+  // ============================================
+  // Real-time sync notifications for mobile companion app
+  // Broadcasts contact changes to all connected mobile clients
+  
+  const zekeWss = new WebSocketServer({ noServer: true });
+  const zekeClients = new Map<WebSocket, {
+    deviceId: string;
+    connectedAt: string;
+    lastPing: number;
+  }>();
+
+  // Broadcast sync message to all connected ZEKE mobile clients
+  function broadcastToZekeClients(message: {
+    type: "contact" | "task" | "reminder" | "grocery";
+    action: "created" | "updated" | "deleted";
+    contactId?: string;
+    taskId?: string;
+    reminderId?: string;
+    groceryId?: string;
+    timestamp: string;
+  }) {
+    const payload = JSON.stringify(message);
+    let sentCount = 0;
+    
+    zekeClients.forEach((clientInfo, ws) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(payload);
+        sentCount++;
+      }
+    });
+    
+    if (sentCount > 0) {
+      console.log(`[ZEKE WS] Broadcast ${message.type}:${message.action} to ${sentCount} clients`);
+    }
+  }
+
+  // Export for use in contact CRUD operations
+  (global as any).broadcastToZekeClients = broadcastToZekeClients;
   
   const vadAvailable = isVADAvailable();
   if (vadAvailable) {
@@ -876,7 +917,90 @@ export async function registerRoutes(
       audioWss.handleUpgrade(request, socket, head, (ws) => {
         audioWss.emit("connection", ws, request, device.deviceId);
       });
+    } else if (url.pathname === "/ws/zeke") {
+      // ZEKE Mobile sync WebSocket
+      const deviceToken = (request.headers["x-zeke-device-token"] as string) || url.searchParams.get("token");
+      
+      if (!deviceToken) {
+        console.log("[ZEKE WS] Rejected: Missing device token");
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      const device = getDeviceTokenByToken(deviceToken);
+      if (!device) {
+        console.log("[ZEKE WS] Rejected: Invalid device token");
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      if (device.revokedAt) {
+        console.log(`[ZEKE WS] Rejected: Revoked device token for ${device.deviceId}`);
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      zekeWss.handleUpgrade(request, socket, head, (ws) => {
+        zekeWss.emit("connection", ws, request, device.deviceId);
+      });
     }
+  });
+
+  // ZEKE Mobile WebSocket connection handler
+  zekeWss.on("connection", (ws: WebSocket, _request: IncomingMessage, deviceId: string) => {
+    console.log(`[ZEKE WS] Mobile client connected: ${deviceId}`);
+    
+    zekeClients.set(ws, {
+      deviceId,
+      connectedAt: new Date().toISOString(),
+      lastPing: Date.now(),
+    });
+
+    // Send welcome message
+    ws.send(JSON.stringify({
+      type: "connected",
+      deviceId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    ws.on("message", (data: Buffer | string) => {
+      try {
+        const message = JSON.parse(data.toString());
+        
+        // Handle ping/pong for keep-alive
+        if (message.type === "ping") {
+          const client = zekeClients.get(ws);
+          if (client) {
+            client.lastPing = Date.now();
+          }
+          ws.send(JSON.stringify({ type: "pong", timestamp: new Date().toISOString() }));
+        }
+        
+        // Handle sync request - mobile app requesting current sync state
+        if (message.type === "sync_request") {
+          ws.send(JSON.stringify({
+            type: "sync_ready",
+            timestamp: new Date().toISOString(),
+          }));
+        }
+      } catch (error: any) {
+        console.error(`[ZEKE WS] Message parse error: ${error.message}`);
+      }
+    });
+
+    ws.on("close", () => {
+      const client = zekeClients.get(ws);
+      console.log(`[ZEKE WS] Mobile client disconnected: ${client?.deviceId || "unknown"}`);
+      zekeClients.delete(ws);
+    });
+
+    ws.on("error", (error: Error) => {
+      console.error(`[ZEKE WS] WebSocket error: ${error.message}`);
+      zekeClients.delete(ws);
+    });
   });
 
   audioWss.on("connection", (ws: WebSocket, _request: IncomingMessage, deviceId: string) => {
