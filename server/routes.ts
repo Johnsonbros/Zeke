@@ -5650,7 +5650,8 @@ export async function registerRoutes(
         messageCount: await getMessageCountForPhone(contact.phoneNumber),
         conversations: await getConversationsByPhone(contact.phoneNumber),
       })));
-      res.json(contactsWithStats);
+      // Wrap in { contacts: [...] } for mobile app compatibility
+      res.json({ contacts: contactsWithStats });
     } catch (error: any) {
       console.error("Get contacts error:", error);
       res.status(500).json({ message: "Failed to get contacts" });
@@ -5761,6 +5762,15 @@ export async function registerRoutes(
       }
       
       const contact = createContact(parsed.data);
+      
+      // Broadcast to connected mobile clients
+      broadcastToZekeClients({
+        type: "contact",
+        action: "created",
+        contactId: contact.id,
+        timestamp: new Date().toISOString(),
+      });
+      
       res.json(contact);
     } catch (error: any) {
       console.error("Create contact error:", error);
@@ -5792,6 +5802,15 @@ export async function registerRoutes(
       }
       
       const contact = updateContact(id, parsed.data);
+      
+      // Broadcast to connected mobile clients
+      broadcastToZekeClients({
+        type: "contact",
+        action: "updated",
+        contactId: id,
+        timestamp: new Date().toISOString(),
+      });
+      
       res.json(contact);
     } catch (error: any) {
       console.error("Update contact error:", error);
@@ -5815,6 +5834,15 @@ export async function registerRoutes(
       }
       
       deleteContact(id);
+      
+      // Broadcast to connected mobile clients
+      broadcastToZekeClients({
+        type: "contact",
+        action: "deleted",
+        contactId: id,
+        timestamp: new Date().toISOString(),
+      });
+      
       res.json({ success: true });
     } catch (error: any) {
       console.error("Delete contact error:", error);
