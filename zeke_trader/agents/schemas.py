@@ -230,7 +230,7 @@ class LoopResult(BaseModel):
     signals: List[Signal] = Field(default_factory=list)
     portfolio_state: PortfolioState
     decision: Decision
-    risk_result: RiskResult
+    risk_result: Optional[RiskResult] = None
     order_result: Optional[OrderResult] = None
     pending_trade: Optional[PendingTrade] = None
     duration_ms: float = 0.0

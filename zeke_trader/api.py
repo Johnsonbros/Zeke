@@ -133,8 +133,8 @@ async def _run_scheduled_loop():
                 if is_market_open:
                     logger.info("[Scheduler] Running autonomous trading loop...")
                     try:
-                        result = await asyncio.to_thread(_orchestrator.run_loop)
-                        if result.decision and result.decision.action != "hold":
+                        result = await _orchestrator.run_loop()
+                        if result.decision and hasattr(result.decision, 'symbol') and result.decision.action != "hold":
                             logger.info(f"[Scheduler] Loop complete: {result.decision.action} {result.decision.symbol}")
                         else:
                             logger.info("[Scheduler] Loop complete: No trade signal")

@@ -1,0 +1,40 @@
+{
+  "loop_id": "3ad3a068-b7e5-4e16-9bec-2dacce0fda41",
+  "timestamp": "2025-12-30T18:49:41.053971",
+  "market_snapshot": {
+    "timestamp": "2025-12-30T18:49:41.054364",
+    "market_data": {},
+    "is_market_open": true,
+    "data_available": false,
+    "errors": [
+      "No data for NVDA",
+      "No data for SPY",
+      "No data for META",
+      "No data for GOOGL",
+      "No data for AVGO",
+      "No data for GOOG",
+      "No data for AMZN"
+    ]
+  },
+  "signals": [],
+  "portfolio_state": {
+    "equity": 0.0,
+    "cash": 0.0,
+    "buying_power": 0.0,
+    "positions": [],
+    "open_orders": [],
+    "trades_today": 0,
+    "pnl_day": 0.0,
+    "timestamp": "2025-12-30T18:49:41.054016"
+  },
+  "decision": {
+    "action": "no_trade",
+    "reason": "DATA_UNAVAILABLE: Could not fetch market data",
+    "signals_considered": 0
+  },
+  "risk_result": null,
+  "order_result": null,
+  "pending_trade": null,
+  "duration_ms": 802.7799129486084,
+  "errors": []
+}
