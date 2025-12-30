@@ -52,6 +52,12 @@ Key architectural decisions and features include:
 - **Wearable Health Metrics**: Database storage for Omi/Limitless pendant health data (battery level, session time, connection strength, recording quality). API: `/api/wearable/metrics`.
 - **Android Notification Capture**: Captures and stores phone notifications from Android app for context awareness and proactive assistance. API: `/api/notifications/capture`.
 - **Health Data Sync (Google Fit/Health Connect)**: Receives and stores health metrics (steps, heart rate, sleep, calories) from Android Health Connect. API: `/api/health/metrics`, `/api/health/summary/today`.
+- **ZEKE Contact Sync WebSocket (Dec 2024)**: Real-time contact synchronization between server and mobile companion app via WebSocket at `/ws/zeke`. Features:
+  - Device token authentication (same pattern as `/ws/audio`)
+  - Broadcasts `{ type, action, contactId, timestamp }` messages when contacts are created/updated/deleted
+  - Ping/pong keep-alive and sync request handling
+  - Status endpoint at `/api/zeke/ws/status` showing connected clients
+  - GET `/api/contacts` returns `{ contacts: [...] }` wrapper for mobile compatibility
 - **Mobile App Layout System (Dec 2024)**: Standardized layout handling using `PageLayout` component and `usePageLayoutDimensions` hook (`android/client/components/PageLayout.tsx`). Provides consistent header height, tab bar height, and keyboard-aware bottom padding across all screens. Key screens updated: HomeScreen, SettingsScreen, TasksScreen, CalendarScreen, ChatScreen, ContactsScreen, GroceryScreen.
 - **Stock Trading Module (Dec 2024)**: Self-contained `zeke_trader/` module for Alpaca paper/live trading with deterministic risk controls. Features:
   - Paper trading (default) with $100k simulated account; live trading requires explicit unlock
