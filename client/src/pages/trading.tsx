@@ -184,6 +184,40 @@ interface PerformanceCharts {
   drawdown: ChartDataPoint[];
 }
 
+interface AnalyticsMetrics {
+  sharpe_ratio: number | null;
+  sortino_ratio: number | null;
+  max_drawdown_pct: number | null;
+  win_rate: number | null;
+  profit_factor: number | null;
+  avg_r_multiple: number | null;
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  total_pnl: number | null;
+}
+
+interface RiskSummary {
+  kelly_fraction: number;
+  current_daily_loss: number;
+  daily_limit: number;
+  weekly_loss: number;
+  weekly_limit: number;
+  circuit_breaker_status: string;
+  position_adjustment: number;
+  trade_count: number;
+  lookback_trades: number;
+}
+
+interface MarketRegime {
+  enabled: boolean;
+  regime: string;
+  adx: number | null;
+  adx_period: number;
+  trend_threshold: number;
+  interpretation: string;
+}
+
 export default function TradingPage() {
   const { toast } = useToast();
   const [selectedSymbol, setSelectedSymbol] = useState("SPY");
@@ -236,6 +270,21 @@ export default function TradingPage() {
 
   const { data: performanceCharts, isLoading: chartsLoading } = useQuery<PerformanceCharts>({
     queryKey: ["/api/trading/charts/performance"],
+    refetchInterval: 60000,
+  });
+
+  const { data: analyticsMetrics, isLoading: analyticsLoading } = useQuery<AnalyticsMetrics>({
+    queryKey: ["/api/trading/agent/analytics"],
+    refetchInterval: 60000,
+  });
+
+  const { data: riskSummary, isLoading: riskLoading } = useQuery<RiskSummary>({
+    queryKey: ["/api/trading/agent/risk-summary"],
+    refetchInterval: 30000,
+  });
+
+  const { data: marketRegime, isLoading: regimeLoading } = useQuery<MarketRegime>({
+    queryKey: ["/api/trading/agent/regime"],
     refetchInterval: 60000,
   });
 
@@ -908,6 +957,175 @@ export default function TradingPage() {
                         <p className="text-xs md:text-sm">No signal confidence data yet</p>
                         <p className="text-xs text-muted-foreground mt-1">Tracks AI decision confidence</p>
                       </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+                      <BarChart3 className="h-4 w-4" />
+                      Advanced Performance Metrics
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Risk-adjusted returns and trade quality
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-3 md:p-6 pt-0">
+                    {analyticsLoading ? (
+                      <Skeleton className="h-32 w-full" />
+                    ) : analyticsMetrics ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="text-center p-2 rounded-md bg-muted/30">
+                          <p className="text-xs text-muted-foreground">Sharpe Ratio</p>
+                          <p className="text-lg font-bold">
+                            {analyticsMetrics.sharpe_ratio != null ? analyticsMetrics.sharpe_ratio.toFixed(2) : "-"}
+                          </p>
+                        </div>
+                        <div className="text-center p-2 rounded-md bg-muted/30">
+                          <p className="text-xs text-muted-foreground">Sortino Ratio</p>
+                          <p className="text-lg font-bold">
+                            {analyticsMetrics.sortino_ratio != null ? analyticsMetrics.sortino_ratio.toFixed(2) : "-"}
+                          </p>
+                        </div>
+                        <div className="text-center p-2 rounded-md bg-muted/30">
+                          <p className="text-xs text-muted-foreground">Profit Factor</p>
+                          <p className="text-lg font-bold">
+                            {analyticsMetrics.profit_factor != null ? analyticsMetrics.profit_factor.toFixed(2) : "-"}
+                          </p>
+                        </div>
+                        <div className="text-center p-2 rounded-md bg-muted/30">
+                          <p className="text-xs text-muted-foreground">Avg R-Multiple</p>
+                          <p className="text-lg font-bold">
+                            {analyticsMetrics.avg_r_multiple != null ? `${analyticsMetrics.avg_r_multiple.toFixed(2)}R` : "-"}
+                          </p>
+                        </div>
+                        <div className="text-center p-2 rounded-md bg-muted/30">
+                          <p className="text-xs text-muted-foreground">Max Drawdown</p>
+                          <p className={`text-lg font-bold ${(analyticsMetrics.max_drawdown_pct ?? 0) > 10 ? "text-destructive" : ""}`}>
+                            {analyticsMetrics.max_drawdown_pct != null ? `${analyticsMetrics.max_drawdown_pct.toFixed(1)}%` : "-"}
+                          </p>
+                        </div>
+                        <div className="text-center p-2 rounded-md bg-muted/30">
+                          <p className="text-xs text-muted-foreground">Total P&L</p>
+                          <p className={`text-lg font-bold ${(analyticsMetrics.total_pnl ?? 0) >= 0 ? "text-green-500" : "text-destructive"}`}>
+                            {analyticsMetrics.total_pnl != null ? `$${analyticsMetrics.total_pnl.toFixed(2)}` : "$0.00"}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-32 flex items-center justify-center text-muted-foreground bg-muted/30 rounded-md">
+                        <p className="text-xs">No analytics data yet</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+                      <ShieldCheck className="h-4 w-4" />
+                      Risk Controls
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Kelly sizing and circuit breaker status
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-3 md:p-6 pt-0">
+                    {riskLoading ? (
+                      <Skeleton className="h-32 w-full" />
+                    ) : riskSummary ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between p-2 rounded-md bg-muted/30">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Kelly Fraction</p>
+                            <p className="text-lg font-bold">{(riskSummary.kelly_fraction * 100).toFixed(1)}%</p>
+                          </div>
+                          <Badge variant="outline" className="text-xs">
+                            {riskSummary.trade_count}/{riskSummary.lookback_trades} trades
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between p-2 rounded-md bg-muted/30">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Circuit Breaker</p>
+                            <Badge 
+                              variant={riskSummary.circuit_breaker_status === "ok" ? "default" : "destructive"}
+                              className="mt-1"
+                            >
+                              {riskSummary.circuit_breaker_status.toUpperCase()}
+                            </Badge>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-muted-foreground">Position Adj</p>
+                            <p className={`font-bold ${riskSummary.position_adjustment < 1 ? "text-destructive" : ""}`}>
+                              {(riskSummary.position_adjustment * 100).toFixed(0)}%
+                            </p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="text-center p-2 rounded-md bg-muted/30">
+                            <p className="text-xs text-muted-foreground">Daily Loss</p>
+                            <p className={`text-sm font-bold ${riskSummary.current_daily_loss < 0 ? "text-destructive" : ""}`}>
+                              {(riskSummary.current_daily_loss * 100).toFixed(1)}% / {(riskSummary.daily_limit * 100).toFixed(0)}%
+                            </p>
+                          </div>
+                          <div className="text-center p-2 rounded-md bg-muted/30">
+                            <p className="text-xs text-muted-foreground">Weekly Loss</p>
+                            <p className={`text-sm font-bold ${riskSummary.weekly_loss < 0 ? "text-destructive" : ""}`}>
+                              {(riskSummary.weekly_loss * 100).toFixed(1)}% / {(riskSummary.weekly_limit * 100).toFixed(0)}%
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-32 flex items-center justify-center text-muted-foreground bg-muted/30 rounded-md">
+                        <p className="text-xs">No risk data yet</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+                    <Activity className="h-4 w-4" />
+                    Market Regime Detection
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    ADX-based market condition analysis
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-3 md:p-6 pt-0">
+                  {regimeLoading ? (
+                    <Skeleton className="h-20 w-full" />
+                  ) : marketRegime ? (
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <div className="flex items-center gap-3">
+                        <Badge 
+                          variant={marketRegime.regime === "trend" ? "default" : marketRegime.regime === "choppy" ? "destructive" : "outline"}
+                          className="text-sm px-3 py-1"
+                        >
+                          {marketRegime.regime.toUpperCase()}
+                        </Badge>
+                        <div>
+                          <p className="text-xs text-muted-foreground">ADX</p>
+                          <p className="font-bold">{marketRegime.adx?.toFixed(1) ?? "-"}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Threshold</p>
+                          <p className="font-bold">{marketRegime.trend_threshold}</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground flex-1">
+                        {marketRegime.interpretation}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="h-20 flex items-center justify-center text-muted-foreground bg-muted/30 rounded-md">
+                      <p className="text-xs">Regime detection not available</p>
                     </div>
                   )}
                 </CardContent>

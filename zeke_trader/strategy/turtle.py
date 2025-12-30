@@ -119,7 +119,8 @@ class TurtleStrategy:
         - ADX 20-25: Neutral
         - ADX < 20: Choppy/ranging market
         """
-        if len(bars) < period * 2:
+        required_bars = period * 3
+        if len(bars) < required_bars:
             return None
         
         plus_dm_list = []
@@ -133,8 +134,11 @@ class TurtleStrategy:
             prev_low = bars[i - 1].low
             prev_close = bars[i - 1].close
             
-            plus_dm = max(0, high - prev_high) if (high - prev_high) > (prev_low - low) else 0
-            minus_dm = max(0, prev_low - low) if (prev_low - low) > (high - prev_high) else 0
+            up_move = high - prev_high
+            down_move = prev_low - low
+            
+            plus_dm = up_move if up_move > down_move and up_move > 0 else 0
+            minus_dm = down_move if down_move > up_move and down_move > 0 else 0
             
             tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
             
@@ -142,38 +146,35 @@ class TurtleStrategy:
             minus_dm_list.append(minus_dm)
             tr_list.append(tr)
         
-        if len(tr_list) < period:
+        if len(tr_list) < period * 2:
             return None
         
-        def smooth(values: list, period: int) -> list:
-            result = [sum(values[:period])]
-            for i in range(period, len(values)):
-                result.append(result[-1] - (result[-1] / period) + values[i])
-            return result
+        smoothed_tr = sum(tr_list[:period])
+        smoothed_plus_dm = sum(plus_dm_list[:period])
+        smoothed_minus_dm = sum(minus_dm_list[:period])
         
-        smoothed_tr = smooth(tr_list, period)
-        smoothed_plus_dm = smooth(plus_dm_list, period)
-        smoothed_minus_dm = smooth(minus_dm_list, period)
+        dx_values = []
         
-        di_plus = []
-        di_minus = []
-        dx = []
-        
-        for i in range(len(smoothed_tr)):
-            if smoothed_tr[i] == 0:
-                continue
-            plus = (smoothed_plus_dm[i] / smoothed_tr[i]) * 100
-            minus = (smoothed_minus_dm[i] / smoothed_tr[i]) * 100
-            di_plus.append(plus)
-            di_minus.append(minus)
+        for i in range(period, len(tr_list)):
+            smoothed_tr = smoothed_tr - (smoothed_tr / period) + tr_list[i]
+            smoothed_plus_dm = smoothed_plus_dm - (smoothed_plus_dm / period) + plus_dm_list[i]
+            smoothed_minus_dm = smoothed_minus_dm - (smoothed_minus_dm / period) + minus_dm_list[i]
             
-            if plus + minus > 0:
-                dx.append(abs(plus - minus) / (plus + minus) * 100)
+            if smoothed_tr == 0:
+                continue
+                
+            di_plus = (smoothed_plus_dm / smoothed_tr) * 100
+            di_minus = (smoothed_minus_dm / smoothed_tr) * 100
+            di_sum = di_plus + di_minus
+            
+            if di_sum > 0:
+                dx = abs(di_plus - di_minus) / di_sum * 100
+                dx_values.append(dx)
         
-        if len(dx) < period:
+        if len(dx_values) < period:
             return None
         
-        adx = sum(dx[-period:]) / period
+        adx = sum(dx_values[-period:]) / period
         return adx
     
     def detect_regime(self, bars: List[BarData]) -> str:

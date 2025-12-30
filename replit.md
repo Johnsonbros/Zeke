@@ -38,11 +38,18 @@ Key architectural decisions and features include:
 - **Stock Trading Module (`zeke_trader/`)**:
     - Self-contained module for Alpaca paper/live trading with deterministic risk controls.
     - Features a multi-agent Turtle Trading System with Conductor, DecisionAgent (GPT-4o), RiskGateAgent, and ExecutionAgent.
-    - Includes advanced profitability enhancements like Kelly Criterion position sizing, a Drawdown Circuit Breaker, and Signal Confirmation Filters (volume/trend).
+    - Includes advanced profitability enhancements:
+        - **Kelly Criterion Position Sizing**: Half-Kelly (0.5 fraction), 40-trade rolling lookback, volatility-adjusted
+        - **Drawdown Circuit Breaker**: Daily (-5%) and weekly (-10%) loss limits with automatic position reduction
+        - **Signal Confirmation Filters**: Volume filter (1.5x 20-day avg), multi-timeframe trend filter (50/200 MA)
+        - **ATR Trailing Stops**: Dynamic 2.5x ATR trailing stops that update when price moves favorably
+        - **Market Regime Detection**: ADX-based detection (trend/neutral/choppy) to adjust strategy behavior
     - Integrates Perplexity Research for deep trading signal analysis.
-    - Provides a comprehensive Performance Analytics Engine.
-    - Offers a Trading Dashboard and Mobile Trading Screen.
+    - Provides a comprehensive Performance Analytics Engine (Sharpe, Sortino, max drawdown, profit factor, R-multiples).
+    - Offers a Trading Dashboard with advanced analytics, risk controls, and regime detection visualization.
+    - Mobile Trading Screen for portfolio management.
     - Public-facing `ZEKETrade` pages (`/zeketrade`, `/zeketrade/dashboard`) provide transparency on the system's performance and operations.
+    - API endpoints: `/agent/status`, `/agent/analytics`, `/agent/risk-summary`, `/agent/regime`
 
 ## External Dependencies
 - **OpenAI API**: AI responses, agent logic, text embeddings, batch processing.
