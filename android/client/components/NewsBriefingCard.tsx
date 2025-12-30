@@ -33,11 +33,12 @@ export interface NewsStory {
   publishedAt: string;
   imageUrl?: string;
   urgency?: "normal" | "breaking";
+  topicId?: string;
 }
 
 interface NewsBriefingCardProps {
   story: NewsStory;
-  onFeedback: (storyId: string, feedback: "up" | "down", reason?: string) => Promise<void>;
+  onFeedback: (storyId: string, feedbackType: "thumbs_up" | "thumbs_down", reason?: string, topicId?: string) => Promise<void>;
   isSubmitting?: boolean;
 }
 
@@ -108,7 +109,7 @@ export function NewsBriefingCard({
     setFeedbackState("up");
     setLocalSubmitting(true);
     try {
-      await onFeedback(story.id, "up");
+      await onFeedback(story.id, "thumbs_up", undefined, story.topicId);
     } finally {
       setLocalSubmitting(false);
     }
@@ -123,14 +124,10 @@ export function NewsBriefingCard({
   };
 
   const handleSubmitReason = async () => {
-    if (!reason.trim()) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      return;
-    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setLocalSubmitting(true);
     try {
-      await onFeedback(story.id, "down", reason.trim());
+      await onFeedback(story.id, "thumbs_down", reason.trim() || undefined, story.topicId);
       setFeedbackState("down");
     } catch {
       // Keep in reason state on error so user can retry
@@ -300,7 +297,7 @@ function formatRelativeTimeShort(dateStr: string | undefined): string {
 
 interface NewsBriefingSectionProps {
   stories: NewsStory[];
-  onFeedback: (storyId: string, feedback: "up" | "down", reason?: string) => Promise<void>;
+  onFeedback: (storyId: string, feedbackType: "thumbs_up" | "thumbs_down", reason?: string, topicId?: string) => Promise<void>;
   isLoading?: boolean;
   error?: string | null;
   onRefresh?: () => void;

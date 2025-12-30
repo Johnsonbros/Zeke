@@ -1773,16 +1773,38 @@ export async function getNewsBriefing(): Promise<NewsBriefing> {
 
 export async function submitNewsFeedback(
   storyId: string,
-  feedback: "up" | "down",
+  feedbackType: "thumbs_up" | "thumbs_down",
   reason?: string,
+  topicId?: string,
 ): Promise<{ success: boolean }> {
+  console.log(`[News Feedback] Submitting: storyId=${storyId}, feedbackType=${feedbackType}, reason=${reason || "none"}, topicId=${topicId || "none"}`);
   try {
-    return await apiClient.post<{ success: boolean }>(
+    const payload: {
+      storyId: string;
+      feedbackType: "thumbs_up" | "thumbs_down";
+      source: "mobile";
+      reason?: string;
+      topicId?: string;
+    } = {
+      storyId,
+      feedbackType,
+      source: "mobile",
+    };
+    if (reason && reason.trim().length > 0) {
+      payload.reason = reason.trim();
+    }
+    if (topicId) {
+      payload.topicId = topicId;
+    }
+    const result = await apiClient.post<{ success: boolean }>(
       "/api/zeke/news/feedback",
-      { storyId, feedback, reason },
+      payload,
       { timeoutMs: 5000 },
     );
-  } catch {
+    console.log(`[News Feedback] Response:`, result);
+    return result;
+  } catch (error) {
+    console.error(`[News Feedback] Error submitting feedback:`, error);
     return { success: false };
   }
 }

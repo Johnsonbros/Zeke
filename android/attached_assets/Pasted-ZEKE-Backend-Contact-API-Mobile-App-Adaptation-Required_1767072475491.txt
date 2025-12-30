@@ -1,0 +1,65 @@
+ZEKE Backend Contact API - Mobile App Adaptation Required
+
+The ZEKE backend contact sync is now ready. The mobile companion app needs to adapt to the actual field names returned by the backend API. Here are the details:
+
+GET /api/contacts Response Format
+{
+  "contacts": [
+    {
+      "id": "string",
+      "firstName": "string",
+      "lastName": "string", 
+      "middleName": "string | null",
+      "phoneNumber": "string (required, unique)",
+      "email": "string | null",
+      "imageUrl": "string | null",
+      "accessLevel": "admin | inner_circle | friend | acquaintance | work | unknown",
+      "relationship": "string | null",
+      "notes": "string | null",
+      "birthday": "string | null",
+      "occupation": "string | null",
+      "organization": "string | null",
+      "lastInteractionAt": "ISO date string | null",
+      "interactionCount": "number",
+      "canAccessPersonalInfo": "boolean",
+      "canAccessCalendar": "boolean",
+      "canAccessTasks": "boolean",
+      "canAccessGrocery": "boolean",
+      "canSetReminders": "boolean",
+      "isAutoCreated": "boolean",
+      "createdAt": "ISO date string",
+      "updatedAt": "ISO date string",
+      "messageCount": "number (enhanced field)",
+      "conversations": "array (enhanced field)"
+    }
+  ]
+}
+Field Mapping (Original Expectation → Actual)
+Mobile Expected	Backend Actual	Notes
+name	firstName + lastName	Combine for display: ${firstName} ${lastName}.trim()
+phone	phoneNumber	Required, E.164 format
+priority	accessLevel	Use as priority indicator ("admin"/"inner_circle" = high, "friend" = medium, etc.)
+lastContact	lastInteractionAt	ISO date string or null
+WebSocket Real-Time Sync
+Connect to /ws/zeke with device token authentication:
+
+Header: X-ZEKE-Device-Token: <token> OR query param: ?token=<token>
+Incoming messages to listen for:
+
+{
+  "type": "contact",
+  "action": "created" | "updated" | "deleted",
+  "contactId": "string",
+  "timestamp": "ISO date string"
+}
+Outgoing messages supported:
+
+{ "type": "ping" } → receives { "type": "pong", "timestamp": "..." }
+{ "type": "sync_request" } → receives { "type": "sync_ready", "timestamp": "..." }
+Other Endpoints (Unchanged)
+POST /api/contacts - Create contact
+GET /api/contacts/:id - Get single contact
+PATCH /api/contacts/:id - Update contact
+DELETE /api/contacts/:id - Delete contact
+Action Required
+Update the mobile app's Contact type/interface and any field references to use firstName, lastName, phoneNumber, accessLevel, and lastInteractionAt instead of the originally expected field names. Create a display name helper like getContactDisplayName(contact) that combines firstName and lastName.

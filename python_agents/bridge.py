@@ -32,22 +32,32 @@ CACHEABLE_TOOLS = frozenset({
     "get_calendar_events",
     "get_grocery_list",
     "get_contacts",
+    "get_lifelog_overview",
+    "get_daily_summary",
+    "get_recent_lifelogs",
 })
 
 MUTATING_TOOLS = frozenset({
     "send_sms",
     "add_task",
     "complete_task",
+    "update_task",
+    "delete_task",
     "add_calendar_event",
+    "update_calendar_event",
     "delete_calendar_event",
     "add_grocery_item",
     "remove_grocery_item",
+    "clear_grocery_list",
     "add_contact",
     "update_contact",
+    "delete_contact",
     "save_memory",
+    "create_memory",
     "delete_memory",
     "configure_daily_checkin",
     "send_checkin_now",
+    "save_lifelog_insight",
 })
 
 
@@ -382,6 +392,10 @@ class NodeBridge:
             return 60.0
         elif tool_name in {"get_contacts", "get_user_profile"}:
             return 120.0
+        elif tool_name in {"get_lifelog_overview", "get_daily_summary"}:
+            return 180.0
+        elif tool_name in {"get_recent_lifelogs"}:
+            return 90.0
         return 60.0
     
     def _invalidate_related_caches(self, tool_name: str) -> None:
@@ -389,13 +403,21 @@ class NodeBridge:
         invalidation_map = {
             "add_task": ["list_tasks"],
             "complete_task": ["list_tasks"],
+            "update_task": ["list_tasks"],
+            "delete_task": ["list_tasks"],
             "add_calendar_event": ["get_calendar_events"],
+            "update_calendar_event": ["get_calendar_events"],
             "delete_calendar_event": ["get_calendar_events"],
             "add_grocery_item": ["get_grocery_list"],
             "remove_grocery_item": ["get_grocery_list"],
+            "clear_grocery_list": ["get_grocery_list"],
             "add_contact": ["get_contacts"],
             "update_contact": ["get_contacts"],
+            "delete_contact": ["get_contacts"],
             "configure_daily_checkin": ["get_daily_checkin_status"],
+            "save_lifelog_insight": ["get_recent_lifelogs", "get_daily_summary"],
+            "save_memory": ["get_user_profile"],
+            "create_memory": ["get_user_profile"],
         }
         
         for related_tool in invalidation_map.get(tool_name, []):

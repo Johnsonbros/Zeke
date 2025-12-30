@@ -18,17 +18,19 @@ export type {
 } from "@shared/schema";
 
 export type AccessLevel =
-  | "family"
-  | "close_friend"
+  | "admin"
+  | "inner_circle"
   | "friend"
   | "acquaintance"
+  | "work"
   | "unknown";
 
 export const accessLevels: AccessLevel[] = [
-  "family",
-  "close_friend",
+  "admin",
+  "inner_circle",
   "friend",
   "acquaintance",
+  "work",
   "unknown",
 ];
 
@@ -91,22 +93,26 @@ export interface CustomListWithItems extends CustomList {
 
 export interface Contact {
   id: string;
-  firstName?: string;
-  middleName?: string;
-  lastName?: string;
-  phoneNumber?: string;
-  email?: string;
-  organization?: string;
-  occupation?: string;
-  birthday?: string;
-  notes?: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string | null;
+  phoneNumber: string;
+  email?: string | null;
+  imageUrl?: string | null;
   accessLevel: AccessLevel;
-  canAccessCalendar: boolean;
-  canAccessTasks: boolean;
-  canAccessGrocery: boolean;
-  canSetReminders: boolean;
-  interactionCount: number;
-  lastInteractionAt?: string;
+  relationship?: string | null;
+  notes?: string | null;
+  birthday?: string | null;
+  occupation?: string | null;
+  organization?: string | null;
+  lastInteractionAt?: string | null;
+  interactionCount?: number;
+  canAccessPersonalInfo?: boolean;
+  canAccessCalendar?: boolean;
+  canAccessTasks?: boolean;
+  canAccessGrocery?: boolean;
+  canSetReminders?: boolean;
+  isAutoCreated?: boolean;
   createdAt: string;
   updatedAt: string;
 }

@@ -98,6 +98,7 @@ INTENT_TO_CATEGORY: dict[IntentType, CapabilityCategory] = {
     IntentType.ANALYZE_PATTERNS: CapabilityCategory.PREDICTION,
     IntentType.DETECT_ANOMALIES: CapabilityCategory.PREDICTION,
     IntentType.CREATE_PREDICTION: CapabilityCategory.PREDICTION,
+    IntentType.CONVERSATIONAL: CapabilityCategory.SYSTEM,
 }
 
 
@@ -127,6 +128,7 @@ INTENT_TO_AGENT: dict[IntentType, AgentId] = {
     IntentType.ANALYZE_PATTERNS: AgentId.FORESIGHT_STRATEGIST,
     IntentType.DETECT_ANOMALIES: AgentId.FORESIGHT_STRATEGIST,
     IntentType.CREATE_PREDICTION: AgentId.FORESIGHT_STRATEGIST,
+    IntentType.CONVERSATIONAL: AgentId.CONDUCTOR,
 }
 
 
@@ -616,6 +618,44 @@ Always call the classify_intent tool with your classification.""",
                 )
             return self._fallback_classification(message)
     
+    def _get_conversational_response(self, message: str) -> str:
+        """
+        Generate a quick response for simple conversational intents.
+        
+        Handles greetings, acknowledgments, and simple social exchanges
+        without invoking specialist agents for efficiency.
+        
+        Args:
+            message: The user's message
+            
+        Returns:
+            str: A friendly conversational response
+        """
+        message_lower = message.lower().strip()
+        
+        if any(g in message_lower for g in ["hi", "hey", "hello", "yo", "sup"]):
+            return "Hey Nate! What can I help you with?"
+        
+        if "how" in message_lower and any(w in message_lower for w in ["going", "are you", "everything"]):
+            return "All systems running smoothly. What do you need?"
+        
+        if any(w in message_lower for w in ["thanks", "thank you", "thx", "ty"]):
+            return "You got it."
+        
+        if any(w in message_lower for w in ["ok", "okay", "got it", "sounds good", "perfect", "great", "cool"]):
+            return "Ready when you are."
+        
+        if any(w in message_lower for w in ["bye", "goodbye", "later", "see ya", "ttyl"]):
+            return "Later."
+        
+        if message_lower in ["yes", "yeah", "yep"]:
+            return "Got it. What would you like me to do?"
+        
+        if message_lower in ["no", "nope", "nah"]:
+            return "Alright. Let me know if you need anything else."
+        
+        return "What can I do for you?"
+    
     def _fallback_classification(self, message: str) -> ClassifiedIntent:
         """
         Fallback classification when OpenAI call fails.
@@ -1084,6 +1124,13 @@ Always call the classify_intent tool with your classification.""",
             f"(confidence: {intent.confidence:.2f}, coordination: {intent.requires_coordination})"
         )
         
+        if intent.type == IntentType.CONVERSATIONAL:
+            response = self._get_conversational_response(input_text)
+            self.last_completion_status = CompletionStatus.COMPLETE
+            self.last_completion_message = "Handled conversational intent directly"
+            logger.info(f"Fast conversational response: '{response}' for input: '{input_text[:50]}...'")
+            return response
+        
         if intent.requires_coordination or intent.category in [CapabilityCategory.MEMORY]:
             context = await self.enrich_context(input_text, context)
         
@@ -1175,7 +1222,7 @@ Always call the classify_intent tool with your classification.""",
                 # Collect all parallel responses and update handoff context
                 parallel_agent_responses: list[AgentResponse] = []
                 for agent_id, result in zip(phase2_agents, parallel_responses):
-                    if isinstance(result, Exception):
+                    if isinstance(result, BaseException):
                         logger.error(f"Parallel execution failed for {agent_id}: {result}")
                         error_response = AgentResponse(
                             agent_id=agent_id,
@@ -1185,8 +1232,10 @@ Always call the classify_intent tool with your classification.""",
                             processing_time_ms=0,
                         )
                         parallel_agent_responses.append(error_response)
-                    else:
+                    elif isinstance(result, AgentResponse):
                         parallel_agent_responses.append(result)
+                    else:
+                        logger.warning(f"Unexpected result type from {agent_id}: {type(result)}")
                     agents_called.append(agent_id)
                 
                 # Add all parallel responses to main lists after collection

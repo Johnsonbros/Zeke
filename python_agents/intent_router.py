@@ -59,11 +59,16 @@ INTENT_PATTERNS: list[PatternRule] = [
             r"\btell\s+(\w+)\s+that\b",
             r"\blet\s+(\w+)\s+know\b",
             r"\bsend\s+(\w+)\s+(a\s+)?(message|text)\b",
+            r"\bshoot\s+(\w+)\s+(a\s+)?(text|message)\b",
+            r"\bhit\s+up\s+(\w+)\b",
+            r"\bping\s+(\w+)\b",
+            r"\breach\s+out\s+to\s+(\w+)\b",
+            r"\bcontact\s+(\w+)\b(?!.*info)",
         ],
         category=CapabilityCategory.COMMUNICATION,
         intent_type=IntentType.SEND_MESSAGE,
         confidence=0.9,
-        entity_extractors={"recipient": r"(?:to|tell|let)\s+(\w+)"}
+        entity_extractors={"recipient": r"(?:to|tell|let|up|out to|contact)\s+(\w+)"}
     ),
     PatternRule(
         patterns=[r"\bcheck[\s-]?in\b", r"\bhow\s+is\s+(\w+)\b(?!.*weather)"],
@@ -91,6 +96,10 @@ INTENT_PATTERNS: list[PatternRule] = [
             r"\b(what('?s|\s+is)|show|check|look\s+at)\s+(my\s+)?(calendar|schedule|agenda)\b",
             r"\bwhat\s+(do\s+i\s+have|am\s+i\s+doing)\s+(today|tomorrow|this\s+week)\b",
             r"\b(any|do\s+i\s+have)\s+(meetings?|appointments?|events?)\b",
+            r"\bwhat('?s|\s+is)\s+(happening|going\s+on)\s+(today|tomorrow|this\s+week)\b",
+            r"\bam\s+i\s+(free|busy|available)\b",
+            r"\bwhen('?s|\s+is)\s+my\s+next\b",
+            r"\bmy\s+day\s+look\s+like\b",
         ],
         category=CapabilityCategory.SCHEDULING,
         intent_type=IntentType.CALENDAR_QUERY,
@@ -144,6 +153,9 @@ INTENT_PATTERNS: list[PatternRule] = [
             r"\b(add|create|new)\s+(a\s+)?task\b",
             r"\bi\s+need\s+to\b(?!.*buy|.*grocery)",
             r"\badd\s+to\s+(my\s+)?(to-?do|task)\s*list\b",
+            r"\bput\s+on\s+(my\s+)?(to-?do|task)\s*list\b",
+            r"\bgotta\s+remember\s+to\b",
+            r"\bdon'?t\s+let\s+me\s+forget\s+to\b",
         ],
         category=CapabilityCategory.TASK_MANAGEMENT,
         intent_type=IntentType.ADD_TASK,
@@ -276,11 +288,15 @@ INTENT_PATTERNS: list[PatternRule] = [
             r"\badd\s+(.+)\s+to\s+(the\s+)?(grocery|shopping)\s+list\b",
             r"\b(need|get|buy)\s+(.+)\s+(from|at)\s+(the\s+)?(store|grocery|market)\b",
             r"\bput\s+(.+)\s+on\s+(the\s+)?(grocery|shopping)\s+list\b",
+            r"\bwe('re|\s+are)\s+(out\s+of|low\s+on)\b",
+            r"\bpick\s+up\s+(.+)\s+(from|at)\s+(the\s+)?store\b",
+            r"\bneed\s+more\s+\w+\b",
+            r"\bget\s+(some|more)\s+\w+\b(?!.*from)",
         ],
         category=CapabilityCategory.GROCERY,
         intent_type=IntentType.ADD_ITEM,
         confidence=0.9,
-        entity_extractors={"item_name": r"(?:add|need|get|buy|put)\s+(.+?)\s+(?:to|from|on|at)"}
+        entity_extractors={"item_name": r"(?:add|need|get|buy|put|of|on)\s+(.+?)\s+(?:to|from|on|at|$)"}
     ),
     PatternRule(
         patterns=[
@@ -454,11 +470,26 @@ INTENT_PATTERNS: list[PatternRule] = [
     PatternRule(
         patterns=[
             r"\b(system\s+)?status\b",
-            r"\bare\s+you\s+(working|running|online)\b",
+            r"\bare\s+you\s+(working|running|online|there|awake)\b",
+            r"\byou\s+there\b",
+            r"\bare\s+you\s+up\b",
         ],
         category=CapabilityCategory.SYSTEM,
         intent_type=IntentType.STATUS_CHECK,
         confidence=0.9,
+    ),
+    PatternRule(
+        patterns=[
+            r"^(hi|hey|hello|yo|sup|what'?s\s+up)\s*[!?.,]*$",
+            r"^how('?s\s+it\s+going|'?re\s+you|'?s\s+everything)\s*[!?.,]*$",
+            r"^(thanks|thank\s+you|thx|ty)\s*[!?.,]*$",
+            r"^(ok|okay|got\s+it|sounds\s+good|perfect|great|cool)\s*[!?.,]*$",
+            r"^(bye|goodbye|later|see\s+ya|ttyl)\s*[!?.,]*$",
+            r"^(yes|no|yeah|nope|yep|nah)\s*[!?.,]*$",
+        ],
+        category=CapabilityCategory.SYSTEM,
+        intent_type=IntentType.CONVERSATIONAL,
+        confidence=0.95,
     ),
     PatternRule(
         patterns=[

@@ -404,8 +404,8 @@ export default function HomeScreen() {
   }, []);
 
   const handleNewsFeedback = useCallback(
-    async (storyId: string, feedback: "up" | "down", reason?: string) => {
-      await submitNewsFeedback(storyId, feedback, reason);
+    async (storyId: string, feedbackType: "thumbs_up" | "thumbs_down", reason?: string, topicId?: string) => {
+      await submitNewsFeedback(storyId, feedbackType, reason, topicId);
     },
     []
   );

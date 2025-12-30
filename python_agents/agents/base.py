@@ -194,6 +194,7 @@ class IntentType(str, Enum):
     ANALYZE_PATTERNS = "analyze_patterns"
     DETECT_ANOMALIES = "detect_anomalies"
     CREATE_PREDICTION = "create_prediction"
+    CONVERSATIONAL = "conversational"
 
 
 class HandoffReason(str, Enum):

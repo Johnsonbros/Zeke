@@ -9,6 +9,13 @@ import {
   getCommunicationLogs,
   generateRequestId,
 } from "./zeke-security";
+import {
+  normalizePhoneNumber,
+  buildPhoneContactMap,
+  resolveContactName,
+  type Contact,
+  type PhoneContactMap,
+} from "./phone-utils";
 
 const ZEKE_BACKEND_URL = process.env.EXPO_PUBLIC_ZEKE_BACKEND_URL || "https://zekeai.replit.app";
 
@@ -21,6 +28,42 @@ interface CacheEntry {
 
 const CACHE_TTL_MS = 60000; // 60 seconds
 const proxyCache: Map<string, CacheEntry> = new Map();
+
+// Contact cache for phone number resolution
+let contactCache: {
+  contacts: Contact[];
+  phoneMap: PhoneContactMap;
+  timestamp: number;
+} | null = null;
+const CONTACT_CACHE_TTL_MS = 300000; // 5 minutes
+
+async function getContactCache(headers: Record<string, string>): Promise<PhoneContactMap> {
+  const now = Date.now();
+  
+  if (contactCache && (now - contactCache.timestamp) < CONTACT_CACHE_TTL_MS) {
+    return contactCache.phoneMap;
+  }
+  
+  try {
+    const result = await proxyToZeke("GET", "/api/contacts", undefined, headers);
+    if (result.success) {
+      const contacts = result.data?.contacts || result.data || [];
+      const phoneMap = buildPhoneContactMap(contacts);
+      contactCache = { contacts, phoneMap, timestamp: now };
+      console.log(`[Contact Cache] Refreshed with ${contacts.length} contacts`);
+      return phoneMap;
+    }
+  } catch (error) {
+    console.error("[Contact Cache] Failed to refresh:", error);
+  }
+  
+  return contactCache?.phoneMap || {};
+}
+
+function invalidateContactCache(): void {
+  contactCache = null;
+  console.log("[Contact Cache] Invalidated");
+}
 
 function getCacheKey(endpoint: string, deviceToken?: string): string {
   return `${endpoint}:${deviceToken || 'anonymous'}`;
@@ -438,6 +481,7 @@ export function registerZekeProxyRoutes(app: Express): void {
     if (!result.success) {
       return res.status(result.status).json({ error: result.error || "Failed to create contact" });
     }
+    invalidateContactCache();
     res.status(201).json(result.data);
   });
 
@@ -456,6 +500,7 @@ export function registerZekeProxyRoutes(app: Express): void {
     if (!result.success) {
       return res.status(result.status).json({ error: result.error || "Failed to update contact" });
     }
+    invalidateContactCache();
     res.json(result.data);
   });
 
@@ -465,7 +510,51 @@ export function registerZekeProxyRoutes(app: Express): void {
     if (!result.success) {
       return res.status(result.status).json({ error: result.error || "Failed to delete contact" });
     }
+    invalidateContactCache();
     res.status(204).send();
+  });
+
+  // Phone number to contact name lookup
+  app.post("/api/zeke/contacts/lookup", async (req: Request, res: Response) => {
+    const headers = extractForwardHeaders(req.headers);
+    const { phoneNumbers } = req.body;
+    
+    if (!Array.isArray(phoneNumbers)) {
+      return res.status(400).json({ error: "phoneNumbers must be an array" });
+    }
+    
+    try {
+      const phoneMap = await getContactCache(headers);
+      const results: Record<string, string> = {};
+      
+      for (const phone of phoneNumbers) {
+        const normalized = normalizePhoneNumber(phone);
+        results[phone] = resolveContactName(phone, phoneMap);
+      }
+      
+      res.json({ results });
+    } catch (error) {
+      console.error("[Contact Lookup] Error:", error);
+      res.status(500).json({ error: "Failed to lookup contacts" });
+    }
+  });
+
+  // Invalidate contact cache endpoint
+  app.post("/api/zeke/contacts/refresh-cache", async (req: Request, res: Response) => {
+    const headers = extractForwardHeaders(req.headers);
+    invalidateContactCache();
+    
+    try {
+      const phoneMap = await getContactCache(headers);
+      res.json({ 
+        success: true, 
+        contactCount: Object.keys(phoneMap).length,
+        message: "Contact cache refreshed" 
+      });
+    } catch (error) {
+      console.error("[Contact Cache Refresh] Error:", error);
+      res.status(500).json({ error: "Failed to refresh contact cache" });
+    }
   });
 
   app.get("/api/zeke/chat/conversations", async (req: Request, res: Response) => {
@@ -794,67 +883,43 @@ export function registerZekeProxyRoutes(app: Express): void {
       return res.json(rawData);
     }
     
-    // Fallback to placeholder data if backend doesn't return valid JSON
+    // Return error response - no placeholder data, let client use cached data or show error state
     const reason = !result.success 
       ? `request failed (status ${result.status}: ${result.error || 'unknown error'})` 
       : typeof result.data === 'string' 
-        ? `response was HTML/text instead of JSON. First 200 chars: ${result.data.substring(0, 200)}` 
-        : `response missing stories array. Keys: ${Object.keys(result.data || {}).join(', ')}`;
-    console.log(`[News Briefing] Falling back to placeholder data. Reason: ${reason}`);
+        ? `response was HTML/text instead of JSON` 
+        : `response missing stories array`;
+    console.log(`[News Briefing] Backend unavailable. Reason: ${reason}`);
     
-    return res.json({
-      generatedAt: new Date().toISOString(),
-      nextRefreshAt: new Date(Date.now() + 3600000).toISOString(),
-      stories: [
-        {
-          id: "news-1",
-          headline: "AI Technology Advances in Healthcare",
-          summary: "New AI systems are helping doctors diagnose diseases earlier and more accurately than ever before.",
-          category: "Technology",
-          source: "Tech Daily",
-          sourceUrl: "https://example.com/ai-healthcare",
-          publishedAt: new Date().toISOString(),
-          urgency: "normal",
-        },
-        {
-          id: "news-2",
-          headline: "Market Update: Tech Stocks Rally",
-          summary: "Major technology companies see gains as investors remain optimistic about Q4 earnings.",
-          category: "Business",
-          source: "Financial Times",
-          sourceUrl: "https://example.com/market-update",
-          publishedAt: new Date(Date.now() - 3600000).toISOString(),
-          urgency: "normal",
-        },
-        {
-          id: "news-3",
-          headline: "Weather Alert: Storm System Approaching",
-          summary: "Meteorologists warn of severe weather conditions expected across the region this weekend.",
-          category: "World",
-          source: "Weather Service",
-          sourceUrl: "https://example.com/weather-alert",
-          publishedAt: new Date(Date.now() - 7200000).toISOString(),
-          urgency: "breaking",
-        },
-      ],
+    return res.status(result.status || 503).json({
+      error: "News briefing unavailable",
+      message: "Unable to fetch news from backend. Please try again later.",
+      reason: reason,
+      retryAfter: 60,
     });
   });
 
   app.post("/api/zeke/news/feedback", async (req: Request, res: Response) => {
+    console.log(`[News Feedback] Received request:`, JSON.stringify(req.body));
     const headers = extractForwardHeaders(req.headers);
-    const { storyId, feedback, reason } = req.body;
-    if (!storyId || !feedback) {
-      return res.status(400).json({ error: "storyId and feedback are required" });
+    const { storyId, feedbackType, reason, topicId, source } = req.body;
+    if (!storyId || !feedbackType) {
+      console.log(`[News Feedback] Validation failed: missing storyId or feedbackType`);
+      return res.status(400).json({ error: "storyId and feedbackType are required" });
     }
-    if (feedback === "down" && (!reason || reason.trim().length === 0)) {
-      return res.status(400).json({ error: "reason is required for negative feedback" });
+    if (!["thumbs_up", "thumbs_down"].includes(feedbackType)) {
+      console.log(`[News Feedback] Validation failed: invalid feedbackType`);
+      return res.status(400).json({ error: "feedbackType must be 'thumbs_up' or 'thumbs_down'" });
     }
+    console.log(`[News Feedback] Proxying to ZEKE backend: storyId=${storyId}, feedbackType=${feedbackType}, topicId=${topicId || "none"}, source=${source || "mobile"}`);
     const result = await proxyToZeke("POST", "/api/news/feedback", req.body, headers);
+    console.log(`[News Feedback] ZEKE proxy result:`, JSON.stringify(result));
     if (!result.success || typeof result.data === 'string') {
       // Accept feedback locally even if backend doesn't support it yet
-      console.log(`[News Feedback] storyId=${storyId}, feedback=${feedback}, reason=${reason || "none"}`);
+      console.log(`[News Feedback] Stored locally: storyId=${storyId}, feedbackType=${feedbackType}, reason=${reason || "none"}, topicId=${topicId || "none"}`);
       return res.json({ success: true, message: "Feedback recorded" });
     }
+    console.log(`[News Feedback] Success from backend`);
     res.json(result.data);
   });
 

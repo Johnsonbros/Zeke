@@ -44,6 +44,26 @@ import { useAuth } from "@/context/AuthContext";
 import { checkCalendarConnection, type CalendarConnectionStatus } from "@/lib/zeke-api-adapter";
 import { getApiUrl, getAuthHeaders } from "@/lib/query-client";
 import * as Linking from "expo-linking";
+import { useContactSync } from "@/hooks/useContactSync";
+
+function formatSyncTime(isoString: string): string {
+  const syncDate = new Date(isoString);
+  const now = new Date();
+  const diffMs = now.getTime() - syncDate.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+
+  if (diffMins < 1) {
+    return "Just now";
+  } else if (diffMins < 60) {
+    return `${diffMins} min ago`;
+  } else if (diffMins < 1440) {
+    const hours = Math.floor(diffMins / 60);
+    return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+  } else {
+    const days = Math.floor(diffMins / 1440);
+    return `${days} day${days > 1 ? "s" : ""} ago`;
+  }
+}
 
 function mapZekeDeviceToDeviceInfo(zekeDevice: ZekeDevice): DeviceInfo {
   const deviceType = zekeDevice.type === "limitless" ? "limitless" : "omi";
@@ -109,6 +129,20 @@ export default function SettingsScreen() {
     staleTime: 30000,
   });
 
+  const [autoSync, setAutoSync] = useState(true);
+  const [isConnectingCalendar, setIsConnectingCalendar] = useState(false);
+  const [profilePicture, setProfilePicture] = useState<ProfilePictureData | null>(null);
+  const [showReminderBadge, setShowReminderBadge] = useState(false);
+  const [isTakingPhoto, setIsTakingPhoto] = useState(false);
+  const [dataRetentionDays, setDataRetentionDays] = useState<number>(-1);
+
+  const [bleConnectionState, setBleConnectionState] = useState<ConnectionState>(
+    bluetoothService.getConnectionState()
+  );
+  const [bleConnectedDevice, setBleConnectedDevice] = useState<BLEDevice | null>(null);
+  const contactSync = useContactSync();
+
+  // Compute devices after state declarations to avoid reference error
   const devices: DeviceInfo[] = zekeDevices.map((zekeDevice) => {
     const baseDevice = mapZekeDeviceToDeviceInfo(zekeDevice);
     
@@ -126,17 +160,6 @@ export default function SettingsScreen() {
       lastSync: realIsConnected ? "Now" : baseDevice.lastSync,
     };
   });
-  const [autoSync, setAutoSync] = useState(true);
-  const [isConnectingCalendar, setIsConnectingCalendar] = useState(false);
-  const [profilePicture, setProfilePicture] = useState<ProfilePictureData | null>(null);
-  const [showReminderBadge, setShowReminderBadge] = useState(false);
-  const [isTakingPhoto, setIsTakingPhoto] = useState(false);
-  const [dataRetentionDays, setDataRetentionDays] = useState<number>(-1);
-
-  const [bleConnectionState, setBleConnectionState] = useState<ConnectionState>(
-    bluetoothService.getConnectionState()
-  );
-  const [bleConnectedDevice, setBleConnectedDevice] = useState<BLEDevice | null>(null);
 
   useEffect(() => {
     const unsubscribe = bluetoothService.onConnectionStateChange(
@@ -608,6 +631,82 @@ export default function SettingsScreen() {
               color={calendarConnection?.connected ? Colors.dark.success : theme.textSecondary} 
             />
           </Pressable>
+        </View>
+      </SettingsSection>
+
+      <SettingsSection title="CONTACTS">
+        <View style={{ borderRadius: BorderRadius.md, overflow: "hidden" }}>
+          <Pressable
+            onPress={async () => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              const result = await contactSync.syncNow();
+              if (result.success) {
+                Alert.alert("Sync Complete", `Synced ${result.count} contacts successfully.`);
+              } else {
+                Alert.alert("Sync Failed", result.error || "Failed to sync contacts.");
+              }
+            }}
+            disabled={contactSync.isSyncing}
+            style={({ pressed }) => [
+              styles.integrationRow,
+              {
+                backgroundColor: theme.backgroundDefault,
+                opacity: pressed || contactSync.isSyncing ? 0.6 : 1,
+              },
+            ]}
+          >
+            <View style={[styles.integrationIcon, { backgroundColor: `${Colors.dark.primary}15` }]}>
+              <Feather name="users" size={20} color={Colors.dark.primary} />
+            </View>
+            <View style={styles.integrationContent}>
+              <ThemedText type="body">Contact Sync</ThemedText>
+              {contactSync.isSyncing ? (
+                <View style={styles.integrationStatusRow}>
+                  <ActivityIndicator size="small" color={Colors.dark.primary} />
+                  <ThemedText type="small" secondary style={{ marginLeft: Spacing.xs }}>
+                    Syncing...
+                  </ThemedText>
+                </View>
+              ) : contactSync.syncError ? (
+                <View style={styles.integrationStatusRow}>
+                  <View style={[styles.statusDot, { backgroundColor: Colors.dark.error }]} />
+                  <ThemedText type="small" style={{ color: Colors.dark.error }}>
+                    {contactSync.syncError}
+                  </ThemedText>
+                </View>
+              ) : contactSync.lastSyncTime ? (
+                <View style={styles.integrationStatusRow}>
+                  <View style={[styles.statusDot, { backgroundColor: Colors.dark.success }]} />
+                  <ThemedText type="small" style={{ color: Colors.dark.success }}>
+                    {contactSync.lastSyncCount} contacts - {formatSyncTime(contactSync.lastSyncTime)}
+                  </ThemedText>
+                </View>
+              ) : (
+                <View style={styles.integrationStatusRow}>
+                  <View style={[styles.statusDot, { backgroundColor: theme.textSecondary }]} />
+                  <ThemedText type="small" secondary>
+                    Never synced
+                  </ThemedText>
+                </View>
+              )}
+            </View>
+            <Feather 
+              name={contactSync.isSyncing ? "loader" : "refresh-cw"} 
+              size={20} 
+              color={Colors.dark.primary} 
+            />
+          </Pressable>
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          <SettingsRow
+            icon="zap"
+            label="Auto-sync Contacts"
+            isToggle
+            toggleValue={contactSync.autoSyncEnabled}
+            onToggle={(value) => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              contactSync.setAutoSyncEnabled(value);
+            }}
+          />
         </View>
       </SettingsSection>
 

@@ -25,7 +25,9 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { SearchBar } from "@/components/SearchBar";
 import { EmptyState } from "@/components/EmptyState";
+import { ContactFormModal } from "@/components/ContactFormModal";
 import { useTheme } from "@/hooks/useTheme";
+import { useContactSync } from "@/hooks/useContactSync";
 import { Spacing, Colors, BorderRadius } from "@/constants/theme";
 import { queryClient } from "@/lib/query-client";
 import { getContacts, initiateCall, ZekeContact } from "@/lib/zeke-api-adapter";
@@ -59,14 +61,16 @@ function getFullName(contact: ZekeContact): string {
 
 function getAccessLevelColor(accessLevel: ZekeContact["accessLevel"]): string {
   switch (accessLevel) {
-    case "family":
+    case "admin":
       return Colors.dark.accent;
-    case "close_friend":
+    case "inner_circle":
       return Colors.dark.primary;
     case "friend":
       return Colors.dark.secondary;
     case "acquaintance":
       return Colors.dark.warning;
+    case "work":
+      return Colors.dark.link;
     default:
       return Colors.dark.textSecondary;
   }
@@ -74,14 +78,16 @@ function getAccessLevelColor(accessLevel: ZekeContact["accessLevel"]): string {
 
 function formatAccessLevel(accessLevel: ZekeContact["accessLevel"]): string {
   switch (accessLevel) {
-    case "close_friend":
-      return "Close Friend";
-    case "family":
-      return "Family";
+    case "admin":
+      return "Admin";
+    case "inner_circle":
+      return "Inner Circle";
     case "friend":
       return "Friend";
     case "acquaintance":
       return "Acquaintance";
+    case "work":
+      return "Work";
     default:
       return "";
   }
@@ -162,14 +168,42 @@ function ContactRow({ contact, onPress, onCall, onMessage }: ContactRowProps) {
   );
 }
 
+function formatSyncTime(isoString: string | null): string {
+  if (!isoString) return "Never synced";
+  const date = new Date(isoString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${diffDays}d ago`;
+}
+
 export default function ContactsScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
   const navigation = useNavigation<ContactsNavProp>();
+  const { syncNow, isSyncing, lastSyncTime, lastSyncCount, syncError } =
+    useContactSync();
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  const handleSync = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const result = await syncNow();
+    if (result.success) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else if (result.error) {
+      Alert.alert("Sync Failed", result.error);
+    }
+  };
 
   const {
     data: contacts,
@@ -283,7 +317,7 @@ export default function ContactsScreen() {
 
   const handleAddContact = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert("Add Contact", "Contact creation coming soon.");
+    setShowAddModal(true);
   };
 
   const renderItem = ({ item }: { item: (typeof flatData)[number] }) => {
@@ -377,6 +411,39 @@ export default function ContactsScreen() {
               onChangeText={setSearchQuery}
               placeholder="Search contacts..."
             />
+            <View style={styles.syncRow}>
+              <View style={styles.syncInfo}>
+                <Feather
+                  name="refresh-cw"
+                  size={12}
+                  color={theme.textSecondary}
+                />
+                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                  {formatSyncTime(lastSyncTime)}
+                  {lastSyncCount > 0 ? ` (${lastSyncCount})` : ""}
+                </ThemedText>
+              </View>
+              <Pressable
+                onPress={handleSync}
+                disabled={isSyncing}
+                style={({ pressed }) => [
+                  styles.syncButton,
+                  pressed && { opacity: 0.7 },
+                  isSyncing && { opacity: 0.5 },
+                ]}
+              >
+                {isSyncing ? (
+                  <ActivityIndicator size="small" color={Colors.dark.primary} />
+                ) : (
+                  <>
+                    <Feather name="cloud-lightning" size={14} color={Colors.dark.primary} />
+                    <ThemedText type="caption" style={{ color: Colors.dark.primary, fontWeight: "600" }}>
+                      Sync Now
+                    </ThemedText>
+                  </>
+                )}
+              </Pressable>
+            </View>
           </View>
         }
         ListEmptyComponent={renderEmpty}
@@ -401,6 +468,10 @@ export default function ContactsScreen() {
           <Feather name="user-plus" size={24} color="#FFFFFF" />
         </View>
       </Pressable>
+      <ContactFormModal
+        visible={showAddModal}
+        onClose={() => setShowAddModal(false)}
+      />
     </ThemedView>
   );
 }
@@ -412,6 +483,26 @@ const styles = StyleSheet.create({
   searchContainer: {
     paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.lg,
+  },
+  syncRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: Spacing.sm,
+  },
+  syncInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+  },
+  syncButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.dark.primary + "20",
   },
   sectionHeader: {
     paddingHorizontal: Spacing.lg,

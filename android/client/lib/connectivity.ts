@@ -14,6 +14,8 @@ interface ConnectivityListenerOptions {
 export const ConnectivityService = {
   _unsubscribe: null as (() => void) | null,
   _isOnline: false,
+  _isInitialized: false,
+  _initialStateFetched: false,
   _debounceTimer: null as NodeJS.Timeout | null,
   _callbacks: [] as ConnectivityCallback[],
   _onOnlineCallback: null as (() => void) | null,
@@ -23,30 +25,48 @@ export const ConnectivityService = {
 
   /**
    * Initialize connectivity listener
+   * Will only initialize once - subsequent calls are ignored
    */
   initialize(options: ConnectivityListenerOptions = {}): void {
+    // Guard against re-initialization
+    if (this._isInitialized) {
+      console.log("[Connectivity] Already initialized, skipping");
+      return;
+    }
+    
+    this._isInitialized = true;
     this._debounceMs = options.debounceMs || 500;
     this._onOnlineCallback = options.onOnline || null;
     this._onOfflineCallback = options.onOffline || null;
 
-    // Get initial state
+    // Get initial state FIRST before subscribing to changes
+    // This prevents false offline→online transitions on mount
     NetInfo.fetch().then((state) => {
-      this._isOnline = this._isStateOnline(state);
+      const isOnline = this._isStateOnline(state);
+      this._isOnline = isOnline;
+      this._initialStateFetched = true;
+      
+      // Set last online time if we're starting online
+      if (isOnline) {
+        this._lastOnlineTime = Date.now();
+      }
+      
       console.log(
         `[Connectivity] Initial state: ${this._isOnline ? "online" : "offline"}`,
       );
-    });
-
-    // Subscribe to changes
-    this._unsubscribe = NetInfo.addEventListener((state) => {
-      this._handleStateChange(state);
+      
+      // Only subscribe to changes AFTER we have the initial state
+      // This prevents the listener from detecting a "change" from our default false state
+      this._unsubscribe = NetInfo.addEventListener((state) => {
+        this._handleStateChange(state);
+      });
     });
 
     console.log("[Connectivity] Listener initialized");
   },
 
   /**
-   * Cleanup listener
+   * Cleanup listener and reset state for potential re-initialization
    */
   cleanup(): void {
     if (this._unsubscribe) {
@@ -57,6 +77,12 @@ export const ConnectivityService = {
       clearTimeout(this._debounceTimer);
       this._debounceTimer = null;
     }
+    // Reset initialization state so it can be re-initialized if needed
+    this._isInitialized = false;
+    this._initialStateFetched = false;
+    this._callbacks = [];
+    this._onOnlineCallback = null;
+    this._onOfflineCallback = null;
     console.log("[Connectivity] Listener cleaned up");
   },
 

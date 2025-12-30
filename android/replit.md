@@ -32,6 +32,36 @@ The project (ZEKEapp) is part of a unified monorepo `https://github.com/Johnsonb
 
 ### Performance Optimizations
 - **Grocery Sync Caching**: Server-side stale-while-revalidate cache for `/api/grocery` endpoint (60-second cache, 30-second client timeout, cache invalidation on mutations, prefetching).
+- **Contact Caching**: Server-side contact cache with 5-minute TTL for phone number resolution. Cache is automatically invalidated on contact mutations (create/update/delete).
+
+### Contact Synchronization System (December 2024)
+Bidirectional contact sync between the mobile app and ZEKE backend:
+
+**Frontend Components:**
+- `client/lib/phone-utils.ts`: E.164 phone number normalization utilities
+- `client/lib/contact-sync.ts`: Contact sync with settings, cache, and auto-sync support
+- `client/hooks/useContactSync.ts`: React hook for managing contact sync state
+- Settings UI with manual sync button and auto-sync toggle (24-hour interval)
+
+**Backend Endpoints:**
+- `GET /api/zeke/contacts`: Fetch all contacts from ZEKE backend
+- `POST /api/zeke/contacts`: Create new contact
+- `GET /api/zeke/contacts/:id`: Get specific contact
+- `PATCH /api/zeke/contacts/:id`: Update contact
+- `DELETE /api/zeke/contacts/:id`: Delete contact
+- `POST /api/zeke/contacts/lookup`: Resolve phone numbers to contact names (batch)
+- `POST /api/zeke/contacts/refresh-cache`: Force refresh contact cache
+
+**Phone Number Normalization:**
+- Converts all phone numbers to E.164 format (+1XXXXXXXXXX for US)
+- Handles 10-digit (adds +1), 11-digit (adds +), and international formats
+- Consistent normalization on both client and server for matching
+
+**Auto-Sync Features:**
+- Automatic sync on first app launch if never synced
+- 24-hour interval auto-sync (configurable)
+- Settings persisted in AsyncStorage
+- Post-sync cache invalidation refreshes SMS/voice conversation names
 
 ## External Dependencies
 

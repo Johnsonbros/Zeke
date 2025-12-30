@@ -202,6 +202,15 @@ function configureExpoAndLanding(app: express.Application) {
     app.use(express.static(staticBuildPath));
   }
 
+  // Create Metro proxy ONCE outside the handler to prevent memory leaks
+  // Creating inside the handler causes MaxListenersExceededWarning
+  const metroProxy = !isProduction ? createProxyMiddleware({
+    target: 'http://localhost:8081',
+    changeOrigin: true,
+    ws: true,
+    logger: console,
+  }) : null;
+
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith("/api") || req.path.startsWith("/ws")) {
       return next();
@@ -234,13 +243,8 @@ function configureExpoAndLanding(app: express.Application) {
       return res.status(200).send(`<!DOCTYPE html><html><head><title>${appName}</title></head><body><h1>${appName}</h1><p>App is running</p></body></html>`);
     }
 
-    const metroProxy = createProxyMiddleware({
-      target: 'http://localhost:8081',
-      changeOrigin: true,
-      ws: true,
-      logger: console,
-    });
-    return metroProxy(req, res, next);
+    // Use the pre-created proxy instance
+    return metroProxy!(req, res, next);
   });
 
   app.use(express.static(path.resolve(process.cwd(), "static-build")));

@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   View,
   ScrollView,
@@ -25,6 +25,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
+import { ContactFormModal } from "@/components/ContactFormModal";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, Colors, BorderRadius } from "@/constants/theme";
 import { queryClient } from "@/lib/query-client";
@@ -64,14 +65,16 @@ function getFullName(contact: ZekeContact): string {
 
 function getAccessLevelColor(accessLevel: ZekeContact["accessLevel"]): string {
   switch (accessLevel) {
-    case "family":
+    case "admin":
       return Colors.dark.accent;
-    case "close_friend":
+    case "inner_circle":
       return Colors.dark.primary;
     case "friend":
       return Colors.dark.secondary;
     case "acquaintance":
       return Colors.dark.warning;
+    case "work":
+      return Colors.dark.link;
     default:
       return Colors.dark.textSecondary;
   }
@@ -79,14 +82,16 @@ function getAccessLevelColor(accessLevel: ZekeContact["accessLevel"]): string {
 
 function formatAccessLevel(accessLevel: ZekeContact["accessLevel"]): string {
   switch (accessLevel) {
-    case "close_friend":
-      return "Close Friend";
-    case "family":
-      return "Family";
+    case "admin":
+      return "Admin";
+    case "inner_circle":
+      return "Inner Circle";
     case "friend":
       return "Friend";
     case "acquaintance":
       return "Acquaintance";
+    case "work":
+      return "Work";
     default:
       return "Unknown";
   }
@@ -265,6 +270,8 @@ export default function ContactDetailScreen() {
   const navigation = useNavigation<ContactDetailNavProp>();
   const { contactId } = route.params;
 
+  const [showEditModal, setShowEditModal] = useState(false);
+
   const {
     data: contact,
     isLoading,
@@ -359,7 +366,7 @@ export default function ContactDetailScreen() {
 
   const handleEdit = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Alert.alert("Edit Contact", "Edit functionality coming soon.");
+    setShowEditModal(true);
   }, []);
 
   if (isLoading) {
@@ -659,6 +666,11 @@ export default function ContactDetailScreen() {
           </ThemedText>
         </Pressable>
       </ScrollView>
+      <ContactFormModal
+        visible={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        contact={contact}
+      />
     </ThemedView>
   );
 }
