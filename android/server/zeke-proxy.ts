@@ -264,6 +264,22 @@ export function registerZekeProxyRoutes(app: Express): void {
     });
   });
 
+  app.get("/api/zeke/pendant/status", async (req: Request, res: Response) => {
+    const headers = extractForwardHeaders(req.headers);
+    const result = await proxyToZeke("GET", "/api/pendant/status", undefined, headers);
+    if (!result.success) {
+      return res.json({
+        connected: false,
+        streaming: false,
+        healthy: false,
+        lastAudioReceivedAt: null,
+        totalAudioPackets: 0,
+        timeSinceLastAudioMs: null,
+      });
+    }
+    res.json(result.data);
+  });
+
   app.get("/api/zeke/tasks", async (req: Request, res: Response) => {
     const headers = extractForwardHeaders(req.headers);
     const result = await proxyToZeke("GET", "/api/tasks", undefined, headers);

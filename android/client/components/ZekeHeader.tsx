@@ -6,6 +6,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
 import { HeaderTitle } from "@/components/HeaderTitle";
+import { PendantStatusIndicator } from "@/components/PendantStatusIndicator";
 import { getHealthStatus } from "@/lib/zeke-api-adapter";
 import { Colors, Spacing, BorderRadius } from "@/constants/theme";
 
@@ -20,7 +21,12 @@ export function ZekeHeaderTitle() {
 
   const isOnline = isSuccess && health?.connected === true;
 
-  return <HeaderTitle title="ZEKE" isOnline={isOnline} />;
+  return (
+    <View style={styles.headerTitleContainer}>
+      <HeaderTitle title="ZEKE" isOnline={isOnline} />
+      <PendantStatusIndicator />
+    </View>
+  );
 }
 
 export function ZekeHeaderButtons() {
@@ -67,6 +73,11 @@ export function ZekeHeaderButtons() {
 }
 
 const styles = StyleSheet.create({
+  headerTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+  },
   container: {
     flexDirection: "row",
     alignItems: "center",

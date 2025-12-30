@@ -1894,3 +1894,31 @@ export async function registerPushToken(token: string): Promise<boolean> {
     return false;
   }
 }
+
+export interface PendantStatus {
+  connected: boolean;
+  streaming: boolean;
+  healthy: boolean;
+  lastAudioReceivedAt: string | null;
+  totalAudioPackets: number;
+  timeSinceLastAudioMs: number | null;
+}
+
+export async function getPendantStatus(): Promise<PendantStatus> {
+  try {
+    const data = await apiClient.get<PendantStatus>(
+      "/api/zeke/pendant/status",
+      { timeoutMs: 5000 },
+    );
+    return data;
+  } catch {
+    return {
+      connected: false,
+      streaming: false,
+      healthy: false,
+      lastAudioReceivedAt: null,
+      totalAudioPackets: 0,
+      timeSinceLastAudioMs: null,
+    };
+  }
+}
