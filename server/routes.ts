@@ -1422,6 +1422,40 @@ export async function registerRoutes(
   });
 
   // ============================================================================
+  // PENDANT STATUS API ROUTE
+  // ============================================================================
+
+  // GET /api/pendant/status - Get real-time pendant connection status
+  app.get("/api/pendant/status", (_req, res) => {
+    try {
+      const { getPendantHealthStatus } = require("./pendantHealthMonitor");
+      const status = getPendantHealthStatus();
+      
+      // Determine streaming state based on recent audio
+      const now = Date.now();
+      const lastAudioMs = status.lastAudioReceivedAt ? new Date(status.lastAudioReceivedAt).getTime() : 0;
+      const timeSinceAudio = now - lastAudioMs;
+      
+      // Consider "streaming" if audio received in last 10 seconds
+      const isStreaming = timeSinceAudio < 10000;
+      // Consider "connected" if audio received in last 5 minutes
+      const isConnected = timeSinceAudio < 300000;
+      
+      res.json({
+        connected: isConnected,
+        streaming: isStreaming,
+        healthy: status.isHealthy,
+        lastAudioReceivedAt: status.lastAudioReceivedAt,
+        totalAudioPackets: status.totalAudioPacketsReceived,
+        timeSinceLastAudioMs: lastAudioMs ? timeSinceAudio : null,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // ============================================================================
   // DEVICE MANAGEMENT API ROUTES
   // ============================================================================
 

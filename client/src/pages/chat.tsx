@@ -55,7 +55,8 @@ import type {
   CalendarEventCard
 } from "@shared/schema";
 import { format, isToday, isTomorrow, isPast, parseISO } from "date-fns";
-import { Cloud, Sun, CloudRain, Snowflake, ShoppingCart, MapPin, User } from "lucide-react";
+import { Cloud, Sun, CloudRain, Snowflake, ShoppingCart, MapPin, User, Radio } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 function TypingIndicator() {
   return (
@@ -73,6 +74,86 @@ function TypingIndicator() {
         </div>
       </div>
     </div>
+  );
+}
+
+interface PendantStatus {
+  connected: boolean;
+  streaming: boolean;
+  healthy: boolean;
+  lastAudioReceivedAt: string | null;
+  totalAudioPackets: number;
+  timeSinceLastAudioMs: number | null;
+}
+
+function PendantStatusBadge() {
+  const { data: status, isLoading } = useQuery<PendantStatus>({
+    queryKey: ["/api/pendant/status"],
+    refetchInterval: 3000,
+  });
+
+  if (isLoading) {
+    return null;
+  }
+
+  const getStatusInfo = () => {
+    if (!status || !status.connected) {
+      return {
+        color: "bg-muted-foreground/50",
+        label: "Pendant disconnected",
+        pulse: false,
+      };
+    }
+    if (status.streaming) {
+      return {
+        color: "bg-green-500",
+        label: "Listening...",
+        pulse: true,
+      };
+    }
+    return {
+      color: "bg-green-500/70",
+      label: "Pendant connected",
+      pulse: false,
+    };
+  };
+
+  const { color, label, pulse } = getStatusInfo();
+
+  const formatLastSeen = () => {
+    if (!status?.lastAudioReceivedAt) return "Never";
+    const date = new Date(status.lastAudioReceivedAt);
+    return format(date, "h:mm a");
+  };
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div 
+          className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-secondary/50 cursor-default"
+          data-testid="pendant-status-badge"
+        >
+          <div className="relative">
+            <div className={`w-2 h-2 rounded-full ${color}`} />
+            {pulse && (
+              <div className={`absolute inset-0 w-2 h-2 rounded-full ${color} animate-ping`} />
+            )}
+          </div>
+          <Radio className="h-3 w-3 text-muted-foreground" />
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="text-xs">
+        <div className="space-y-1">
+          <p className="font-medium">{label}</p>
+          {status?.connected && (
+            <>
+              <p className="text-muted-foreground">Last audio: {formatLastSeen()}</p>
+              <p className="text-muted-foreground">Packets: {status.totalAudioPackets.toLocaleString()}</p>
+            </>
+          )}
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -969,7 +1050,7 @@ export default function ChatPage() {
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 sm:h-14 border-b flex items-center justify-between px-4 sm:px-4 shrink-0 safe-area-inset-top">
+        <header className="h-14 sm:h-14 border-b flex items-center justify-between gap-2 px-4 sm:px-4 shrink-0 safe-area-inset-top">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <h1 className="text-base sm:text-lg font-semibold truncate">
               {messagesData?.conversation?.title || "Chat with ZEKE"}
@@ -981,10 +1062,13 @@ export default function ChatPage() {
               </Badge>
             )}
           </div>
-          <div className="md:hidden flex items-center gap-2">
-            <Button size="icon" variant="ghost" onClick={handleNewChat} className="h-10 w-10" data-testid="button-new-chat-mobile">
-              <Plus className="h-4 w-4" />
-            </Button>
+          <div className="flex items-center gap-2">
+            <PendantStatusBadge />
+            <div className="md:hidden">
+              <Button size="icon" variant="ghost" onClick={handleNewChat} className="h-10 w-10" data-testid="button-new-chat-mobile">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </header>
 
