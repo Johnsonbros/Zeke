@@ -22,6 +22,13 @@ from ..agents.schemas import (
 )
 
 
+class MarketRegime:
+    """Market regime classification based on ADX."""
+    TREND = "trend"
+    NEUTRAL = "neutral"
+    CHOPPY = "choppy"
+
+
 class TurtleStrategy:
     """Deterministic Turtle breakout signal generator."""
     
@@ -36,6 +43,9 @@ class TurtleStrategy:
         volume_filter_enabled: bool = True,
         volume_threshold: float = 1.5,
         trend_filter_enabled: bool = True,
+        regime_detection_enabled: bool = True,
+        regime_adx_period: int = 14,
+        regime_trend_threshold: float = 25.0,
     ):
         self.system_1_entry = system_1_entry
         self.system_1_exit = system_1_exit
@@ -46,6 +56,11 @@ class TurtleStrategy:
         self.volume_filter_enabled = volume_filter_enabled
         self.volume_threshold = volume_threshold
         self.trend_filter_enabled = trend_filter_enabled
+        self.regime_detection_enabled = regime_detection_enabled
+        self.regime_adx_period = regime_adx_period
+        self.regime_trend_threshold = regime_trend_threshold
+        self._current_regime = MarketRegime.NEUTRAL
+        self._regime_adx = None
     
     def compute_atr(self, bars: List[BarData]) -> Optional[float]:
         """Compute Average True Range over the ATR period."""
@@ -94,6 +109,103 @@ class TurtleStrategy:
             return None
         recent_volumes = [b.volume for b in bars[-period:]]
         return sum(recent_volumes) / period
+    
+    def compute_adx(self, bars: List[BarData], period: int = 14) -> Optional[float]:
+        """
+        Compute Average Directional Index (ADX) for regime detection.
+        
+        ADX measures trend strength:
+        - ADX > 25: Strong trend
+        - ADX 20-25: Neutral
+        - ADX < 20: Choppy/ranging market
+        """
+        if len(bars) < period * 2:
+            return None
+        
+        plus_dm_list = []
+        minus_dm_list = []
+        tr_list = []
+        
+        for i in range(1, len(bars)):
+            high = bars[i].high
+            low = bars[i].low
+            prev_high = bars[i - 1].high
+            prev_low = bars[i - 1].low
+            prev_close = bars[i - 1].close
+            
+            plus_dm = max(0, high - prev_high) if (high - prev_high) > (prev_low - low) else 0
+            minus_dm = max(0, prev_low - low) if (prev_low - low) > (high - prev_high) else 0
+            
+            tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
+            
+            plus_dm_list.append(plus_dm)
+            minus_dm_list.append(minus_dm)
+            tr_list.append(tr)
+        
+        if len(tr_list) < period:
+            return None
+        
+        def smooth(values: list, period: int) -> list:
+            result = [sum(values[:period])]
+            for i in range(period, len(values)):
+                result.append(result[-1] - (result[-1] / period) + values[i])
+            return result
+        
+        smoothed_tr = smooth(tr_list, period)
+        smoothed_plus_dm = smooth(plus_dm_list, period)
+        smoothed_minus_dm = smooth(minus_dm_list, period)
+        
+        di_plus = []
+        di_minus = []
+        dx = []
+        
+        for i in range(len(smoothed_tr)):
+            if smoothed_tr[i] == 0:
+                continue
+            plus = (smoothed_plus_dm[i] / smoothed_tr[i]) * 100
+            minus = (smoothed_minus_dm[i] / smoothed_tr[i]) * 100
+            di_plus.append(plus)
+            di_minus.append(minus)
+            
+            if plus + minus > 0:
+                dx.append(abs(plus - minus) / (plus + minus) * 100)
+        
+        if len(dx) < period:
+            return None
+        
+        adx = sum(dx[-period:]) / period
+        return adx
+    
+    def detect_regime(self, bars: List[BarData]) -> str:
+        """
+        Detect market regime based on ADX.
+        
+        Returns: 'trend', 'neutral', or 'choppy'
+        """
+        if not self.regime_detection_enabled:
+            return MarketRegime.NEUTRAL
+        
+        adx = self.compute_adx(bars, self.regime_adx_period)
+        self._regime_adx = adx
+        
+        if adx is None:
+            self._current_regime = MarketRegime.NEUTRAL
+        elif adx >= self.regime_trend_threshold:
+            self._current_regime = MarketRegime.TREND
+        elif adx >= 20:
+            self._current_regime = MarketRegime.NEUTRAL
+        else:
+            self._current_regime = MarketRegime.CHOPPY
+        
+        return self._current_regime
+    
+    def get_regime_info(self) -> dict:
+        """Get current regime info for observability."""
+        return {
+            "regime": self._current_regime,
+            "adx": self._regime_adx,
+            "threshold": self.regime_trend_threshold,
+        }
     
     def enrich_symbol_data(self, symbol_data: SymbolData) -> SymbolData:
         """Add computed indicators to symbol data."""

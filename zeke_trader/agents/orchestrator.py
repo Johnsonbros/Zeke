@@ -113,6 +113,24 @@ class OrchestratorAgent:
                 portfolio = PortfolioState(equity=0, cash=0, buying_power=0)
                 result.portfolio_state = portfolio
             
+            if self.config.trailing_stop_enabled and portfolio.positions:
+                logger.info("[2.5/7] Updating trailing stops...")
+                for pos in portfolio.positions:
+                    symbol = pos.symbol
+                    side = "long" if pos.qty > 0 else "short"
+                    symbol_data = snapshot.market_data.get(symbol)
+                    if symbol_data and symbol_data.quote:
+                        current_price = symbol_data.quote.last
+                        atr = symbol_data.atr_20 or 0
+                        if atr > 0:
+                            self.portfolio.update_trailing_stop(
+                                symbol=symbol,
+                                current_price=current_price,
+                                atr=atr,
+                                side=side,
+                                atr_multiple=self.config.trailing_stop_atr_multiple,
+                            )
+            
             logger.info("[3/7] Generating signals...")
             signals = self.signal.generate_signals(snapshot, portfolio)
             result.signals = signals
@@ -272,6 +290,7 @@ class OrchestratorAgent:
     
     def get_status(self) -> dict:
         """Get current orchestrator status."""
+        regime_info = self.signal.strategy.get_regime_info() if hasattr(self.signal, 'strategy') else {}
         return {
             "mode": self.config.trading_mode.value,
             "autonomy": self.config.autonomy_tier.value,
@@ -283,4 +302,6 @@ class OrchestratorAgent:
                 "max_daily_loss": self.config.max_daily_loss,
             },
             "can_execute": self.config.can_execute_orders(),
+            "market_regime": regime_info,
+            "trailing_stops_enabled": self.config.trailing_stop_enabled,
         }

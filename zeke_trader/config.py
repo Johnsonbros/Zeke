@@ -55,6 +55,13 @@ class TradingConfig:
     volume_threshold: float = 1.5
     trend_filter_enabled: bool = True
     
+    trailing_stop_enabled: bool = True
+    trailing_stop_atr_multiple: float = 2.5
+    
+    regime_detection_enabled: bool = True
+    regime_adx_period: int = 14
+    regime_trend_threshold: float = 25.0
+    
     loop_seconds: int = 60
     log_dir: str = "zeke_trader/logs"
     
@@ -144,6 +151,11 @@ def load_config() -> TradingConfig:
         volume_filter_enabled=os.getenv("VOLUME_FILTER_ENABLED", "true").lower() == "true",
         volume_threshold=float(os.getenv("VOLUME_THRESHOLD", "1.5")),
         trend_filter_enabled=os.getenv("TREND_FILTER_ENABLED", "true").lower() == "true",
+        trailing_stop_enabled=os.getenv("TRAILING_STOP_ENABLED", "true").lower() == "true",
+        trailing_stop_atr_multiple=float(os.getenv("TRAILING_STOP_ATR_MULTIPLE", "2.5")),
+        regime_detection_enabled=os.getenv("REGIME_DETECTION_ENABLED", "true").lower() == "true",
+        regime_adx_period=int(os.getenv("REGIME_ADX_PERIOD", "14")),
+        regime_trend_threshold=float(os.getenv("REGIME_TREND_THRESHOLD", "25.0")),
         loop_seconds=int(os.getenv("LOOP_SECONDS", "60")),
         log_dir=os.getenv("LOG_DIR", "zeke_trader/logs"),
     )

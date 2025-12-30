@@ -530,6 +530,29 @@ async def get_pending_trades_list():
     return [p.model_dump(mode="json") for p in pending]
 
 
+@app.get("/agent/regime")
+async def get_market_regime():
+    """Get current market regime detection status."""
+    if not _orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    
+    cfg = get_cfg()
+    regime_info = _orchestrator.signal.strategy.get_regime_info() if hasattr(_orchestrator.signal, 'strategy') else {}
+    
+    return {
+        "enabled": cfg.regime_detection_enabled,
+        "regime": regime_info.get("regime", "unknown"),
+        "adx": regime_info.get("adx"),
+        "adx_period": cfg.regime_adx_period,
+        "trend_threshold": cfg.regime_trend_threshold,
+        "interpretation": {
+            "trend": "Strong trend - Turtle breakouts more reliable",
+            "neutral": "Neutral conditions - Standard strategy applies",
+            "choppy": "Choppy/ranging - Consider tighter stops or reduced position sizes",
+        }.get(regime_info.get("regime", "neutral"), "Unknown regime"),
+    }
+
+
 @app.post("/agent/approve-trade/{trade_id}")
 async def approve_pending_trade(trade_id: str):
     """Approve a pending trade for execution."""

@@ -21,14 +21,20 @@ class SignalAgent:
         volume_filter = config.volume_filter_enabled if config else True
         volume_threshold = config.volume_threshold if config else 1.5
         trend_filter = config.trend_filter_enabled if config else True
+        regime_enabled = config.regime_detection_enabled if config else True
+        regime_adx_period = config.regime_adx_period if config else 14
+        regime_trend_threshold = config.regime_trend_threshold if config else 25.0
         
         self.strategy = TurtleStrategy(
             volume_filter_enabled=volume_filter,
             volume_threshold=volume_threshold,
             trend_filter_enabled=trend_filter,
+            regime_detection_enabled=regime_enabled,
+            regime_adx_period=regime_adx_period,
+            regime_trend_threshold=regime_trend_threshold,
         )
         
-        logger.info(f"SignalAgent initialized: volume_filter={volume_filter}, trend_filter={trend_filter}")
+        logger.info(f"SignalAgent initialized: volume_filter={volume_filter}, trend_filter={trend_filter}, regime_detection={regime_enabled}")
     
     def generate_signals(
         self,

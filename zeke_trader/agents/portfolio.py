@@ -145,6 +145,49 @@ class PortfolioAgent:
             except Exception as e:
                 logger.error(f"Could not clear entry criteria: {e}")
     
+    def update_trailing_stop(self, symbol: str, current_price: float, atr: float, side: str, atr_multiple: float = 2.5) -> Optional[float]:
+        """
+        Update trailing stop for a position if price moved favorably.
+        
+        For longs: Stop trails below price by ATR multiple
+        For shorts: Stop trails above price by ATR multiple
+        
+        Returns new stop price if updated, None otherwise.
+        """
+        criteria = self.get_entry_criteria(symbol)
+        if not criteria:
+            return None
+        
+        current_stop = criteria.get("stop_price")
+        if not current_stop:
+            return None
+        
+        highest_price = criteria.get("highest_price", current_price)
+        lowest_price = criteria.get("lowest_price", current_price)
+        
+        if side == "long":
+            if current_price > highest_price:
+                highest_price = current_price
+                new_stop = current_price - (atr * atr_multiple)
+                if new_stop > current_stop:
+                    criteria["stop_price"] = new_stop
+                    criteria["highest_price"] = highest_price
+                    self.save_entry_criteria(symbol, criteria)
+                    logger.info(f"Trailing stop updated for {symbol}: ${current_stop:.2f} -> ${new_stop:.2f}")
+                    return new_stop
+        elif side == "short":
+            if current_price < lowest_price:
+                lowest_price = current_price
+                new_stop = current_price + (atr * atr_multiple)
+                if new_stop < current_stop:
+                    criteria["stop_price"] = new_stop
+                    criteria["lowest_price"] = lowest_price
+                    self.save_entry_criteria(symbol, criteria)
+                    logger.info(f"Trailing stop updated for {symbol}: ${current_stop:.2f} -> ${new_stop:.2f}")
+                    return new_stop
+        
+        return None
+    
     def get_portfolio_state_sync(self) -> PortfolioState:
         """Synchronous version for non-async contexts."""
         import asyncio
