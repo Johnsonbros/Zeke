@@ -269,9 +269,24 @@ function CardsDisplay({ cards }: { cards: ChatCard[] }) {
   );
 }
 
+function getSourceBadge(source: string | undefined) {
+  switch (source) {
+    case "sms":
+      return { icon: Smartphone, label: "SMS", color: "bg-green-500/10 text-green-600 dark:text-green-400" };
+    case "web":
+      return { icon: MessageSquare, label: "Web", color: "bg-blue-500/10 text-blue-600 dark:text-blue-400" };
+    case "app":
+      return { icon: Smartphone, label: "App", color: "bg-purple-500/10 text-purple-600 dark:text-purple-400" };
+    case "voice":
+      return { icon: Mic, label: "Voice", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400" };
+    default:
+      return null;
+  }
+}
+
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
-  const isSms = message.source === "sms";
+  const sourceBadge = isUser ? getSourceBadge(message.source) : null;
 
   return (
     <div
@@ -298,13 +313,13 @@ function MessageBubble({ message }: { message: Message }) {
               : "bg-accent text-accent-foreground"
           }`}
         >
-          {isSms && (
+          {sourceBadge && (
             <div
-              className={`absolute -top-1 ${isUser ? "-left-1" : "-right-1"} flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground text-[10px] font-medium`}
-              data-testid={`sms-badge-${message.id}`}
+              className={`absolute -top-1 ${isUser ? "-left-1" : "-right-1"} flex items-center gap-1 px-2 py-0.5 rounded-full ${sourceBadge.color} text-[10px] font-medium`}
+              data-testid={`source-badge-${message.id}`}
             >
-              <Smartphone className="h-2.5 w-2.5" />
-              <span>SMS</span>
+              <sourceBadge.icon className="h-2.5 w-2.5" />
+              <span>{sourceBadge.label}</span>
             </div>
           )}
           <p className="text-sm sm:text-base whitespace-pre-wrap leading-relaxed">{message.content}</p>

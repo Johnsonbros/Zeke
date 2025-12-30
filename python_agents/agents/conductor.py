@@ -793,9 +793,11 @@ Always call the classify_intent tool with your classification.""",
         """
         Enrich the context with memories, profile data, and Context Router bundles.
         
-        This method:
-        1. Fetches curated context bundles from the Context Router (stored in metadata)
-        2. Fetches structured memory/profile data for backward compatibility
+        This method fetches curated context bundles from the Context Router:
+        - Global bundle: Current time, user profile, timezone
+        - Memory bundle: Semantic search results relevant to query
+        - Calendar bundle: Today's schedule and upcoming events
+        - Location bundle: Current location and nearby places
         
         Args:
             message: The user's message
@@ -806,29 +808,37 @@ Always call the classify_intent tool with your classification.""",
         """
         bridge = get_bridge()
         
+        # Fetch all context bundles in parallel for better performance
         try:
-            memory_bundle = await bridge.get_context_bundle(
-                domain="memory",
-                query=message,
-                conversation_id=context.conversation_id
-            )
-            if memory_bundle and memory_bundle.get("success"):
-                bundle_data = memory_bundle.get("bundle", {})
-                context.metadata["memory_bundle"] = {
-                    "content": bundle_data.get("content", ""),
-                    "token_estimate": bundle_data.get("tokenEstimate", 0),
-                }
+            import asyncio
             
-            global_bundle = await bridge.get_context_bundle(
-                domain="global",
-                query=message
+            bundle_tasks = {
+                "global": bridge.get_context_bundle(domain="global", query=message),
+                "memory": bridge.get_context_bundle(
+                    domain="memory",
+                    query=message,
+                    conversation_id=context.conversation_id
+                ),
+                "calendar": bridge.get_context_bundle(domain="calendar", query=message),
+                "location": bridge.get_context_bundle(domain="location", query=message),
+            }
+            
+            results = await asyncio.gather(
+                *bundle_tasks.values(),
+                return_exceptions=True
             )
-            if global_bundle and global_bundle.get("success"):
-                bundle_data = global_bundle.get("bundle", {})
-                context.metadata["global_bundle"] = {
-                    "content": bundle_data.get("content", ""),
-                    "token_estimate": bundle_data.get("tokenEstimate", 0),
-                }
+            
+            for bundle_name, result in zip(bundle_tasks.keys(), results):
+                if isinstance(result, BaseException):
+                    logger.debug(f"Bundle {bundle_name} fetch failed: {result}")
+                    continue
+                # result is a dict at this point
+                if result and isinstance(result, dict) and result.get("success"):
+                    bundle_data = result.get("bundle", {})
+                    context.metadata[f"{bundle_name}_bundle"] = {
+                        "content": bundle_data.get("content", ""),
+                        "token_estimate": bundle_data.get("tokenEstimate", 0),
+                    }
         except Exception as e:
             logger.warning(f"Context bundle fetch failed (non-critical): {e}")
         
@@ -1131,20 +1141,49 @@ Always call the classify_intent tool with your classification.""",
             logger.info(f"Fast conversational response: '{response}' for input: '{input_text[:50]}...'")
             return response
         
-        if intent.requires_coordination or intent.category in [CapabilityCategory.MEMORY]:
-            context = await self.enrich_context(input_text, context)
+        # Always enrich context to get fresh data (time, calendar, location, etc.)
+        context = await self.enrich_context(input_text, context)
         
         responses: list[AgentResponse] = []
         agents_called: list[AgentId] = []
         expected_agents = [a for a in intent.target_agents if a != AgentId.CONDUCTOR]
         
-        enhanced_input = input_text
+        # Build enhanced input with all available context bundles
+        context_parts: list[str] = []
+        
+        # Add global bundle (time, user profile, timezone, access level)
+        global_bundle = context.metadata.get("global_bundle", {})
+        if global_bundle.get("content"):
+            context_parts.append(global_bundle["content"])
+        
+        # Add calendar bundle (today's schedule, upcoming events)
+        calendar_bundle = context.metadata.get("calendar_bundle", {})
+        if calendar_bundle.get("content"):
+            context_parts.append(calendar_bundle["content"])
+        
+        # Add location bundle (current location, nearby places)
+        location_bundle = context.metadata.get("location_bundle", {})
+        if location_bundle.get("content"):
+            context_parts.append(location_bundle["content"])
+        
+        # Add memory bundle (relevant memories from semantic search)
+        memory_bundle = context.metadata.get("memory_bundle", {})
+        if memory_bundle.get("content"):
+            context_parts.append(memory_bundle["content"])
+        
+        # Add learned preferences
         if learned_preferences_prompt:
-            enhanced_input = f"""## System Context
-{learned_preferences_prompt}
+            context_parts.append(f"## User Preferences\n{learned_preferences_prompt}")
+        
+        # Compose the enhanced input with all context
+        if context_parts:
+            enhanced_input = f"""## Current Context
+{chr(10).join(context_parts)}
 
 ## User Request
 {input_text}"""
+        else:
+            enhanced_input = input_text
         
         handoff_context = HandoffContext(
             user_message=enhanced_input,

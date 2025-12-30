@@ -19,7 +19,13 @@ ZEKE utilizes a multi-agent architecture with a Node.js + TypeScript (Express) b
 The system's multi-agent core in Python includes specialized agents such as Conductor, Memory Curator, Comms Pilot, Ops Planner, Research Scout, and Safety Auditor. A TypeScript Context Router delivers domain-specific context to Python agents. The UI adheres to a dark theme with a coral red accent and Poppins font, designed as a dashboard-first interface.
 
 Key architectural decisions and features include:
-- **Context Management**: Multi-layered context assembly, unified cache, and conversation summarization.
+- **Context Management (Dec 2024 Enhancement)**: Multi-layered context assembly with unified cache and conversation summarization. The Conductor agent now injects fresh context bundles into every request:
+  - Global bundle: Current time, user profile, timezone, access level
+  - Calendar bundle: Today's schedule, upcoming events
+  - Location bundle: Current location, nearby places
+  - Memory bundle: Semantic search results relevant to query
+  - All bundles fetched in parallel for performance
+  - Chat UI shows color-coded source badges: SMS (green), Web (blue), App (purple), Voice (amber)
 - **Memory Model**: Optimized for single-user long-term memory with semantic search (PostgreSQL vector embeddings), TTL buckets, and an asynchronous processing queue for Omi memories.
 - **AI-Powered Systems**: Location Intelligence, Automatic People Tracking, Food Preference Intelligence, AI-Powered Weather Briefings, Predictive Task Scheduling, and a Knowledge Graph for multi-hop reasoning.
 - **Knowledge Graph Batch Processing**: Entity extraction via OpenAI Batch API (GPT-5.2) for cost efficiency, with a daily 2 AM backfill and synchronous fallback.
