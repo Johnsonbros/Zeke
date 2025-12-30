@@ -878,9 +878,11 @@ export default function ContactsPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [filterLevel, setFilterLevel] = useState<AccessLevel | "all">("all");
   
-  const { data: contacts, isLoading } = useQuery<ContactWithStats[]>({
+  const { data: contactsData, isLoading } = useQuery<{ contacts: ContactWithStats[] }>({
     queryKey: ["/api/contacts"],
   });
+  
+  const contacts = contactsData?.contacts;
 
   const createMutation = useMutation({
     mutationFn: async (data: ContactFormValues) => {

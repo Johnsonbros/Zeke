@@ -1222,6 +1222,28 @@ export async function registerRoutes(
     });
   });
 
+  // ZEKE Mobile WebSocket status endpoint
+  app.get("/api/zeke/ws/status", (_req, res) => {
+    const clients = Array.from(zekeClients.values()).map(c => ({
+      deviceId: c.deviceId,
+      connectedAt: c.connectedAt,
+      lastPing: new Date(c.lastPing).toISOString(),
+    }));
+    
+    res.json({
+      wsEndpoint: "/ws/zeke",
+      activeConnections: zekeClients.size,
+      clients,
+      syncFeatures: ["contacts"],
+      broadcastFormat: {
+        type: "contact | task | reminder | grocery",
+        action: "created | updated | deleted",
+        contactId: "string (for contact type)",
+        timestamp: "ISO 8601 string",
+      },
+    });
+  });
+
   // ============================================================================
   // LIMITLESS API ROUTES
   // ============================================================================
