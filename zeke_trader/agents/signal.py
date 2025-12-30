@@ -5,10 +5,11 @@ Purpose: Generate deterministic Turtle signals (System 1 & 2)
 This is deterministic code, not LLM reasoning.
 """
 import logging
-from typing import List
+from typing import List, Optional
 
 from .schemas import Signal, MarketSnapshot, PortfolioState
 from ..strategy.turtle import TurtleStrategy
+from ..config import TradingConfig
 
 logger = logging.getLogger("zeke_trader.agents.signal")
 
@@ -16,8 +17,18 @@ logger = logging.getLogger("zeke_trader.agents.signal")
 class SignalAgent:
     """Wraps Turtle strategy to generate deterministic signals."""
     
-    def __init__(self):
-        self.strategy = TurtleStrategy()
+    def __init__(self, config: Optional[TradingConfig] = None):
+        volume_filter = config.volume_filter_enabled if config else True
+        volume_threshold = config.volume_threshold if config else 1.5
+        trend_filter = config.trend_filter_enabled if config else True
+        
+        self.strategy = TurtleStrategy(
+            volume_filter_enabled=volume_filter,
+            volume_threshold=volume_threshold,
+            trend_filter_enabled=trend_filter,
+        )
+        
+        logger.info(f"SignalAgent initialized: volume_filter={volume_filter}, trend_filter={trend_filter}")
     
     def generate_signals(
         self,

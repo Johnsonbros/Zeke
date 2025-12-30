@@ -128,6 +128,11 @@ class PortfolioAgent:
         except Exception as e:
             logger.error(f"Could not save entry criteria: {e}")
     
+    def get_entry_criteria(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get entry criteria for a symbol."""
+        all_criteria = self._load_entry_criteria()
+        return all_criteria.get(symbol)
+    
     def clear_entry_criteria(self, symbol: str):
         """Remove entry criteria when position is closed."""
         all_criteria = self._load_entry_criteria()

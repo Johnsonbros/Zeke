@@ -39,6 +39,10 @@ class Signal(BaseModel):
     score_hint: float = Field(default=0.0, description="Signal strength 0-1")
     reason: str = Field(description="Human-readable reason for signal")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+    volume_confirmed: Optional[bool] = Field(default=None, description="Volume > 1.5x 20-day avg")
+    trend_aligned: Optional[bool] = Field(default=None, description="Price aligned with 50/200 MA")
+    filters_passed: bool = Field(default=True, description="Whether all enabled filters passed")
+    filter_notes: List[str] = Field(default_factory=list, description="Filter status notes")
     
     class Config:
         use_enum_values = True
@@ -172,6 +176,12 @@ class SymbolData(BaseModel):
     low_55: Optional[float] = None
     high_10: Optional[float] = None
     low_10: Optional[float] = None
+    volume_avg_20: Optional[float] = None
+    current_volume: Optional[int] = None
+    sma_50: Optional[float] = None
+    sma_200: Optional[float] = None
+    trend_aligned: Optional[bool] = None
+    volume_confirmed: Optional[bool] = None
 
 
 class MarketSnapshot(BaseModel):

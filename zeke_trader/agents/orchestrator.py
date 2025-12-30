@@ -17,6 +17,7 @@ from .schemas import (
     PortfolioState,
     NoTrade,
     PendingTrade,
+    SignalDirection,
 )
 from .market_data import MarketDataAgent
 from .signal import SignalAgent
@@ -49,7 +50,7 @@ class OrchestratorAgent:
         self.config = config
         
         self.market_data = MarketDataAgent(config)
-        self.signal = SignalAgent()
+        self.signal = SignalAgent(config)
         self.portfolio = PortfolioAgent(config)
         self.decision = DecisionAgent(config)
         self.risk_gate = RiskGateAgent(config)
@@ -144,7 +145,20 @@ class OrchestratorAgent:
             result.decision = decision
             
             logger.info("[5/7] Risk gate validation...")
-            risk_result = self.risk_gate.validate(decision, portfolio)
+            signal_strength = 1.0
+            atr = None
+            current_price = None
+            if hasattr(decision, 'signal') and decision.signal:
+                signal_strength = min(decision.signal.score / 5.0, 1.0) if decision.signal.score else 1.0
+                atr = decision.signal.atr_n if hasattr(decision.signal, 'atr_n') else None
+                current_price = decision.signal.current_price if hasattr(decision.signal, 'current_price') else None
+            risk_result = self.risk_gate.validate(
+                decision,
+                portfolio,
+                signal_strength=signal_strength,
+                atr=atr,
+                current_price=current_price,
+            )
             result.risk_result = risk_result
             
             logger.info("[6/7] Execution...")
@@ -152,18 +166,34 @@ class OrchestratorAgent:
             result.order_result = order_result
             result.pending_trade = pending_trade
             
-            if order_result.executed and hasattr(decision, 'signal'):
-                self.portfolio.save_entry_criteria(
-                    symbol=decision.symbol,
-                    criteria={
-                        "stop_price": decision.stop_price,
-                        "exit_ref": decision.exit_trigger,
-                        "atr_n": decision.signal.atr_n,
-                        "system": decision.signal.system.value,
-                        "entry_price": decision.signal.current_price,
-                        "entered_at": datetime.utcnow().isoformat(),
-                    }
-                )
+            if order_result.executed and hasattr(decision, 'signal') and decision.signal:
+                sig_dir = decision.signal.direction
+                is_exit = sig_dir in (SignalDirection.EXIT_LONG, SignalDirection.EXIT_SHORT)
+                
+                if is_exit:
+                    entry_criteria = self.portfolio.get_entry_criteria(decision.symbol)
+                    if entry_criteria and entry_criteria.get("entry_price"):
+                        self.risk_gate.record_trade_result(
+                            symbol=decision.symbol,
+                            side="sell" if sig_dir == SignalDirection.EXIT_LONG else "buy",
+                            entry_price=entry_criteria.get("entry_price"),
+                            exit_price=decision.signal.current_price,
+                            qty=order_result.qty or 1.0,
+                        )
+                        logger.info(f"Recorded exit trade for Kelly: {decision.symbol}")
+                        self.portfolio.clear_entry_criteria(decision.symbol)
+                else:
+                    self.portfolio.save_entry_criteria(
+                        symbol=decision.symbol,
+                        criteria={
+                            "stop_price": decision.stop_price,
+                            "exit_ref": decision.exit_trigger,
+                            "atr_n": decision.signal.atr_n,
+                            "system": decision.signal.system.value,
+                            "entry_price": decision.signal.current_price,
+                            "entered_at": datetime.utcnow().isoformat(),
+                        }
+                    )
                 
                 thesis_dict = decision.thesis.model_dump() if decision.thesis else None
                 self.observability.log_trade(
@@ -182,6 +212,11 @@ class OrchestratorAgent:
             logger.info("[7/7] Logging...")
             result.duration_ms = (time.time() - start_time) * 1000
             self.observability.log_loop(result)
+            
+            if portfolio.equity > 0 and not snapshot.is_market_open:
+                daily_pnl_pct = portfolio.pnl_day / portfolio.equity
+                self.risk_gate.record_daily_pnl(daily_pnl_pct)
+                logger.info(f"Recorded end-of-day P&L: {daily_pnl_pct:.2%}")
             
             logger.info(f"=== LOOP COMPLETE ({result.duration_ms:.0f}ms) ===")
             

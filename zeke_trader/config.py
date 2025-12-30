@@ -41,6 +41,20 @@ class TradingConfig:
     perplexity_enabled: bool = True
     perplexity_score_threshold: float = 4.0
     
+    kelly_enabled: bool = True
+    kelly_fraction: float = 0.5
+    kelly_lookback_trades: int = 40
+    kelly_min_trades: int = 10
+    kelly_max_position_pct: float = 0.25
+    
+    circuit_breaker_enabled: bool = True
+    circuit_breaker_daily_limit: float = 0.05
+    circuit_breaker_weekly_limit: float = 0.10
+    
+    volume_filter_enabled: bool = True
+    volume_threshold: float = 1.5
+    trend_filter_enabled: bool = True
+    
     loop_seconds: int = 60
     log_dir: str = "zeke_trader/logs"
     
@@ -119,6 +133,17 @@ def load_config() -> TradingConfig:
         max_daily_loss=float(os.getenv("MAX_DAILY_LOSS", "25")),
         perplexity_enabled=os.getenv("PERPLEXITY_ENABLED", "true").lower() == "true",
         perplexity_score_threshold=float(os.getenv("PERPLEXITY_SCORE_THRESHOLD", "4.0")),
+        kelly_enabled=os.getenv("KELLY_ENABLED", "true").lower() == "true",
+        kelly_fraction=float(os.getenv("KELLY_FRACTION", "0.5")),
+        kelly_lookback_trades=int(os.getenv("KELLY_LOOKBACK_TRADES", "40")),
+        kelly_min_trades=int(os.getenv("KELLY_MIN_TRADES", "10")),
+        kelly_max_position_pct=float(os.getenv("KELLY_MAX_POSITION_PCT", "0.25")),
+        circuit_breaker_enabled=os.getenv("CIRCUIT_BREAKER_ENABLED", "true").lower() == "true",
+        circuit_breaker_daily_limit=float(os.getenv("CIRCUIT_BREAKER_DAILY_LIMIT", "0.05")),
+        circuit_breaker_weekly_limit=float(os.getenv("CIRCUIT_BREAKER_WEEKLY_LIMIT", "0.10")),
+        volume_filter_enabled=os.getenv("VOLUME_FILTER_ENABLED", "true").lower() == "true",
+        volume_threshold=float(os.getenv("VOLUME_THRESHOLD", "1.5")),
+        trend_filter_enabled=os.getenv("TREND_FILTER_ENABLED", "true").lower() == "true",
         loop_seconds=int(os.getenv("LOOP_SECONDS", "60")),
         log_dir=os.getenv("LOG_DIR", "zeke_trader/logs"),
     )

@@ -892,6 +892,91 @@ async def get_batch_report(date: str):
     return result
 
 
+@app.get("/agent/risk-summary")
+async def get_risk_summary():
+    """Get comprehensive risk management summary including Kelly and circuit breaker status."""
+    if not _orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    
+    try:
+        broker = get_broker()
+        account = broker.get_account()
+        equity = float(account.get("equity", 0))
+        daily_pnl = float(account.get("daily_pnl", 0))
+        daily_pnl_pct = (daily_pnl / equity) if equity > 0 else 0
+        
+        risk_summary = _orchestrator.risk_gate.get_risk_summary()
+        
+        cb_status = _orchestrator.risk_gate.check_circuit_breaker(daily_pnl_pct, equity)
+        
+        return {
+            "account": {
+                "equity": equity,
+                "daily_pnl": daily_pnl,
+                "daily_pnl_pct": f"{daily_pnl_pct:.2%}",
+            },
+            "circuit_breaker_status": cb_status,
+            "risk_settings": risk_summary,
+        }
+    except Exception as e:
+        logger.error(f"Failed to get risk summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/agent/analytics")
+async def get_performance_analytics(lookback_days: Optional[int] = None):
+    """
+    Get comprehensive performance analytics.
+    
+    Args:
+        lookback_days: Only consider trades within this many days (None = all time)
+    """
+    from .analytics.performance import PerformanceAnalytics
+    
+    cfg = get_cfg()
+    analytics = PerformanceAnalytics(log_dir=cfg.log_dir)
+    
+    metrics = analytics.calculate_metrics(lookback_days=lookback_days)
+    
+    return {
+        "metrics": metrics.to_dict(),
+        "equity_curve": analytics.get_equity_chart_data(limit=100),
+        "trade_distribution": analytics.get_trade_distribution(),
+        "summary": analytics.get_summary(),
+    }
+
+
+@app.get("/agent/analytics/trades")
+async def get_trade_history(limit: int = 50):
+    """Get recent trade history with details."""
+    from .analytics.performance import PerformanceAnalytics
+    
+    cfg = get_cfg()
+    analytics = PerformanceAnalytics(log_dir=cfg.log_dir)
+    
+    recent_trades = analytics.trades[-limit:]
+    
+    return {
+        "trades": [
+            {
+                "symbol": t.symbol,
+                "side": t.side,
+                "entry_price": t.entry_price,
+                "exit_price": t.exit_price,
+                "pnl": t.pnl,
+                "return_pct": f"{t.return_pct:.2%}",
+                "r_multiple": t.r_multiple,
+                "holding_hours": t.holding_period_hours,
+                "entry_time": t.entry_time.isoformat(),
+                "exit_time": t.exit_time.isoformat(),
+                "is_winner": t.is_winner,
+            }
+            for t in reversed(recent_trades)
+        ],
+        "total_count": len(analytics.trades),
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("TRADING_SERVICE_PORT", "8001"))
