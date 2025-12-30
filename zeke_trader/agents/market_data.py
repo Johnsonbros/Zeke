@@ -10,6 +10,7 @@ from typing import List, Optional
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
 from alpaca.data.timeframe import TimeFrame
+from alpaca.data.enums import DataFeed
 
 from .schemas import (
     MarketSnapshot,
@@ -107,6 +108,7 @@ class MarketDataAgent:
                 timeframe=TimeFrame.Day,
                 start=start_date,
                 end=end_date,
+                feed=DataFeed.IEX,
             )
             bars_response = self.client.get_stock_bars(bars_request)
             
@@ -125,7 +127,7 @@ class MarketDataAgent:
             return None
         
         try:
-            quote_request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+            quote_request = StockLatestQuoteRequest(symbol_or_symbols=symbol, feed=DataFeed.IEX)
             quote_response = self.client.get_stock_latest_quote(quote_request)
             
             if symbol in quote_response:

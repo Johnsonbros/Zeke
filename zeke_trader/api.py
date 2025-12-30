@@ -5,6 +5,7 @@ Includes rate limiting middleware to prevent abuse.
 """
 import os
 import time
+import json
 import asyncio
 import logging
 from datetime import datetime
@@ -551,7 +552,7 @@ class RejectTradeRequest(BaseModel):
 
 
 @app.post("/agent/reject-trade/{trade_id}")
-async def reject_pending_trade(trade_id: str, body: RejectTradeRequest = None):
+async def reject_pending_trade(trade_id: str, body: Optional[RejectTradeRequest] = None):
     """Reject a pending trade."""
     if not _orchestrator:
         raise HTTPException(status_code=503, detail="Orchestrator not initialized")
@@ -800,7 +801,7 @@ class BatchAnalysisRequest(BaseModel):
 
 
 @app.post("/batch/analyze")
-async def run_batch_analysis(body: BatchAnalysisRequest = None):
+async def run_batch_analysis(body: Optional[BatchAnalysisRequest] = None):
     """
     Run overnight batch analysis for a trading day.
     
