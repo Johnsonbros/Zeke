@@ -188,12 +188,12 @@ export async function executeGroceryTool(
 
       try {
         // Smart duplicate detection: check if similar item already exists
-        const existingItems = getAllGroceryItems();
+        const existingItems = await getAllGroceryItems();
         const normalizedName = name.toLowerCase().trim();
 
         // Check for exact match (case-insensitive)
         const exactMatch = existingItems.find(
-          item => !item.purchased && item.name.toLowerCase().trim() === normalizedName
+          (item: { purchased: boolean; name: string }) => !item.purchased && item.name.toLowerCase().trim() === normalizedName
         );
 
         if (exactMatch) {
@@ -212,21 +212,21 @@ export async function executeGroceryTool(
         }
 
         // Check for close matches (partial match) to warn about potential duplicates
-        const closeMatches = existingItems.filter(item => {
+        const closeMatches = existingItems.filter((item: { purchased: boolean; name: string }) => {
           if (item.purchased) return false;
           const itemName = item.name.toLowerCase().trim();
           // Check if one contains the other
           return itemName.includes(normalizedName) || normalizedName.includes(itemName);
         });
 
-        const item = createGroceryItem({
+        const item = await createGroceryItem({
           name,
           quantity: quantity || "1",
           category: category || "Other",
           addedBy: added_by || "Nate",
         });
 
-        const response: any = {
+        const response: Record<string, unknown> = {
           success: true,
           message: `Added "${name}" to the grocery list`,
           item: {
@@ -240,8 +240,8 @@ export async function executeGroceryTool(
 
         // If close matches found, include them in the response
         if (closeMatches.length > 0) {
-          response.warning = `Similar items already on list: ${closeMatches.map(m => m.name).join(', ')}`;
-          response.similarItems = closeMatches.map(m => ({
+          response.warning = `Similar items already on list: ${closeMatches.map((m: { name: string }) => m.name).join(', ')}`;
+          response.similarItems = closeMatches.map((m: { name: string; quantity: string | null }) => ({
             name: m.name,
             quantity: m.quantity,
           }));
@@ -255,9 +255,9 @@ export async function executeGroceryTool(
     
     case "list_grocery_items": {
       try {
-        const items = getAllGroceryItems();
-        const toBuy = items.filter(i => !i.purchased);
-        const purchased = items.filter(i => i.purchased);
+        const items = await getAllGroceryItems();
+        const toBuy = items.filter((i: { purchased: boolean }) => !i.purchased);
+        const purchased = items.filter((i: { purchased: boolean }) => i.purchased);
         
         if (items.length === 0) {
           return JSON.stringify({
@@ -268,14 +268,14 @@ export async function executeGroceryTool(
         }
         
         return JSON.stringify({
-          to_buy: toBuy.map(i => ({
+          to_buy: toBuy.map((i: { id: string; name: string; quantity: string | null; category: string | null; addedBy: string }) => ({
             id: i.id,
             name: i.name,
             quantity: i.quantity,
             category: i.category,
             addedBy: i.addedBy,
           })),
-          purchased: purchased.map(i => ({
+          purchased: purchased.map((i: { id: string; name: string; quantity: string | null }) => ({
             id: i.id,
             name: i.name,
             quantity: i.quantity,
@@ -291,9 +291,9 @@ export async function executeGroceryTool(
       const { item_name } = args as { item_name: string };
       
       try {
-        const items = getAllGroceryItems();
+        const items = await getAllGroceryItems();
         const searchLower = item_name.toLowerCase();
-        const match = items.find(i => i.name.toLowerCase().includes(searchLower));
+        const match = items.find((i: { name: string }) => i.name.toLowerCase().includes(searchLower));
         
         if (!match) {
           return JSON.stringify({ 
@@ -302,7 +302,7 @@ export async function executeGroceryTool(
           });
         }
         
-        const updated = toggleGroceryItemPurchased(match.id);
+        const updated = await toggleGroceryItemPurchased(match.id);
         if (updated) {
           return JSON.stringify({
             success: true,
@@ -326,9 +326,9 @@ export async function executeGroceryTool(
       const { item_name } = args as { item_name: string };
       
       try {
-        const items = getAllGroceryItems();
+        const items = await getAllGroceryItems();
         const searchLower = item_name.toLowerCase();
-        const match = items.find(i => i.name.toLowerCase().includes(searchLower));
+        const match = items.find((i: { name: string }) => i.name.toLowerCase().includes(searchLower));
         
         if (!match) {
           return JSON.stringify({ 
@@ -337,7 +337,7 @@ export async function executeGroceryTool(
           });
         }
         
-        const deleted = deleteGroceryItem(match.id);
+        const deleted = await deleteGroceryItem(match.id);
         if (deleted) {
           return JSON.stringify({
             success: true,
@@ -353,7 +353,7 @@ export async function executeGroceryTool(
     
     case "clear_purchased_groceries": {
       try {
-        const count = clearPurchasedGroceryItems();
+        const count = await clearPurchasedGroceryItems();
         return JSON.stringify({
           success: true,
           message: count > 0 
@@ -368,7 +368,7 @@ export async function executeGroceryTool(
     
     case "clear_all_groceries": {
       try {
-        const count = clearAllGroceryItems();
+        const count = await clearAllGroceryItems();
         return JSON.stringify({
           success: true,
           message: count > 0 
@@ -388,8 +388,8 @@ export async function executeGroceryTool(
       };
       
       try {
-        const currentGroceryList = getAllGroceryItems();
-        const currentItemNames = currentGroceryList.map(i => i.name);
+        const currentGroceryList = await getAllGroceryItems();
+        const currentItemNames = currentGroceryList.map((i: { name: string }) => i.name);
         
         let result;
         if (item) {
@@ -431,7 +431,8 @@ export async function executeGroceryTool(
           });
         }
         
-        const groceryItems = getAllGroceryItems().filter(item => !item.purchased);
+        const allGroceryItems = await getAllGroceryItems();
+        const groceryItems = allGroceryItems.filter((item: { purchased: boolean }) => !item.purchased);
         
         if (groceryItems.length === 0) {
           return JSON.stringify({
@@ -478,9 +479,9 @@ export async function executeGroceryTool(
             phone = MASTER_ADMIN_PHONE;
           } else {
             // Look up contact by name
-            const contacts = findContactsByName(recipientName);
-            if (contacts.length > 0 && contacts[0].phone) {
-              phone = contacts[0].phone;
+            const contacts = await findContactsByName(recipientName);
+            if (contacts.length > 0 && contacts[0].phoneNumber) {
+              phone = contacts[0].phoneNumber;
             }
           }
           
