@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "http";
 import { v4 as uuidv4 } from "uuid";
 import { registerOmiRoutes } from "./omi-routes";
+import { getPendantHealthStatus } from "./pendantHealthMonitor";
 import { createOpusDecoder, createDeepgramBridge, isDeepgramConfigured, createVAD, isVADAvailable } from "./stt";
 import { limitlessClient, getLimitlessStatus, type ListLifelogsParams, type LimitlessConfig } from "./services/limitless";
 import { limitlessSyncService, initLimitlessSync } from "./services/limitlessSync";
@@ -1428,7 +1429,6 @@ export async function registerRoutes(
   // GET /api/pendant/status - Get real-time pendant connection status
   app.get("/api/pendant/status", (_req, res) => {
     try {
-      const { getPendantHealthStatus } = require("./pendantHealthMonitor");
       const status = getPendantHealthStatus();
       
       // Determine streaming state based on recent audio

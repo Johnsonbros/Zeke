@@ -31,6 +31,11 @@ Key architectural decisions and features include:
 - **Knowledge Graph Batch Processing**: Entity extraction via OpenAI Batch API (GPT-5.2) for cost efficiency, with a daily 2 AM backfill and synchronous fallback.
 - **Input/Output**: SMS/MMS integration with optimized image processing (parallel downloads, smart model routing, face recognition), a voice pipeline for Omi Pendant via Android app, and Smart Notification Batching.
 - **Omi Pendant Integration (Dec 2024)**: Omi cloud API is DISABLED. Audio flows directly from the Omi pendant hardware through the Android companion app to ZEKE's backend: `Omi Pendant → Bluetooth → Android App → WebSocket (/ws/audio) → Deepgram STT → feedSttTranscript() → Voice Pipeline`. The Android app handles Bluetooth connection and audio capture, while ZEKE processes transcripts for wake word detection and command execution.
+- **Real-Time Pendant Status Indicator (Dec 2024)**: Chat UI header shows live pendant connection status via `PendantStatusBadge` component polling `/api/pendant/status` every 3 seconds:
+  - Gray dot: Pendant disconnected (no audio in 5+ minutes)
+  - Green dot: Pendant connected (audio received within 5 minutes)
+  - Pulsing green dot: Actively streaming audio (audio within 10 seconds)
+  - Tooltip shows last audio timestamp and total packet count
 - **Proactive Memory Creation**: Auto-detection of memory-worthy images with user SMS confirmation for saving.
 - **Context Enhancement**: Semantic search enriches AI context based on identified people or locations in images.
 - **Learning & Feedback**: A Feedback Learning Loop system for user corrections, implicit feedback detection, and nightly training to cluster feedback into style profiles.
