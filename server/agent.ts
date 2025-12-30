@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
+import { withTrace } from "@openai/agents";
 import { wrapOpenAI, openaiBreaker, setAiLoggingContext, clearAiLoggingContext } from "../lib/reliability/client_wrap";
 import { logAiEvent, logAiError, hashSystemPrompt } from "./aiLogger";
 import {
@@ -999,6 +1000,24 @@ If nothing important to remember, return: {"memories": []}`,
  * @see python_agents/agents/conductor.py - ConductorAgent implementation
  */
 export async function chat(
+  conversationId: string,
+  userMessage: string,
+  isNewConversation: boolean = false,
+  userPhoneNumber?: string,
+  permissions?: UserPermissions,
+): Promise<string> {
+  // Wrap entire chat execution in OpenAI Agents SDK tracing
+  // This enables trace visibility at platform.openai.com/traces
+  return await withTrace(
+    {
+      workflowName: "ZEKE Chat",
+      groupId: conversationId, // Groups all channel messages by conversation
+    },
+    async () => await chatInternal(conversationId, userMessage, isNewConversation, userPhoneNumber, permissions)
+  );
+}
+
+async function chatInternal(
   conversationId: string,
   userMessage: string,
   isNewConversation: boolean = false,
