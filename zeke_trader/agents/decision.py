@@ -18,6 +18,7 @@ from typing import List, Optional
 from openai import OpenAI
 
 from ..services.news_client import fetch_trading_news_sync, TradingNewsContext
+from .perplexity_research import ResearchInsight
 
 from .schemas import (
     Signal,
@@ -108,11 +109,44 @@ class DecisionAgent:
             logger.warning(f"Failed to fetch news context: {e}")
             return None
     
+    def get_filtered_scored_signals(
+        self,
+        signals: List[Signal],
+        portfolio: PortfolioState,
+    ) -> tuple[List[ScoredSignal], bool]:
+        """
+        Filter signals and return scored entry signals above threshold.
+        
+        Returns:
+            Tuple of (scored_signals above threshold, has_exit_signals)
+        """
+        exit_signals = [s for s in signals if s.direction in [
+            SignalDirection.EXIT_LONG, 
+            SignalDirection.EXIT_SHORT
+        ]]
+        
+        if exit_signals:
+            return [], True
+        
+        entry_signals = [s for s in signals if s.direction in [
+            SignalDirection.LONG,
+            SignalDirection.SHORT
+        ]]
+        
+        if not entry_signals:
+            return [], False
+        
+        scored = self.scorer.score_signals(entry_signals, portfolio=portfolio)
+        filtered = [s for s in scored if s.total_score >= self.min_score_threshold]
+        
+        return filtered, False
+    
     def make_decision(
         self,
         signals: List[Signal],
         portfolio: PortfolioState,
         scored_signals: Optional[List[ScoredSignal]] = None,
+        research_insights: Optional[dict[str, ResearchInsight]] = None,
     ) -> Decision:
         """
         Decide on at most one trade from the provided signals.
@@ -121,6 +155,7 @@ class DecisionAgent:
             signals: Deterministic signals from SignalAgent
             portfolio: Current portfolio state
             scored_signals: Pre-scored signals (if None, will score internally)
+            research_insights: Perplexity research for high-impact signals
         
         Returns:
             TradeIntent or NoTrade decision
@@ -169,7 +204,7 @@ class DecisionAgent:
             )
         
         news_context = self._fetch_news_context()
-        prompt = self._build_scored_prompt(scored_signals, portfolio, news_context)
+        prompt = self._build_scored_prompt(scored_signals, portfolio, news_context, research_insights)
         
         try:
             response = self.client.chat.completions.create(
@@ -372,8 +407,9 @@ Choose ONE trade or NO_TRADE. Respond with JSON only."""
         scored_signals: List[ScoredSignal],
         portfolio: PortfolioState,
         news_context: Optional[TradingNewsContext] = None,
+        research_insights: Optional[dict[str, ResearchInsight]] = None,
     ) -> str:
-        """Build prompt with scored signals and news context for LLM."""
+        """Build prompt with scored signals, news context, and Perplexity research for LLM."""
         signals_text = []
         for i, ss in enumerate(scored_signals):
             sig = ss.signal
@@ -399,6 +435,10 @@ Choose ONE trade or NO_TRADE. Respond with JSON only."""
         if news_context and news_context.stories:
             news_section = f"\n{news_context.to_prompt_section()}\n"
         
+        research_section = ""
+        if research_insights:
+            research_section = self._format_research_section(research_insights)
+        
         return f"""PORTFOLIO STATE:
 - Equity: ${portfolio.equity:.2f}
 - Cash: ${portfolio.cash:.2f}
@@ -412,12 +452,36 @@ RISK LIMITS:
 - Max positions: {self.config.max_open_positions}
 - Max trades/day: {self.config.max_trades_per_day}
 - Max daily loss: ${self.config.max_daily_loss}
-{news_section}
+{news_section}{research_section}
 SCORED SIGNALS ({len(scored_signals)} above threshold, ranked by score):
 {chr(10).join(signals_text)}
 
-Consider the news context when making your decision. Positive news for a symbol may support entries, while negative news suggests caution.
+Consider the news context and Perplexity research when making your decision. High-impact signals with research should factor in the sentiment and risk factors identified.
 Choose ONE trade (prefer higher scores) or NO_TRADE. Respond with JSON only."""
+    
+    def _format_research_section(
+        self,
+        research_insights: dict[str, ResearchInsight],
+    ) -> str:
+        """Format Perplexity research insights for the decision prompt."""
+        if not research_insights:
+            return ""
+        
+        sections = ["\n=== PERPLEXITY RESEARCH (High-Impact Signals) ==="]
+        
+        for symbol, insight in research_insights.items():
+            key_factors = ", ".join(insight.key_factors[:2]) if insight.key_factors else "None identified"
+            risk_factors = ", ".join(insight.risk_factors[:2]) if insight.risk_factors else "None identified"
+            
+            section = f"""
+[{symbol}] Sentiment: {insight.sentiment.upper()} (confidence adjustment: {insight.confidence_adjustment:+.2f})
+Summary: {insight.summary[:250]}...
+Key Factors: {key_factors}
+Risk Factors: {risk_factors}"""
+            sections.append(section)
+        
+        sections.append("\nAdjust your confidence based on research sentiment. Bearish research on a signal suggests extra caution.\n")
+        return "\n".join(sections)
 
     def _parse_scored_response(
         self,

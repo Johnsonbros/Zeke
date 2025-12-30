@@ -25,6 +25,7 @@ from .decision import DecisionAgent
 from .risk_gate import RiskGateAgent
 from .execution import ExecutionAgent
 from .observability import ObservabilityAgent
+from .perplexity_research import PerplexityResearchAgent
 from ..config import TradingConfig
 
 logger = logging.getLogger("zeke_trader.agents.orchestrator")
@@ -54,6 +55,7 @@ class OrchestratorAgent:
         self.risk_gate = RiskGateAgent(config)
         self.execution = ExecutionAgent(config)
         self.observability = ObservabilityAgent(config)
+        self.perplexity = PerplexityResearchAgent(config)
         
         logger.info(f"Orchestrator initialized - Mode: {config.trading_mode.value}, Autonomy: {config.autonomy_tier.value}")
     
@@ -115,8 +117,30 @@ class OrchestratorAgent:
             result.signals = signals
             logger.info(f"Generated {len(signals)} signals")
             
+            research_insights = {}
+            precomputed_scored = None
+            if signals and self.perplexity.enabled:
+                filtered_scored, has_exits = self.decision.get_filtered_scored_signals(signals, portfolio)
+                if not has_exits:
+                    precomputed_scored = filtered_scored
+                    if filtered_scored:
+                        logger.info("[3.5/7] Researching high-impact signals...")
+                        research_insights = await self.perplexity.research_signals(filtered_scored)
+                        if research_insights:
+                            result.perplexity_research = {
+                                symbol: insight.model_dump(mode="json")
+                                for symbol, insight in research_insights.items()
+                            }
+                            logger.info(f"Completed research for {len(research_insights)} high-impact signals")
+                            self.observability.log_research(research_insights)
+            
             logger.info("[4/7] Making decision...")
-            decision = self.decision.make_decision(signals, portfolio)
+            decision = self.decision.make_decision(
+                signals,
+                portfolio,
+                scored_signals=precomputed_scored,
+                research_insights=research_insights,
+            )
             result.decision = decision
             
             logger.info("[5/7] Risk gate validation...")

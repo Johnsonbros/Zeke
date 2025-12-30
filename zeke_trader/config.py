@@ -25,6 +25,7 @@ class TradingConfig:
     alpaca_key_id: str = ""
     alpaca_secret_key: str = ""
     alpaca_mcp_url: str = ""
+    perplexity_api_key: str = ""
     
     trading_mode: TradingMode = TradingMode.PAPER
     live_trading_enabled: bool = False
@@ -36,6 +37,9 @@ class TradingConfig:
     max_open_positions: int = 3
     max_trades_per_day: int = 5
     max_daily_loss: float = 25.0
+    
+    perplexity_enabled: bool = True
+    perplexity_score_threshold: float = 4.0
     
     loop_seconds: int = 60
     log_dir: str = "zeke_trader/logs"
@@ -104,6 +108,7 @@ def load_config() -> TradingConfig:
         alpaca_key_id=api_key,
         alpaca_secret_key=api_secret,
         alpaca_mcp_url=os.getenv("ALPACA_MCP_URL", ""),
+        perplexity_api_key=os.getenv("PERPLEXITY_API_KEY", ""),
         trading_mode=trading_mode,
         live_trading_enabled=live_enabled,
         autonomy_tier=autonomy_tier,
@@ -112,6 +117,8 @@ def load_config() -> TradingConfig:
         max_open_positions=int(os.getenv("MAX_OPEN_POSITIONS", "3")),
         max_trades_per_day=int(os.getenv("MAX_TRADES_PER_DAY", "5")),
         max_daily_loss=float(os.getenv("MAX_DAILY_LOSS", "25")),
+        perplexity_enabled=os.getenv("PERPLEXITY_ENABLED", "true").lower() == "true",
+        perplexity_score_threshold=float(os.getenv("PERPLEXITY_SCORE_THRESHOLD", "4.0")),
         loop_seconds=int(os.getenv("LOOP_SECONDS", "60")),
         log_dir=os.getenv("LOG_DIR", "zeke_trader/logs"),
     )

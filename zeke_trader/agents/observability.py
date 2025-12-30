@@ -38,6 +38,7 @@ class ObservabilityAgent:
         (self.log_dir / "loops").mkdir(exist_ok=True)
         (self.log_dir / "trades").mkdir(exist_ok=True)
         (self.log_dir / "equity").mkdir(exist_ok=True)
+        (self.log_dir / "research").mkdir(exist_ok=True)
     
     def log_loop(self, result: LoopResult):
         """Log complete loop result."""
@@ -149,6 +150,38 @@ class ObservabilityAgent:
             
         except Exception as e:
             logger.error(f"Failed to log exit: {e}")
+    
+    def log_research(self, research_insights: dict):
+        """Log Perplexity research insights for high-impact signals."""
+        timestamp = datetime.utcnow()
+        date_str = timestamp.strftime("%Y%m%d")
+        
+        for symbol, insight in research_insights.items():
+            research_record = {
+                "timestamp": timestamp.isoformat(),
+                "symbol": symbol,
+                "sentiment": insight.sentiment,
+                "confidence_adjustment": insight.confidence_adjustment,
+                "key_factors": insight.key_factors,
+                "risk_factors": insight.risk_factors,
+                "citations_count": len(insight.citations),
+                "summary_preview": insight.summary[:200] if insight.summary else "",
+            }
+            
+            research_file = self.log_dir / "research" / f"research_{date_str}.jsonl"
+            
+            try:
+                with open(research_file, "a") as f:
+                    f.write(json.dumps(research_record, default=str) + "\n")
+                
+                logger.info(
+                    f"Research logged: {symbol} | "
+                    f"Sentiment: {insight.sentiment} | "
+                    f"Adjustment: {insight.confidence_adjustment:+.2f}"
+                )
+                
+            except Exception as e:
+                logger.error(f"Failed to log research for {symbol}: {e}")
     
     def log_equity(self, portfolio: PortfolioState):
         """Log equity snapshot for tracking."""

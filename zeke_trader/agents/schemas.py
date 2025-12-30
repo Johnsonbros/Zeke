@@ -233,6 +233,7 @@ class LoopResult(BaseModel):
     risk_result: Optional[RiskResult] = None
     order_result: Optional[OrderResult] = None
     pending_trade: Optional[PendingTrade] = None
+    perplexity_research: Optional[Dict[str, Any]] = Field(default=None, description="Research insights for high-impact signals")
     duration_ms: float = 0.0
     errors: List[str] = Field(default_factory=list)
     

@@ -77,6 +77,13 @@ Key architectural decisions and features include:
   - Multi-agent Turtle Trading System: Conductor orchestrator, DecisionAgent (GPT-4o), RiskGateAgent, ExecutionAgent
   - Deterministic Turtle strategy: S1 (20-day breakout), S2 (55-day breakout), 2N hard stops, 10/20-day exit channels
   - Scoring formula: `3.0*breakout_strength + 1.0*system_bonus + 1.0*momentum_per_N - 1.0*correlation_penalty`
+  - **Perplexity Research Integration (Dec 2024)**: Deep research for high-impact trading signals before execution:
+    - PerplexityResearchAgent queries Perplexity AI for signals with score >= 4.0 (configurable)
+    - Research includes: sentiment analysis, key factors, risk factors, confidence adjustment
+    - Respects exit-priority (research skipped when exit signals present)
+    - Single scoring pass ensures context consistency between research and DecisionAgent
+    - Research artifacts logged to `zeke_trader/logs/research/` for observability
+    - Config: `PERPLEXITY_ENABLED=true`, `PERPLEXITY_SCORE_THRESHOLD=4.0`
   - Discovery pipeline: Universe scanning, hard filters, qualification gate, opportunity planner (runs daily/weekly)
   - Overnight Batch Analyzer: Generates daily_report.json, trade_critiques.jsonl, recommended_thresholds.json
   - Trading Dashboard at `/trading` with account overview, real-time quotes, position management, and trade execution
