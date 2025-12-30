@@ -7,7 +7,7 @@ export const conversations = pgTable("conversations", {
   id: text("id").primaryKey(),
   title: text("title").notNull().default("New Conversation"),
   phoneNumber: text("phone_number"),
-  source: text("source", { enum: ["web", "sms", "voice"] }).notNull().default("web"),
+  source: text("source", { enum: ["web", "sms", "voice", "app"] }).notNull().default("web"),
   mode: text("mode", { enum: ["chat", "getting_to_know"] }).notNull().default("chat"),
   summary: text("summary"),
   summarizedMessageCount: integer("summarized_message_count").default(0),
@@ -31,7 +31,7 @@ export const messages = pgTable("messages", {
   conversationId: text("conversation_id").notNull().references(() => conversations.id),
   role: text("role", { enum: ["user", "assistant"] }).notNull(),
   content: text("content").notNull(),
-  source: text("source", { enum: ["web", "sms", "voice"] }).notNull().default("web"),
+  source: text("source", { enum: ["web", "sms", "voice", "app"] }).notNull().default("web"),
   createdAt: text("created_at").notNull(),
 });
 
