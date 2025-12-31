@@ -12629,6 +12629,47 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/cost/context - Get full cost context for ZEKE decision making
+  app.get("/api/cost/context", async (_req: Request, res: Response) => {
+    try {
+      const { getCostContext } = await import("./apiUsageLogger");
+      const context = await getCostContext();
+      res.json(context);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get cost context' });
+    }
+  });
+
+  // POST /api/cost/check-action - Check if an action should be allowed based on budget
+  app.post("/api/cost/check-action", async (req: Request, res: Response) => {
+    try {
+      const { shouldAllowAction, getCheaperAlternatives } = await import("./apiUsageLogger");
+      const { service, units = 1, isEssential = false } = req.body;
+      
+      if (!service) {
+        return res.status(400).json({ error: "service parameter is required" });
+      }
+      
+      const result = await shouldAllowAction(service, units, isEssential);
+      const alternatives = getCheaperAlternatives(service);
+      
+      res.json({ ...result, alternatives });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to check action' });
+    }
+  });
+
+  // GET /api/cost/summary - Get cost summary text for ZEKE
+  app.get("/api/cost/summary", async (_req: Request, res: Response) => {
+    try {
+      const { getCostSummaryForZeke } = await import("./apiUsageLogger");
+      const summary = await getCostSummaryForZeke();
+      res.json({ summary });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get cost summary' });
+    }
+  });
+
   // ============================================
   // BATCH FACTORY ADMIN API
   // ============================================

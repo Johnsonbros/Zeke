@@ -655,6 +655,7 @@ export async function getServiceBudgetStatus(serviceType: ApiServiceType): Promi
   monthlyUsage: number;
   dailyUsage: number;
   monthlyCost: number;
+  dailyCost: number;
   freeMonthlyRemaining: number;
   freeDailyRemaining: number;
   budgetRemaining: number | null;
@@ -669,11 +670,16 @@ export async function getServiceBudgetStatus(serviceType: ApiServiceType): Promi
   const freePerMonth = pricing.freePerMonth || 0;
   const freePerDay = pricing.freePerDay || 0;
   
-  // Calculate cost (accounting for free tier)
+  // Calculate monthly cost (accounting for free tier)
   let monthlyCost = 0;
   if (monthlyUsage > freePerMonth) {
     monthlyCost = Math.round((monthlyUsage - freePerMonth) * pricing.costPerUnit);
   }
+  
+  // Calculate daily cost (accounting for daily free tier, separate from monthly)
+  let dailyCost = 0;
+  const billableDailyUsage = Math.max(0, dailyUsage - freePerDay);
+  dailyCost = Math.round(billableDailyUsage * pricing.costPerUnit);
   
   const freeMonthlyRemaining = Math.max(0, freePerMonth - monthlyUsage);
   const freeDailyRemaining = Math.max(0, freePerDay - dailyUsage);
@@ -682,6 +688,7 @@ export async function getServiceBudgetStatus(serviceType: ApiServiceType): Promi
     monthlyUsage,
     dailyUsage,
     monthlyCost,
+    dailyCost,
     freeMonthlyRemaining,
     freeDailyRemaining,
     budgetRemaining: null, // Can be configured per service
@@ -694,6 +701,330 @@ export function getCostForAction(serviceType: ApiServiceType, units: number = 1)
   const pricing = pricingCache[serviceType] || DEFAULT_PRICING[serviceType];
   const { costCents } = calculateCost(serviceType, units);
   return costCents / 100; // Return in dollars
+}
+
+// ============================================
+// COST-AWARE DECISION MAKING FOR ZEKE
+// ============================================
+
+// Daily budget limits (in cents) - can be configured
+const DAILY_BUDGETS: Partial<Record<ApiServiceType, number>> = {
+  twilio_sms: 500, // $5/day max
+  twilio_mms: 200, // $2/day max
+  deepgram: 1000, // $10/day max
+  elevenlabs: 500, // $5/day max
+  perplexity: 300, // $3/day max
+};
+
+// Monthly budget limits (in cents)
+const MONTHLY_BUDGETS: Partial<Record<ApiServiceType, number>> = {
+  twilio_sms: 5000, // $50/month max
+  twilio_mms: 2000, // $20/month max
+  deepgram: 20000, // $200/month max
+  elevenlabs: 10000, // $100/month max
+  perplexity: 5000, // $50/month max
+};
+
+// Cost efficiency thresholds for adaptive behavior
+const EFFICIENCY_THRESHOLDS = {
+  warning: 0.7, // 70% of budget triggers warning mode
+  critical: 0.9, // 90% triggers critical mode
+  throttle: 0.95, // 95% triggers throttling
+};
+
+export type CostEfficiencyMode = "normal" | "warning" | "critical" | "throttled";
+
+export interface CostContext {
+  // Current mode
+  mode: CostEfficiencyMode;
+  
+  // Budget status
+  dailyBudgetUsedPercent: number;
+  monthlyBudgetUsedPercent: number;
+  
+  // Cost estimates for common actions
+  estimatedCosts: {
+    sms: number;
+    mms: number;
+    voiceMinute: number;
+    sttMinute: number;
+    ttsCharacters: number;
+    search: number;
+  };
+  
+  // Recommendations
+  recommendations: string[];
+  
+  // Whether expensive actions should be deferred
+  shouldDeferExpensiveActions: boolean;
+  
+  // Breakdown by service
+  services: Record<string, {
+    dailyUsageCents: number;
+    dailyBudgetCents: number;
+    dailyRemaining: number;
+    monthlyUsageCents: number;
+    monthlyBudgetCents: number;
+    monthlyRemaining: number;
+    mode: CostEfficiencyMode;
+  }>;
+}
+
+// Get cost context for ZEKE's decision making
+export async function getCostContext(): Promise<CostContext> {
+  checkUsageCacheBoundaries();
+  
+  const now = new Date();
+  const today = now.toISOString().split("T")[0];
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+  
+  // Calculate usage by service
+  const services: CostContext["services"] = {};
+  let totalDailyUsed = 0;
+  let totalDailyBudget = 0;
+  let totalMonthlyUsed = 0;
+  let totalMonthlyBudget = 0;
+  let worstMode: CostEfficiencyMode = "normal";
+  
+  for (const serviceType of Object.keys(DEFAULT_PRICING) as ApiServiceType[]) {
+    const dailyUsage = usageCache.daily[serviceType] || 0;
+    const monthlyUsage = usageCache.monthly[serviceType] || 0;
+    const pricing = pricingCache[serviceType] || DEFAULT_PRICING[serviceType];
+    
+    // Calculate actual cost (accounting for free tier)
+    const freeMonthly = pricing.freePerMonth || 0;
+    const freeDaily = pricing.freePerDay || 0;
+    
+    const billableMonthly = Math.max(0, monthlyUsage - freeMonthly);
+    const billableDaily = Math.max(0, dailyUsage - freeDaily);
+    
+    const dailyCostCents = Math.round(billableDaily * pricing.costPerUnit);
+    const monthlyCostCents = Math.round(billableMonthly * pricing.costPerUnit);
+    
+    const dailyBudget = DAILY_BUDGETS[serviceType] || 10000; // Default $100/day
+    const monthlyBudget = MONTHLY_BUDGETS[serviceType] || 100000; // Default $1000/month
+    
+    const dailyPercent = dailyCostCents / dailyBudget;
+    const monthlyPercent = monthlyCostCents / monthlyBudget;
+    
+    let serviceMode: CostEfficiencyMode = "normal";
+    if (dailyPercent >= EFFICIENCY_THRESHOLDS.throttle || monthlyPercent >= EFFICIENCY_THRESHOLDS.throttle) {
+      serviceMode = "throttled";
+    } else if (dailyPercent >= EFFICIENCY_THRESHOLDS.critical || monthlyPercent >= EFFICIENCY_THRESHOLDS.critical) {
+      serviceMode = "critical";
+    } else if (dailyPercent >= EFFICIENCY_THRESHOLDS.warning || monthlyPercent >= EFFICIENCY_THRESHOLDS.warning) {
+      serviceMode = "warning";
+    }
+    
+    services[serviceType] = {
+      dailyUsageCents: dailyCostCents,
+      dailyBudgetCents: dailyBudget,
+      dailyRemaining: Math.max(0, dailyBudget - dailyCostCents),
+      monthlyUsageCents: monthlyCostCents,
+      monthlyBudgetCents: monthlyBudget,
+      monthlyRemaining: Math.max(0, monthlyBudget - monthlyCostCents),
+      mode: serviceMode,
+    };
+    
+    totalDailyUsed += dailyCostCents;
+    totalDailyBudget += dailyBudget;
+    totalMonthlyUsed += monthlyCostCents;
+    totalMonthlyBudget += monthlyBudget;
+    
+    // Track worst mode across all services
+    const modeOrder: CostEfficiencyMode[] = ["normal", "warning", "critical", "throttled"];
+    if (modeOrder.indexOf(serviceMode) > modeOrder.indexOf(worstMode)) {
+      worstMode = serviceMode;
+    }
+  }
+  
+  // Build recommendations
+  const recommendations: string[] = [];
+  
+  if (worstMode === "throttled") {
+    recommendations.push("Budget limit reached. Non-essential API calls should be deferred.");
+  } else if (worstMode === "critical") {
+    recommendations.push("Approaching budget limit. Reduce non-essential API usage.");
+  } else if (worstMode === "warning") {
+    recommendations.push("Budget usage is elevated. Consider batching requests.");
+  }
+  
+  // Service-specific recommendations
+  for (const [service, data] of Object.entries(services)) {
+    if (data.mode === "throttled") {
+      recommendations.push(`${service}: Budget exhausted. Defer ${service} calls.`);
+    } else if (data.mode === "critical" && data.dailyRemaining < 100) {
+      recommendations.push(`${service}: Only $${(data.dailyRemaining / 100).toFixed(2)} remaining today.`);
+    }
+  }
+  
+  // Estimated costs for common actions
+  const estimatedCosts = {
+    sms: getCostForAction("twilio_sms", 1),
+    mms: getCostForAction("twilio_mms", 1),
+    voiceMinute: getCostForAction("twilio_voice", 1),
+    sttMinute: getCostForAction("deepgram", 1),
+    ttsCharacters: getCostForAction("elevenlabs", 1000), // per 1000 chars
+    search: getCostForAction("perplexity", 1),
+  };
+  
+  return {
+    mode: worstMode,
+    dailyBudgetUsedPercent: totalDailyBudget > 0 ? (totalDailyUsed / totalDailyBudget) * 100 : 0,
+    monthlyBudgetUsedPercent: totalMonthlyBudget > 0 ? (totalMonthlyUsed / totalMonthlyBudget) * 100 : 0,
+    estimatedCosts,
+    recommendations,
+    shouldDeferExpensiveActions: worstMode === "throttled" || worstMode === "critical",
+    services,
+  };
+}
+
+// Check if a specific action should be allowed based on budget
+export async function shouldAllowAction(
+  serviceType: ApiServiceType,
+  estimatedUnits: number = 1,
+  isEssential: boolean = false
+): Promise<{
+  allowed: boolean;
+  reason: string;
+  estimatedCost: number;
+  budgetRemaining: number;
+  suggestion?: string;
+}> {
+  checkUsageCacheBoundaries();
+  
+  const pricing = pricingCache[serviceType] || DEFAULT_PRICING[serviceType];
+  const { costCents } = calculateCost(serviceType, estimatedUnits);
+  const budgetStatus = await getServiceBudgetStatus(serviceType);
+  
+  const dailyBudget = DAILY_BUDGETS[serviceType] || 10000;
+  const monthlyBudget = MONTHLY_BUDGETS[serviceType] || 100000;
+  
+  // Calculate current spend using actual daily cost (not monthly)
+  const currentDailySpend = budgetStatus.dailyCost;
+  const dailyRemaining = dailyBudget - currentDailySpend;
+  
+  // Essential actions are always allowed
+  if (isEssential) {
+    return {
+      allowed: true,
+      reason: "Essential action - always allowed",
+      estimatedCost: costCents / 100,
+      budgetRemaining: dailyRemaining / 100,
+    };
+  }
+  
+  // Check if action would exceed budget
+  if (dailyRemaining <= 0) {
+    return {
+      allowed: false,
+      reason: `Daily budget exhausted for ${serviceType}`,
+      estimatedCost: costCents / 100,
+      budgetRemaining: 0,
+      suggestion: "Defer this action to tomorrow or use a cheaper alternative.",
+    };
+  }
+  
+  if (costCents > dailyRemaining) {
+    return {
+      allowed: false,
+      reason: `Action would exceed daily budget for ${serviceType}`,
+      estimatedCost: costCents / 100,
+      budgetRemaining: dailyRemaining / 100,
+      suggestion: `Only $${(dailyRemaining / 100).toFixed(2)} remaining. Reduce units or defer.`,
+    };
+  }
+  
+  // Check if in throttle mode
+  const usagePercent = (currentDailySpend + costCents) / dailyBudget;
+  if (usagePercent >= EFFICIENCY_THRESHOLDS.throttle) {
+    return {
+      allowed: false,
+      reason: `${serviceType} is in throttle mode (${(usagePercent * 100).toFixed(0)}% budget used)`,
+      estimatedCost: costCents / 100,
+      budgetRemaining: dailyRemaining / 100,
+      suggestion: "Consider using a cheaper alternative or batching requests.",
+    };
+  }
+  
+  // Warning mode - allow but suggest optimization
+  let suggestion: string | undefined;
+  if (usagePercent >= EFFICIENCY_THRESHOLDS.warning) {
+    suggestion = `Budget usage at ${(usagePercent * 100).toFixed(0)}%. Consider batching or deferring non-urgent requests.`;
+  }
+  
+  return {
+    allowed: true,
+    reason: "Within budget",
+    estimatedCost: costCents / 100,
+    budgetRemaining: dailyRemaining / 100,
+    suggestion,
+  };
+}
+
+// Get cheaper alternatives for an action
+export function getCheaperAlternatives(serviceType: ApiServiceType): Array<{
+  alternative: string;
+  savings: string;
+  tradeoff: string;
+}> {
+  const alternatives: Record<ApiServiceType, Array<{ alternative: string; savings: string; tradeoff: string }>> = {
+    twilio_sms: [
+      { alternative: "Batch messages", savings: "Reduce message count", tradeoff: "Delayed notifications" },
+      { alternative: "Use push notifications", savings: "Free vs $0.0079/SMS", tradeoff: "Requires app installation" },
+    ],
+    twilio_mms: [
+      { alternative: "Send link instead of image", savings: "$0.02 per message", tradeoff: "User must click link" },
+      { alternative: "Use SMS with description", savings: "$0.012/message savings", tradeoff: "No visual preview" },
+    ],
+    twilio_voice: [
+      { alternative: "Use SMS instead", savings: "$0.014/min vs $0.0079/SMS", tradeoff: "No voice interaction" },
+    ],
+    deepgram: [
+      { alternative: "Use shorter recordings", savings: "Proportional to duration", tradeoff: "May miss context" },
+      { alternative: "Batch transcriptions overnight", savings: "Could use batch pricing", tradeoff: "Delayed processing" },
+    ],
+    elevenlabs: [
+      { alternative: "Use shorter responses", savings: "Proportional to characters", tradeoff: "Less detailed responses" },
+      { alternative: "Use text response instead", savings: "~$0.30/1k chars", tradeoff: "No voice output" },
+    ],
+    perplexity: [
+      { alternative: "Use cached responses", savings: "$0.005/search", tradeoff: "May be outdated" },
+      { alternative: "Use DuckDuckGo fallback", savings: "Free vs $0.005", tradeoff: "Less accurate results" },
+    ],
+    openai: [],
+    google_calendar: [],
+    google_maps: [
+      { alternative: "Cache location data", savings: "$0.007/request", tradeoff: "May be stale" },
+    ],
+    openweathermap: [],
+    alpaca: [],
+  };
+  
+  return alternatives[serviceType] || [];
+}
+
+// Get a cost summary for ZEKE to include in responses
+export async function getCostSummaryForZeke(): Promise<string> {
+  const context = await getCostContext();
+  
+  const lines: string[] = [];
+  lines.push(`Cost Efficiency Mode: ${context.mode.toUpperCase()}`);
+  lines.push(`Daily Budget Used: ${context.dailyBudgetUsedPercent.toFixed(1)}%`);
+  lines.push(`Monthly Budget Used: ${context.monthlyBudgetUsedPercent.toFixed(1)}%`);
+  
+  if (context.recommendations.length > 0) {
+    lines.push("");
+    lines.push("Recommendations:");
+    context.recommendations.forEach(r => lines.push(`- ${r}`));
+  }
+  
+  if (context.shouldDeferExpensiveActions) {
+    lines.push("");
+    lines.push("NOTE: Non-essential expensive actions should be deferred.");
+  }
+  
+  return lines.join("\n");
 }
 
 console.log("[ApiUsageLogger] Unified API usage tracking initialized");
