@@ -29,6 +29,7 @@ import { startPendantHealthMonitor, setMorningBriefingCallback } from "./pendant
 import { sendWakeTriggeredBriefing } from "./morningBriefingService";
 import { startNewsScheduler, setSendSmsCallback as setNewsSmsCallback } from "./services/newsService";
 import { startMorningBriefingScheduler, setSendSmsCallback as setBriefingSmsCallback } from "./services/morningBriefingScheduler";
+import "./apiUsageLogger"; // Initialize unified API usage tracking
 
 export { log };
 

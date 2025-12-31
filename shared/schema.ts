@@ -4508,3 +4508,180 @@ export const updateAgentApplicationSchema = z.object({
 export type InsertAgentApplication = z.infer<typeof insertAgentApplicationSchema>;
 export type UpdateAgentApplication = z.infer<typeof updateAgentApplicationSchema>;
 export type AgentApplication = typeof agentApplications.$inferSelect;
+
+// ============================================
+// UNIFIED API USAGE TRACKING SYSTEM
+// ============================================
+
+// Service types for all external APIs we track
+export const apiServiceTypes = [
+  "openai",        // OpenAI (already tracked in ai_logs, but included for P&L)
+  "twilio_sms",    // Twilio SMS messages
+  "twilio_mms",    // Twilio MMS messages
+  "twilio_voice",  // Twilio voice calls
+  "deepgram",      // Deepgram STT
+  "elevenlabs",    // ElevenLabs TTS
+  "perplexity",    // Perplexity search
+  "google_calendar", // Google Calendar API
+  "google_maps",   // Google Maps/Places API
+  "openweathermap", // Weather API
+  "alpaca",        // Stock trading API
+] as const;
+export type ApiServiceType = typeof apiServiceTypes[number];
+
+// Unit types for different services
+export const apiUnitTypes = [
+  "tokens",        // OpenAI tokens
+  "messages",      // SMS/MMS count
+  "minutes",       // Voice/audio minutes
+  "characters",    // ElevenLabs chars
+  "requests",      // API request count
+  "bytes",         // Data transfer
+] as const;
+export type ApiUnitType = typeof apiUnitTypes[number];
+
+// API usage logs table - tracks all external API usage
+export const apiUsageLogs = pgTable("api_usage_logs", {
+  id: text("id").primaryKey(),
+  timestamp: text("timestamp").notNull(),
+  
+  // Service identification
+  serviceType: text("service_type", { enum: apiServiceTypes }).notNull(),
+  operation: text("operation"), // e.g., "send_sms", "transcribe", "search", "tts"
+  
+  // Usage metrics
+  unitType: text("unit_type", { enum: apiUnitTypes }).notNull(),
+  unitsConsumed: real("units_consumed").notNull(), // e.g., 1 message, 2.5 minutes
+  
+  // Cost tracking (in cents for precision)
+  costCents: integer("cost_cents").notNull().default(0),
+  isFreeQuota: boolean("is_free_quota").default(false), // Track if within free tier
+  
+  // Context
+  agentId: text("agent_id"), // Which agent/job triggered this
+  conversationId: text("conversation_id"),
+  requestId: text("request_id"), // External API request ID if available
+  
+  // Performance
+  latencyMs: integer("latency_ms"),
+  
+  // Status
+  status: text("status", { enum: ["ok", "error", "rate_limited"] }).default("ok"),
+  errorMessage: text("error_message"),
+  
+  // Metadata (JSON for service-specific data)
+  metadata: text("metadata"), // JSON: phone numbers, model used, etc.
+  
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertApiUsageLogSchema = createInsertSchema(apiUsageLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertApiUsageLog = z.infer<typeof insertApiUsageLogSchema>;
+export type ApiUsageLog = typeof apiUsageLogs.$inferSelect;
+
+// Service pricing configuration table
+export const apiServicePricing = pgTable("api_service_pricing", {
+  id: text("id").primaryKey(),
+  serviceType: text("service_type", { enum: apiServiceTypes }).notNull().unique(),
+  
+  // Pricing per unit (in cents)
+  costPerUnit: real("cost_per_unit").notNull(), // Cost per unit in cents
+  unitType: text("unit_type", { enum: apiUnitTypes }).notNull(),
+  
+  // Free tier tracking
+  freeUnitsPerMonth: real("free_units_per_month").default(0),
+  freeUnitsPerDay: real("free_units_per_day").default(0),
+  
+  // Budget limits
+  dailyBudgetCents: integer("daily_budget_cents"),
+  monthlyBudgetCents: integer("monthly_budget_cents"),
+  
+  // Notes
+  notes: text("notes"),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertApiServicePricingSchema = createInsertSchema(apiServicePricing).omit({
+  id: true,
+});
+
+export type InsertApiServicePricing = z.infer<typeof insertApiServicePricingSchema>;
+export type ApiServicePricing = typeof apiServicePricing.$inferSelect;
+
+// P&L tracking table - daily summaries for ZEKE's financials
+export const dailyPnl = pgTable("daily_pnl", {
+  id: text("id").primaryKey(),
+  date: text("date").notNull().unique(), // YYYY-MM-DD
+  
+  // Revenue
+  tradingRevenueCents: integer("trading_revenue_cents").default(0),
+  otherRevenueCents: integer("other_revenue_cents").default(0),
+  
+  // Operating costs by category
+  aiCostCents: integer("ai_cost_cents").default(0), // OpenAI
+  communicationCostCents: integer("communication_cost_cents").default(0), // Twilio
+  voiceCostCents: integer("voice_cost_cents").default(0), // Deepgram + ElevenLabs
+  searchCostCents: integer("search_cost_cents").default(0), // Perplexity
+  mapsCostCents: integer("maps_cost_cents").default(0), // Google Maps
+  otherCostCents: integer("other_cost_cents").default(0),
+  
+  // Totals
+  totalRevenueCents: integer("total_revenue_cents").default(0),
+  totalCostCents: integer("total_cost_cents").default(0),
+  netPnlCents: integer("net_pnl_cents").default(0),
+  
+  // Metrics
+  apiCallCount: integer("api_call_count").default(0),
+  tradeCount: integer("trade_count").default(0),
+  
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertDailyPnlSchema = createInsertSchema(dailyPnl).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertDailyPnl = z.infer<typeof insertDailyPnlSchema>;
+export type DailyPnl = typeof dailyPnl.$inferSelect;
+
+// Aggregated usage stats interface
+export interface ApiUsageStats {
+  periodStart: string;
+  periodEnd: string;
+  byService: Record<ApiServiceType, {
+    calls: number;
+    unitsConsumed: number;
+    costCents: number;
+    freeQuotaUsed: number;
+  }>;
+  totalCostCents: number;
+  totalCalls: number;
+}
+
+// P&L summary interface
+export interface PnlSummary {
+  period: string;
+  revenue: {
+    trading: number;
+    other: number;
+    total: number;
+  };
+  costs: {
+    ai: number;
+    communication: number;
+    voice: number;
+    search: number;
+    maps: number;
+    other: number;
+    total: number;
+  };
+  netPnl: number;
+  profitMargin: number;
+}
