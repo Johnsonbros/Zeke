@@ -301,9 +301,14 @@ import {
   getGroceryItemsSince,
   getContactsSince,
   getSavedPlacesSince,
+  getDashboardSummary,
+  getMobileNotifications,
+  getMobileNotification,
+  updateMobileNotification,
+  dismissMobileNotification,
 } from "./db";
-import type { TwilioMessageSource, UploadedFileType } from "@shared/schema";
-import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema, locationSampleBatchSchema, insertSavedPlaceSchema, companionLocationHistorySchema, companionLocationSampleBatchSchema, registerPushTokenSchema, deltaQuerySchema } from "@shared/schema";
+import type { TwilioMessageSource, UploadedFileType, ZekeNotification, MobileNotificationActionType } from "@shared/schema";
+import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema, locationSampleBatchSchema, insertSavedPlaceSchema, companionLocationHistorySchema, companionLocationSampleBatchSchema, registerPushTokenSchema, deltaQuerySchema, updateMobileNotificationSchema } from "@shared/schema";
 import { dailyPnl, apiUsageLogs } from "@shared/schema";
 import { db } from "./db";
 import { sql, eq, and, gte, lte } from "drizzle-orm";
@@ -14219,6 +14224,139 @@ export async function registerRoutes(
   } else {
     console.log("[Trading] Trading is DISABLED (no API keys configured)");
   }
+
+  // ============================================================================
+  // MOBILE APP DASHBOARD & NOTIFICATIONS API
+  // ============================================================================
+
+  // GET /api/dashboard - Dashboard summary for mobile app home screen
+  app.get("/api/dashboard", async (req: Request, res: Response) => {
+    try {
+      const summary = await getDashboardSummary();
+      res.json(summary);
+    } catch (error: any) {
+      console.error("[Dashboard] Error getting summary:", error);
+      res.status(500).json({
+        error: "Internal Server Error",
+        message: "Failed to fetch dashboard summary",
+        path: "/api/dashboard",
+        requestId: req.get("X-Zeke-Request-Id"),
+      });
+    }
+  });
+
+  // GET /api/notifications - Get user notifications
+  app.get("/api/notifications", async (req: Request, res: Response) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const unreadOnly = req.query.unreadOnly === "true";
+      const deviceId = req.get("x-zeke-device-token");
+
+      const notifications = await getMobileNotifications({
+        limit,
+        unreadOnly,
+        deviceId: deviceId || undefined,
+      });
+
+      const formattedNotifications: ZekeNotification[] = notifications.map((n) => ({
+        id: n.id,
+        type: n.type,
+        title: n.title,
+        message: n.message,
+        timestamp: n.createdAt,
+        read: n.read,
+        actionType: n.actionType as MobileNotificationActionType | undefined,
+        actionData: n.actionData ? JSON.parse(n.actionData) : undefined,
+      }));
+
+      res.json({ notifications: formattedNotifications });
+    } catch (error: any) {
+      console.error("[Notifications] Error getting notifications:", error);
+      res.status(500).json({
+        error: "Internal Server Error",
+        message: "Failed to fetch notifications",
+        path: "/api/notifications",
+        requestId: req.get("X-Zeke-Request-Id"),
+      });
+    }
+  });
+
+  // POST /api/notifications/:id/dismiss - Dismiss a notification
+  app.post("/api/notifications/:id/dismiss", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      const notification = await getMobileNotification(id);
+      if (!notification) {
+        return res.status(404).json({
+          error: "Notification not found",
+          notificationId: id,
+        });
+      }
+
+      const dismissed = await dismissMobileNotification(id);
+      if (dismissed) {
+        res.json({ success: true, notificationId: id });
+      } else {
+        res.status(500).json({
+          error: "Failed to dismiss notification",
+          notificationId: id,
+        });
+      }
+    } catch (error: any) {
+      console.error("[Notifications] Error dismissing notification:", error);
+      res.status(500).json({
+        error: "Internal Server Error",
+        message: "Failed to dismiss notification",
+        path: `/api/notifications/${req.params.id}/dismiss`,
+        requestId: req.get("X-Zeke-Request-Id"),
+      });
+    }
+  });
+
+  // PATCH /api/notifications/:id - Update notification (e.g., mark as read)
+  app.patch("/api/notifications/:id", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      const notification = await getMobileNotification(id);
+      if (!notification) {
+        return res.status(404).json({
+          error: "Notification not found",
+          notificationId: id,
+        });
+      }
+
+      const parseResult = updateMobileNotificationSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "Invalid request body",
+          details: parseResult.error.errors,
+        });
+      }
+
+      const updated = await updateMobileNotification(id, parseResult.data);
+      if (updated) {
+        res.json({ success: true });
+      } else {
+        res.status(500).json({
+          error: "Failed to update notification",
+          notificationId: id,
+        });
+      }
+    } catch (error: any) {
+      console.error("[Notifications] Error updating notification:", error);
+      res.status(500).json({
+        error: "Internal Server Error",
+        message: "Failed to update notification",
+        path: `/api/notifications/${req.params.id}`,
+        requestId: req.get("X-Zeke-Request-Id"),
+      });
+    }
+  });
+
+  console.log("[Mobile API] Dashboard and Notifications endpoints registered");
   
   return httpServer;
 }
