@@ -1,5 +1,6 @@
 import type OpenAI from "openai";
 import type { ToolPermissions } from "../tools";
+import { logPerplexity } from "../apiUsageLogger";
 
 function decodeHtmlEntities(text: string): string {
   return text
@@ -295,6 +296,13 @@ export async function executeSearchTool(
         
         const answer = data.choices?.[0]?.message?.content || "No answer generated";
         const citations = data.citations || [];
+        
+        // Track Perplexity API usage
+        logPerplexity({
+          operation: "search",
+          query: query.substring(0, 100),
+          conversationId,
+        }).catch(err => console.error("[Perplexity] Usage tracking failed:", err));
         
         return JSON.stringify({
           query,

@@ -550,6 +550,7 @@ import { parseSmsReaction, buildFeedbackEvent, generateFeedbackTwimlResponse } f
 import { createFeedbackEvent } from "./db";
 import { startFeedbackTrainer } from "./jobs/feedbackTrainer";
 import { trackUserMessage, isRepeatedRequest, createImplicitFeedback } from "./feedback/implicitFeedback";
+import { logTwilioSms, logTwilioMms, logDeepgram } from "./apiUsageLogger";
 
 // Feature flag for Knowledge Graph
 const KG_ENABLED = process.env.KG_ENABLED === "true";
@@ -581,6 +582,8 @@ function logTwilioMessage(params: {
   conversationId?: string;
   errorCode?: string;
   errorMessage?: string;
+  hasMms?: boolean;
+  mediaCount?: number;
 }) {
   try {
     const contact = getContactByPhone(
@@ -601,6 +604,25 @@ function logTwilioMessage(params: {
       errorCode: params.errorCode || null,
       errorMessage: params.errorMessage || null,
     });
+    
+    // Track API usage costs (async, non-blocking)
+    // MMS is billed per message (not per attachment), SMS is billed per segment
+    const messageSegments = Math.ceil(params.body.length / 160); // SMS segment calculation
+    if (params.hasMms || params.mediaCount) {
+      // MMS: 1 unit per message regardless of attachment count
+      logTwilioMms({
+        direction: params.direction,
+        mediaCount: params.mediaCount || 1, // Store for analytics, but unit cost is 1
+        conversationId: params.conversationId,
+      }).catch(err => console.error("[TWILIO LOG] Cost tracking failed:", err));
+    } else {
+      logTwilioSms({
+        direction: params.direction,
+        phoneNumber: params.direction === "inbound" ? params.fromNumber : params.toNumber,
+        messageSegments,
+        conversationId: params.conversationId,
+      }).catch(err => console.error("[TWILIO LOG] Cost tracking failed:", err));
+    }
     
     console.log(`[TWILIO LOG] ${params.direction} ${params.source}: ${params.direction === "inbound" ? params.fromNumber : params.toNumber} - ${params.body.substring(0, 50)}...`);
   } catch (error) {
@@ -1158,15 +1180,25 @@ export async function registerRoutes(
             
             endSttSession(session.sessionId);
             audioSessions.delete(ws);
+            
+            // Track Deepgram usage (calculate audio minutes from decoded frames)
+            const stats = session.decoder.getStats();
+            const audioMinutes = (stats.decodedFrames || 0) * 0.02 / 60; // Opus frames are typically 20ms
+            if (audioMinutes > 0) {
+              logDeepgram({
+                audioMinutes,
+                model: "nova-2",
+              }).catch(err => console.error("[STT WS] Deepgram usage tracking failed:", err));
+            }
 
             ws.send(JSON.stringify({
               type: "session_ended",
               session_id: session.sessionId,
-              stats: session.decoder.getStats(),
+              stats,
               vad_stats: session.vad?.getStats() || null,
             }));
 
-            console.log(`[STT WS] Session ${session.sessionId} ended`);
+            console.log(`[STT WS] Session ${session.sessionId} ended, audio: ${audioMinutes.toFixed(2)} minutes`);
           }
         }
 
@@ -1200,9 +1232,20 @@ export async function registerRoutes(
           console.log(`[STT WS] VAD stats - speech: ${vadStats.speechFrames}, silence: ${vadStats.silenceFrames}, ratio: ${(vadStats.speechRatio * 100).toFixed(1)}%`);
           session.vad.reset();
         }
+        
+        // Track Deepgram usage (calculate audio minutes from decoded frames)
+        const stats = session.decoder.getStats();
+        const audioMinutes = (stats.decodedFrames || 0) * 0.02 / 60; // Opus frames are typically 20ms
+        if (audioMinutes > 0) {
+          logDeepgram({
+            audioMinutes,
+            model: "nova-2",
+          }).catch(err => console.error("[STT WS] Deepgram usage tracking failed:", err));
+        }
+        
         endSttSession(session.sessionId);
         audioSessions.delete(ws);
-        console.log(`[STT WS] Connection closed, session ${session.sessionId} ended`);
+        console.log(`[STT WS] Connection closed, session ${session.sessionId} ended, audio: ${audioMinutes.toFixed(2)} minutes`);
       }
     });
 
@@ -2813,6 +2856,8 @@ export async function registerRoutes(
         body: message || `[MMS: ${numMedia} attachment(s)]`,
         twilioSid: messageSid,
         status: "received",
+        hasMms: numMedia > 0,
+        mediaCount: numMedia,
       });
       
       // Immediately acknowledge receipt to Twilio (prevents timeout issues)

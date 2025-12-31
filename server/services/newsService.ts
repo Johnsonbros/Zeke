@@ -11,6 +11,7 @@ import {
 } from "../db";
 import type { NewsTopic, NewsStory, NewsFeedback } from "@shared/schema";
 import { sendNewsNotification, sendAlertNotification } from "./pushNotificationService";
+import { logPerplexity } from "../apiUsageLogger";
 
 const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
 
@@ -78,6 +79,12 @@ Format as JSON array with fields: headline, summary, source, url, urgency`,
 
     const data = await response.json() as { choices: Array<{ message: { content: string } }> };
     const content = data.choices?.[0]?.message?.content || "";
+    
+    // Track Perplexity API usage for news queries
+    logPerplexity({
+      operation: "news",
+      query: topicString.substring(0, 100),
+    }).catch(err => console.error("[NewsService] Usage tracking failed:", err));
 
     // Parse JSON from response
     const jsonMatch = content.match(/\[[\s\S]*\]/);

@@ -3,6 +3,7 @@ import { Readable } from "stream";
 import fs from "fs";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
+import { logElevenLabs } from "./apiUsageLogger";
 
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "7ZxKpU6EbWxrhZgWoRDv";
 const ELEVENLABS_MODEL_ID = "eleven_flash_v2_5";
@@ -83,7 +84,13 @@ export async function generateSpeechAudio(text: string): Promise<string> {
     
     audioCache.set(audioId, { filePath, createdAt: Date.now() });
     
-    console.log(`[ElevenLabs] Audio generated successfully: ${audioId}`);
+    // Track ElevenLabs usage (character count)
+    logElevenLabs({
+      characterCount: text.length,
+      voiceId: ELEVENLABS_VOICE_ID,
+    }).catch(err => console.error("[ElevenLabs] Usage tracking failed:", err));
+    
+    console.log(`[ElevenLabs] Audio generated successfully: ${audioId} (${text.length} chars)`);
     
     return audioId;
   } catch (error: any) {
