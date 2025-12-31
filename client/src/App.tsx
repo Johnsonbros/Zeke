@@ -32,6 +32,7 @@ import FilesPage from "@/pages/files";
 import JournalPage from "@/pages/journal";
 import EvalPage from "@/pages/eval";
 import AiUsagePage from "@/pages/ai-usage";
+import PnlPage from "@/pages/pnl";
 import ApplicationsPage from "@/pages/applications";
 import DevicesPage from "@/pages/devices";
 import VoiceProfilesPage from "@/pages/voice-profiles";
@@ -69,6 +70,7 @@ function ProtectedRoutes() {
       <Route path="/journal" component={JournalPage} />
       <Route path="/eval" component={EvalPage} />
       <Route path="/ai-usage" component={AiUsagePage} />
+      <Route path="/pnl" component={PnlPage} />
       <Route path="/applications" component={ApplicationsPage} />
       <Route path="/devices" component={DevicesPage} />
       <Route path="/voice-profiles" component={VoiceProfilesPage} />

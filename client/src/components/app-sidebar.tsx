@@ -56,6 +56,7 @@ import {
   AudioWaveform,
   TrendingUp,
   Rss,
+  DollarSign,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import type { Conversation } from "@shared/schema";
@@ -204,6 +205,12 @@ const mainNavItems = [
     icon: Activity,
     href: "/ai-usage",
     description: "Track AI costs and usage",
+  },
+  {
+    title: "P&L Dashboard",
+    icon: DollarSign,
+    href: "/pnl",
+    description: "Track costs vs trading revenue",
   },
   {
     title: "Applications",

@@ -304,6 +304,9 @@ import {
 } from "./db";
 import type { TwilioMessageSource, UploadedFileType } from "@shared/schema";
 import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema, locationSampleBatchSchema, insertSavedPlaceSchema, companionLocationHistorySchema, companionLocationSampleBatchSchema, registerPushTokenSchema, deltaQuerySchema } from "@shared/schema";
+import { dailyPnl, apiUsageLogs } from "@shared/schema";
+import { db } from "./db";
+import { sql, eq, and, gte, lte } from "drizzle-orm";
 import {
   logAiEvent,
   getRecentAiLogs,
@@ -12502,6 +12505,127 @@ export async function registerRoutes(
       res.json({ config, status });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Failed to update budget' });
+    }
+  });
+
+  // ============================================
+  // UNIFIED P&L & API USAGE ENDPOINTS
+  // ============================================
+
+  // GET /api/pnl/summary - Get P&L summary for date range
+  app.get("/api/pnl/summary", async (req: Request, res: Response) => {
+    try {
+      const { getPnlSummary } = await import("./apiUsageLogger");
+      const days = parseInt(req.query.days as string) || 30;
+      const endDate = new Date().toISOString().split("T")[0];
+      const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      
+      const summary = await getPnlSummary(startDate, endDate);
+      res.json({ ...summary, period: { start: startDate, end: endDate, days } });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get P&L summary' });
+    }
+  });
+
+  // GET /api/pnl/daily - Get daily P&L breakdown
+  app.get("/api/pnl/daily", async (req: Request, res: Response) => {
+    try {
+      const days = parseInt(req.query.days as string) || 14;
+      const endDate = new Date().toISOString().split("T")[0];
+      const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      
+      const results = await db.select().from(dailyPnl)
+        .where(and(gte(dailyPnl.date, startDate), lte(dailyPnl.date, endDate)))
+        .orderBy(dailyPnl.date);
+      
+      res.json({ data: results, period: { start: startDate, end: endDate, days } });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get daily P&L' });
+    }
+  });
+
+  // GET /api/api-usage/stats - Get API usage stats by service
+  app.get("/api/api-usage/stats", async (req: Request, res: Response) => {
+    try {
+      const { getUsageStats } = await import("./apiUsageLogger");
+      const days = parseInt(req.query.days as string) || 30;
+      const endDate = new Date().toISOString();
+      const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+      
+      const stats = await getUsageStats(startDate, endDate);
+      res.json({ ...stats, period: { start: startDate, end: endDate, days } });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get API usage stats' });
+    }
+  });
+
+  // GET /api/api-usage/logs - Get recent API usage logs
+  app.get("/api/api-usage/logs", async (req: Request, res: Response) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const serviceType = req.query.service as string;
+      
+      let query = db.select().from(apiUsageLogs).orderBy(sql`${apiUsageLogs.timestamp} DESC`).limit(limit);
+      
+      if (serviceType) {
+        query = db.select().from(apiUsageLogs)
+          .where(eq(apiUsageLogs.serviceType, serviceType))
+          .orderBy(sql`${apiUsageLogs.timestamp} DESC`)
+          .limit(limit);
+      }
+      
+      const logs = await query;
+      res.json({ logs, count: logs.length });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get API usage logs' });
+    }
+  });
+
+  // GET /api/api-usage/budget/:service - Get budget status for specific service
+  app.get("/api/api-usage/budget/:service", async (req: Request, res: Response) => {
+    try {
+      const { getServiceBudgetStatus } = await import("./apiUsageLogger");
+      const serviceType = req.params.service;
+      
+      const status = await getServiceBudgetStatus(serviceType as any);
+      res.json({ service: serviceType, ...status });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get service budget status' });
+    }
+  });
+
+  // POST /api/pnl/trading-revenue - Record trading revenue (called by trading module)
+  app.post("/api/pnl/trading-revenue", async (req: Request, res: Response) => {
+    try {
+      const { updateTradingRevenue } = await import("./apiUsageLogger");
+      const { revenueCents, date } = req.body;
+      
+      if (typeof revenueCents !== "number") {
+        return res.status(400).json({ error: "revenueCents is required and must be a number" });
+      }
+      
+      await updateTradingRevenue(revenueCents, date);
+      res.json({ success: true, revenueCents, date: date || new Date().toISOString().split("T")[0] });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to record trading revenue' });
+    }
+  });
+
+  // GET /api/cost/estimate - Get cost estimate for an action (for ZEKE decision making)
+  app.get("/api/cost/estimate", async (req: Request, res: Response) => {
+    try {
+      const { getCostForAction } = await import("./apiUsageLogger");
+      const service = req.query.service as string;
+      const units = parseInt(req.query.units as string) || 1;
+      
+      if (!service) {
+        return res.status(400).json({ error: "service parameter is required" });
+      }
+      
+      const costDollars = getCostForAction(service as any, units);
+      res.json({ service, units, costDollars, costCents: Math.round(costDollars * 100) });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get cost estimate' });
     }
   });
 
