@@ -56,7 +56,9 @@ import {
 } from "lucide-react";
 import type { Task, GroceryItem, MemoryNote, Conversation, Message, ChatResponse, NewsStory, NewsTopic } from "@shared/schema";
 import { format, isPast, isToday, parseISO, isWithinInterval, startOfDay, endOfDay, formatDistanceToNow } from "date-fns";
-import { Newspaper, ExternalLink } from "lucide-react";
+import { Newspaper, ExternalLink, AlertTriangle, Settings2 } from "lucide-react";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { Progress } from "@/components/ui/progress";
 
 interface CalendarEvent {
   id: string;
@@ -171,6 +173,45 @@ interface AiUsageStats {
   }>;
   byAgent: Record<string, { calls: number; costCents: number }>;
   byEndpoint: Record<string, { calls: number; costCents: number }>;
+}
+
+interface DailyTrendPoint {
+  date: string;
+  costCents: number;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+interface AgentCostBreakdown {
+  agentId: string;
+  calls: number;
+  costCents: number;
+  avgLatencyMs: number;
+  errorCount: number;
+}
+
+interface BudgetPeriod {
+  spent: number;
+  limit: number;
+  percent: number;
+  overBudget: boolean;
+}
+
+interface BudgetStatus {
+  config: {
+    dailyLimitCents: number;
+    weeklyLimitCents: number;
+    monthlyLimitCents: number;
+    alertAtPercent: number;
+    enabled: boolean;
+  };
+  status: {
+    daily: BudgetPeriod;
+    weekly: BudgetPeriod;
+    monthly: BudgetPeriod;
+    alerts: string[];
+  };
 }
 
 type DashboardStats = {
@@ -1601,27 +1642,36 @@ function SystemDateTime() {
   );
 }
 
-function AiUsageWidget({
+function AiCostDashboard({
   todayStats,
   weekStats,
+  trends,
+  agentBreakdown,
+  budgetStatus,
   isLoading,
 }: {
   todayStats?: AiUsageStats;
   weekStats?: AiUsageStats;
+  trends?: { trends: DailyTrendPoint[]; days: number };
+  agentBreakdown?: { breakdown: AgentCostBreakdown[]; days: number };
+  budgetStatus?: BudgetStatus;
   isLoading?: boolean;
 }) {
+  const [showDetails, setShowDetails] = useState(false);
+  
   if (isLoading) {
     return (
-      <Card data-testid="widget-ai-usage">
+      <Card className="col-span-1 sm:col-span-2" data-testid="widget-ai-usage">
         <CardHeader className="pb-2 sm:pb-3">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg bg-primary/10">
               <Activity className="h-4 w-4 text-primary" />
             </div>
-            <CardTitle className="text-sm sm:text-base">AI Usage</CardTitle>
+            <CardTitle className="text-sm sm:text-base">AI Cost Dashboard</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
+          <Skeleton className="h-24" />
           <Skeleton className="h-16" />
           <Skeleton className="h-12" />
         </CardContent>
@@ -1631,84 +1681,221 @@ function AiUsageWidget({
 
   const todayCost = (todayStats?.totalCostCents || 0) / 100;
   const weekCost = (weekStats?.totalCostCents || 0) / 100;
+  const monthCost = (budgetStatus?.status?.monthly?.spent || 0) / 100;
   const todayCalls = todayStats?.totalCalls || 0;
-  const weekCalls = weekStats?.totalCalls || 0;
   const avgLatency = todayStats?.averageLatencyMs || 0;
   const errorRate = ((todayStats?.errorRate || 0) * 100).toFixed(1);
   
-  const topModel = todayStats?.byModel 
-    ? Object.entries(todayStats.byModel)
-        .sort((a, b) => b[1].calls - a[1].calls)[0]
-    : null;
+  const chartData = trends?.trends?.slice(-14).map(t => ({
+    date: format(parseISO(t.date), "MMM d"),
+    cost: t.costCents / 100,
+    calls: t.calls,
+  })) || [];
+  
+  const hasAlerts = budgetStatus?.status?.alerts && budgetStatus.status.alerts.length > 0;
+  
+  const topAgents = agentBreakdown?.breakdown?.slice(0, 5) || [];
 
   return (
-    <Card data-testid="widget-ai-usage">
+    <Card className="col-span-1 sm:col-span-2" data-testid="widget-ai-usage">
       <CardHeader className="pb-2 sm:pb-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg bg-primary/10">
               <Activity className="h-4 w-4 text-primary" />
             </div>
-            <CardTitle className="text-sm sm:text-base">AI Usage</CardTitle>
+            <CardTitle className="text-sm sm:text-base">AI Cost Dashboard</CardTitle>
           </div>
-          <Badge variant="secondary" className="text-[10px] sm:text-xs">
-            Today
-          </Badge>
+          <div className="flex items-center gap-2">
+            {hasAlerts && (
+              <Badge variant="destructive" className="text-[10px] sm:text-xs gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                Alert
+              </Badge>
+            )}
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-7 px-2 text-xs"
+              onClick={() => setShowDetails(!showDetails)}
+              data-testid="button-toggle-ai-details"
+            >
+              {showDetails ? "Less" : "More"}
+            </Button>
+          </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3 sm:space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+      <CardContent className="space-y-4">
+        {hasAlerts && (
+          <div className="p-2 rounded-lg bg-destructive/10 border border-destructive/20">
+            {budgetStatus?.status.alerts.map((alert, i) => (
+              <p key={i} className="text-xs text-destructive flex items-center gap-1.5">
+                <AlertTriangle className="h-3 w-3 shrink-0" />
+                {alert}
+              </p>
+            ))}
+          </div>
+        )}
+        
+        <div className="grid grid-cols-4 gap-3">
           <div className="space-y-1">
-            <div className="flex items-center gap-1.5">
-              <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Cost Today</span>
-            </div>
-            <p className="text-lg sm:text-xl font-semibold" data-testid="ai-cost-today">
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Today</p>
+            <p className="text-base sm:text-lg font-semibold" data-testid="ai-cost-today">
               ${todayCost.toFixed(2)}
             </p>
           </div>
           <div className="space-y-1">
-            <div className="flex items-center gap-1.5">
-              <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">API Calls</span>
-            </div>
-            <p className="text-lg sm:text-xl font-semibold" data-testid="ai-calls-today">
-              {todayCalls.toLocaleString()}
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2 pt-2 border-t">
-          <div className="text-center">
-            <p className="text-[10px] sm:text-xs text-muted-foreground">Week Cost</p>
-            <p className="text-sm sm:text-base font-medium" data-testid="ai-cost-week">
+            <p className="text-[10px] sm:text-xs text-muted-foreground">This Week</p>
+            <p className="text-base sm:text-lg font-semibold" data-testid="ai-cost-week">
               ${weekCost.toFixed(2)}
             </p>
           </div>
-          <div className="text-center">
-            <p className="text-[10px] sm:text-xs text-muted-foreground">Avg Latency</p>
-            <p className="text-sm sm:text-base font-medium" data-testid="ai-latency">
-              {avgLatency}ms
+          <div className="space-y-1">
+            <p className="text-[10px] sm:text-xs text-muted-foreground">This Month</p>
+            <p className="text-base sm:text-lg font-semibold" data-testid="ai-cost-month">
+              ${monthCost.toFixed(2)}
             </p>
           </div>
-          <div className="text-center">
-            <p className="text-[10px] sm:text-xs text-muted-foreground">Error Rate</p>
-            <p className={`text-sm sm:text-base font-medium ${parseFloat(errorRate) > 5 ? 'text-red-500' : ''}`} data-testid="ai-error-rate">
-              {errorRate}%
+          <div className="space-y-1">
+            <p className="text-[10px] sm:text-xs text-muted-foreground">API Calls</p>
+            <p className="text-base sm:text-lg font-semibold" data-testid="ai-calls-today">
+              {todayCalls}
             </p>
           </div>
         </div>
 
-        {topModel && (
+        {budgetStatus?.config?.enabled && budgetStatus?.status && (
+          <div className="space-y-2 pt-2 border-t">
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">Budget Status</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-muted-foreground">Daily</span>
+                  <span className={budgetStatus.status.daily?.overBudget ? "text-destructive" : ""}>
+                    {budgetStatus.status.daily?.percent ?? 0}%
+                  </span>
+                </div>
+                <Progress 
+                  value={Math.min(budgetStatus.status.daily?.percent ?? 0, 100)} 
+                  className={`h-1.5 ${budgetStatus.status.daily?.overBudget ? "[&>div]:bg-destructive" : ""}`}
+                />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-muted-foreground">Weekly</span>
+                  <span className={budgetStatus.status.weekly?.overBudget ? "text-destructive" : ""}>
+                    {budgetStatus.status.weekly?.percent ?? 0}%
+                  </span>
+                </div>
+                <Progress 
+                  value={Math.min(budgetStatus.status.weekly?.percent ?? 0, 100)} 
+                  className={`h-1.5 ${budgetStatus.status.weekly?.overBudget ? "[&>div]:bg-destructive" : ""}`}
+                />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-muted-foreground">Monthly</span>
+                  <span className={budgetStatus.status.monthly?.overBudget ? "text-destructive" : ""}>
+                    {budgetStatus.status.monthly?.percent ?? 0}%
+                  </span>
+                </div>
+                <Progress 
+                  value={Math.min(budgetStatus.status.monthly?.percent ?? 0, 100)} 
+                  className={`h-1.5 ${budgetStatus.status.monthly?.overBudget ? "[&>div]:bg-destructive" : ""}`}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {chartData.length > 0 && (
           <div className="pt-2 border-t">
-            <p className="text-[10px] sm:text-xs text-muted-foreground mb-1">Top Model</p>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs sm:text-sm font-medium truncate" data-testid="ai-top-model">
-                {topModel[0]}
-              </span>
-              <Badge variant="secondary" className="text-[9px] sm:text-[10px] shrink-0">
-                {topModel[1].calls} calls
-              </Badge>
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium mb-2">14-Day Trend</p>
+            <div className="h-24">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <XAxis 
+                    dataKey="date" 
+                    tick={{ fontSize: 9 }} 
+                    axisLine={false} 
+                    tickLine={false}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis 
+                    tick={{ fontSize: 9 }} 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tickFormatter={(v) => `$${v}`}
+                    width={35}
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      fontSize: 11, 
+                      backgroundColor: 'hsl(var(--card))', 
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '6px'
+                    }}
+                    formatter={(value: number) => [`$${value.toFixed(2)}`, 'Cost']}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="cost" 
+                    stroke="hsl(var(--primary))" 
+                    strokeWidth={2}
+                    fill="url(#costGradient)" 
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {showDetails && topAgents.length > 0 && (
+          <div className="pt-2 border-t">
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium mb-2">Cost by Agent/Job</p>
+            <div className="space-y-2">
+              {topAgents.map((agent) => (
+                <div key={agent.agentId} className="flex items-center justify-between gap-2">
+                  <span className="text-xs truncate flex-1" title={agent.agentId}>
+                    {agent.agentId.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim()}
+                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant="secondary" className="text-[9px]">
+                      {agent.calls} calls
+                    </Badge>
+                    <span className="text-xs font-medium w-14 text-right">
+                      ${(agent.costCents / 100).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {showDetails && (
+          <div className="pt-2 border-t grid grid-cols-3 gap-3">
+            <div className="text-center">
+              <p className="text-[10px] text-muted-foreground">Avg Latency</p>
+              <p className="text-sm font-medium">{avgLatency}ms</p>
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] text-muted-foreground">Error Rate</p>
+              <p className={`text-sm font-medium ${parseFloat(errorRate) > 5 ? 'text-destructive' : ''}`}>
+                {errorRate}%
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] text-muted-foreground">Daily Limit</p>
+              <p className="text-sm font-medium">
+                ${(budgetStatus?.config?.dailyLimitCents || 500) / 100}
+              </p>
             </div>
           </div>
         )}
@@ -1833,7 +2020,22 @@ export default function DashboardPage() {
     refetchInterval: 60000,
   });
 
-  const isAiStatsLoading = aiStatsTodayLoading || aiStatsWeekLoading;
+  const { data: aiTrends, isLoading: aiTrendsLoading } = useQuery<{ trends: DailyTrendPoint[]; days: number }>({
+    queryKey: ["/api/ai-logs/trends?days=30"],
+    refetchInterval: 300000,
+  });
+
+  const { data: aiAgentBreakdown, isLoading: aiAgentBreakdownLoading } = useQuery<{ breakdown: AgentCostBreakdown[]; days: number }>({
+    queryKey: ["/api/ai-logs/by-agent?days=30"],
+    refetchInterval: 300000,
+  });
+
+  const { data: aiBudgetStatus, isLoading: aiBudgetStatusLoading } = useQuery<BudgetStatus>({
+    queryKey: ["/api/ai-logs/budget"],
+    refetchInterval: 60000,
+  });
+
+  const isAiStatsLoading = aiStatsTodayLoading || aiStatsWeekLoading || aiTrendsLoading || aiAgentBreakdownLoading || aiBudgetStatusLoading;
 
   const updateNotificationPrefsMutation = useMutation({
     mutationFn: async (updates: Partial<NotificationPreferences>) => {
@@ -2136,9 +2338,12 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
-          <AiUsageWidget
+          <AiCostDashboard
             todayStats={aiStatsToday}
             weekStats={aiStatsWeek}
+            trends={aiTrends}
+            agentBreakdown={aiAgentBreakdown}
+            budgetStatus={aiBudgetStatus}
             isLoading={isAiStatsLoading}
           />
           <ProactiveInsightsWidget

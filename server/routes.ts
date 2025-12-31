@@ -12412,6 +12412,54 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/ai-logs/trends - Get daily cost trends for charts
+  app.get("/api/ai-logs/trends", async (req: Request, res: Response) => {
+    try {
+      const { getDailyTrends } = await import("./aiLogger");
+      const days = parseInt(req.query.days as string) || 30;
+      const trends = getDailyTrends(Math.min(days, 90)); // Max 90 days
+      res.json({ trends, days });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get trends' });
+    }
+  });
+
+  // GET /api/ai-logs/by-agent - Get cost breakdown by agent/job
+  app.get("/api/ai-logs/by-agent", async (req: Request, res: Response) => {
+    try {
+      const { getAgentCostBreakdown } = await import("./aiLogger");
+      const days = parseInt(req.query.days as string) || 30;
+      const breakdown = getAgentCostBreakdown(Math.min(days, 90));
+      res.json({ breakdown, days });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get agent breakdown' });
+    }
+  });
+
+  // GET /api/ai-logs/budget - Get budget configuration and status
+  app.get("/api/ai-logs/budget", async (req: Request, res: Response) => {
+    try {
+      const { getBudgetConfig, checkBudgetStatus } = await import("./aiLogger");
+      const config = getBudgetConfig();
+      const status = checkBudgetStatus();
+      res.json({ config, status });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get budget status' });
+    }
+  });
+
+  // PATCH /api/ai-logs/budget - Update budget configuration
+  app.patch("/api/ai-logs/budget", async (req: Request, res: Response) => {
+    try {
+      const { updateBudgetConfig, checkBudgetStatus } = await import("./aiLogger");
+      const config = updateBudgetConfig(req.body);
+      const status = checkBudgetStatus();
+      res.json({ config, status });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to update budget' });
+    }
+  });
+
   // ============================================
   // BATCH FACTORY ADMIN API
   // ============================================

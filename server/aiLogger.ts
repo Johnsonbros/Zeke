@@ -758,4 +758,239 @@ export function getCombinedAiUsageStats(
   return { realtime: realtimeStats, batch: batchStats, combined };
 }
 
+// =============================================================================
+// Daily Trend Data for Charts
+// =============================================================================
+
+export interface DailyTrendPoint {
+  date: string;
+  costCents: number;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+/**
+ * Get daily cost trends for the last N days
+ */
+export function getDailyTrends(days: number = 30): DailyTrendPoint[] {
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+  
+  const stmt = db.prepare(`
+    SELECT 
+      date(timestamp) as date,
+      SUM(total_cost_cents) as costCents,
+      COUNT(*) as calls,
+      SUM(input_tokens) as inputTokens,
+      SUM(output_tokens) as outputTokens
+    FROM ai_logs 
+    WHERE timestamp >= ? AND timestamp <= ?
+    GROUP BY date(timestamp)
+    ORDER BY date(timestamp) ASC
+  `);
+  
+  const results = stmt.all(startDate.toISOString(), endDate.toISOString()) as Array<{
+    date: string;
+    costCents: number;
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+  }>;
+  
+  // Fill in missing days with zeros
+  const trends: DailyTrendPoint[] = [];
+  const dateMap = new Map(results.map(r => [r.date, r]));
+  
+  const current = new Date(startDate);
+  while (current <= endDate) {
+    const dateStr = current.toISOString().split('T')[0];
+    const data = dateMap.get(dateStr);
+    trends.push({
+      date: dateStr,
+      costCents: data?.costCents || 0,
+      calls: data?.calls || 0,
+      inputTokens: data?.inputTokens || 0,
+      outputTokens: data?.outputTokens || 0,
+    });
+    current.setDate(current.getDate() + 1);
+  }
+  
+  return trends;
+}
+
+/**
+ * Get cost breakdown by agent/job
+ */
+export function getAgentCostBreakdown(days: number = 30): Array<{
+  agentId: string;
+  calls: number;
+  costCents: number;
+  avgLatencyMs: number;
+  errorCount: number;
+}> {
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+  
+  const stmt = db.prepare(`
+    SELECT 
+      COALESCE(agent_id, 'unknown') as agentId,
+      COUNT(*) as calls,
+      SUM(total_cost_cents) as costCents,
+      AVG(latency_ms) as avgLatencyMs,
+      SUM(CASE WHEN status != 'ok' AND status != 'success' THEN 1 ELSE 0 END) as errorCount
+    FROM ai_logs 
+    WHERE timestamp >= ?
+    GROUP BY agent_id
+    ORDER BY costCents DESC
+  `);
+  
+  return stmt.all(startDate.toISOString()) as Array<{
+    agentId: string;
+    calls: number;
+    costCents: number;
+    avgLatencyMs: number;
+    errorCount: number;
+  }>;
+}
+
+// =============================================================================
+// Budget Threshold Management
+// =============================================================================
+
+interface BudgetConfig {
+  dailyLimitCents: number;
+  weeklyLimitCents: number;
+  monthlyLimitCents: number;
+  alertAtPercent: number; // Alert when spending reaches this % of limit
+  enabled: boolean;
+}
+
+const BUDGET_CONFIG_KEY = "ai_budget_config";
+let budgetConfig: BudgetConfig = {
+  dailyLimitCents: 500, // $5/day default
+  weeklyLimitCents: 2500, // $25/week default
+  monthlyLimitCents: 10000, // $100/month default
+  alertAtPercent: 80,
+  enabled: true,
+};
+
+// Load budget config from database on startup
+function loadBudgetConfig(): void {
+  try {
+    const stmt = db.prepare(`SELECT value FROM kv_store WHERE key = ?`);
+    const result = stmt.get(BUDGET_CONFIG_KEY) as { value: string } | undefined;
+    if (result) {
+      budgetConfig = { ...budgetConfig, ...JSON.parse(result.value) };
+    }
+  } catch (e) {
+    // Table might not exist yet, use defaults
+  }
+}
+
+function saveBudgetConfig(): void {
+  try {
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO kv_store (key, value, updated_at) 
+      VALUES (?, ?, datetime('now'))
+    `);
+    stmt.run(BUDGET_CONFIG_KEY, JSON.stringify(budgetConfig));
+  } catch (e) {
+    console.error("[AiLogger] Failed to save budget config:", e);
+  }
+}
+
+// Try to load on module init
+try {
+  loadBudgetConfig();
+} catch (e) {
+  // Ignore - table might not exist
+}
+
+/**
+ * Get current budget configuration
+ */
+export function getBudgetConfig(): BudgetConfig {
+  return { ...budgetConfig };
+}
+
+/**
+ * Update budget configuration
+ */
+export function updateBudgetConfig(config: Partial<BudgetConfig>): BudgetConfig {
+  budgetConfig = { ...budgetConfig, ...config };
+  saveBudgetConfig();
+  return budgetConfig;
+}
+
+export interface BudgetStatus {
+  daily: { spent: number; limit: number; percent: number; overBudget: boolean };
+  weekly: { spent: number; limit: number; percent: number; overBudget: boolean };
+  monthly: { spent: number; limit: number; percent: number; overBudget: boolean };
+  alerts: string[];
+}
+
+/**
+ * Check current spending against budget thresholds
+ */
+export function checkBudgetStatus(): BudgetStatus {
+  const now = new Date();
+  
+  // Daily spending
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayStats = getAiUsageStats(todayStart.toISOString(), now.toISOString());
+  
+  // Weekly spending
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - now.getDay());
+  weekStart.setHours(0, 0, 0, 0);
+  const weekStats = getAiUsageStats(weekStart.toISOString(), now.toISOString());
+  
+  // Monthly spending
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthStats = getAiUsageStats(monthStart.toISOString(), now.toISOString());
+  
+  const daily = {
+    spent: todayStats.totalCostCents,
+    limit: budgetConfig.dailyLimitCents,
+    percent: budgetConfig.dailyLimitCents > 0 
+      ? Math.round((todayStats.totalCostCents / budgetConfig.dailyLimitCents) * 100) 
+      : 0,
+    overBudget: todayStats.totalCostCents > budgetConfig.dailyLimitCents,
+  };
+  
+  const weekly = {
+    spent: weekStats.totalCostCents,
+    limit: budgetConfig.weeklyLimitCents,
+    percent: budgetConfig.weeklyLimitCents > 0 
+      ? Math.round((weekStats.totalCostCents / budgetConfig.weeklyLimitCents) * 100) 
+      : 0,
+    overBudget: weekStats.totalCostCents > budgetConfig.weeklyLimitCents,
+  };
+  
+  const monthly = {
+    spent: monthStats.totalCostCents,
+    limit: budgetConfig.monthlyLimitCents,
+    percent: budgetConfig.monthlyLimitCents > 0 
+      ? Math.round((monthStats.totalCostCents / budgetConfig.monthlyLimitCents) * 100) 
+      : 0,
+    overBudget: monthStats.totalCostCents > budgetConfig.monthlyLimitCents,
+  };
+  
+  const alerts: string[] = [];
+  if (budgetConfig.enabled) {
+    if (daily.overBudget) alerts.push("Daily budget exceeded!");
+    else if (daily.percent >= budgetConfig.alertAtPercent) alerts.push(`Daily spending at ${daily.percent}% of limit`);
+    
+    if (weekly.overBudget) alerts.push("Weekly budget exceeded!");
+    else if (weekly.percent >= budgetConfig.alertAtPercent) alerts.push(`Weekly spending at ${weekly.percent}% of limit`);
+    
+    if (monthly.overBudget) alerts.push("Monthly budget exceeded!");
+    else if (monthly.percent >= budgetConfig.alertAtPercent) alerts.push(`Monthly spending at ${monthly.percent}% of limit`);
+  }
+  
+  return { daily, weekly, monthly, alerts };
+}
+
 console.log("[AiLogger] AI usage logging system loaded");

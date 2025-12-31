@@ -26,6 +26,7 @@ Key architectural decisions and features include:
 - **Real-Time STT Pipeline**: WebSocket-based real-time speech-to-text transcription using Deepgram Live API with speaker diarization and WebRTC-based Voice Activity Detection (VAD) for cost efficiency.
 - **Proactive Features**: Proactive Memory Creation, Context Enhancement through semantic search, and a Feedback Learning Loop system.
 - **Efficiency & Resilience**: Overnight Batch Factory using OpenAI Batch API, AI Usage Logging System, Circuit Breaker, and Retry with Jittered Backoff. A batch-first architecture prioritizes non-realtime AI tasks for cost savings.
+- **AI Cost Dashboard**: Enhanced cost monitoring widget with 14-day trend charts, budget tracking (daily/weekly/monthly limits), agent/job cost breakdown, and visual alerts for budget overruns. API endpoints: `/api/ai-logs/trends`, `/api/ai-logs/by-agent`, `/api/ai-logs/budget`.
 - **User Interface**: Structured Chat Cards, Mobile UI Enhancements, and a Delta Sync System for mobile app synchronization. A standardized mobile app layout system ensures consistent UI.
 - **Security & Authentication**: HMAC Authentication for the mobile app, unified SMS verification system for both mobile app and web dashboard login, and session-based authentication for the web dashboard.
 - **Unified Conversation System**: All communications across channels converge into a single conversation thread.
