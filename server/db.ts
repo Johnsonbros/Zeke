@@ -6593,3 +6593,118 @@ export async function deleteVoiceSample(id: string): Promise<boolean> {
   return (result.rowCount ?? 0) > 0;
 }
 
+// ============================================================================
+// MOBILE NOTIFICATIONS
+// ============================================================================
+
+export async function createMobileNotification(data: schema.InsertMobileNotification): Promise<schema.MobileNotification> {
+  const now = getNow();
+  const id = uuidv4();
+  const [result] = await db.insert(schema.mobileNotifications).values({
+    ...data,
+    id,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  return result;
+}
+
+export async function getMobileNotification(id: string): Promise<schema.MobileNotification | undefined> {
+  const [result] = await db.select().from(schema.mobileNotifications).where(eq(schema.mobileNotifications.id, id));
+  return result;
+}
+
+export async function getMobileNotifications(options: { limit?: number; unreadOnly?: boolean; deviceId?: string } = {}): Promise<schema.MobileNotification[]> {
+  const { limit = 20, unreadOnly = false, deviceId } = options;
+  
+  const conditions = [eq(schema.mobileNotifications.dismissed, false)];
+  if (unreadOnly) {
+    conditions.push(eq(schema.mobileNotifications.read, false));
+  }
+  if (deviceId) {
+    conditions.push(eq(schema.mobileNotifications.deviceId, deviceId));
+  }
+  
+  return await db.select()
+    .from(schema.mobileNotifications)
+    .where(and(...conditions))
+    .orderBy(desc(schema.mobileNotifications.createdAt))
+    .limit(limit);
+}
+
+export async function updateMobileNotification(id: string, data: schema.UpdateMobileNotification): Promise<schema.MobileNotification | undefined> {
+  const [result] = await db.update(schema.mobileNotifications)
+    .set({ ...data, updatedAt: getNow() })
+    .where(eq(schema.mobileNotifications.id, id))
+    .returning();
+  return result;
+}
+
+export async function dismissMobileNotification(id: string): Promise<boolean> {
+  const result = await db.update(schema.mobileNotifications)
+    .set({ dismissed: true, read: true, updatedAt: getNow() })
+    .where(eq(schema.mobileNotifications.id, id));
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function markMobileNotificationRead(id: string): Promise<boolean> {
+  const result = await db.update(schema.mobileNotifications)
+    .set({ read: true, updatedAt: getNow() })
+    .where(eq(schema.mobileNotifications.id, id));
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function deleteMobileNotification(id: string): Promise<boolean> {
+  const result = await db.delete(schema.mobileNotifications).where(eq(schema.mobileNotifications.id, id));
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function deleteExpiredMobileNotifications(): Promise<number> {
+  const now = getNow();
+  const result = await db.delete(schema.mobileNotifications)
+    .where(and(
+      sql`${schema.mobileNotifications.expiresAt} IS NOT NULL`,
+      sql`${schema.mobileNotifications.expiresAt} < ${now}`
+    ));
+  return result.rowCount ?? 0;
+}
+
+// ============================================================================
+// DASHBOARD SUMMARY AGGREGATION
+// ============================================================================
+
+export async function getDashboardSummary(): Promise<schema.DashboardSummary> {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
+  
+  const [eventsResult] = await db.select({ count: sql<number>`count(*)` })
+    .from(schema.calendarEvents)
+    .where(and(
+      gte(schema.calendarEvents.start, todayStart),
+      sql`${schema.calendarEvents.start} < ${todayEnd}`
+    ));
+  
+  const [tasksResult] = await db.select({ count: sql<number>`count(*)` })
+    .from(schema.tasks)
+    .where(eq(schema.tasks.completed, false));
+  
+  const [groceryResult] = await db.select({ count: sql<number>`count(*)` })
+    .from(schema.groceryItems)
+    .where(eq(schema.groceryItems.purchased, false));
+  
+  const [memoriesResult] = await db.select({ count: sql<number>`count(*)` })
+    .from(schema.memoryNotes)
+    .where(eq(schema.memoryNotes.isActive, true));
+  
+  const userNamePref = await getPreference("user_name");
+  
+  return {
+    eventsCount: Number(eventsResult?.count ?? 0),
+    pendingTasksCount: Number(tasksResult?.count ?? 0),
+    groceryItemsCount: Number(groceryResult?.count ?? 0),
+    memoriesCount: Number(memoriesResult?.count ?? 0),
+    userName: userNamePref?.value,
+  };
+}
+
