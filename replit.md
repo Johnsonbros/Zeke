@@ -27,6 +27,18 @@ Key architectural decisions and features include:
 - **Proactive Features**: Proactive Memory Creation, Context Enhancement through semantic search, and a Feedback Learning Loop system.
 - **Efficiency & Resilience**: Overnight Batch Factory using OpenAI Batch API, AI Usage Logging System, Circuit Breaker, and Retry with Jittered Backoff. A batch-first architecture prioritizes non-realtime AI tasks for cost savings.
 - **AI Cost Dashboard**: Enhanced cost monitoring widget with 14-day trend charts, budget tracking (daily/weekly/monthly limits), agent/job cost breakdown, and visual alerts for budget overruns. API endpoints: `/api/ai-logs/trends`, `/api/ai-logs/by-agent`, `/api/ai-logs/budget`.
+- **Unified P&L System** (`server/apiUsageLogger.ts`):
+    - Tracks usage and costs for all external APIs: Twilio (SMS/MMS/Voice), Deepgram (STT), ElevenLabs (TTS), Perplexity (Search), Google Maps/Calendar, OpenWeatherMap, Alpaca.
+    - Database-driven pricing with fallback defaults, supports daily and monthly free tier quotas.
+    - Automatic cache boundary resets for month/day transitions.
+    - Daily P&L aggregation combining trading revenue and API costs.
+    - P&L Dashboard (`/pnl`) with summary cards, trend charts, cost distribution pie chart, service usage tables.
+    - API endpoints: `/api/pnl/summary`, `/api/pnl/daily`, `/api/api-usage/stats`, `/api/api-usage/logs`, `/api/api-usage/budget/:service`.
+- **Cost-Aware Decision Making**:
+    - Budget limits per service (daily/monthly) with efficiency thresholds (warning 70%, critical 90%, throttle 95%).
+    - `getCostContext()` provides ZEKE with full cost context for decision making.
+    - `shouldAllowAction()` validates actions against budget with cheaper alternatives suggestions.
+    - API endpoints: `/api/cost/context`, `/api/cost/check-action`, `/api/cost/summary`, `/api/cost/estimate`.
 - **User Interface**: Structured Chat Cards, Mobile UI Enhancements, and a Delta Sync System for mobile app synchronization. A standardized mobile app layout system ensures consistent UI.
 - **Security & Authentication**: HMAC Authentication for the mobile app, unified SMS verification system for both mobile app and web dashboard login, and session-based authentication for the web dashboard.
 - **Unified Conversation System**: All communications across channels converge into a single conversation thread.
