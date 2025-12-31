@@ -14220,6 +14220,19 @@ export async function registerRoutes(
       }
     });
 
+    // GET /api/trading/agent/analytics - Get comprehensive performance analytics
+    app.get("/api/trading/agent/analytics", async (req, res) => {
+      try {
+        const lookbackDays = req.query.lookback_days ? parseInt(req.query.lookback_days as string) : undefined;
+        const url = lookbackDays ? `/agent/analytics?lookback_days=${lookbackDays}` : "/agent/analytics";
+        const result = await callTradingService(url);
+        res.json(result);
+      } catch (error: any) {
+        console.error("[Trading] Analytics error:", error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
     console.log("[Trading] Trading API endpoints registered (FastAPI service on port 8000)");
   } else {
     console.log("[Trading] Trading is DISABLED (no API keys configured)");

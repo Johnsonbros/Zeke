@@ -20,7 +20,11 @@ import {
   Bot,
   Network,
   Activity,
-  Headphones
+  Headphones,
+  TrendingUp,
+  BarChart3,
+  Eye,
+  ArrowRight,
 } from "lucide-react";
 
 function FeatureCard({ icon: Icon, title, description, keywords }: { 
@@ -347,6 +351,105 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ZEKETrade Showcase */}
+      <section className="py-20 bg-muted/20 border-y border-border/30">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <Badge variant="outline" className="mb-4 gap-2">
+                <TrendingUp className="h-3 w-3" />
+                Live Trading System
+              </Badge>
+              <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
+                ZEKETrade: AI-Powered Trading
+              </h2>
+              <p className="text-muted-foreground mb-6">
+                Watch ZEKE's autonomous trading module execute the legendary Turtle Trading strategy 
+                in real-time. A multi-agent AI system with complete transparency into every decision.
+              </p>
+              
+              <div className="grid grid-cols-2 gap-4 mb-8">
+                <div className="p-4 rounded-lg border border-border/50 bg-card/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <BarChart3 className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">Live Analytics</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Real-time performance metrics</p>
+                </div>
+                <div className="p-4 rounded-lg border border-border/50 bg-card/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Shield className="h-4 w-4 text-green-500" />
+                    <span className="text-sm font-medium">Risk Controls</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Hard-coded safety limits</p>
+                </div>
+                <div className="p-4 rounded-lg border border-border/50 bg-card/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Bot className="h-4 w-4 text-blue-500" />
+                    <span className="text-sm font-medium">Multi-Agent</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">4 specialized AI agents</p>
+                </div>
+                <div className="p-4 rounded-lg border border-border/50 bg-card/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Eye className="h-4 w-4 text-yellow-500" />
+                    <span className="text-sm font-medium">Full Transparency</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Every trade documented</p>
+                </div>
+              </div>
+
+              <Link href="/zeketrade">
+                <Button size="lg" className="gap-2" data-testid="button-explore-zeketrade">
+                  Explore ZEKETrade
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+            
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-transparent rounded-2xl" />
+              <Card className="relative border-border/50 bg-card/80 backdrop-blur-sm p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
+                      <span className="text-lg font-bold text-primary-foreground">Z</span>
+                    </div>
+                    <div>
+                      <div className="font-semibold text-foreground">ZEKETrade</div>
+                      <div className="text-xs text-muted-foreground">Autonomous Trading</div>
+                    </div>
+                  </div>
+                  <Badge className="text-xs">Live</Badge>
+                </div>
+                
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center p-3 rounded-lg bg-muted/30">
+                    <span className="text-sm text-muted-foreground">Strategy</span>
+                    <span className="font-medium">Turtle Trading</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 rounded-lg bg-muted/30">
+                    <span className="text-sm text-muted-foreground">AI Model</span>
+                    <span className="font-medium">GPT-4o</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 rounded-lg bg-muted/30">
+                    <span className="text-sm text-muted-foreground">Risk System</span>
+                    <span className="font-medium text-green-500">Active</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                    <span className="text-sm text-muted-foreground">Status</span>
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                      <span className="font-medium text-green-500">Trading</span>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="py-20 bg-primary/5 border-t border-border/30">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
@@ -385,6 +488,9 @@ export default function LandingPage() {
             </div>
             
             <div className="flex items-center gap-6 text-sm text-muted-foreground">
+              <Link href="/zeketrade">
+                <span className="hover-elevate cursor-pointer">ZEKETrade</span>
+              </Link>
               <Link href="/apply">
                 <span className="hover-elevate cursor-pointer">Early Access</span>
               </Link>

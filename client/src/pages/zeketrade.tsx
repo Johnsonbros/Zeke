@@ -21,8 +21,20 @@ import {
   Shield,
   Eye,
   Rocket,
+  Percent,
+  Award,
+  MessageSquare,
 } from "lucide-react";
 import { Link } from "wouter";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import { format } from "date-fns";
 
 interface TradingAccount {
   status: string;
@@ -65,6 +77,42 @@ interface RiskLimits {
   daily_pnl: number;
 }
 
+interface PerformanceMetrics {
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  win_rate: number;
+  total_pnl: number;
+  avg_win: number;
+  avg_loss: number;
+  largest_win: number;
+  largest_loss: number;
+  profit_factor: number;
+  avg_r_multiple: number;
+  sharpe_ratio: number;
+  sortino_ratio: number;
+  max_drawdown_pct: number;
+  current_drawdown_pct: number;
+}
+
+interface AnalyticsData {
+  metrics: PerformanceMetrics;
+  equity_curve: Array<{ date: string; equity: number; pnl: number }>;
+  recent_trades?: Array<{
+    symbol: string;
+    side: string;
+    pnl: number;
+    return_pct: number;
+    exit_time: string;
+  }>;
+}
+
+interface PerformanceCharts {
+  equity_curve: Array<{ date: string; equity: number }>;
+  drawdown_curve: Array<{ date: string; drawdown: number }>;
+  trade_results: Array<{ date: string; pnl: number; symbol: string }>;
+}
+
 export default function ZekeTradeLanding() {
   const { data: account, isLoading: accountLoading } = useQuery<TradingAccount>({
     queryKey: ["/api/trading/account"],
@@ -88,6 +136,16 @@ export default function ZekeTradeLanding() {
 
   const { data: riskLimits } = useQuery<RiskLimits>({
     queryKey: ["/api/trading/risk-limits"],
+    refetchInterval: 60000,
+  });
+
+  const { data: analytics } = useQuery<AnalyticsData>({
+    queryKey: ["/api/trading/agent/analytics"],
+    refetchInterval: 60000,
+  });
+
+  const { data: performanceCharts } = useQuery<PerformanceCharts>({
+    queryKey: ["/api/trading/charts/performance"],
     refetchInterval: 60000,
   });
 
@@ -207,6 +265,199 @@ export default function ZekeTradeLanding() {
                 </CardContent>
               </Card>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Performance Analytics Section */}
+      <section className="py-16 border-t border-border/30">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <Badge variant="outline" className="mb-4">Live Performance</Badge>
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">Transparent Performance Metrics</h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto">
+              Real-time analytics tracking every aspect of the trading system's performance.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto">
+            {/* Performance Metrics */}
+            <Card className="p-6">
+              <h3 className="font-bold mb-6 flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-primary" />
+                Key Performance Metrics
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-lg bg-muted/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Percent className="h-4 w-4 text-primary" />
+                    <span className="text-sm text-muted-foreground">Win Rate</span>
+                  </div>
+                  <p className="text-2xl font-bold" data-testid="metric-win-rate">
+                    {analytics?.metrics?.win_rate 
+                      ? `${(analytics.metrics.win_rate * 100).toFixed(1)}%` 
+                      : "—"}
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg bg-muted/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Award className="h-4 w-4 text-blue-500" />
+                    <span className="text-sm text-muted-foreground">Sharpe Ratio</span>
+                  </div>
+                  <p className="text-2xl font-bold" data-testid="metric-sharpe">
+                    {analytics?.metrics?.sharpe_ratio 
+                      ? analytics.metrics.sharpe_ratio.toFixed(2) 
+                      : "—"}
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg bg-muted/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingDown className="h-4 w-4 text-red-500" />
+                    <span className="text-sm text-muted-foreground">Max Drawdown</span>
+                  </div>
+                  <p className="text-2xl font-bold" data-testid="metric-drawdown">
+                    {analytics?.metrics?.max_drawdown_pct 
+                      ? `${analytics.metrics.max_drawdown_pct.toFixed(1)}%` 
+                      : "—"}
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg bg-muted/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Activity className="h-4 w-4 text-green-500" />
+                    <span className="text-sm text-muted-foreground">Profit Factor</span>
+                  </div>
+                  <p className="text-2xl font-bold" data-testid="metric-profit-factor">
+                    {analytics?.metrics?.profit_factor 
+                      ? analytics.metrics.profit_factor.toFixed(2) 
+                      : "—"}
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg bg-muted/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingUp className="h-4 w-4 text-green-500" />
+                    <span className="text-sm text-muted-foreground">Total P&L</span>
+                  </div>
+                  <p className={`text-2xl font-bold ${(analytics?.metrics?.total_pnl ?? 0) >= 0 ? "text-green-500" : "text-red-500"}`} data-testid="metric-total-pnl">
+                    {analytics?.metrics?.total_pnl 
+                      ? `${analytics.metrics.total_pnl >= 0 ? "+" : ""}$${analytics.metrics.total_pnl.toFixed(0)}` 
+                      : "—"}
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg bg-muted/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Target className="h-4 w-4 text-yellow-500" />
+                    <span className="text-sm text-muted-foreground">Total Trades</span>
+                  </div>
+                  <p className="text-2xl font-bold" data-testid="metric-total-trades">
+                    {analytics?.metrics?.total_trades ?? "—"}
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            {/* Equity Curve Chart */}
+            <Card className="p-6">
+              <h3 className="font-bold mb-6 flex items-center gap-2">
+                <LineChart className="h-5 w-5 text-primary" />
+                Equity Curve
+              </h3>
+              {analytics?.equity_curve && analytics.equity_curve.length > 0 ? (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={analytics.equity_curve}>
+                      <defs>
+                        <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis 
+                        dataKey="date" 
+                        tick={{ fontSize: 10 }} 
+                        tickFormatter={(val) => {
+                          try {
+                            return format(new Date(val), "MMM d");
+                          } catch {
+                            return val;
+                          }
+                        }}
+                      />
+                      <YAxis 
+                        tick={{ fontSize: 10 }} 
+                        tickFormatter={(val) => `$${(val / 1000).toFixed(0)}K`}
+                      />
+                      <Tooltip 
+                        formatter={(value: number) => [`$${value.toFixed(2)}`, "Equity"]}
+                        labelFormatter={(label) => {
+                          try {
+                            return format(new Date(label), "MMM d, yyyy");
+                          } catch {
+                            return label;
+                          }
+                        }}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="equity" 
+                        stroke="hsl(var(--primary))" 
+                        fill="url(#equityGradient)" 
+                        strokeWidth={2} 
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-64 flex items-center justify-center text-muted-foreground">
+                  <p>Equity data loading...</p>
+                </div>
+              )}
+            </Card>
+          </div>
+
+          {/* Recent Trades */}
+          {performanceCharts?.trade_results && performanceCharts.trade_results.length > 0 && (
+            <div className="mt-8 max-w-6xl mx-auto">
+              <Card className="p-6">
+                <h3 className="font-bold mb-4 flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-primary" />
+                  Recent Trade Results
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {performanceCharts.trade_results.slice(-10).reverse().map((trade, idx) => (
+                    <div 
+                      key={idx} 
+                      className={`p-3 rounded-lg border ${trade.pnl >= 0 ? "border-green-500/30 bg-green-500/5" : "border-red-500/30 bg-red-500/5"}`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-sm">{trade.symbol}</span>
+                        <span className={`text-sm font-bold ${trade.pnl >= 0 ? "text-green-500" : "text-red-500"}`}>
+                          {trade.pnl >= 0 ? "+" : ""}{trade.pnl.toFixed(2)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {(() => {
+                          try {
+                            return format(new Date(trade.date), "MMM d");
+                          } catch {
+                            return trade.date;
+                          }
+                        })()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </div>
+          )}
+
+          <div className="text-center mt-8">
+            <Link href="/zeketrade/dashboard">
+              <Button variant="outline" className="gap-2" data-testid="button-view-full-analytics">
+                <Eye className="h-4 w-4" />
+                View Full Analytics Dashboard
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
@@ -448,22 +699,41 @@ export default function ZekeTradeLanding() {
       {/* CTA Section */}
       <section className="py-20">
         <div className="container mx-auto px-4">
-          <Card className="max-w-4xl mx-auto p-8 md:p-12 text-center bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              See Every Trade. Every Decision.
-            </h2>
-            <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
-              Full transparency into the AI's reasoning. Historical trades, pending signals, 
-              real-time positions, and detailed performance analytics.
-            </p>
-            <Link href="/zeketrade/dashboard">
-              <Button size="lg" className="gap-2 text-lg px-8" data-testid="button-view-live-dashboard">
-                <Eye className="h-5 w-5" />
-                View Live Dashboard
-                <ArrowRight className="h-5 w-5" />
-              </Button>
-            </Link>
-          </Card>
+          <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+            <Card className="p-8 text-center bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+              <Eye className="h-12 w-12 text-primary mx-auto mb-4" />
+              <h2 className="text-2xl md:text-3xl font-bold mb-4">
+                See Every Trade. Every Decision.
+              </h2>
+              <p className="text-muted-foreground mb-6">
+                Full transparency into the AI's reasoning. Historical trades, pending signals, 
+                and real-time performance analytics.
+              </p>
+              <Link href="/zeketrade/dashboard">
+                <Button size="lg" className="gap-2 px-8" data-testid="button-view-live-dashboard">
+                  View Live Dashboard
+                  <ArrowRight className="h-5 w-5" />
+                </Button>
+              </Link>
+            </Card>
+            
+            <Card className="p-8 text-center bg-gradient-to-br from-blue-500/10 to-blue-500/5 border-blue-500/20">
+              <MessageSquare className="h-12 w-12 text-blue-500 mx-auto mb-4" />
+              <h2 className="text-2xl md:text-3xl font-bold mb-4">
+                Want Your Own ZEKE?
+              </h2>
+              <p className="text-muted-foreground mb-6">
+                ZEKETrade is just one module of the ZEKE AI Assistant platform. Get your own 
+                personalized AI that acts on your behalf.
+              </p>
+              <Link href="/apply">
+                <Button size="lg" variant="outline" className="gap-2 px-8 border-blue-500/50" data-testid="button-get-zeke">
+                  Request Early Access
+                  <ArrowRight className="h-5 w-5" />
+                </Button>
+              </Link>
+            </Card>
+          </div>
         </div>
       </section>
 
