@@ -1,2 +1,6 @@
 {"timestamp": "2025-12-31T15:44:21.215823", "equity": 100000.04, "cash": 99975.01, "buying_power": 199975.05, "positions_count": 2, "pnl_day": 0.07337984703190159, "trades_today": 0}
 {"timestamp": "2025-12-31T15:49:23.223037", "equity": 100000.03, "cash": 99975.01, "buying_power": 199975.04, "positions_count": 2, "pnl_day": 0.06337984703714028, "trades_today": 0}
+{"timestamp": "2025-12-31T15:54:25.147544", "equity": 100000.02, "cash": 99975.01, "buying_power": 199975.03, "positions_count": 2, "pnl_day": 0.05337984704237897, "trades_today": 0}
+{"timestamp": "2025-12-31T15:59:27.057864", "equity": 99999.98, "cash": 99975.01, "buying_power": 199974.99, "positions_count": 2, "pnl_day": 0.013379847034229897, "trades_today": 0}
+{"timestamp": "2025-12-31T16:04:29.066144", "equity": 100000.01, "cash": 99975.01, "buying_power": 199975.02, "positions_count": 2, "pnl_day": 0.043379847033065744, "trades_today": 0}
+{"timestamp": "2025-12-31T16:09:30.975092", "equity": 100000.0, "cash": 99975.01, "buying_power": 199975.01, "positions_count": 2, "pnl_day": 0.03337984703830443, "trades_today": 0}
