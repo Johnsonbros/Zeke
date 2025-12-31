@@ -137,6 +137,26 @@ export async function showCustomGeofenceNotification(
   });
 }
 
+export async function showPlaceListNotification(
+  listName: string,
+  placeName: string,
+  message?: string,
+): Promise<void> {
+  const body = message || `You're near ${placeName} from your ${listName} list`;
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: `${listName} Nearby`,
+      body,
+      data: {
+        type: "place_list",
+        listName,
+        placeName,
+      },
+    },
+    trigger: null,
+  });
+}
+
 export async function cancelAllNotifications(): Promise<void> {
   await Notifications.cancelAllScheduledNotificationsAsync();
 }

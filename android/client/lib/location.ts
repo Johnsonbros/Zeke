@@ -6,6 +6,7 @@ import {
   type ZekeLocationUpdate,
   type ZekeLocationSample,
 } from "./zeke-api-adapter";
+import { locationSyncService } from "./location-sync-service";
 
 export interface LocationData {
   latitude: number;
@@ -168,6 +169,17 @@ export async function reverseGeocode(
     console.error("Error reverse geocoding:", error);
     return null;
   }
+}
+
+export async function reverseGeocodeWithCache(
+  latitude: number,
+  longitude: number,
+): Promise<GeocodedLocation | null> {
+  const cached = await locationSyncService.getCachedGeocode(latitude, longitude);
+  if (cached) {
+    return cached;
+  }
+  return reverseGeocode(latitude, longitude);
 }
 
 export async function getLocationWithAddress(
@@ -586,6 +598,8 @@ export async function startLocationUpdatesWithZekeSync(
   settings?: Partial<LocationSettings>,
 ): Promise<LocationSubscription | null> {
   const syncSettings = await getLocationSyncSettings();
+  
+  await locationSyncService.initialize();
 
   return startLocationUpdates(async (location) => {
     callback(location);
@@ -593,21 +607,15 @@ export async function startLocationUpdatesWithZekeSync(
     if (syncSettings.syncEnabled) {
       let geocoded: GeocodedLocation | null = null;
       try {
-        geocoded = await reverseGeocode(location.latitude, location.longitude);
-        const result = await syncCurrentLocationToZeke(location, geocoded);
-
-        if (!result.success) {
-          console.log(
-            "[ZEKE Location] Real-time sync returned failure, queueing for batch",
-          );
-          await addPendingLocationSync(location, geocoded);
-        }
+        geocoded = await reverseGeocodeWithCache(location.latitude, location.longitude);
+        
+        await locationSyncService.addLocation(location, geocoded, "normal");
       } catch (error) {
         console.error(
-          "[ZEKE Location] Real-time sync error, queueing for batch:",
+          "[ZEKE Location] Error processing location update:",
           error,
         );
-        await addPendingLocationSync(location, geocoded);
+        await locationSyncService.addLocation(location, null, "normal");
       }
     }
   }, settings);

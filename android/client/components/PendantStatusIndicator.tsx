@@ -1,231 +1,259 @@
-import React, { useEffect } from "react";
-import { View, StyleSheet, Pressable } from "react-native";
+import React, { useEffect, useState } from "react";
+import {
+  View,
+  StyleSheet,
+  Pressable,
+  Modal,
+} from "react-native";
 import Animated, {
-  useSharedValue,
   useAnimatedStyle,
+  useSharedValue,
   withRepeat,
-  withSequence,
   withTiming,
-  Easing,
+  cancelAnimation,
 } from "react-native-reanimated";
-import { useQuery } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "@/components/ThemedText";
-import { getPendantStatus, type PendantStatus } from "@/lib/zeke-api-adapter";
-import { isZekeSyncMode } from "@/lib/query-client";
+import { useTheme } from "@/hooks/useTheme";
 import { Colors, Spacing, BorderRadius } from "@/constants/theme";
+
+interface PendantStatus {
+  connected: boolean;
+  streaming: boolean;
+  healthy: boolean;
+  lastAudioReceivedAt: string | null;
+  totalAudioPackets: number;
+  timeSinceLastAudioMs: number | null;
+}
 
 type ConnectionState = "disconnected" | "connected" | "streaming";
 
-function getConnectionState(status: PendantStatus | undefined): ConnectionState {
-  if (!status) return "disconnected";
-  if (status.streaming) return "streaming";
-  if (status.connected) return "connected";
-  return "disconnected";
-}
+const POLL_INTERVAL_MS = 3000;
 
 function formatTime(isoString: string | null): string {
   if (!isoString) return "Never";
   const date = new Date(isoString);
-  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
-function formatPacketCount(count: number): string {
-  if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
-  if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
-  return count.toLocaleString();
+function formatNumber(num: number): string {
+  return num.toLocaleString();
 }
 
-interface PendantStatusIndicatorProps {
-  onPress?: () => void;
-  showLabel?: boolean;
+function getConnectionState(status: PendantStatus | null | undefined): ConnectionState {
+  if (!status || !status.connected) return "disconnected";
+  if (status.streaming) return "streaming";
+  return "connected";
 }
 
-export function PendantStatusIndicator({
-  onPress,
-  showLabel = false,
-}: PendantStatusIndicatorProps) {
-  const isSyncMode = isZekeSyncMode();
+function getStatusText(state: ConnectionState): string {
+  switch (state) {
+    case "streaming":
+      return "Listening...";
+    case "connected":
+      return "Pendant connected";
+    case "disconnected":
+    default:
+      return "Pendant disconnected";
+  }
+}
 
-  const { data: status } = useQuery<PendantStatus>({
-    queryKey: ["pendant-status"],
-    queryFn: getPendantStatus,
-    enabled: isSyncMode,
-    refetchInterval: 3000,
-    staleTime: 2000,
+export function PendantStatusIndicator() {
+  const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [showBottomSheet, setShowBottomSheet] = useState(false);
+
+  const { data: status, isLoading } = useQuery<PendantStatus>({
+    queryKey: ["/api/pendant/status"],
+    refetchInterval: POLL_INTERVAL_MS,
+    staleTime: POLL_INTERVAL_MS - 500,
+    retry: 1,
   });
 
+  const scale = useSharedValue(1);
   const connectionState = getConnectionState(status);
-
-  const pulseScale = useSharedValue(1);
-  const pulseOpacity = useSharedValue(0.6);
 
   useEffect(() => {
     if (connectionState === "streaming") {
-      pulseScale.value = withRepeat(
-        withSequence(
-          withTiming(1.5, { duration: 500, easing: Easing.out(Easing.ease) }),
-          withTiming(1, { duration: 500, easing: Easing.in(Easing.ease) }),
-        ),
+      scale.value = withRepeat(
+        withTiming(1.3, { duration: 1000 }),
         -1,
-        false,
-      );
-      pulseOpacity.value = withRepeat(
-        withSequence(
-          withTiming(0, { duration: 500, easing: Easing.out(Easing.ease) }),
-          withTiming(0.6, { duration: 500, easing: Easing.in(Easing.ease) }),
-        ),
-        -1,
-        false,
+        true
       );
     } else {
-      pulseScale.value = withTiming(1, { duration: 200 });
-      pulseOpacity.value = withTiming(0, { duration: 200 });
+      cancelAnimation(scale);
+      scale.value = withTiming(1, { duration: 200 });
     }
-  }, [connectionState, pulseScale, pulseOpacity]);
+  }, [connectionState, scale]);
 
-  const pulseAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulseScale.value }],
-    opacity: pulseOpacity.value,
+  const pulsingStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
   }));
-
-  const getDotColor = () => {
-    switch (connectionState) {
-      case "streaming":
-        return Colors.dark.success;
-      case "connected":
-        return Colors.dark.success;
-      case "disconnected":
-      default:
-        return Colors.dark.textSecondary;
-    }
-  };
-
-  const getStatusText = () => {
-    switch (connectionState) {
-      case "streaming":
-        return "Listening...";
-      case "connected":
-        return "Pendant connected";
-      case "disconnected":
-      default:
-        return "Pendant disconnected";
-    }
-  };
 
   const handlePress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onPress?.();
+    setShowBottomSheet(true);
   };
 
-  if (!isSyncMode) {
-    return null;
-  }
+  const handleCloseSheet = () => {
+    setShowBottomSheet(false);
+  };
 
-  const content = (
-    <View style={styles.container}>
-      <View style={styles.iconContainer}>
-        <Feather
-          name="radio"
-          size={14}
-          color={getDotColor()}
-        />
-      </View>
-      <View style={styles.dotWrapper}>
-        {connectionState === "streaming" ? (
-          <Animated.View
-            style={[
-              styles.pulseDot,
-              { backgroundColor: getDotColor() },
-              pulseAnimatedStyle,
-            ]}
-          />
-        ) : null}
+  const getDotColor = (): string => {
+    switch (connectionState) {
+      case "streaming":
+      case "connected":
+        return Colors.dark.success;
+      case "disconnected":
+      default:
+        return theme.textSecondary;
+    }
+  };
+
+  const getDotOpacity = (): number => {
+    return connectionState === "disconnected" ? 0.5 : 1;
+  };
+
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.iconContainer}>
+          <Feather name="radio" size={16} color={theme.textSecondary} />
+        </View>
         <View
           style={[
             styles.dot,
-            { backgroundColor: getDotColor() },
+            { backgroundColor: theme.textSecondary, opacity: 0.5 },
           ]}
         />
       </View>
-      {showLabel ? (
-        <ThemedText type="caption" style={[styles.label, { color: getDotColor() }]}>
-          {getStatusText()}
-        </ThemedText>
-      ) : null}
-    </View>
-  );
-
-  if (onPress) {
-    return (
-      <Pressable
-        onPress={handlePress}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        style={({ pressed }) => [
-          styles.pressable,
-          pressed && styles.pressed,
-        ]}
-      >
-        {content}
-      </Pressable>
     );
   }
 
-  return content;
-}
-
-export function PendantStatusTooltip() {
-  const isSyncMode = isZekeSyncMode();
-
-  const { data: status } = useQuery<PendantStatus>({
-    queryKey: ["pendant-status"],
-    queryFn: getPendantStatus,
-    enabled: isSyncMode,
-    refetchInterval: 3000,
-    staleTime: 2000,
-  });
-
-  const connectionState = getConnectionState(status);
-
-  if (!isSyncMode || !status) {
-    return null;
-  }
-
   return (
-    <View style={styles.tooltipContainer}>
-      <View style={styles.tooltipRow}>
-        <ThemedText type="caption" secondary>Status:</ThemedText>
-        <ThemedText
-          type="caption"
-          style={{
-            color: connectionState === "disconnected"
-              ? Colors.dark.textSecondary
-              : Colors.dark.success,
-            fontWeight: "600",
-          }}
-        >
-          {connectionState === "streaming"
-            ? "Listening"
-            : connectionState === "connected"
-            ? "Connected"
-            : "Disconnected"}
-        </ThemedText>
-      </View>
-      <View style={styles.tooltipRow}>
-        <ThemedText type="caption" secondary>Last audio:</ThemedText>
-        <ThemedText type="caption">
-          {formatTime(status.lastAudioReceivedAt)}
-        </ThemedText>
-      </View>
-      <View style={styles.tooltipRow}>
-        <ThemedText type="caption" secondary>Packets:</ThemedText>
-        <ThemedText type="caption">
-          {formatPacketCount(status.totalAudioPackets)}
-        </ThemedText>
-      </View>
-    </View>
+    <>
+      <Pressable
+        onPress={handlePress}
+        style={({ pressed }) => [
+          styles.container,
+          { opacity: pressed ? 0.7 : 1 },
+        ]}
+      >
+        <View style={styles.iconContainer}>
+          <Feather
+            name="radio"
+            size={16}
+            color={connectionState === "disconnected" ? theme.textSecondary : Colors.dark.success}
+          />
+        </View>
+        {connectionState === "streaming" ? (
+          <Animated.View
+            style={[
+              styles.dot,
+              { backgroundColor: getDotColor(), opacity: getDotOpacity() },
+              pulsingStyle,
+            ]}
+          />
+        ) : (
+          <View
+            style={[
+              styles.dot,
+              { backgroundColor: getDotColor(), opacity: getDotOpacity() },
+            ]}
+          />
+        )}
+      </Pressable>
+
+      <Modal
+        visible={showBottomSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={handleCloseSheet}
+      >
+        <Pressable style={styles.modalOverlay} onPress={handleCloseSheet}>
+          <Pressable
+            style={[
+              styles.bottomSheet,
+              {
+                backgroundColor: theme.backgroundDefault,
+                paddingBottom: insets.bottom + Spacing.lg,
+              },
+            ]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.sheetHandle} />
+
+            <View style={styles.sheetHeader}>
+              <View style={styles.sheetHeaderIcon}>
+                <Feather
+                  name="radio"
+                  size={24}
+                  color={connectionState === "disconnected" ? theme.textSecondary : Colors.dark.success}
+                />
+                {connectionState === "streaming" ? (
+                  <Animated.View
+                    style={[
+                      styles.sheetDot,
+                      { backgroundColor: Colors.dark.success },
+                      pulsingStyle,
+                    ]}
+                  />
+                ) : (
+                  <View
+                    style={[
+                      styles.sheetDot,
+                      {
+                        backgroundColor: getDotColor(),
+                        opacity: getDotOpacity(),
+                      },
+                    ]}
+                  />
+                )}
+              </View>
+              <ThemedText type="h3" style={styles.sheetTitle}>
+                {getStatusText(connectionState)}
+              </ThemedText>
+            </View>
+
+            <View style={styles.sheetContent}>
+              <View style={styles.statusRow}>
+                <ThemedText type="body" secondary>
+                  Last audio received
+                </ThemedText>
+                <ThemedText type="body">
+                  {formatTime(status?.lastAudioReceivedAt ?? null)}
+                </ThemedText>
+              </View>
+
+              <View style={[styles.statusRow, styles.statusRowLast]}>
+                <ThemedText type="body" secondary>
+                  Total packets
+                </ThemedText>
+                <ThemedText type="body">
+                  {formatNumber(status?.totalAudioPackets ?? 0)}
+                </ThemedText>
+              </View>
+            </View>
+
+            <Pressable
+              style={[styles.closeButton, { backgroundColor: theme.backgroundSecondary }]}
+              onPress={handleCloseSheet}
+            >
+              <ThemedText type="body" style={{ textAlign: "center" }}>
+                Close
+              </ThemedText>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 
@@ -233,55 +261,71 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.xs,
-  },
-  pressable: {
-    paddingVertical: Spacing.xs,
     paddingHorizontal: Spacing.sm,
-    borderRadius: BorderRadius.md,
-    backgroundColor: "rgba(30, 41, 59, 0.4)",
-  },
-  pressed: {
-    opacity: 0.7,
+    paddingVertical: Spacing.xs,
   },
   iconContainer: {
-    width: 16,
-    height: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dotWrapper: {
-    width: 10,
-    height: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pulseDot: {
-    position: "absolute",
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    marginRight: Spacing.xs,
   },
   dot: {
     width: 8,
     height: 8,
     borderRadius: 4,
   },
-  label: {
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  bottomSheet: {
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    paddingTop: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: Spacing.lg,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: Spacing.xl,
+  },
+  sheetHeaderIcon: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: Spacing.md,
+  },
+  sheetDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     marginLeft: Spacing.xs,
-    fontWeight: "500",
   },
-  tooltipContainer: {
-    backgroundColor: Colors.dark.backgroundDefault,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.sm,
-    gap: Spacing.xs,
-    minWidth: 140,
+  sheetTitle: {
+    flex: 1,
   },
-  tooltipRow: {
+  sheetContent: {
+    marginBottom: Spacing.xl,
+  },
+  statusRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: Spacing.md,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.1)",
+  },
+  statusRowLast: {
+    borderBottomWidth: 0,
+  },
+  closeButton: {
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
   },
 });

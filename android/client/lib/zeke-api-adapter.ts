@@ -1662,6 +1662,283 @@ export async function deleteZekeSavedPlace(id: string): Promise<boolean> {
   }
 }
 
+export interface ZekePlaceList {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+  placeIds: string[];
+  hasProximityAlert: boolean;
+  proximityRadiusMeters?: number;
+  proximityMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ZekeNearbyPlace {
+  placeId: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  types: string[];
+  rating?: number;
+  priceLevel?: number;
+  openNow?: boolean;
+  distanceMeters?: number;
+  phoneNumber?: string;
+  website?: string;
+}
+
+export interface ZekeNearbySearchResult {
+  places: ZekeNearbyPlace[];
+  query: string;
+  radiusMeters: number;
+  centerLat: number;
+  centerLng: number;
+}
+
+export async function getZekePlaceLists(): Promise<ZekePlaceList[]> {
+  try {
+    const data = await apiClient.get<{ lists?: ZekePlaceList[] }>(
+      "/api/zeke/place-lists",
+      { emptyArrayOn404: true, timeoutMs: 5000 },
+    );
+    return data.lists || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getZekePlaceList(id: string): Promise<ZekePlaceList | null> {
+  try {
+    return await apiClient.get<ZekePlaceList>(
+      `/api/zeke/place-lists/${id}`,
+      { timeoutMs: 5000 },
+    );
+  } catch {
+    return null;
+  }
+}
+
+export async function createZekePlaceList(
+  list: Omit<ZekePlaceList, "id" | "createdAt" | "updatedAt">
+): Promise<ZekePlaceList | null> {
+  try {
+    return await apiClient.post<ZekePlaceList>(
+      "/api/zeke/place-lists",
+      list,
+      { timeoutMs: 10000 },
+    );
+  } catch {
+    return null;
+  }
+}
+
+export async function updateZekePlaceList(
+  id: string,
+  updates: Partial<ZekePlaceList>
+): Promise<ZekePlaceList | null> {
+  try {
+    return await apiClient.patch<ZekePlaceList>(
+      `/api/zeke/place-lists/${id}`,
+      updates,
+      { timeoutMs: 10000 },
+    );
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteZekePlaceList(id: string): Promise<boolean> {
+  try {
+    await apiClient.delete(`/api/zeke/place-lists/${id}`, {
+      timeoutMs: 10000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function addPlaceToList(
+  listId: string,
+  placeId: string
+): Promise<ZekePlaceList | null> {
+  try {
+    return await apiClient.post<ZekePlaceList>(
+      `/api/zeke/place-lists/${listId}/places`,
+      { placeId },
+      { timeoutMs: 10000 },
+    );
+  } catch {
+    return null;
+  }
+}
+
+export async function removePlaceFromList(
+  listId: string,
+  placeId: string
+): Promise<boolean> {
+  try {
+    await apiClient.delete(
+      `/api/zeke/place-lists/${listId}/places/${placeId}`,
+      { timeoutMs: 10000 },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function searchNearbyPlaces(
+  query: string,
+  latitude: number,
+  longitude: number,
+  radiusMeters: number = 8000,
+  type?: string
+): Promise<ZekeNearbySearchResult | null> {
+  try {
+    const params: Record<string, string> = {
+      query,
+      lat: latitude.toString(),
+      lng: longitude.toString(),
+      radius: radiusMeters.toString(),
+    };
+    if (type) {
+      params.type = type;
+    }
+    return await apiClient.get<ZekeNearbySearchResult>(
+      "/api/zeke/places/search",
+      { query: params, timeoutMs: 15000 },
+    );
+  } catch (error) {
+    console.error("[ZEKE Places] Search error:", error);
+    return null;
+  }
+}
+
+export async function addNearbyPlaceToSaved(
+  nearbyPlace: ZekeNearbyPlace
+): Promise<ZekeSavedPlace | null> {
+  const place: Omit<ZekeSavedPlace, "id" | "createdAt"> = {
+    name: nearbyPlace.name,
+    latitude: nearbyPlace.latitude,
+    longitude: nearbyPlace.longitude,
+    formattedAddress: nearbyPlace.address,
+    category: nearbyPlace.types[0] || "place",
+  };
+  return createZekeSavedPlace(place);
+}
+
+export async function searchAndAddToList(
+  query: string,
+  listId: string,
+  latitude: number,
+  longitude: number,
+  radiusMeters: number = 8000
+): Promise<{ added: ZekeSavedPlace[]; listUpdated: boolean }> {
+  const result = { added: [] as ZekeSavedPlace[], listUpdated: false };
+
+  const searchResult = await searchNearbyPlaces(query, latitude, longitude, radiusMeters);
+  if (!searchResult || searchResult.places.length === 0) {
+    return result;
+  }
+
+  for (const nearbyPlace of searchResult.places) {
+    const savedPlace = await addNearbyPlaceToSaved(nearbyPlace);
+    if (savedPlace) {
+      result.added.push(savedPlace);
+      await addPlaceToList(listId, savedPlace.id);
+    }
+  }
+
+  result.listUpdated = result.added.length > 0;
+  return result;
+}
+
+export interface ZekeActionResult {
+  success: boolean;
+  message: string;
+  data?: any;
+}
+
+export interface ZekeAction {
+  type: string;
+  [key: string]: any;
+}
+
+export async function executeZekeAction(action: ZekeAction): Promise<ZekeActionResult> {
+  try {
+    return await apiClient.post<ZekeActionResult>(
+      "/api/zeke/actions/execute",
+      { action },
+      { timeoutMs: 15000 },
+    );
+  } catch (error) {
+    console.error("[ZEKE Actions] Execute error:", error);
+    return { success: false, message: "Failed to execute action" };
+  }
+}
+
+export async function parseAndExecuteIntent(
+  message: string,
+  userLocation?: { latitude: number; longitude: number }
+): Promise<{ action: ZekeAction | null; result: ZekeActionResult | null }> {
+  try {
+    const response = await apiClient.post<{ action: ZekeAction | null; result: ZekeActionResult | null }>(
+      "/api/zeke/actions/parse-intent",
+      { message, userLocation },
+      { timeoutMs: 15000 },
+    );
+    
+    // Handle client-side actions returned by server
+    if (response.result?.data?.clientAction) {
+      await handleClientAction(response.result.data);
+    }
+    
+    return response;
+  } catch (error) {
+    console.error("[ZEKE Actions] Parse intent error:", error);
+    return { action: null, result: null };
+  }
+}
+
+async function handleClientAction(data: { clientAction: string; geofence?: Geofence; place?: any }): Promise<void> {
+  try {
+    if (data.clientAction === "save_geofence" && data.geofence) {
+      const existingGeofences = await getGeofences();
+      const existingIndex = existingGeofences.findIndex((g: Geofence) => g.id === data.geofence!.id);
+      if (existingIndex >= 0) {
+        existingGeofences[existingIndex] = data.geofence;
+      } else {
+        existingGeofences.push(data.geofence);
+      }
+      await saveGeofences(existingGeofences);
+      console.log("[ZEKE Actions] Saved geofence:", data.geofence.name);
+    } else if (data.clientAction === "save_place" && data.place) {
+      // Save to starred places via API
+      await apiClient.post("/api/zeke/starred-places", data.place, { timeoutMs: 10000 });
+      console.log("[ZEKE Actions] Saved place:", data.place.name);
+    }
+  } catch (error) {
+    console.error("[ZEKE Actions] Failed to handle client action:", error);
+  }
+}
+
+export async function getPlaceListsWithAlerts(): Promise<ZekePlaceList[]> {
+  try {
+    const data = await apiClient.get<{ lists?: ZekePlaceList[] }>(
+      "/api/zeke/place-lists/with-alerts",
+      { emptyArrayOn404: true, timeoutMs: 5000 },
+    );
+    return data.lists || [];
+  } catch {
+    return [];
+  }
+}
+
 export interface OmiPendantHealth {
   status: "healthy" | "warning" | "error" | "disconnected" | "unknown";
   isConnected: boolean;
@@ -1892,33 +2169,5 @@ export async function registerPushToken(token: string): Promise<boolean> {
     return true;
   } catch {
     return false;
-  }
-}
-
-export interface PendantStatus {
-  connected: boolean;
-  streaming: boolean;
-  healthy: boolean;
-  lastAudioReceivedAt: string | null;
-  totalAudioPackets: number;
-  timeSinceLastAudioMs: number | null;
-}
-
-export async function getPendantStatus(): Promise<PendantStatus> {
-  try {
-    const data = await apiClient.get<PendantStatus>(
-      "/api/zeke/pendant/status",
-      { timeoutMs: 5000 },
-    );
-    return data;
-  } catch {
-    return {
-      connected: false,
-      streaming: false,
-      healthy: false,
-      lastAudioReceivedAt: null,
-      totalAudioPackets: 0,
-      timeSinceLastAudioMs: null,
-    };
   }
 }

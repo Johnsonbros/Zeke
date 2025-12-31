@@ -4,20 +4,32 @@ import { Platform } from "react-native";
 import {
   getGeofences,
   saveGeofenceTriggerEvent,
+  getPlaceListsWithAlerts,
+  getZekeSavedPlaces,
   type Geofence,
   type GeofenceTriggerEvent,
+  type ZekePlaceList,
+  type ZekeSavedPlace,
 } from "@/lib/zeke-api-adapter";
-import { isInsideGeofence, findNearbyGeofences } from "@/lib/geofence";
+import { isInsideGeofence, findNearbyGeofences, calculateDistanceToGeofence } from "@/lib/geofence";
 import {
   showGeofenceNotification,
   showGroceryPromptNotification,
   showCustomGeofenceNotification,
+  showPlaceListNotification,
   requestNotificationPermissions,
 } from "@/lib/notifications";
 
 interface GeofenceState {
   [geofenceId: string]: {
     isInside: boolean;
+    lastTriggeredAt: number | null;
+  };
+}
+
+interface PlaceListState {
+  [listId: string]: {
+    nearbyPlaceId: string | null;
     lastTriggeredAt: number | null;
   };
 }
@@ -34,9 +46,16 @@ interface NearbyGeofence {
   distance: number;
 }
 
+interface NearbyPlaceListInfo {
+  list: ZekePlaceList;
+  nearestPlace: ZekeSavedPlace | null;
+  distance: number;
+}
+
 interface UseGeofenceMonitorResult {
   isMonitoring: boolean;
   nearbyGeofences: NearbyGeofence[];
+  nearbyPlaceLists: NearbyPlaceListInfo[];
   lastTrigger: TriggerInfo | null;
   hasNotificationPermission: boolean;
   requestPermission: () => Promise<boolean>;
@@ -53,11 +72,14 @@ function generateEventId(): string {
 export function useGeofenceMonitor(enabled: boolean): UseGeofenceMonitorResult {
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [nearbyGeofences, setNearbyGeofences] = useState<NearbyGeofence[]>([]);
+  const [nearbyPlaceLists, setNearbyPlaceLists] = useState<NearbyPlaceListInfo[]>([]);
   const [lastTrigger, setLastTrigger] = useState<TriggerInfo | null>(null);
   const [hasNotificationPermission, setHasNotificationPermission] =
     useState(false);
 
   const geofenceStateRef = useRef<GeofenceState>({});
+  const placeListStateRef = useRef<PlaceListState>({});
+  const savedPlacesRef = useRef<ZekeSavedPlace[]>([]);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(
     null,
@@ -129,6 +151,87 @@ export function useGeofenceMonitor(enabled: boolean): UseGeofenceMonitorResult {
     [hasNotificationPermission],
   );
 
+  const checkPlaceLists = useCallback(
+    async (latitude: number, longitude: number) => {
+      try {
+        const [placeLists, savedPlaces] = await Promise.all([
+          getPlaceListsWithAlerts(),
+          getZekeSavedPlaces(),
+        ]);
+        savedPlacesRef.current = savedPlaces;
+
+        if (placeLists.length === 0) {
+          setNearbyPlaceLists([]);
+          return;
+        }
+
+        const nearbyListsInfo: NearbyPlaceListInfo[] = [];
+
+        for (const list of placeLists) {
+          if (!list.hasProximityAlert || list.placeIds.length === 0) continue;
+
+          const radius = list.proximityRadiusMeters || 500;
+          let nearestPlace: ZekeSavedPlace | null = null;
+          let nearestDistance = Infinity;
+
+          for (const placeId of list.placeIds) {
+            const place = savedPlaces.find((p) => p.id === placeId);
+            if (!place) continue;
+
+            const distance = calculateDistanceToGeofence(
+              { latitude, longitude },
+              { latitude: place.latitude, longitude: place.longitude, radius: 0 } as Geofence
+            );
+
+            if (distance < nearestDistance) {
+              nearestDistance = distance;
+              nearestPlace = place;
+            }
+          }
+
+          if (nearestPlace && nearestDistance < NEARBY_DISTANCE_METERS) {
+            nearbyListsInfo.push({
+              list,
+              nearestPlace,
+              distance: nearestDistance,
+            });
+          }
+
+          if (nearestPlace && nearestDistance <= radius) {
+            const now = Date.now();
+            const state = placeListStateRef.current[list.id];
+
+            if (
+              state?.nearbyPlaceId === nearestPlace.id &&
+              state?.lastTriggeredAt &&
+              now - state.lastTriggeredAt < TRIGGER_COOLDOWN_MS
+            ) {
+              continue;
+            }
+
+            placeListStateRef.current[list.id] = {
+              nearbyPlaceId: nearestPlace.id,
+              lastTriggeredAt: now,
+            };
+
+            if (hasNotificationPermission) {
+              await showPlaceListNotification(
+                list.name,
+                nearestPlace.name,
+                list.proximityMessage
+              );
+            }
+          }
+        }
+
+        setNearbyPlaceLists(nearbyListsInfo.sort((a, b) => a.distance - b.distance));
+      } catch (error) {
+        console.error("Error checking place lists:", error);
+      }
+    },
+    [hasNotificationPermission],
+  );
+
   const checkGeofences = useCallback(
     async (latitude: number, longitude: number) => {
       try {
@@ -137,76 +240,77 @@ export function useGeofenceMonitor(enabled: boolean): UseGeofenceMonitorResult {
 
         if (activeGeofences.length === 0) {
           setNearbyGeofences([]);
-          return;
+        } else {
+          const userLocation = { latitude, longitude };
+
+          const nearby = findNearbyGeofences(
+            userLocation,
+            activeGeofences,
+            NEARBY_DISTANCE_METERS,
+          );
+          setNearbyGeofences(nearby);
+
+          for (const geofence of activeGeofences) {
+            const isInside = isInsideGeofence(userLocation, geofence);
+            const previousState = geofenceStateRef.current[geofence.id];
+            const wasInside = previousState?.isInside ?? null;
+
+            if (wasInside === null) {
+              geofenceStateRef.current[geofence.id] = {
+                isInside,
+                lastTriggeredAt: null,
+              };
+              continue;
+            }
+
+            if (!wasInside && isInside) {
+              if (
+                geofence.triggerOn === "enter" ||
+                geofence.triggerOn === "both"
+              ) {
+                await handleGeofenceTrigger(
+                  geofence,
+                  "enter",
+                  latitude,
+                  longitude,
+                );
+              } else {
+                geofenceStateRef.current[geofence.id] = {
+                  isInside: true,
+                  lastTriggeredAt:
+                    geofenceStateRef.current[geofence.id]?.lastTriggeredAt ||
+                    null,
+                };
+              }
+            } else if (wasInside && !isInside) {
+              if (
+                geofence.triggerOn === "exit" ||
+                geofence.triggerOn === "both"
+              ) {
+                await handleGeofenceTrigger(
+                  geofence,
+                  "exit",
+                  latitude,
+                  longitude,
+                );
+              } else {
+                geofenceStateRef.current[geofence.id] = {
+                  isInside: false,
+                  lastTriggeredAt:
+                    geofenceStateRef.current[geofence.id]?.lastTriggeredAt ||
+                    null,
+                };
+              }
+            }
+          }
         }
 
-        const userLocation = { latitude, longitude };
-
-        const nearby = findNearbyGeofences(
-          userLocation,
-          activeGeofences,
-          NEARBY_DISTANCE_METERS,
-        );
-        setNearbyGeofences(nearby);
-
-        for (const geofence of activeGeofences) {
-          const isInside = isInsideGeofence(userLocation, geofence);
-          const previousState = geofenceStateRef.current[geofence.id];
-          const wasInside = previousState?.isInside ?? null;
-
-          if (wasInside === null) {
-            geofenceStateRef.current[geofence.id] = {
-              isInside,
-              lastTriggeredAt: null,
-            };
-            continue;
-          }
-
-          if (!wasInside && isInside) {
-            if (
-              geofence.triggerOn === "enter" ||
-              geofence.triggerOn === "both"
-            ) {
-              await handleGeofenceTrigger(
-                geofence,
-                "enter",
-                latitude,
-                longitude,
-              );
-            } else {
-              geofenceStateRef.current[geofence.id] = {
-                isInside: true,
-                lastTriggeredAt:
-                  geofenceStateRef.current[geofence.id]?.lastTriggeredAt ||
-                  null,
-              };
-            }
-          } else if (wasInside && !isInside) {
-            if (
-              geofence.triggerOn === "exit" ||
-              geofence.triggerOn === "both"
-            ) {
-              await handleGeofenceTrigger(
-                geofence,
-                "exit",
-                latitude,
-                longitude,
-              );
-            } else {
-              geofenceStateRef.current[geofence.id] = {
-                isInside: false,
-                lastTriggeredAt:
-                  geofenceStateRef.current[geofence.id]?.lastTriggeredAt ||
-                  null,
-              };
-            }
-          }
-        }
+        await checkPlaceLists(latitude, longitude);
       } catch (error) {
         console.error("Error checking geofences:", error);
       }
     },
-    [handleGeofenceTrigger],
+    [handleGeofenceTrigger, checkPlaceLists],
   );
 
   const startMonitoring = useCallback(async () => {
@@ -291,6 +395,7 @@ export function useGeofenceMonitor(enabled: boolean): UseGeofenceMonitorResult {
   return {
     isMonitoring,
     nearbyGeofences,
+    nearbyPlaceLists,
     lastTrigger,
     hasNotificationPermission,
     requestPermission,

@@ -21,12 +21,7 @@ export function ZekeHeaderTitle() {
 
   const isOnline = isSuccess && health?.connected === true;
 
-  return (
-    <View style={styles.headerTitleContainer}>
-      <HeaderTitle title="ZEKE" isOnline={isOnline} />
-      <PendantStatusIndicator />
-    </View>
-  );
+  return <HeaderTitle title="ZEKE" isOnline={isOnline} />;
 }
 
 export function ZekeHeaderButtons() {
@@ -47,6 +42,7 @@ export function ZekeHeaderButtons() {
 
   return (
     <View style={styles.container}>
+      <PendantStatusIndicator />
       <Pressable
         onPress={handleChatPress}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -73,11 +69,6 @@ export function ZekeHeaderButtons() {
 }
 
 const styles = StyleSheet.create({
-  headerTitleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.md,
-  },
   container: {
     flexDirection: "row",
     alignItems: "center",

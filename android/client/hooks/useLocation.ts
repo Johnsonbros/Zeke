@@ -7,7 +7,7 @@ import {
   LocationSettings,
   LocationSubscription,
   getCurrentLocation,
-  reverseGeocode,
+  reverseGeocodeWithCache,
   getLastLocation,
   saveLastLocation,
   addLocationToHistory,
@@ -20,10 +20,9 @@ import {
   isLocationServicesEnabled,
   generateLocationId,
   getRelativeTime,
-  syncPendingLocationsToZeke,
   getLocationSyncSettings,
-  addPendingLocationSync,
 } from "@/lib/location";
+import { locationSyncService } from "@/lib/location-sync-service";
 
 export interface UseLocationState {
   location: LocationData | null;
@@ -70,7 +69,7 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
 
   const updateLocation = useCallback(
     async (locationData: LocationData, syncToZeke: boolean = true) => {
-      const geocoded = await reverseGeocode(
+      const geocoded = await reverseGeocodeWithCache(
         locationData.latitude,
         locationData.longitude,
       );
@@ -90,7 +89,7 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
       }
 
       if (syncToZeke) {
-        addPendingLocationSync(locationData, geocoded).catch(console.error);
+        locationSyncService.addLocation(locationData, geocoded, "normal").catch(console.error);
       }
 
       setState((prev) => ({
@@ -169,7 +168,7 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
 
       if (location) {
         await updateLocation(location, true);
-        syncPendingLocationsToZeke().catch(console.error);
+        locationSyncService.flushPendingQueue().catch(console.error);
       } else {
         setState((prev) => ({
           ...prev,
@@ -254,7 +253,7 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
       subscriptionRef.current = null;
     }
 
-    syncPendingLocationsToZeke().catch(console.error);
+    locationSyncService.flushPendingQueue().catch(console.error);
 
     setState((prev) => ({
       ...prev,
@@ -288,10 +287,12 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
 
   useEffect(() => {
     const initialize = async () => {
+      await locationSyncService.initialize();
+      
       const loadedSettings = await getLocationSettings();
       setSettings(loadedSettings);
 
-      syncPendingLocationsToZeke().catch(console.error);
+      locationSyncService.flushPendingQueue().catch(console.error);
 
       const lastLocation = await getLastLocation();
       if (lastLocation) {
@@ -312,11 +313,11 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
             loadedSettings.highAccuracyMode,
           );
           if (location) {
-            const geocoded = await reverseGeocode(
+            const geocoded = await reverseGeocodeWithCache(
               location.latitude,
               location.longitude,
             );
-            await addPendingLocationSync(location, geocoded);
+            await locationSyncService.addLocation(location, geocoded, "normal");
 
             setState((prev) => ({
               ...prev,
@@ -326,8 +327,6 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
               isLoading: false,
               permissionStatus: "granted",
             }));
-
-            syncPendingLocationsToZeke().catch(console.error);
           } else {
             setState((prev) => ({ ...prev, isLoading: false }));
           }
@@ -345,7 +344,7 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
       if (subscriptionRef.current) {
         stopLocationUpdates(subscriptionRef.current);
       }
-      syncPendingLocationsToZeke().catch(console.error);
+      locationSyncService.flushPendingQueue().catch(console.error);
     };
   }, [autoStart, checkPermissionAndServices]);
 
@@ -384,7 +383,7 @@ export function useLocation(autoStart: boolean = true): UseLocationResult {
       const syncSettings = await getLocationSyncSettings();
       if (isMounted && syncSettings.syncEnabled && state.isTracking) {
         syncIntervalRef.current = setInterval(() => {
-          syncPendingLocationsToZeke().catch(console.error);
+          locationSyncService.flushPendingQueue().catch(console.error);
         }, syncSettings.syncIntervalMs);
       }
     };

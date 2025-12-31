@@ -491,3 +491,39 @@ export const insertUploadSchema = createInsertSchema(uploads).omit({
 
 export type InsertUpload = z.infer<typeof insertUploadSchema>;
 export type Upload = typeof uploads.$inferSelect;
+
+// Geofences table for location-based reminders and automations
+export const geofences = pgTable("geofences", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  name: text("name").notNull(),
+  latitude: text("latitude").notNull(),
+  longitude: text("longitude").notNull(),
+  radius: integer("radius").notNull().default(100),
+  triggerOn: text("trigger_on").notNull().default("both"), // 'enter', 'exit', 'both'
+  actionType: text("action_type").notNull().default("notification"), // 'notification', 'grocery_prompt', 'custom'
+  actionData: jsonb("action_data"),
+  isActive: boolean("is_active").default(true).notNull(),
+  isHome: boolean("is_home").default(false).notNull(),
+  listId: varchar("list_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const geofencesRelations = relations(geofences, ({ one }) => ({
+  user: one(users, {
+    fields: [geofences.userId],
+    references: [users.id],
+  }),
+}));
+
+export const insertGeofenceSchema = createInsertSchema(geofences).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertGeofence = z.infer<typeof insertGeofenceSchema>;
+export type GeofenceRecord = typeof geofences.$inferSelect;

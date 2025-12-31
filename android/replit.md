@@ -150,3 +150,61 @@ The audio WebSocket at `/ws/audio` supports both legacy and spec-compliant messa
   - Returns HTTP 503 when decoder is degraded (fallback ratio > 50%)
   - Returns `warning_elevated_fallback` status when ratio > 10%
   - Exposes `fallbackRatio` for monitoring dashboards
+
+## Location Data Handling System (December 2024)
+
+### Location Sync Service
+- `client/lib/location-sync-service.ts`: Network-aware location sync with offline queue
+- Automatically flushes pending queue when device comes back online
+- Smart queue management: max 100 items, deduplication within 50m, priority for geofence events
+- Syncs to ZEKE backend via `/api/location/sync` endpoint
+
+### Geocoding Cache Service
+- `server/services/geocoding-cache-service.ts`: Server-side geocoding cache
+- 1-hour TTL for cached results, 100m proximity matching for cache hits
+- Reduces Google Geocoding API calls for nearby locations
+
+### Places Service
+- `server/services/places-service.ts`: Place lists and nearby search
+- In-memory storage for saved places and place lists
+- Google Places API integration for nearby business search
+- Place lists support proximity alerts (radius, custom message)
+
+### ZEKE Conversational Actions (December 2024)
+Natural language commands for location-based actions:
+
+**Backend Service:** `server/services/zeke-actions-service.ts`
+
+**Supported Commands:**
+- Search for places: "find plumbing supply stores nearby", "search for coffee shops near me"
+- Create place lists: "create a list called favorites", "make a new list for hardware stores"
+- Search and add to list: "find all plumbing stores and add them to my hardware list"
+- Add to existing list: "add them to my favorites", "add those to my hardware list"
+- Enable proximity alerts: "set alerts for my hardware list", "notify me when I'm near favorites"
+- Disable proximity alerts: "turn off alerts for coffee shops", "stop notifying me about hardware list"
+- **Create geofences**: "remind me when I leave work", "alert me when I'm near Home Depot", "set a geofence at this location", "notify me when I arrive at the office"
+- **Save places**: "save this location", "remember where I parked", "mark this spot as home", "save this place as work"
+
+**API Endpoints:**
+- `POST /api/zeke/actions/execute`: Execute a structured ZekeAction
+- `POST /api/zeke/actions/parse-intent`: Parse natural language to action and execute
+- `GET /api/zeke/place-lists/with-alerts`: Get all place lists that have proximity alerts enabled
+- `POST /api/zeke/starred-places`: Save a place to the database
+- `GET /api/zeke/starred-places`: Get all saved starred places
+
+**Client Functions:** `client/lib/zeke-api-adapter.ts`
+- `executeZekeAction(action)`: Execute a structured action
+- `parseAndExecuteIntent(message, location)`: Parse natural language and execute
+- `getPlaceListsWithAlerts()`: Fetch lists with proximity alerts
+
+### Geofence Monitor with Place List Support
+- `client/hooks/useGeofenceMonitor.ts`: Enhanced to monitor both geofences AND place lists
+- Checks proximity to any place in lists with `hasProximityAlert: true`
+- Separate cooldown tracking for geofences vs place lists
+- Triggers notifications via `showPlaceListNotification()` when near list places
+- Uses `getPlaceListsWithAlerts()` to fetch monitored lists
+
+### Place List Notifications
+- `client/lib/notifications.ts`: Added `showPlaceListNotification(listName, placeName, distance)`
+- Custom notification format for place list proximity alerts
+- Includes list name, nearest place name, and distance in notification body
