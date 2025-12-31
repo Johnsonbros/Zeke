@@ -1027,6 +1027,65 @@ export const notificationBatches = pgTable("notification_batches", {
 export type NotificationBatch = typeof notificationBatches.$inferSelect;
 
 // ============================================
+// MOBILE APP NOTIFICATIONS SYSTEM
+// ============================================
+
+export const mobileNotificationTypes = ["info", "success", "warning", "error", "reminder", "news"] as const;
+export type MobileNotificationType = typeof mobileNotificationTypes[number];
+
+export const mobileNotificationActionTypes = ["openCalendar", "openTask", "openMemory", "openNews", "openSettings", "openUrl"] as const;
+export type MobileNotificationActionType = typeof mobileNotificationActionTypes[number];
+
+export const mobileNotifications = pgTable("mobile_notifications", {
+  id: text("id").primaryKey(),
+  deviceId: text("device_id"),
+  type: text("type", { enum: mobileNotificationTypes }).notNull().default("info"),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  read: boolean("read").notNull().default(false),
+  dismissed: boolean("dismissed").notNull().default(false),
+  actionType: text("action_type", { enum: mobileNotificationActionTypes }),
+  actionData: text("action_data"),
+  expiresAt: text("expires_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertMobileNotificationSchema = createInsertSchema(mobileNotifications).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateMobileNotificationSchema = z.object({
+  read: z.boolean().optional(),
+  dismissed: z.boolean().optional(),
+});
+
+export type InsertMobileNotification = z.infer<typeof insertMobileNotificationSchema>;
+export type UpdateMobileNotification = z.infer<typeof updateMobileNotificationSchema>;
+export type MobileNotification = typeof mobileNotifications.$inferSelect;
+
+export interface ZekeNotification {
+  id: string;
+  type: MobileNotificationType;
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  actionType?: MobileNotificationActionType;
+  actionData?: Record<string, unknown>;
+}
+
+export interface DashboardSummary {
+  eventsCount: number;
+  pendingTasksCount: number;
+  groceryItemsCount: number;
+  memoriesCount: number;
+  userName?: string;
+}
+
+// ============================================
 // LOCATION INTELLIGENCE SYSTEM
 // ============================================
 
