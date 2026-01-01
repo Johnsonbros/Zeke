@@ -3383,7 +3383,17 @@ export async function registerRoutes(
           throw sendError;
         }
       } catch (processError: any) {
-        console.error("Error processing SMS:", processError);
+        // Enhanced error logging with full details
+        const errorDetails = {
+          message: processError?.message || "Unknown error",
+          name: processError?.name || "Error",
+          code: processError?.code || processError?.status || "UNKNOWN",
+          stack: processError?.stack?.split('\n').slice(0, 5).join('\n'),
+          fromNumber,
+          timestamp: new Date().toISOString(),
+        };
+        console.error("[SMS ERROR] Error processing SMS:", JSON.stringify(errorDetails, null, 2));
+        
         // Try to send error message
         try {
           const errorFromNumber = await getTwilioFromPhoneNumber();
@@ -3396,6 +3406,7 @@ export async function registerRoutes(
               to: fromNumber,
             });
             
+            // Log the error response with the actual error details for debugging
             logTwilioMessage({
               direction: "outbound",
               source: "reply",
@@ -3404,10 +3415,12 @@ export async function registerRoutes(
               body: errorMsg,
               twilioSid: result.sid,
               status: "sent",
+              errorCode: errorDetails.code?.toString(),
+              errorMessage: `[AI Processing Failed] ${errorDetails.message}`,
             });
           }
         } catch (sendError: any) {
-          console.error("Failed to send error SMS:", sendError);
+          console.error("[SMS ERROR] Failed to send error SMS:", sendError);
         }
       }
     } catch (error: any) {
