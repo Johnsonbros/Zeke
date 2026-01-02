@@ -206,7 +206,7 @@ export const communicationToolPermissions: Record<string, (permissions: ToolPerm
   configure_daily_checkin: (p) => p.isAdmin,
   get_daily_checkin_status: (p) => p.isAdmin,
   stop_daily_checkin: (p) => p.isAdmin,
-  send_daily_checkin_now: (p) => p.isAdmin,
+  send_checkin_now: (p) => p.isAdmin,
   create_contact: (p) => p.isAdmin,
   update_contact: (p) => p.isAdmin,
   list_contacts: (p) => p.isAdmin,
