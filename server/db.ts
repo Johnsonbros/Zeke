@@ -4252,33 +4252,6 @@ export async function updateDeviceTokenLastUsed(token: string): Promise<void> {
     .where(eq(schema.deviceTokens.token, token));
 }
 
-export async function recordPairingAttempt(ipAddress: string, success: boolean): Promise<void> {
-  const now = getNow();
-  await db.insert(schema.pairingAttempts).values({
-    ipAddress,
-    attemptedAt: now,
-    success,
-  });
-}
-
-export async function getRecentFailedPairingAttempts(ipAddress: string, windowMinutes: number = 15): Promise<number> {
-  const cutoff = new Date(Date.now() - windowMinutes * 60 * 1000).toISOString();
-  const results = await db.select().from(schema.pairingAttempts)
-    .where(and(
-      eq(schema.pairingAttempts.ipAddress, ipAddress),
-      eq(schema.pairingAttempts.success, false),
-      gte(schema.pairingAttempts.attemptedAt, cutoff)
-    ));
-  return results.length;
-}
-
-export async function cleanupOldPairingAttempts(olderThanMinutes: number = 60): Promise<number> {
-  const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000).toISOString();
-  const result = await db.delete(schema.pairingAttempts)
-    .where(lt(schema.pairingAttempts.attemptedAt, cutoff));
-  return 0;
-}
-
 export async function createPairingCode(sessionId: string, code: string, deviceName: string, expiresAt: string): Promise<PairingCode> {
   const now = getNow();
   await db.insert(schema.pairingCodes).values({
