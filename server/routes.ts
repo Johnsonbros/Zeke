@@ -346,6 +346,7 @@ import {
   executeTool,
   getActiveToolDefinitions,
   getActiveToolPermissions,
+  getToolRegistrySnapshot,
   type ToolPermissions,
 } from "./tools";
 import { getSmartMemoryContext, semanticSearch } from "./semanticMemory";
@@ -7306,6 +7307,33 @@ export async function registerRoutes(
     }
   };
 
+  const emptyPermissions: ToolPermissions = {
+    isAdmin: false,
+    canAccessPersonalInfo: false,
+    canAccessCalendar: false,
+    canAccessTasks: false,
+    canAccessGrocery: false,
+    canSetReminders: false,
+    canQueryMemory: false,
+    canSendMessages: false,
+  };
+
+  const normalizeToolPermissions = (input: unknown): ToolPermissions | null => {
+    if (!input || typeof input !== "object") {
+      return null;
+    }
+
+    const normalized: ToolPermissions = { ...emptyPermissions };
+    for (const key of Object.keys(emptyPermissions) as Array<keyof ToolPermissions>) {
+      const value = (input as Record<string, unknown>)[key];
+      if (typeof value === "boolean") {
+        normalized[key] = value;
+      }
+    }
+
+    return normalized;
+  };
+
   // Helper to get capability for a tool name
   function getToolCapability(toolName: string): string[] {
     const capabilities: string[] = [];
@@ -7316,6 +7344,31 @@ export async function registerRoutes(
     }
     return capabilities;
   }
+
+  // POST /api/tools/registry - Get active tool registry with permissions applied
+  app.post("/api/tools/registry", requireInternalApiKey, (req, res) => {
+    try {
+      const permissions = normalizeToolPermissions(req.body?.permissions);
+
+      if (!permissions) {
+        return res.status(400).json({
+          success: false,
+          error: "permissions object is required and must include boolean flags"
+        });
+      }
+
+      const registry = getToolRegistrySnapshot({ permissions });
+
+      res.json({
+        success: true,
+        version: registry.version,
+        tools: registry.tools,
+      });
+    } catch (error: any) {
+      console.error("Tool registry fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch tool registry" });
+    }
+  });
 
   // POST /api/tools/execute - Execute a specific tool
   app.post("/api/tools/execute", requireInternalApiKey, async (req, res) => {
