@@ -74,9 +74,25 @@ interface DailyPnl {
 }
 
 interface ApiUsageStats {
-  byService: Record<string, { calls: number; unitsConsumed: number; costCents: number }>;
+  byService: Record<string, {
+    calls: number;
+    unitsConsumed: number;
+    costCents: number;
+    averageLatencyMs?: number;
+    maxLatencyMs?: number;
+  }>;
   totalCostCents: number;
   totalCalls: number;
+  averageLatencyMs?: number;
+  slowestOperations?: Array<{
+    id: string;
+    serviceType: string;
+    operation: string | null;
+    latencyMs: number | null;
+    timestamp: string;
+    status: string | null;
+    costCents: number;
+  }>;
   period: { start: string; end: string; days: number };
 }
 
@@ -87,9 +103,11 @@ interface ApiUsageLog {
   operation: string;
   unitsConsumed: number;
   costCents: number;
-  isFree: boolean;
+  isFreeQuota?: boolean;
   agentId: string | null;
   conversationId: string | null;
+  status?: string | null;
+  latencyMs?: number | null;
 }
 
 const COLORS = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#06b6d4", "#84cc16"];
@@ -122,6 +140,12 @@ function formatNumber(num: number): string {
   if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
   if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
   return num.toString();
+}
+
+function formatLatency(latencyMs?: number | null): string {
+  if (latencyMs === null || latencyMs === undefined) return "—";
+  if (latencyMs >= 1000) return `${(latencyMs / 1000).toFixed(1)}s`;
+  return `${latencyMs.toFixed(0)} ms`;
 }
 
 function StatCard({
@@ -232,8 +256,15 @@ export default function PnlPage() {
       calls: stats.calls,
       units: stats.unitsConsumed,
       cost: stats.costCents,
+      averageLatencyMs: stats.averageLatencyMs,
+      maxLatencyMs: stats.maxLatencyMs,
     }))
     .sort((a, b) => b.cost - a.cost) : [];
+
+  const latencyTableData = [...serviceTableData].sort((a, b) => (b.averageLatencyMs || 0) - (a.averageLatencyMs || 0));
+
+  const slowOperations = apiStats?.slowestOperations ? apiStats.slowestOperations.slice(0, 10) : [];
+  const averageLatencyMs = apiStats?.averageLatencyMs;
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
@@ -543,6 +574,7 @@ export default function PnlPage() {
                         <TableHead>Service</TableHead>
                         <TableHead>Operation</TableHead>
                         <TableHead className="text-right">Units</TableHead>
+                        <TableHead className="text-right">Latency</TableHead>
                         <TableHead className="text-right">Cost</TableHead>
                         <TableHead>Status</TableHead>
                       </TableRow>
@@ -550,6 +582,8 @@ export default function PnlPage() {
                     <TableBody>
                       {recentLogs.logs.map((log) => {
                         const Icon = SERVICE_ICONS[log.serviceType] || Activity;
+                        const status = log.status || "ok";
+                        const statusVariant = status === "error" ? "destructive" : status === "rate_limited" ? "secondary" : "default";
                         return (
                           <TableRow key={log.id} data-testid={`row-log-${log.id}`}>
                             <TableCell className="text-muted-foreground text-sm">
@@ -563,19 +597,16 @@ export default function PnlPage() {
                             </TableCell>
                             <TableCell className="text-sm">{log.operation}</TableCell>
                             <TableCell className="text-right text-sm">{log.unitsConsumed.toFixed(2)}</TableCell>
+                            <TableCell className="text-right text-sm">{formatLatency(log.latencyMs)}</TableCell>
                             <TableCell className="text-right text-sm font-medium">
-                              {log.isFree ? (
+                              {log.isFreeQuota ? (
                                 <Badge variant="secondary">Free</Badge>
                               ) : (
                                 formatCost(log.costCents)
                               )}
                             </TableCell>
                             <TableCell>
-                              {log.isFree ? (
-                                <Badge variant="secondary">Free Tier</Badge>
-                              ) : (
-                                <Badge variant="default">Billed</Badge>
-                              )}
+                              <Badge variant={statusVariant}>{status.replace("_", " ")}</Badge>
                             </TableCell>
                           </TableRow>
                         );
@@ -590,6 +621,121 @@ export default function PnlPage() {
               )}
             </CardContent>
           </Card>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Latency by Service</CardTitle>
+                <CardDescription>
+                  Track average and worst-case API latency for companion app traffic
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {apiStatsLoading ? (
+                  <Skeleton className="h-48" />
+                ) : latencyTableData.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Service</TableHead>
+                        <TableHead className="text-right">Avg Latency</TableHead>
+                        <TableHead className="text-right">Max Latency</TableHead>
+                        <TableHead className="text-right">Calls</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {latencyTableData.map((row) => {
+                        const Icon = SERVICE_ICONS[row.service] || Activity;
+                        return (
+                          <TableRow key={`latency-${row.service}`}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Icon className="h-4 w-4 text-muted-foreground" />
+                                <span className="font-medium">{row.service}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">{formatLatency(row.averageLatencyMs)}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">{formatLatency(row.maxLatencyMs)}</TableCell>
+                            <TableCell className="text-right">{formatNumber(row.calls)}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="py-8 text-center text-muted-foreground">
+                    No latency data available for the selected period
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Slowest Operations</CardTitle>
+                <CardDescription>
+                  Highest-latency API calls over the last {apiStats?.period.days || daysRange} days
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {apiStatsLoading ? (
+                  <Skeleton className="h-48" />
+                ) : slowOperations.length > 0 ? (
+                  <div className="space-y-3">
+                    {averageLatencyMs !== undefined && (
+                      <div className="flex items-center justify-between rounded-lg bg-muted p-3">
+                        <div>
+                          <p className="text-sm font-medium">Average latency</p>
+                          <p className="text-xs text-muted-foreground">Across all services</p>
+                        </div>
+                        <Badge variant="secondary">{formatLatency(averageLatencyMs)}</Badge>
+                      </div>
+                    )}
+
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Service</TableHead>
+                          <TableHead>Operation</TableHead>
+                          <TableHead className="text-right">Latency</TableHead>
+                          <TableHead className="text-right">Cost</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {slowOperations.map((op) => {
+                          const Icon = SERVICE_ICONS[op.serviceType] || Activity;
+                          return (
+                            <TableRow key={op.id}>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Icon className="h-4 w-4 text-muted-foreground" />
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{op.serviceType}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {format(parseISO(op.timestamp), "MMM d, h:mm a")}
+                                    </span>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-sm">{op.operation || "Unknown"}</TableCell>
+                              <TableCell className="text-right font-medium">{formatLatency(op.latencyMs)}</TableCell>
+                              <TableCell className="text-right text-sm">
+                                {op.costCents > 0 ? formatCost(op.costCents) : "Free"}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <div className="py-8 text-center text-muted-foreground">
+                    No high-latency operations recorded in this window
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
