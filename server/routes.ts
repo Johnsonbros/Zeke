@@ -10,6 +10,7 @@ import { limitlessClient, getLimitlessStatus, type ListLifelogsParams, type Limi
 import { limitlessSyncService, initLimitlessSync } from "./services/limitlessSync";
 import type { VoiceActivityDetector } from "./stt";
 import { createSttSession, endSttSession, createSttSegment, getSttSession } from "./db";
+import { createRealtimeService } from "./realtimeMessaging";
 import { getDeviceTokenByToken } from "./db";
 import { 
   createDevice as createDeviceInDb,
@@ -810,9 +811,17 @@ export async function registerRoutes(
   // Register web authentication and application endpoints
   registerWebAuthEndpoints(app);
   registerApplicationEndpoints(app);
-  
+
   // Register object storage routes for file uploads
   registerObjectStorageRoutes(app);
+
+  // Real-time messaging layer (tasks, events, memories, automations)
+  const realtimeService = createRealtimeService(httpServer);
+  realtimeService.registerEndpoints(app);
+  app.locals.realtime = {
+    publish: realtimeService.publish,
+    path: realtimeService.path,
+  };
 
   // ============================================
   // STT WebSocket Endpoint: /ws/audio
@@ -915,10 +924,12 @@ export async function registerRoutes(
   httpServer.on("upgrade", (request: IncomingMessage, socket, head) => {
     const host = request.headers.host || "localhost:5000";
     const url = new URL(request.url || "/", `http://${host}`);
-    
-    if (url.pathname === "/ws/audio") {
+
+    if (url.pathname === realtimeService.path) {
+      realtimeService.handleUpgrade(request, socket, head);
+    } else if (url.pathname === "/ws/audio") {
       const deviceToken = (request.headers["x-zeke-device-token"] as string) || url.searchParams.get("token");
-      
+
       if (!deviceToken) {
         console.log("[STT WS] Rejected: Missing X-ZEKE-Device-Token header or token query param");
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
