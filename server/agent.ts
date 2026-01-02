@@ -20,7 +20,7 @@ import {
   getLocationSettings,
   getContactFullName,
 } from "./db";
-import { toolDefinitions, executeTool, getActiveReminders } from "./tools";
+import { executeTool, getActiveReminders, getActiveToolDefinitions } from "./tools";
 import { 
   buildGettingToKnowSystemPrompt, 
   detectMemoryCorrection, 
@@ -1119,7 +1119,7 @@ async function chatInternal(
       const response = await createChatCompletion({
         model: getOpenAIModel(),
         messages,
-        tools: toolDefinitions,
+        tools: getActiveToolDefinitions(),
         tool_choice: "auto",
         max_completion_tokens: 4096,
       });
