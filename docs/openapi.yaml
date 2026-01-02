@@ -11,6 +11,9 @@ servers:
     description: Local development server
   - url: https://api.zeke.local
     description: Production gateway
+security:
+  - bearerAuth: []
+  - cookieAuth: []
 components:
   securitySchemes:
     bearerAuth:
@@ -367,6 +370,7 @@ paths:
     get:
       summary: Liveness probe
       tags: [Health]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -380,6 +384,7 @@ paths:
     get:
       summary: Readiness probe
       tags: [Health]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -399,6 +404,7 @@ paths:
     get:
       summary: Fetch the OpenAPI document
       tags: [Docs]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -418,6 +424,7 @@ paths:
     post:
       summary: Request a login code via SMS
       tags: [Auth]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -439,6 +446,7 @@ paths:
     post:
       summary: Verify a submitted SMS code
       tags: [Auth]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -492,6 +500,7 @@ paths:
     post:
       summary: Request a one-time login code via email
       tags: [Auth]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -507,6 +516,7 @@ paths:
     post:
       summary: Verify an emailed login code
       tags: [Auth]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -572,6 +582,7 @@ paths:
     get:
       summary: Check authentication health
       tags: [Auth]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
