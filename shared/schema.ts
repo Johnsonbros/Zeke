@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean, varchar, numeric, real } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, varchar, numeric, real, serial } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -3849,7 +3849,7 @@ export const deltaQuerySchema = z.object({
 
 // Device tokens table for mobile companion app authentication
 export const deviceTokens = pgTable("device_tokens", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+  id: serial("id").primaryKey(),
   token: text("token").notNull().unique(),
   deviceId: text("device_id").notNull().unique(),
   deviceName: text("device_name").notNull(),
@@ -3866,7 +3866,7 @@ export type DeviceToken = typeof deviceTokens.$inferSelect;
 
 // Pairing attempts table for rate limiting
 export const pairingAttempts = pgTable("pairing_attempts", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+  id: serial("id").primaryKey(),
   ipAddress: text("ip_address").notNull(),
   attemptedAt: text("attempted_at").notNull(),
   success: boolean("success").notNull().default(false),
@@ -3922,7 +3922,7 @@ export interface VerifyErrorResponse {
 
 // SMS pairing codes for mobile device authentication
 export const pairingCodes = pgTable("pairing_codes", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+  id: serial("id").primaryKey(),
   sessionId: text("session_id").notNull().unique(),
   code: text("code").notNull(),
   deviceName: text("device_name").notNull(),

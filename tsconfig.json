@@ -18,7 +18,9 @@
     "types": ["node", "vite/client"],
     "paths": {
       "@/*": ["./client/src/*"],
-      "@shared/*": ["./shared/*"]
+      "@shared/*": ["./shared/*"],
+      "@shared-models": ["./shared/models/index.ts"],
+      "@shared-models/*": ["./shared/models/*"]
     }
   }
 }

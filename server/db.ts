@@ -6242,16 +6242,28 @@ export async function getStrongestRelationships(limit = 10): Promise<EntityLink[
 }
 
 // Reminders & Tasks
-export async function getRemindersSince(since: string): Promise<Reminder[]> {
-  return await db.select().from(schema.reminders)
+export async function getRemindersSince(since: string, limit?: number): Promise<Reminder[]> {
+  const query = db.select().from(schema.reminders)
     .where(gte(schema.reminders.createdAt, since))
     .orderBy(desc(schema.reminders.createdAt));
+
+  if (typeof limit === "number") {
+    return await query.limit(limit);
+  }
+
+  return await query;
 }
 
-export async function getTasksSince(since: string): Promise<Task[]> {
-  return await db.select().from(schema.tasks)
+export async function getTasksSince(since: string, limit?: number): Promise<Task[]> {
+  const query = db.select().from(schema.tasks)
     .where(gte(schema.tasks.createdAt, since))
     .orderBy(desc(schema.tasks.createdAt));
+
+  if (typeof limit === "number") {
+    return await query.limit(limit);
+  }
+
+  return await query;
 }
 
 // Saved Places & Recipes
