@@ -120,6 +120,30 @@ export const DEFAULT_TOKEN_BUDGET: TokenBudget = {
 };
 
 /**
+ * Leaner token budget for mobile sessions to reduce compute time
+ */
+export const MOBILE_TOKEN_BUDGET: TokenBudget = {
+  primary: 1400,
+  secondary: 500,
+  tertiary: 250,
+  global: 800,
+  total: 3500,
+};
+
+/**
+ * Choose the right token budget for a given route (can be overridden explicitly)
+ */
+export function getTokenBudgetForRoute(route: string, override?: TokenBudget): TokenBudget {
+  if (override) return override;
+
+  if (route === "mobile" || route === "app" || route.startsWith("/mobile")) {
+    return MOBILE_TOKEN_BUDGET;
+  }
+
+  return DEFAULT_TOKEN_BUDGET;
+}
+
+/**
  * Route-to-bundle mapping table
  * Maps each app route to which bundles to prioritize
  */
@@ -183,6 +207,11 @@ export const ROUTE_BUNDLES: Record<string, RouteConfig> = {
     primary: ["profile"],
     secondary: ["memory", "contacts", "knowledgegraph"],
     tertiary: ["tasks"],
+  },
+  "/mobile": {
+    primary: ["conversation", "memory"],
+    secondary: ["tasks"],
+    tertiary: ["calendar", "locations"],
   },
   // SMS fallback - used when route is unknown (SMS conversations)
   "sms": {

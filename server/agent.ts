@@ -41,12 +41,12 @@ import { getStyleProfile } from "./jobs/feedbackTrainer";
 import type { Message, Contact } from "@shared/schema";
 import { isMasterAdmin } from "@shared/schema";
 import { 
-  assembleContext, 
+  assembleContext,
   detectIntent,
   buildCrossDomainBundle,
   type AppContext,
   type TokenBudget,
-  DEFAULT_TOKEN_BUDGET 
+  getTokenBudgetForRoute
 } from "./contextRouter";
 import { summarizeConversation } from "./conversationSummarizer";
 import {
@@ -630,7 +630,8 @@ export async function buildSmartContext(
   currentRoute: string = "/chat",
   userPhoneNumber?: string,
   isAdmin: boolean = true,
-  conversationId?: string
+  conversationId?: string,
+  tokenBudget?: TokenBudget
 ): Promise<string> {
   const appContext: AppContext = {
     userId: "nate", // Single-user system
@@ -644,7 +645,8 @@ export async function buildSmartContext(
   };
 
   try {
-    const context = await assembleContext(appContext);
+    const budget = getTokenBudgetForRoute(currentRoute, tokenBudget);
+    const context = await assembleContext(appContext, budget);
     console.log(`[ContextRouter] Built smart context for route "${currentRoute}", intent: "${detectIntent(userMessage)}"`);
     return context;
   } catch (error) {
@@ -658,11 +660,12 @@ export async function buildSmartContext(
 const USE_CONTEXT_ROUTER = process.env.USE_CONTEXT_ROUTER === "true";
 
 async function buildSystemPrompt(
-  userMessage: string, 
-  userPhoneNumber?: string, 
+  userMessage: string,
+  userPhoneNumber?: string,
   permissions?: UserPermissions,
   currentRoute: string = "/chat",
-  conversationId?: string
+  conversationId?: string,
+  tokenBudget?: TokenBudget
 ): Promise<string> {
   // Default to admin permissions for web (maintains current behavior)
   const userPermissions = permissions || getAdminPermissions();
@@ -677,7 +680,8 @@ async function buildSystemPrompt(
       currentRoute,
       userPhoneNumber,
       userPermissions.isAdmin,
-      conversationId
+      conversationId,
+      tokenBudget
     );
     dynamicContext = smartContext;
     console.log("[Agent] Using Context Router for dynamic context");
@@ -1062,11 +1066,20 @@ async function chatInternal(
     userPermissions = getAdminPermissions();
   }
 
-  // Determine current route for context routing (SMS vs web chat)
-  const currentRoute = userPhoneNumber ? "sms" : "/chat";
-  
+  // Determine current route for context routing (SMS vs web/mobile chat)
+  const isMobileApp = conversation?.source === "app";
+  const currentRoute = isMobileApp ? "/mobile" : userPhoneNumber ? "sms" : "/chat";
+  const tokenBudget = getTokenBudgetForRoute(currentRoute);
+
   // Build system prompt with context (including phone number for SMS reminders and conversation context)
-  let systemPrompt = await buildSystemPrompt(userMessage, userPhoneNumber, userPermissions, currentRoute, conversationId);
+  let systemPrompt = await buildSystemPrompt(
+    userMessage,
+    userPhoneNumber,
+    userPermissions,
+    currentRoute,
+    conversationId,
+    tokenBudget
+  );
   
   // Apply Getting To Know You mode enhancements (only for admin users)
   if (isGettingToKnowMode && userPermissions.isAdmin) {
