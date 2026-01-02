@@ -2917,6 +2917,8 @@ export interface OmiQueryResponse {
     context: string;
   }>;
   suggestedActions?: string[];
+  queuedForBatch?: boolean;
+  batchId?: string;
 }
 
 // Omi Memory Trigger webhook payload (from Omi docs)
