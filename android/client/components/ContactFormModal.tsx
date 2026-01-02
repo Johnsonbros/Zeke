@@ -17,15 +17,8 @@ import { KeyboardAwareScrollViewCompat } from "./KeyboardAwareScrollViewCompat";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius, Colors } from "@/constants/theme";
 import { ZekeContact, createContact, updateContact } from "@/lib/zeke-api-adapter";
+import { accessLevelOptions } from "@/lib/access-levels";
 import { AccessLevel } from "@/lib/zeke-types";
-
-const ACCESS_LEVELS: { value: AccessLevel; label: string }[] = [
-  { value: "admin", label: "Admin" },
-  { value: "inner_circle", label: "Inner Circle" },
-  { value: "friend", label: "Friend" },
-  { value: "acquaintance", label: "Acquaintance" },
-  { value: "work", label: "Work" },
-];
 
 interface ContactFormModalProps {
   visible: boolean;
@@ -329,7 +322,7 @@ export function ContactFormModal({
               Access Level
             </ThemedText>
             <View style={styles.accessLevelContainer}>
-              {ACCESS_LEVELS.map((level) => (
+              {accessLevelOptions.map((level) => (
                 <Pressable
                   key={level.value}
                   onPress={() => {

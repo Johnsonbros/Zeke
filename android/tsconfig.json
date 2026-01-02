@@ -3,9 +3,12 @@
   "compilerOptions": {
     "strict": true,
     "esModuleInterop": true,
+    "baseUrl": ".",
     "paths": {
       "@/*": ["./client/*"],
-      "@shared/*": ["./shared/*"]
+      "@shared/*": ["./shared/*"],
+      "@shared-models": ["../shared/models/index.ts"],
+      "@shared-models/*": ["../shared/models/*"]
     },
     "types": ["node"]
   },

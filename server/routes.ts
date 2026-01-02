@@ -5550,7 +5550,7 @@ export async function registerRoutes(
         }
       }
       
-      res.json(tasks);
+      res.json(serializeTasks(tasks));
     } catch (error: any) {
       console.error("Get tasks error:", error);
       res.status(500).json({ message: "Failed to get tasks" });
@@ -5571,7 +5571,7 @@ export async function registerRoutes(
         console.error("[Routes] Entity extraction for task failed:", err);
       });
       
-      res.json(task);
+      res.json(serializeTask(task));
     } catch (error: any) {
       console.error("Create task error:", error);
       res.status(500).json({ message: "Failed to create task" });
@@ -5579,7 +5579,7 @@ export async function registerRoutes(
   });
 
   // Get tasks delta for mobile sync (MUST be before /:id route)
-  app.get("/api/tasks/delta", (req, res) => {
+  app.get("/api/tasks/delta", async (req, res) => {
     try {
       const parseResult = deltaQuerySchema.safeParse(req.query);
       
@@ -5602,7 +5602,7 @@ export async function registerRoutes(
         });
       }
       
-      const tasks = getTasksSince(since, limit);
+      const tasks = serializeTasks(await getTasksSince(since, limit));
       
       res.json({
         count: tasks.length,
@@ -5629,7 +5629,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Task not found" });
       }
       
-      res.json(task);
+      res.json(serializeTask(task));
     } catch (error: any) {
       console.error("Get task error:", error);
       res.status(500).json({ message: "Failed to get task" });
@@ -5652,7 +5652,7 @@ export async function registerRoutes(
       }
       
       const task = updateTask(id, parsed.data);
-      res.json(task);
+      res.json(serializeTask(task));
     } catch (error: any) {
       console.error("Update task error:", error);
       res.status(500).json({ message: "Failed to update task" });
@@ -5669,7 +5669,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Task not found" });
       }
       
-      res.json(task);
+      res.json(serializeTask(task));
     } catch (error: any) {
       console.error("Toggle task error:", error);
       res.status(500).json({ message: "Failed to toggle task" });
@@ -6371,8 +6371,8 @@ export async function registerRoutes(
   // Get all reminders (both pending and completed)
   app.get("/api/reminders", async (_req, res) => {
     try {
-      const reminders = getAllReminders();
-      res.json(reminders);
+      const reminders = await getAllReminders();
+      res.json(serializeReminders(reminders));
     } catch (error: any) {
       console.error("Get reminders error:", error);
       res.status(500).json({ message: "Failed to get reminders" });
@@ -6380,7 +6380,7 @@ export async function registerRoutes(
   });
 
   // Get reminders delta for mobile sync (MUST be before /:id route)
-  app.get("/api/reminders/delta", (req, res) => {
+  app.get("/api/reminders/delta", async (req, res) => {
     try {
       const parseResult = deltaQuerySchema.safeParse(req.query);
       
@@ -6403,8 +6403,8 @@ export async function registerRoutes(
         });
       }
       
-      const reminders = getRemindersSince(since, limit);
-      
+      const reminders = serializeReminders(await getRemindersSince(since, limit));
+
       res.json({
         count: reminders.length,
         since,
@@ -6436,7 +6436,7 @@ export async function registerRoutes(
       }
       
       const reminder = updateReminder(id, parsed.data);
-      res.json(reminder);
+      res.json(serializeReminder(reminder));
     } catch (error: any) {
       console.error("Update reminder error:", error);
       res.status(500).json({ message: "Failed to update reminder" });

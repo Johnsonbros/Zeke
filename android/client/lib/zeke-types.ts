@@ -1,3 +1,18 @@
+import { z } from "zod";
+
+import {
+  accessLevelValues,
+  contactModelSchema,
+  conversationModelSchema,
+  calendarEventModelSchema,
+  memoryNoteModelSchema,
+  messageModelSchema,
+  reminderModelSchema,
+  taskCategoryValues,
+  taskModelSchema,
+  taskPriorityValues,
+} from "@shared-models";
+
 export type {
   Device,
   InsertDevice,
@@ -17,22 +32,31 @@ export type {
   InsertDeviceToken,
 } from "@shared/schema";
 
-export type AccessLevel =
-  | "admin"
-  | "inner_circle"
-  | "friend"
-  | "acquaintance"
-  | "work"
-  | "unknown";
+export type AccessLevel = (typeof accessLevelValues)[number];
+export const accessLevels: AccessLevel[] = [...accessLevelValues];
 
-export const accessLevels: AccessLevel[] = [
-  "admin",
-  "inner_circle",
-  "friend",
-  "acquaintance",
-  "work",
-  "unknown",
-];
+export type Task = z.infer<typeof taskModelSchema>;
+export const taskSchema = taskModelSchema;
+export const taskPriorities = [...taskPriorityValues];
+export const taskCategories = [...taskCategoryValues];
+
+export type Reminder = z.infer<typeof reminderModelSchema>;
+export const reminderSchema = reminderModelSchema;
+
+export type MemoryNote = z.infer<typeof memoryNoteModelSchema>;
+export const memoryNoteSchema = memoryNoteModelSchema;
+
+export type Contact = z.infer<typeof contactModelSchema>;
+export const contactSchema = contactModelSchema;
+
+export type Conversation = z.infer<typeof conversationModelSchema>;
+export const conversationSchema = conversationModelSchema;
+
+export type CalendarEvent = z.infer<typeof calendarEventModelSchema>;
+export const calendarEventSchema = calendarEventModelSchema;
+
+export type Message = z.infer<typeof messageModelSchema>;
+export const messageSchema = messageModelSchema;
 
 export type CustomListType = "grocery" | "todo" | "custom";
 export const customListTypes: CustomListType[] = ["grocery", "todo", "custom"];
@@ -43,17 +67,6 @@ export const customListItemPriorities: CustomListItemPriority[] = [
   "medium",
   "high",
 ];
-
-export interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  dueDate?: string;
-  priority?: "low" | "medium" | "high";
-  status?: "pending" | "in_progress" | "completed" | "cancelled";
-  createdAt: string;
-  updatedAt: string;
-}
 
 export interface GroceryItem {
   id: string;
@@ -89,69 +102,4 @@ export interface CustomListItem {
 
 export interface CustomListWithItems extends CustomList {
   items: CustomListItem[];
-}
-
-export interface Contact {
-  id: string;
-  firstName: string;
-  lastName: string;
-  middleName?: string | null;
-  phoneNumber: string;
-  email?: string | null;
-  imageUrl?: string | null;
-  accessLevel: AccessLevel;
-  relationship?: string | null;
-  notes?: string | null;
-  birthday?: string | null;
-  occupation?: string | null;
-  organization?: string | null;
-  lastInteractionAt?: string | null;
-  interactionCount?: number;
-  canAccessPersonalInfo?: boolean;
-  canAccessCalendar?: boolean;
-  canAccessTasks?: boolean;
-  canAccessGrocery?: boolean;
-  canSetReminders?: boolean;
-  isAutoCreated?: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CalendarEvent {
-  id: string;
-  title: string;
-  description?: string;
-  startTime: string;
-  endTime?: string;
-  location?: string;
-  allDay?: boolean;
-  calendarId?: string;
-  calendarName?: string;
-  color?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Message {
-  id: string;
-  conversationId: string;
-  content: string;
-  role: "user" | "assistant";
-  createdAt: string;
-}
-
-export interface Conversation {
-  id: string;
-  title?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface MemoryNote {
-  id: string;
-  content: string;
-  category?: string;
-  importance?: "low" | "medium" | "high";
-  createdAt: string;
-  updatedAt: string;
 }
