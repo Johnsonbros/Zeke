@@ -339,7 +339,14 @@ import path from "path";
 import fsNode from "fs";
 import { generateContextualQuestion } from "./gettingToKnow";
 import { chat, getPermissionsForPhone, getAdminPermissions } from "./agent";
-import { setSendSmsCallback, restorePendingReminders, executeTool, toolDefinitions, TOOL_PERMISSIONS, type ToolPermissions } from "./tools";
+import {
+  setSendSmsCallback,
+  restorePendingReminders,
+  executeTool,
+  getActiveToolDefinitions,
+  getActiveToolPermissions,
+  type ToolPermissions,
+} from "./tools";
 import { getSmartMemoryContext, semanticSearch } from "./semanticMemory";
 import {
   communicationToolNames,
@@ -1899,7 +1906,7 @@ export async function registerRoutes(
       throw error;
     }
   });
-  initializeDailyCheckIn();
+  await initializeDailyCheckIn();
   
   // Set up automation SMS callback and initialize scheduled automations
   setAutomationSmsCallback(async (phone: string, message: string) => {
@@ -7363,16 +7370,19 @@ export async function registerRoutes(
   // GET /api/tools/catalog - Get available tools catalog
   app.get("/api/tools/catalog", requireInternalApiKey, (req, res) => {
     try {
-      const tools = toolDefinitions.map((tool) => {
+      const activeTools = getActiveToolDefinitions();
+      const activePermissions = getActiveToolPermissions();
+
+      const tools = activeTools.map((tool) => {
         if (tool.type !== 'function' || !('function' in tool)) {
           return null;
         }
         const func = (tool as { type: 'function'; function: { name: string; description?: string; parameters?: unknown } }).function;
         const toolName = func.name;
         const capabilities = getToolCapability(toolName);
-        
+
         // Get permission info
-        const permissionCheck = TOOL_PERMISSIONS[toolName];
+        const permissionCheck = activePermissions[toolName];
         const permissionInfo: Record<string, boolean> = {};
         
         if (permissionCheck) {

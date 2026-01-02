@@ -6,6 +6,13 @@ export {
 } from "./communication";
 
 export {
+  dynamicToolDefinitions,
+  dynamicToolPermissions,
+  executeDynamicTool,
+  dynamicToolNames,
+} from "./dynamic";
+
+export {
   reminderToolDefinitions,
   reminderToolPermissions,
   executeReminderTool,
@@ -102,7 +109,6 @@ export {
 
 export {
   predictionTools,
-  predictionToolDefinitions,
   predictionToolNames,
 } from "./predictions";
 
@@ -148,6 +154,7 @@ import type OpenAI from "openai";
 import type { ToolPermissions } from "../tools";
 
 import { communicationToolDefinitions, communicationToolPermissions } from "./communication";
+import { dynamicToolDefinitions, dynamicToolPermissions } from "./dynamic";
 import { reminderToolDefinitions, reminderToolPermissions } from "./reminders";
 import { taskToolDefinitions, taskToolPermissions } from "./tasks";
 import { calendarToolDefinitions, calendarToolPermissions } from "./calendar";
@@ -162,7 +169,10 @@ import { listToolDefinitions, listToolPermissions } from "./lists";
 import { foodToolDefinitions, foodToolPermissions } from "./food";
 import { automationToolDefinitions, automationToolPermissions } from "./automations";
 import { weatherTools } from "./weather";
-import { predictionToolDefinitions } from "./predictions";
+import {
+  predictionToolDefinitions as predictionCapabilityDefinitions,
+  predictionToolNames,
+} from "./predictions";
 import { knowledgeGraphToolDefinitions, knowledgeGraphToolPermissions } from "./knowledgeGraph";
 import { insightToolDefinitions, insightToolPermissions } from "./insights";
 import { codebaseToolDefinitions, codebaseToolPermissions } from "./codebase";
@@ -185,7 +195,7 @@ const weatherToolPermissions: Record<string, (permissions: ToolPermissions) => b
 
 export const weatherToolNames = weatherTools.map(t => t.name);
 
-const predictionToolDefinitionsFormatted: OpenAI.Chat.ChatCompletionTool[] = predictionToolDefinitions.map(tool => ({
+const predictionToolDefinitionsFormatted: OpenAI.Chat.ChatCompletionTool[] = predictionCapabilityDefinitions.map(tool => ({
   type: "function" as const,
   function: {
     name: tool.name,
@@ -206,50 +216,14 @@ const predictionToolPermissions: Record<string, (permissions: ToolPermissions) =
   discover_new_patterns: (p) => p.isAdmin,
 };
 
-// Note: predictionToolDefinitionsFormatted (9 tools) and knowledgeGraphToolDefinitions (9 tools) 
-// removed to stay under OpenAI's 128 tool limit (currently at 133, need to be <= 128)
-export const allToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
-  ...reminderToolDefinitions,
-  ...searchToolDefinitions,
-  ...fileToolDefinitions,
-  ...utilityToolDefinitions,
-  ...groceryToolDefinitions,
-  ...communicationToolDefinitions,
-  ...taskToolDefinitions,
-  ...calendarToolDefinitions,
-  ...memoryToolDefinitions,
-  ...locationToolDefinitions,
-  ...peopleToolDefinitions,
-  ...listToolDefinitions,
-  ...foodToolDefinitions,
-  ...automationToolDefinitions,
-  ...weatherToolDefinitions,
-  ...insightToolDefinitions,
-  // predictionToolDefinitionsFormatted excluded - 128 tool limit
-  // knowledgeGraphToolDefinitions excluded - 128 tool limit (9 tools)
-  ...codebaseToolDefinitions,
-  ...documentToolDefinitions,
-];
-
-export const allToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
-  ...reminderToolPermissions,
-  ...searchToolPermissions,
-  ...fileToolPermissions,
-  ...utilityToolPermissions,
-  ...groceryToolPermissions,
-  ...communicationToolPermissions,
-  ...taskToolPermissions,
-  ...calendarToolPermissions,
-  ...memoryToolPermissions,
-  ...locationToolPermissions,
-  ...peopleToolPermissions,
-  ...listToolPermissions,
-  ...foodToolPermissions,
-  ...automationToolPermissions,
-  ...weatherToolPermissions,
-  ...insightToolPermissions,
-  // predictionToolPermissions excluded - tools removed for 128 limit
-  // knowledgeGraphToolPermissions excluded - tools removed for 128 limit
-  ...codebaseToolPermissions,
-  ...documentToolPermissions,
+export {
+  weatherToolDefinitions,
+  weatherToolPermissions,
+  predictionToolDefinitionsFormatted as predictionToolDefinitions,
+  predictionToolPermissions,
+  predictionToolNames,
+  knowledgeGraphToolDefinitions,
+  knowledgeGraphToolPermissions,
+  dynamicToolDefinitions,
+  dynamicToolPermissions,
 };
