@@ -1,0 +1,33 @@
+name: Publish OpenAPI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  lint-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Lint OpenAPI schema
+        run: npx @redocly/cli@1.29.0 lint docs/openapi.yaml
+
+      - name: Upload OpenAPI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-spec
+          path: docs/openapi.yaml
+
+      - name: Publish docs artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+          artifact_name: openapi-docs

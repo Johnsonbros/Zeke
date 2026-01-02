@@ -10,6 +10,7 @@ import { limitlessClient, getLimitlessStatus, type ListLifelogsParams, type Limi
 import { limitlessSyncService, initLimitlessSync } from "./services/limitlessSync";
 import type { VoiceActivityDetector } from "./stt";
 import { createSttSession, endSttSession, createSttSegment, getSttSession } from "./db";
+import { createRealtimeService } from "./realtimeMessaging";
 import { getDeviceTokenByToken } from "./db";
 import { 
   createDevice as createDeviceInDb,
@@ -29,8 +30,7 @@ import {
   deleteVoiceSample as deleteVoiceSampleFromDb,
 } from "./db";
 import type { TranscriptSegmentEvent } from "@shared/schema";
-import { serializeReminder, serializeReminders, serializeTask, serializeTasks } from "@shared-models";
-import { createMobileAuthMiddleware, registerSecurityLogsEndpoint, registerPairingEndpoints, validateDeviceToken } from "./mobileAuth";
+import { createMobileAuthMiddleware, registerSecurityLogsEndpoint, validateDeviceToken } from "./mobileAuth";
 import { registerSmsPairingEndpoints } from "./sms-pairing";
 import { registerWebAuthEndpoints } from "./web-auth";
 import { registerApplicationEndpoints } from "./applications";
@@ -805,18 +805,23 @@ export async function registerRoutes(
   // DEPRECATED: Legacy secret-based pairing - scheduled for removal in next version
   // The Android app now uses SMS-based pairing via registerSmsPairingEndpoints()
   // Legacy endpoints: /api/auth/pair, /api/auth/verify (uses ZEKE_SHARED_SECRET)
-  // TODO: Remove registerPairingEndpoints() after confirming no clients use legacy flow
-  // registerPairingEndpoints(app);
-  
   // SMS-based pairing (primary authentication method for mobile app)
   registerSmsPairingEndpoints(app);
   
   // Register web authentication and application endpoints
   registerWebAuthEndpoints(app);
   registerApplicationEndpoints(app);
-  
+
   // Register object storage routes for file uploads
   registerObjectStorageRoutes(app);
+
+  // Real-time messaging layer (tasks, events, memories, automations)
+  const realtimeService = createRealtimeService(httpServer);
+  realtimeService.registerEndpoints(app);
+  app.locals.realtime = {
+    publish: realtimeService.publish,
+    path: realtimeService.path,
+  };
 
   // ============================================
   // STT WebSocket Endpoint: /ws/audio
@@ -919,10 +924,12 @@ export async function registerRoutes(
   httpServer.on("upgrade", (request: IncomingMessage, socket, head) => {
     const host = request.headers.host || "localhost:5000";
     const url = new URL(request.url || "/", `http://${host}`);
-    
-    if (url.pathname === "/ws/audio") {
+
+    if (url.pathname === realtimeService.path) {
+      realtimeService.handleUpgrade(request, socket, head);
+    } else if (url.pathname === "/ws/audio") {
       const deviceToken = (request.headers["x-zeke-device-token"] as string) || url.searchParams.get("token");
-      
+
       if (!deviceToken) {
         console.log("[STT WS] Rejected: Missing X-ZEKE-Device-Token header or token query param");
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
@@ -1907,7 +1914,7 @@ export async function registerRoutes(
       throw error;
     }
   });
-  initializeDailyCheckIn();
+  await initializeDailyCheckIn();
   
   // Set up automation SMS callback and initialize scheduled automations
   setAutomationSmsCallback(async (phone: string, message: string) => {

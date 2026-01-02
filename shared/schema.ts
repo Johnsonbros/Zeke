@@ -3849,7 +3849,7 @@ export const deltaQuerySchema = z.object({
 
 // Device tokens table for mobile companion app authentication
 export const deviceTokens = pgTable("device_tokens", {
-  id: serial("id").primaryKey(),
+  id: integer("id").primaryKey(),
   token: text("token").notNull().unique(),
   deviceId: text("device_id").notNull().unique(),
   deviceName: text("device_name").notNull(),
@@ -3864,65 +3864,13 @@ export const insertDeviceTokenSchema = createInsertSchema(deviceTokens).omit({
 export type InsertDeviceToken = z.infer<typeof insertDeviceTokenSchema>;
 export type DeviceToken = typeof deviceTokens.$inferSelect;
 
-// Pairing attempts table for rate limiting
-export const pairingAttempts = pgTable("pairing_attempts", {
-  id: serial("id").primaryKey(),
-  ipAddress: text("ip_address").notNull(),
-  attemptedAt: text("attempted_at").notNull(),
-  success: boolean("success").notNull().default(false),
-});
-
-export const insertPairingAttemptSchema = createInsertSchema(pairingAttempts).omit({
-  id: true,
-});
-
-export type InsertPairingAttempt = z.infer<typeof insertPairingAttemptSchema>;
-export type PairingAttempt = typeof pairingAttempts.$inferSelect;
-
-// ============================================
-// LEGACY PAIRING (DEPRECATED - Scheduled for removal)
-// ============================================
-// These schemas support the legacy secret-based pairing flow (/api/auth/pair).
-// The Android app now uses SMS-based pairing via /api/auth/request-sms-code.
-// TODO: Remove after confirming no clients use legacy flow
-
-// Pairing request schema (DEPRECATED)
-export const pairingRequestSchema = z.object({
-  secret: z.string().min(1, "Secret is required"),
-  deviceName: z.string().min(1, "Device name is required").max(255),
-});
-
-export type PairingRequest = z.infer<typeof pairingRequestSchema>;
-
-// Pairing response types (DEPRECATED)
-export interface PairingSuccessResponse {
-  deviceToken: string;
-  deviceId: string;
-  message: string;
-}
-
-export interface PairingErrorResponse {
-  error: string;
-}
-
-// Verify response types (DEPRECATED)
-export interface VerifySuccessResponse {
-  valid: true;
-  deviceId: string;
-}
-
-export interface VerifyErrorResponse {
-  valid: false;
-  error: string;
-}
-
 // ============================================
 // SMS PAIRING CODES
 // ============================================
 
 // SMS pairing codes for mobile device authentication
 export const pairingCodes = pgTable("pairing_codes", {
-  id: serial("id").primaryKey(),
+  id: integer("id").primaryKey(),
   sessionId: text("session_id").notNull().unique(),
   code: text("code").notNull(),
   deviceName: text("device_name").notNull(),

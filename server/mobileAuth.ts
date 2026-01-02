@@ -1,14 +1,9 @@
 import crypto from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
-import { 
-  getDeviceTokenByToken, 
+import {
+  getDeviceTokenByToken,
   updateDeviceTokenLastUsed,
-  createDeviceToken,
-  recordPairingAttempt,
-  getRecentFailedPairingAttempts,
-  cleanupOldPairingAttempts
 } from './db';
-import { pairingRequestSchema, type PairingSuccessResponse, type PairingErrorResponse, type VerifySuccessResponse, type VerifyErrorResponse } from '@shared/schema';
 
 interface AuditLogEntry {
   requestId: string;
@@ -278,6 +273,7 @@ export const PROTECTED_ROUTE_PATTERNS = [
   '/api/memories',
   '/api/conversations',
   '/api/news/briefing',
+  '/api/realtime',
 ];
 
 export function shouldProtectRoute(path: string): boolean {
@@ -373,153 +369,6 @@ export function generateDeviceToken(): string {
 // Generate unique device ID
 export function generateDeviceId(): string {
   return `device_${crypto.randomBytes(12).toString('hex')}`; // device_24chars
-}
-
-// Timing-safe secret comparison
-export function validatePairingSecret(provided: string): boolean {
-  const secret = getSharedSecret();
-  if (!secret) return false;
-  
-  try {
-    const providedBuf = Buffer.from(provided);
-    const secretBuf = Buffer.from(secret);
-    
-    // If lengths differ, do a fake comparison to prevent timing attacks
-    if (providedBuf.length !== secretBuf.length) {
-      crypto.timingSafeEqual(secretBuf, secretBuf);
-      return false;
-    }
-    
-    return crypto.timingSafeEqual(providedBuf, secretBuf);
-  } catch {
-    return false;
-  }
-}
-
-// Rate limiting constants
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCKOUT_WINDOW_MINUTES = 15;
-
-// Check if IP is rate limited
-export function isRateLimited(ipAddress: string): boolean {
-  const failedAttempts = getRecentFailedPairingAttempts(ipAddress, LOCKOUT_WINDOW_MINUTES);
-  return failedAttempts >= MAX_FAILED_ATTEMPTS;
-}
-
-// ============================================
-// DEPRECATED: Legacy Secret-Based Pairing
-// ============================================
-// This function registers the legacy /api/auth/pair and /api/auth/verify endpoints
-// that use ZEKE_SHARED_SECRET for authentication.
-// 
-// The Android app now primarily uses SMS-based pairing via:
-// - POST /api/auth/request-sms-code (in sms-pairing.ts)
-// - POST /api/auth/verify-sms-code (in sms-pairing.ts)
-//
-// This function is no longer called in routes.ts as of this version.
-// TODO: Remove this function and related schemas after confirming no clients use legacy flow.
-// Scheduled for removal in the next ZEKE version.
-
-// Register pairing endpoints (DEPRECATED)
-export function registerPairingEndpoints(app: any): void {
-  // POST /api/auth/pair - Register new device
-  app.post('/api/auth/pair', (req: Request, res: Response) => {
-    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
-    
-    // Clean up old pairing attempts periodically
-    cleanupOldPairingAttempts(60);
-    
-    // Check rate limiting
-    if (isRateLimited(clientIp)) {
-      res.status(429).json({ 
-        error: 'Too many failed pairing attempts. Please try again later.' 
-      } as PairingErrorResponse);
-      return;
-    }
-    
-    // Validate request body
-    const parseResult = pairingRequestSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      recordPairingAttempt(clientIp, false);
-      res.status(400).json({ 
-        error: 'Invalid request: secret and deviceName are required' 
-      } as PairingErrorResponse);
-      return;
-    }
-    
-    const { secret, deviceName } = parseResult.data;
-    
-    // Validate the pairing secret using timing-safe comparison
-    if (!validatePairingSecret(secret)) {
-      recordPairingAttempt(clientIp, false);
-      res.status(401).json({ error: 'Invalid pairing secret' } as PairingErrorResponse);
-      return;
-    }
-    
-    // Generate token and device ID
-    const deviceToken = generateDeviceToken();
-    const deviceId = generateDeviceId();
-    
-    try {
-      // Create the device token in database
-      createDeviceToken(deviceToken, deviceId, deviceName);
-      
-      // Record successful attempt
-      recordPairingAttempt(clientIp, true);
-      
-      console.log(`[DEVICE PAIRING] New device paired: ${deviceName} (${deviceId})`);
-      
-      res.status(200).json({
-        deviceToken,
-        deviceId,
-        message: 'Device paired successfully'
-      } as PairingSuccessResponse);
-    } catch (error: any) {
-      console.error('[DEVICE PAIRING] Error creating device token:', error);
-      res.status(500).json({ 
-        error: 'Failed to register device' 
-      } as PairingErrorResponse);
-    }
-  });
-  
-  // GET /api/auth/verify - Validate existing device token
-  app.get('/api/auth/verify', (req: Request, res: Response) => {
-    const deviceToken = req.headers['x-zeke-device-token'] as string | undefined;
-    
-    if (!deviceToken) {
-      res.status(401).json({ 
-        valid: false, 
-        error: 'Missing X-ZEKE-Device-Token header' 
-      } as VerifyErrorResponse);
-      return;
-    }
-    
-    try {
-      const device = getDeviceTokenByToken(deviceToken);
-      
-      if (!device) {
-        res.status(401).json({ 
-          valid: false, 
-          error: 'Invalid or expired device token' 
-        } as VerifyErrorResponse);
-        return;
-      }
-      
-      // Update last used timestamp
-      updateDeviceTokenLastUsed(deviceToken);
-      
-      res.status(200).json({
-        valid: true,
-        deviceId: device.deviceId
-      } as VerifySuccessResponse);
-    } catch (error) {
-      console.error('[DEVICE VERIFY] Error validating token:', error);
-      res.status(500).json({ 
-        valid: false, 
-        error: 'Internal server error' 
-      } as VerifyErrorResponse);
-    }
-  });
 }
 
 export function createMobileAuthMiddleware() {

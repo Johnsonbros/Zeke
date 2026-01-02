@@ -130,6 +130,13 @@ export {
 } from "./knowledgeGraph";
 
 export {
+  insightToolDefinitions,
+  insightToolPermissions,
+  executeInsightTool,
+  insightToolNames,
+} from "./insights";
+
+export {
   codebaseToolDefinitions,
   codebaseToolPermissions,
   executeCodebaseTool,
@@ -167,6 +174,7 @@ import {
   predictionToolNames,
 } from "./predictions";
 import { knowledgeGraphToolDefinitions, knowledgeGraphToolPermissions } from "./knowledgeGraph";
+import { insightToolDefinitions, insightToolPermissions } from "./insights";
 import { codebaseToolDefinitions, codebaseToolPermissions } from "./codebase";
 import { documentToolDefinitions, documentToolPermissions } from "./documents";
 

@@ -3,9 +3,20 @@ import OpenAI from "openai";
 import { getAllMemoryNotes, getPreference, setPreference, createMemoryNote, getContactByPhone } from "./db";
 import { isMasterAdmin } from "@shared/schema";
 
+const scheduledTasks = new Map<string, cron.ScheduledTask>();
+
 let openai: OpenAI | null = null;
 let sendSms: ((phone: string, message: string) => Promise<void>) | null = null;
-let scheduledTask: cron.ScheduledTask | null = null;
+
+function normalizePhoneNumber(phoneNumber: string): string {
+  let formattedPhone = phoneNumber.replace(/[^0-9+]/g, "");
+  if (formattedPhone.length === 10) {
+    formattedPhone = "+1" + formattedPhone;
+  } else if (!formattedPhone.startsWith("+")) {
+    formattedPhone = "+" + formattedPhone;
+  }
+  return formattedPhone;
+}
 
 function getOpenAIClient(): OpenAI {
   if (!openai) {
@@ -21,16 +32,30 @@ export function setDailyCheckInSmsCallback(callback: (phone: string, message: st
   sendSms = callback;
 }
 
-interface MultipleChoiceQuestion {
+export interface MultipleChoiceQuestion {
   question: string;
   options: string[];
-  topic: string;
-  context: string;
+  topic?: string;
+  context?: string;
 }
 
-interface DailyCheckInQuestions {
+export interface DailyCheckInQuestions {
   greeting: string;
   questions: MultipleChoiceQuestion[];
+}
+
+export interface CheckInConfig {
+  phoneNumber: string;
+  time: string;
+  templateName?: string;
+  customQuestions?: DailyCheckInQuestions;
+}
+
+interface SendCheckInOptions {
+  recipients?: string[];
+  questions?: DailyCheckInQuestions;
+  templateName?: string;
+  greetingOverride?: string;
 }
 
 const knowledgeAreas = [
@@ -47,13 +72,13 @@ const knowledgeAreas = [
 ];
 
 export async function generateDailyQuestions(): Promise<DailyCheckInQuestions> {
-  const memories = getAllMemoryNotes().filter(m => !m.isSuperseded);
+  const memories = (await getAllMemoryNotes()).filter(m => !m.isSuperseded);
   const memoryContent = memories.length > 0
     ? memories.map(m => `- [${m.type}] ${m.content}`).join("\n")
     : "No memories stored yet.";
 
   const client = getOpenAIClient();
-  
+
   const response = await client.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
@@ -110,7 +135,7 @@ Make questions feel natural and conversational. Include an "Other" or "None of t
 export function formatQuestionsForSms(data: DailyCheckInQuestions): string {
   let message = `${data.greeting}\n\n`;
   message += `📋 Daily Check-In (reply with your answers like "1A 2C 3B"):\n\n`;
-  
+
   data.questions.forEach((q, i) => {
     message += `${i + 1}. ${q.question}\n`;
     q.options.forEach((opt, j) => {
@@ -120,62 +145,142 @@ export function formatQuestionsForSms(data: DailyCheckInQuestions): string {
     message += "\n";
   });
 
-  message += `Reply with your answers or type freely if you want to share more!`;
-  
+  message += "Thanks! Your responses help me understand you better. 😊";
   return message;
 }
 
-export async function sendDailyCheckIn(): Promise<boolean> {
-  const phoneNumber = getPreference("daily_checkin_phone")?.value;
-  
-  if (!phoneNumber) {
-    console.log("Daily check-in: No phone number configured");
-    return false;
+export function generateCronExpression(time: string): string {
+  const [hours, minutes] = time.split(":").map(Number);
+  return `${minutes} ${hours} * * *`;
+}
+
+async function getConfiguredCheckIns(): Promise<CheckInConfig[]> {
+  const configs: CheckInConfig[] = [];
+
+  const storedConfigs = await getPreference("daily_checkin_configs");
+  if (storedConfigs?.value) {
+    try {
+      const parsed = JSON.parse(storedConfigs.value) as CheckInConfig[];
+      parsed.forEach(cfg => {
+        if (cfg.phoneNumber) {
+          configs.push({
+            phoneNumber: normalizePhoneNumber(cfg.phoneNumber),
+            time: cfg.time || "09:00",
+            templateName: cfg.templateName,
+            customQuestions: cfg.customQuestions,
+          });
+        }
+      });
+    } catch (error) {
+      console.error("Failed to parse stored daily check-in configs:", error);
+    }
   }
 
+  if (configs.length === 0) {
+    const legacyPhone = await getPreference("daily_checkin_phone");
+    if (legacyPhone?.value) {
+      configs.push({
+        phoneNumber: normalizePhoneNumber(legacyPhone.value),
+        time: (await getPreference("daily_checkin_time"))?.value || "09:00",
+      });
+    }
+  }
+
+  return configs;
+}
+
+async function saveCheckInConfigs(configs: CheckInConfig[]): Promise<void> {
+  await setPreference({
+    key: "daily_checkin_configs",
+    value: JSON.stringify(configs),
+  });
+}
+
+function stopAllSchedules(): void {
+  scheduledTasks.forEach(task => task.stop());
+  scheduledTasks.clear();
+}
+
+function scheduleCheckIn(config: CheckInConfig): void {
+  const { phoneNumber, time, templateName, customQuestions } = config;
+  const cronExpression = generateCronExpression(time);
+
+  const existingTask = scheduledTasks.get(phoneNumber);
+  if (existingTask) {
+    existingTask.stop();
+  }
+
+  const task = cron.schedule(cronExpression, async () => {
+    console.log(`Running scheduled daily check-in for ${phoneNumber}...`);
+    await sendDailyCheckIn({
+      recipients: [phoneNumber],
+      questions: customQuestions,
+      templateName,
+    });
+  }, {
+    timezone: "America/New_York"
+  });
+
+  scheduledTasks.set(phoneNumber, task);
+  console.log(`Daily check-in scheduled for ${phoneNumber} with cron: ${cronExpression} (America/New_York)`);
+}
+
+export async function sendDailyCheckIn(options: SendCheckInOptions = {}): Promise<boolean> {
   if (!sendSms) {
     console.log("Daily check-in: SMS callback not configured");
     return false;
   }
-  
-  // Access control check: verify the configured phone number is authorized
-  let isAuthorized = false;
-  let authInfo = "unknown";
-  
-  if (isMasterAdmin(phoneNumber)) {
-    isAuthorized = true;
-    authInfo = "master admin";
-  } else {
-    // Check if the phone number belongs to an admin contact
-    const contact = getContactByPhone(phoneNumber);
-    if (contact && contact.accessLevel === 'admin') {
-      isAuthorized = true;
-      authInfo = `admin contact: ${contact.name}`;
-    } else {
-      authInfo = contact ? `${contact.name} (${contact.accessLevel})` : phoneNumber;
-    }
-  }
-  
-  if (!isAuthorized) {
-    console.log(`ACCESS DENIED: Daily check-in blocked - phone ${phoneNumber} is not authorized (${authInfo})`);
-    console.log("Daily check-in is only available for admin users. Configure an admin phone number to enable this feature.");
+
+  const configuredCheckIns = await getConfiguredCheckIns();
+  const recipients = options.recipients?.map(normalizePhoneNumber)
+    ?? configuredCheckIns.map(cfg => cfg.phoneNumber);
+
+  const uniqueRecipients = Array.from(new Set(recipients));
+
+  if (uniqueRecipients.length === 0) {
+    console.log("Daily check-in: No recipients configured");
     return false;
   }
 
-  try {
-    console.log(`Generating daily check-in questions for authorized user (${authInfo})...`);
-    const questions = await generateDailyQuestions();
-    const message = formatQuestionsForSms(questions);
-    
-    console.log(`Sending daily check-in to ${phoneNumber}`);
-    await sendSms(phoneNumber, message);
-    
-    console.log("Daily check-in sent successfully");
-    return true;
-  } catch (error) {
-    console.error("Failed to send daily check-in:", error);
-    return false;
+  let generatedQuestions: DailyCheckInQuestions | null = null;
+  let successCount = 0;
+
+  for (const phoneNumber of uniqueRecipients) {
+    const contact = await getContactByPhone(phoneNumber);
+
+    const authorized = isMasterAdmin(phoneNumber)
+      || (contact && contact.accessLevel === 'admin');
+
+    if (!authorized) {
+      const authInfo = contact ? `${contact.name} (${contact.accessLevel})` : phoneNumber;
+      console.log(`ACCESS DENIED: Daily check-in blocked - phone ${phoneNumber} is not authorized (${authInfo})`);
+      continue;
+    }
+
+    const recipientConfig = configuredCheckIns.find(cfg => normalizePhoneNumber(cfg.phoneNumber) === phoneNumber);
+    const templateName = options.templateName || recipientConfig?.templateName;
+
+    const questions = options.questions
+      ?? recipientConfig?.customQuestions
+      ?? (generatedQuestions || (generatedQuestions = await generateDailyQuestions()));
+
+    const greeting = options.greetingOverride || questions.greeting;
+
+    const message = formatQuestionsForSms({
+      ...questions,
+      greeting: templateName ? `${greeting} [Template: ${templateName}]` : greeting,
+    });
+
+    try {
+      console.log(`Sending daily check-in to ${phoneNumber}`);
+      await sendSms(phoneNumber, message);
+      successCount++;
+    } catch (error) {
+      console.error(`Failed to send daily check-in to ${phoneNumber}:`, error);
+    }
   }
+
+  return successCount > 0;
 }
 
 export interface CheckInResponse {
@@ -186,17 +291,17 @@ export interface CheckInResponse {
 
 export function parseCheckInResponse(response: string): CheckInResponse[] {
   const results: CheckInResponse[] = [];
-  
+
   const pattern = /(\d)\s*([A-Ea-e])/gi;
   let match;
-  
+
   while ((match = pattern.exec(response)) !== null) {
     results.push({
       questionNumber: parseInt(match[1]),
       selectedOption: match[2].toUpperCase(),
     });
   }
-  
+
   return results;
 }
 
@@ -205,22 +310,22 @@ export async function processCheckInAnswers(
   originalQuestions: MultipleChoiceQuestion[]
 ): Promise<string[]> {
   const learnings: string[] = [];
-  
+
   for (const answer of answers) {
     const qIndex = answer.questionNumber - 1;
     if (qIndex >= 0 && qIndex < originalQuestions.length) {
       const question = originalQuestions[qIndex];
       const optIndex = answer.selectedOption.charCodeAt(0) - 65;
-      
+
       if (optIndex >= 0 && optIndex < question.options.length) {
         const selectedText = question.options[optIndex];
-        
-        if (!selectedText.toLowerCase().includes("other") && 
+
+        if (!selectedText.toLowerCase().includes("other") &&
             !selectedText.toLowerCase().includes("none")) {
           const learning = `${question.topic}: ${selectedText} (from: ${question.question})`;
           learnings.push(learning);
-          
-          createMemoryNote({
+
+          await createMemoryNote({
             type: "fact",
             content: selectedText,
             context: `Daily check-in response to: "${question.question}"`,
@@ -229,86 +334,73 @@ export async function processCheckInAnswers(
       }
     }
   }
-  
+
   return learnings;
 }
 
-export function scheduleDailyCheckIn(cronExpression: string = "0 9 * * *"): void {
-  if (scheduledTask) {
-    scheduledTask.stop();
-    console.log("Stopped existing daily check-in schedule");
-  }
-
-  scheduledTask = cron.schedule(cronExpression, async () => {
-    console.log("Running scheduled daily check-in...");
-    await sendDailyCheckIn();
-  }, {
-    timezone: "America/New_York"
-  });
-
-  console.log(`Daily check-in scheduled with cron: ${cronExpression} (America/New_York)`);
+export async function stopDailyCheckIn(): Promise<void> {
+  stopAllSchedules();
+  await saveCheckInConfigs([]);
+  console.log("Daily check-in stopped");
 }
 
-export function stopDailyCheckIn(): void {
-  if (scheduledTask) {
-    scheduledTask.stop();
-    scheduledTask = null;
-    console.log("Daily check-in stopped");
-  }
+export async function configureDailyCheckIn(
+  inputs: CheckInConfig | CheckInConfig[],
+  fallbackTime: string = "09:00",
+): Promise<CheckInConfig[]> {
+  const inputList = Array.isArray(inputs) ? inputs : [inputs];
+  const existingConfigs = await getConfiguredCheckIns();
+  const configMap = new Map<string, CheckInConfig>();
+
+  existingConfigs.forEach(cfg => {
+    configMap.set(normalizePhoneNumber(cfg.phoneNumber), cfg);
+  });
+
+  inputList.forEach(input => {
+    const normalizedPhone = normalizePhoneNumber(input.phoneNumber);
+    const merged: CheckInConfig = {
+      phoneNumber: normalizedPhone,
+      time: input.time || configMap.get(normalizedPhone)?.time || fallbackTime,
+      templateName: input.templateName ?? configMap.get(normalizedPhone)?.templateName,
+      customQuestions: input.customQuestions ?? configMap.get(normalizedPhone)?.customQuestions,
+    };
+    configMap.set(normalizedPhone, merged);
+  });
+
+  const configs = Array.from(configMap.values());
+  await saveCheckInConfigs(configs);
+
+  stopAllSchedules();
+  configs.forEach(scheduleCheckIn);
+
+  console.log(`Daily check-in configured for ${configs.length} recipient(s)`);
+  return configs;
 }
 
-export function configureDailyCheckIn(phoneNumber: string, time: string = "09:00"): void {
-  setPreference({
-    key: "daily_checkin_phone",
-    value: phoneNumber,
-  });
-
-  const [hours, minutes] = time.split(":").map(Number);
-  const cronExpression = `${minutes} ${hours} * * *`;
-  
-  setPreference({
-    key: "daily_checkin_time",
-    value: time,
-  });
-
-  setPreference({
-    key: "daily_checkin_cron",
-    value: cronExpression,
-  });
-
-  scheduleDailyCheckIn(cronExpression);
-  
-  console.log(`Daily check-in configured: ${phoneNumber} at ${time}`);
-}
-
-export function initializeDailyCheckIn(): void {
-  const phone = getPreference("daily_checkin_phone")?.value;
-  const cronExpr = getPreference("daily_checkin_cron")?.value;
-
-  if (phone && cronExpr) {
-    scheduleDailyCheckIn(cronExpr);
-    console.log(`Restored daily check-in schedule for ${phone}`);
-  } else {
+export async function initializeDailyCheckIn(): Promise<void> {
+  const configs = await getConfiguredCheckIns();
+  if (configs.length === 0) {
     console.log("Daily check-in not configured yet");
+    return;
   }
+
+  stopAllSchedules();
+  configs.forEach(scheduleCheckIn);
+  console.log(`Restored daily check-in schedules for ${configs.length} recipient(s)`);
 }
 
-export function getDailyCheckInStatus(): {
+export async function getDailyCheckInStatus(): Promise<{
   configured: boolean;
-  phoneNumber?: string;
-  time?: string;
-  nextRun?: string;
-} {
-  const phone = getPreference("daily_checkin_phone")?.value;
-  const time = getPreference("daily_checkin_time")?.value;
+  recipients?: CheckInConfig[];
+}> {
+  const configs = await getConfiguredCheckIns();
 
-  if (!phone) {
+  if (configs.length === 0) {
     return { configured: false };
   }
 
   return {
     configured: true,
-    phoneNumber: phone,
-    time: time || "09:00",
+    recipients: configs,
   };
 }
