@@ -285,6 +285,8 @@ const capabilityRegistry: Record<string, CapabilityConfig> = {
   },
 };
 
+let toolRegistryVersion = 1;
+
 const activeCategories = new Set<string>([
   "communication",
   "reminder",
@@ -329,7 +331,10 @@ export function loadToolCategory(category: string): void {
   if (!config) {
     throw new Error(`Unknown tool category: ${category}`);
   }
-  activeCategories.add(normalizedCategory);
+  if (!activeCategories.has(normalizedCategory)) {
+    activeCategories.add(normalizedCategory);
+    toolRegistryVersion += 1;
+  }
 }
 
 export function getActiveToolDefinitions(): OpenAI.Chat.ChatCompletionTool[] {
@@ -342,6 +347,88 @@ export function getActiveToolPermissions(): Record<string, (p: ToolPermissions) 
 
 export function getActiveToolNames(): string[] {
   return computeDefinitions().names;
+}
+
+export function getToolRegistryVersion(): number {
+  return toolRegistryVersion;
+}
+
+type ToolRegistryOptions = {
+  permissions: ToolPermissions;
+};
+
+export function getToolRegistrySnapshot(options: ToolRegistryOptions) {
+  const { permissions } = options;
+  const activeTools = getActiveToolDefinitions();
+  const activePermissions = getActiveToolPermissions();
+
+  const toolCapabilities = new Map<string, string[]>();
+  for (const category of activeCategories) {
+    const config = capabilityRegistry[category];
+    if (!config) continue;
+
+    for (const name of config.names) {
+      const existing = toolCapabilities.get(name) ?? [];
+      toolCapabilities.set(name, [...existing, category]);
+    }
+  }
+
+  const tools = activeTools
+    .map((tool) => {
+      if (tool.type !== "function" || !("function" in tool)) {
+        return null;
+      }
+
+      const func = (tool as {
+        type: "function";
+        function: { name: string; description?: string; parameters?: unknown };
+      }).function;
+      const toolName = func.name;
+      const permissionCheck = activePermissions[toolName];
+
+      const permissionMatrix: Record<string, boolean> = {};
+      if (permissionCheck) {
+        const testPermissions: ToolPermissions = {
+          isAdmin: false,
+          canAccessPersonalInfo: false,
+          canAccessCalendar: false,
+          canAccessTasks: false,
+          canAccessGrocery: false,
+          canSetReminders: false,
+          canQueryMemory: false,
+          canSendMessages: false,
+        };
+
+        for (const key of Object.keys(testPermissions) as Array<keyof ToolPermissions>) {
+          const withPermission = { ...testPermissions, [key]: true };
+          permissionMatrix[key] = permissionCheck(withPermission);
+        }
+      }
+
+      const allowed = permissionCheck ? permissionCheck(permissions) : true;
+
+      return {
+        name: toolName,
+        description: func.description || "",
+        parameters: func.parameters || {},
+        categories: toolCapabilities.get(toolName) ?? [],
+        allowed,
+        permission_matrix: permissionMatrix,
+      };
+    })
+    .filter((tool): tool is {
+      name: string;
+      description: string;
+      parameters: unknown;
+      categories: string[];
+      allowed: boolean;
+      permission_matrix: Record<string, boolean>;
+    } => Boolean(tool && tool.allowed));
+
+  return {
+    version: getToolRegistryVersion(),
+    tools,
+  };
 }
 
 export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = getActiveToolDefinitions();
