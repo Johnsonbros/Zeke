@@ -29,6 +29,7 @@ import {
   createMessage,
 } from "./db";
 import { chat, getAdminPermissions } from "./agent";
+import { shouldUseBatch, queueForBatch } from "./config/batchFirst";
 import { processOmiWebhook } from "./voice/omiListener";
 import { recordAudioReceived } from "./pendantHealthMonitor";
 
@@ -206,6 +207,22 @@ async function processMemoryWebhook(payload: OmiMemoryTriggerPayload, logId: str
           console.log(`[Omi] Command executed successfully, continuing with extraction...`);
         }
       }
+    }
+
+    if (shouldUseBatch("omi_memory_extraction")) {
+      const batchId = queueForBatch("omi_memory_extraction", {
+        memoryId: payload.memory.id,
+        sessionId: payload.session_id,
+        transcriptLength: transcript.length,
+      }, 3);
+
+      await updateOmiWebhookLog(logId, {
+        status: "processing",
+        errorMessage: `Queued for batch extraction (${batchId})`,
+      });
+
+      console.log(`[Omi] Queued memory ${payload.memory.id} for batch extraction (${batchId})`);
+      return;
     }
 
     const extraction = await extractFromTranscript(transcript);
@@ -509,6 +526,27 @@ async function queryZekeKnowledge(
     name: `${c.firstName} ${c.lastName}`.trim(),
     context: c.relationship || c.accessLevel,
   }));
+
+  if (shouldUseBatch("omi_query_narrative")) {
+    const batchId = queueForBatch("omi_query_narrative", {
+      query,
+      limit,
+      executeActions,
+      memoryCount: relevantMemories.length,
+      contactCount: relatedPeople.length,
+    }, 4);
+
+    console.log(`[Omi] Queued Omi query for batch processing (${batchId})`);
+
+    return {
+      answer: "Processing this request in the background for a richer response.",
+      relevantMemories,
+      relatedPeople,
+      suggestedActions: [],
+      queuedForBatch: true,
+      batchId,
+    };
+  }
 
   const systemPrompt = `You are Zeke, a personal AI assistant with deep knowledge about the user.
 You have access to the user's memories and contacts. Answer the query based on this context.
