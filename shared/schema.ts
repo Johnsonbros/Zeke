@@ -412,6 +412,28 @@ export const insertReminderSchema = createInsertSchema(reminders).omit({
 export type InsertReminder = z.infer<typeof insertReminderSchema>;
 export type Reminder = typeof reminders.$inferSelect;
 
+// Unified change log for sync/versioning
+export const changeEntityTypes = ["task", "reminder", "memory", "contact", "grocery_item"] as const;
+export type ChangeEntityType = typeof changeEntityTypes[number];
+
+export const changeActions = ["create", "update", "delete"] as const;
+export type ChangeAction = typeof changeActions[number];
+
+export const changeLog = pgTable("change_log", {
+  id: text("id").primaryKey(),
+  entityType: text("entity_type", { enum: changeEntityTypes }).notNull(),
+  entityId: text("entity_id").notNull(),
+  action: text("action", { enum: changeActions }).notNull(),
+  version: integer("version").notNull(),
+  changedAt: text("changed_at").notNull(),
+  data: text("data"), // JSON snapshot of the record
+});
+
+export const insertChangeLogSchema = createInsertSchema(changeLog);
+
+export type InsertChangeLog = z.infer<typeof insertChangeLogSchema>;
+export type ChangeLog = typeof changeLog.$inferSelect;
+
 // Tasks table for to-do management
 export const tasks = pgTable("tasks", {
   id: text("id").primaryKey(),
@@ -3841,6 +3863,11 @@ export interface SyncStateResponse {
 export const deltaQuerySchema = z.object({
   since: z.string().datetime().optional(),
   limit: z.coerce.number().min(1).max(500).optional().default(100),
+});
+
+// Query schema for change log sync endpoints
+export const changeLogQuerySchema = deltaQuerySchema.extend({
+  entityTypes: z.string().optional(),
 });
 
 // ============================================

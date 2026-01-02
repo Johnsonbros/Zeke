@@ -297,6 +297,8 @@ import {
   registerPushToken,
   disablePushToken,
   getSyncState,
+  getChangesSince,
+  getLatestChangeTimestamps,
   getTasksSince,
   getRemindersSince,
   getGroceryItemsSince,
@@ -308,8 +310,8 @@ import {
   updateMobileNotification,
   dismissMobileNotification,
 } from "./db";
-import type { TwilioMessageSource, UploadedFileType, ZekeNotification, MobileNotificationActionType } from "@shared/schema";
-import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema, locationSampleBatchSchema, insertSavedPlaceSchema, companionLocationHistorySchema, companionLocationSampleBatchSchema, registerPushTokenSchema, deltaQuerySchema, updateMobileNotificationSchema } from "@shared/schema";
+import type { ChangeEntityType, TwilioMessageSource, UploadedFileType, ZekeNotification, MobileNotificationActionType } from "@shared/schema";
+import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema, locationSampleBatchSchema, insertSavedPlaceSchema, companionLocationHistorySchema, companionLocationSampleBatchSchema, registerPushTokenSchema, deltaQuerySchema, updateMobileNotificationSchema, changeLogQuerySchema } from "@shared/schema";
 import { dailyPnl, apiUsageLogs } from "@shared/schema";
 import { db } from "./db";
 import { sql, eq, and, gte, lte } from "drizzle-orm";
@@ -4771,7 +4773,64 @@ export async function registerRoutes(
       });
     }
   });
-  
+
+  const parseChangePayload = (change: { data: string | null } & Record<string, any>) => {
+    let parsedData: unknown = null;
+    if (change.data) {
+      try {
+        parsedData = JSON.parse(change.data);
+      } catch {
+        parsedData = change.data;
+      }
+    }
+    return { ...change, data: parsedData };
+  };
+
+  // Unified change log endpoint for mobile sync
+  app.get("/api/sync/changes", async (req, res) => {
+    try {
+      const parseResult = changeLogQuerySchema.safeParse(req.query);
+
+      if (!parseResult.success) {
+        return res.status(400).json(createMobileError(
+          "VALIDATION_FAILED",
+          "Invalid query parameters",
+          parseResult.error.flatten()
+        ));
+      }
+
+      const { since, limit, entityTypes } = parseResult.data;
+
+      if (!since) {
+        const latest = await getLatestChangeTimestamps();
+        return res.json({
+          useDelta: false,
+          latest,
+          message: "Provide ?since= for delta sync",
+        });
+      }
+
+      const types = entityTypes
+        ? (entityTypes.split(",").map(type => type.trim()).filter(Boolean) as ChangeEntityType[])
+        : undefined;
+
+      const changes = await getChangesSince(since, limit, types);
+
+      res.json({
+        count: changes.length,
+        since,
+        serverTime: new Date().toISOString(),
+        changes: changes.map(parseChangePayload),
+      });
+    } catch (error: any) {
+      console.error("[Mobile] Change log delta error:", error);
+      res.status(500).json(createMobileError(
+        "INTERNAL_ERROR",
+        error.message || "Failed to get change log delta"
+      ));
+    }
+  });
+
   // === GROCERY LIST API ROUTES ===
   
   // Get all grocery items
@@ -4802,10 +4861,10 @@ export async function registerRoutes(
   });
 
   // Get grocery items delta for mobile sync (MUST be before /:id route)
-  app.get("/api/grocery/delta", (req, res) => {
+  app.get("/api/grocery/delta", async (req, res) => {
     try {
       const parseResult = deltaQuerySchema.safeParse(req.query);
-      
+
       if (!parseResult.success) {
         return res.status(400).json(createMobileError(
           "VALIDATION_FAILED",
@@ -4813,24 +4872,29 @@ export async function registerRoutes(
           parseResult.error.flatten()
         ));
       }
-      
+
       const { since, limit } = parseResult.data;
-      
+
       if (!since) {
-        const syncState = getSyncState();
+        const latest = await getLatestChangeTimestamps();
         return res.json({
           useDelta: false,
-          syncState,
-          message: "Provide ?since= for delta sync"
+          latest,
+          message: "Provide ?since= for delta sync",
         });
       }
-      
-      const items = getGroceryItemsSince(since, limit);
-      
+
+      const changes = await getChangesSince(since, limit, ["grocery_item"] as ChangeEntityType[]);
+      const parsedChanges = changes.map(parseChangePayload);
+      const items = parsedChanges
+        .filter(change => change.action !== "delete")
+        .map(change => change.data);
+
       res.json({
-        count: items.length,
+        count: parsedChanges.length,
         since,
         serverTime: new Date().toISOString(),
+        changes: parsedChanges,
         items,
       });
     } catch (error: any) {
@@ -5579,10 +5643,10 @@ export async function registerRoutes(
   });
 
   // Get tasks delta for mobile sync (MUST be before /:id route)
-  app.get("/api/tasks/delta", (req, res) => {
+  app.get("/api/tasks/delta", async (req, res) => {
     try {
       const parseResult = deltaQuerySchema.safeParse(req.query);
-      
+
       if (!parseResult.success) {
         return res.status(400).json(createMobileError(
           "VALIDATION_FAILED",
@@ -5590,24 +5654,29 @@ export async function registerRoutes(
           parseResult.error.flatten()
         ));
       }
-      
+
       const { since, limit } = parseResult.data;
-      
+
       if (!since) {
-        const syncState = getSyncState();
+        const latest = await getLatestChangeTimestamps();
         return res.json({
           useDelta: false,
-          syncState,
+          latest,
           message: "Provide ?since= for delta sync"
         });
       }
-      
-      const tasks = getTasksSince(since, limit);
-      
+
+      const changes = await getChangesSince(since, limit, ["task"] as ChangeEntityType[]);
+      const parsedChanges = changes.map(parseChangePayload);
+      const tasks = parsedChanges
+        .filter(change => change.action !== "delete")
+        .map(change => change.data);
+
       res.json({
-        count: tasks.length,
+        count: parsedChanges.length,
         since,
         serverTime: new Date().toISOString(),
+        changes: parsedChanges,
         tasks,
       });
     } catch (error: any) {
@@ -5954,10 +6023,10 @@ export async function registerRoutes(
   });
 
   // Get contacts delta for mobile sync (MUST be before /:id route)
-  app.get("/api/contacts/delta", (req, res) => {
+  app.get("/api/contacts/delta", async (req, res) => {
     try {
       const parseResult = deltaQuerySchema.safeParse(req.query);
-      
+
       if (!parseResult.success) {
         return res.status(400).json(createMobileError(
           "VALIDATION_FAILED",
@@ -5965,24 +6034,29 @@ export async function registerRoutes(
           parseResult.error.flatten()
         ));
       }
-      
+
       const { since, limit } = parseResult.data;
-      
+
       if (!since) {
-        const syncState = getSyncState();
+        const latest = await getLatestChangeTimestamps();
         return res.json({
           useDelta: false,
-          syncState,
+          latest,
           message: "Provide ?since= for delta sync"
         });
       }
-      
-      const contacts = getContactsSince(since, limit);
-      
+
+      const changes = await getChangesSince(since, limit, ["contact"] as ChangeEntityType[]);
+      const parsedChanges = changes.map(parseChangePayload);
+      const contacts = parsedChanges
+        .filter(change => change.action !== "delete")
+        .map(change => change.data);
+
       res.json({
-        count: contacts.length,
+        count: parsedChanges.length,
         since,
         serverTime: new Date().toISOString(),
+        changes: parsedChanges,
         contacts,
       });
     } catch (error: any) {
@@ -6380,10 +6454,10 @@ export async function registerRoutes(
   });
 
   // Get reminders delta for mobile sync (MUST be before /:id route)
-  app.get("/api/reminders/delta", (req, res) => {
+  app.get("/api/reminders/delta", async (req, res) => {
     try {
       const parseResult = deltaQuerySchema.safeParse(req.query);
-      
+
       if (!parseResult.success) {
         return res.status(400).json(createMobileError(
           "VALIDATION_FAILED",
@@ -6391,24 +6465,29 @@ export async function registerRoutes(
           parseResult.error.flatten()
         ));
       }
-      
+
       const { since, limit } = parseResult.data;
-      
+
       if (!since) {
-        const syncState = getSyncState();
+        const latest = await getLatestChangeTimestamps();
         return res.json({
           useDelta: false,
-          syncState,
+          latest,
           message: "Provide ?since= for delta sync"
         });
       }
-      
-      const reminders = getRemindersSince(since, limit);
-      
+
+      const changes = await getChangesSince(since, limit, ["reminder"] as ChangeEntityType[]);
+      const parsedChanges = changes.map(parseChangePayload);
+      const reminders = parsedChanges
+        .filter(change => change.action !== "delete")
+        .map(change => change.data);
+
       res.json({
-        count: reminders.length,
+        count: parsedChanges.length,
         since,
         serverTime: new Date().toISOString(),
+        changes: parsedChanges,
         reminders,
       });
     } catch (error: any) {

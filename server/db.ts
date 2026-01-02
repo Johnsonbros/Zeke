@@ -19,6 +19,9 @@ import type {
   Task,
   InsertTask,
   UpdateTask,
+  ChangeAction,
+  ChangeEntityType,
+  ChangeLog,
   Contact,
   InsertContact,
   UpdateContact,
@@ -267,6 +270,69 @@ function getNow(): string {
   return new Date().toISOString();
 }
 
+async function logChange(
+  entityType: ChangeEntityType,
+  entityId: string,
+  action: ChangeAction,
+  data?: unknown
+): Promise<ChangeLog> {
+  const [latestVersion] = await db
+    .select()
+    .from(schema.changeLog)
+    .where(and(eq(schema.changeLog.entityType, entityType), eq(schema.changeLog.entityId, entityId)))
+    .orderBy(desc(schema.changeLog.version))
+    .limit(1);
+
+  const [change] = await db.insert(schema.changeLog).values({
+    id: uuidv4(),
+    entityType,
+    entityId,
+    action,
+    version: (latestVersion?.version ?? 0) + 1,
+    changedAt: getNow(),
+    data: data ? JSON.stringify(data) : null,
+  }).returning();
+
+  return change;
+}
+
+export async function getChangesSince(
+  since: string,
+  limit = 200,
+  entityTypes?: ChangeEntityType[]
+): Promise<ChangeLog[]> {
+  const conditions = [gte(schema.changeLog.changedAt, since)];
+
+  if (entityTypes && entityTypes.length > 0) {
+    conditions.push(inArray(schema.changeLog.entityType, entityTypes));
+  }
+
+  return await db.select().from(schema.changeLog)
+    .where(and(...conditions))
+    .orderBy(asc(schema.changeLog.changedAt), asc(schema.changeLog.version))
+    .limit(limit);
+}
+
+export async function getLatestChangeTimestamps(): Promise<Record<ChangeEntityType, string | null>> {
+  const timestamps: Record<ChangeEntityType, string | null> = {
+    task: null,
+    reminder: null,
+    memory: null,
+    contact: null,
+    grocery_item: null,
+  };
+
+  const results = await db.select().from(schema.changeLog).orderBy(desc(schema.changeLog.changedAt));
+
+  for (const entry of results) {
+    if (!timestamps[entry.entityType]) {
+      timestamps[entry.entityType] = entry.changedAt;
+    }
+  }
+
+  return timestamps;
+}
+
 export function parseEmbedding(embeddingStr: string | null): number[] | null {
   if (!embeddingStr) return null;
   try {
@@ -396,6 +462,7 @@ export async function createMemoryNote(data: CreateMemoryNoteInput): Promise<Mem
     updatedAt: now,
   }).returning();
   invalidateMemoryCache();
+  await logChange("memory", id, "create", result);
   return result;
 }
 
@@ -430,6 +497,9 @@ export async function updateMemoryNote(id: string, data: Partial<Pick<MemoryNote
     .where(eq(schema.memoryNotes.id, id))
     .returning();
   invalidateMemoryCache();
+  if (result) {
+    await logChange("memory", id, "update", result);
+  }
   return result;
 }
 
@@ -437,6 +507,12 @@ export async function updateMemoryNoteEmbedding(id: string, embedding: number[])
   const result = await db.update(schema.memoryNotes)
     .set({ embedding: JSON.stringify(embedding), updatedAt: getNow() })
     .where(eq(schema.memoryNotes.id, id));
+  if ((result.rowCount ?? 0) > 0) {
+    const updated = await getMemoryNote(id);
+    if (updated) {
+      await logChange("memory", id, "update", updated);
+    }
+  }
   return (result.rowCount ?? 0) > 0;
 }
 
@@ -460,8 +536,12 @@ export async function searchMemoryNotes(query: string): Promise<MemoryNote[]> {
 }
 
 export async function deleteMemoryNote(id: string): Promise<boolean> {
+  const existing = await getMemoryNote(id);
   const result = await db.delete(schema.memoryNotes).where(eq(schema.memoryNotes.id, id));
   invalidateMemoryCache();
+  if ((result.rowCount ?? 0) > 0) {
+    await logChange("memory", id, "delete", existing || { id });
+  }
   return (result.rowCount ?? 0) > 0;
 }
 
@@ -603,6 +683,7 @@ export async function createGroceryItem(data: InsertGroceryItem): Promise<Grocer
     updatedAt: now,
   }).returning();
   invalidateGroceryCache();
+  await logChange("grocery_item", id, "create", result);
   return result;
 }
 
@@ -621,6 +702,9 @@ export async function updateGroceryItem(id: string, data: Partial<Omit<GroceryIt
     .where(eq(schema.groceryItems.id, id))
     .returning();
   invalidateGroceryCache();
+  if (result) {
+    await logChange("grocery_item", id, "update", result);
+  }
   return result;
 }
 
@@ -637,12 +721,19 @@ export async function toggleGroceryItemPurchased(id: string): Promise<GroceryIte
     .where(eq(schema.groceryItems.id, id))
     .returning();
   invalidateGroceryCache();
+  if (result) {
+    await logChange("grocery_item", id, "update", result);
+  }
   return result;
 }
 
 export async function deleteGroceryItem(id: string): Promise<boolean> {
+  const existing = await getGroceryItem(id);
   const result = await db.delete(schema.groceryItems).where(eq(schema.groceryItems.id, id));
   invalidateGroceryCache();
+  if ((result.rowCount ?? 0) > 0) {
+    await logChange("grocery_item", id, "delete", existing || { id });
+  }
   return (result.rowCount ?? 0) > 0;
 }
 
@@ -658,12 +749,19 @@ export async function clearPurchasedGroceryItems(): Promise<number> {
   }
   const result = await db.delete(schema.groceryItems).where(eq(schema.groceryItems.purchased, true));
   invalidateGroceryCache();
+  for (const item of purchased) {
+    await logChange("grocery_item", item.id, "delete", item);
+  }
   return result.rowCount ?? 0;
 }
 
 export async function clearAllGroceryItems(): Promise<number> {
+  const existing = await db.select().from(schema.groceryItems);
   const result = await db.delete(schema.groceryItems);
   invalidateGroceryCache();
+  for (const item of existing) {
+    await logChange("grocery_item", item.id, "delete", item);
+  }
   return result.rowCount ?? 0;
 }
 
@@ -758,6 +856,7 @@ export async function createReminder(data: InsertReminder): Promise<Reminder> {
     id,
     createdAt: now,
   }).returning();
+  await logChange("reminder", id, "create", result);
   return result;
 }
 
@@ -791,11 +890,18 @@ export async function updateReminderCompleted(id: string, completed: boolean): P
     .set({ completed })
     .where(eq(schema.reminders.id, id))
     .returning();
+  if (result) {
+    await logChange("reminder", id, "update", result);
+  }
   return result;
 }
 
 export async function deleteReminder(id: string): Promise<boolean> {
+  const existing = await getReminder(id);
   const result = await db.delete(schema.reminders).where(eq(schema.reminders.id, id));
+  if ((result.rowCount ?? 0) > 0) {
+    await logChange("reminder", id, "delete", existing || { id });
+  }
   return (result.rowCount ?? 0) > 0;
 }
 
@@ -804,7 +910,14 @@ export async function supersedeMemoryNote(oldNoteId: string, newNoteId: string):
     .set({ isSuperseded: true, supersededBy: newNoteId, updatedAt: getNow() })
     .where(eq(schema.memoryNotes.id, oldNoteId));
   invalidateMemoryCache();
-  return (result.rowCount ?? 0) > 0;
+  if ((result.rowCount ?? 0) > 0) {
+    const updated = await getMemoryNote(oldNoteId);
+    if (updated) {
+      await logChange("memory", oldNoteId, "update", updated);
+    }
+    return true;
+  }
+  return false;
 }
 
 export async function findMemoryNoteByContent(searchContent: string): Promise<MemoryNote | undefined> {
@@ -838,6 +951,7 @@ export async function createTask(data: InsertTask): Promise<Task> {
     updatedAt: now,
   }).returning();
   invalidateTaskCache();
+  await logChange("task", id, "create", result);
   return result;
 }
 
@@ -910,6 +1024,9 @@ export async function updateTask(id: string, data: UpdateTask): Promise<Task | u
     .where(eq(schema.tasks.id, id))
     .returning();
   invalidateTaskCache();
+  if (result) {
+    await logChange("task", id, "update", result);
+  }
   return result;
 }
 
@@ -921,18 +1038,29 @@ export async function toggleTaskCompleted(id: string): Promise<Task | undefined>
     .where(eq(schema.tasks.id, id))
     .returning();
   invalidateTaskCache();
+  if (result) {
+    await logChange("task", id, "update", result);
+  }
   return result;
 }
 
 export async function deleteTask(id: string): Promise<boolean> {
+  const existing = await getTask(id);
   const result = await db.delete(schema.tasks).where(eq(schema.tasks.id, id));
   invalidateTaskCache();
+  if ((result.rowCount ?? 0) > 0) {
+    await logChange("task", id, "delete", existing || { id });
+  }
   return (result.rowCount ?? 0) > 0;
 }
 
 export async function clearCompletedTasks(): Promise<number> {
+  const completedTasks = await db.select().from(schema.tasks).where(eq(schema.tasks.completed, true));
   const result = await db.delete(schema.tasks).where(eq(schema.tasks.completed, true));
   invalidateTaskCache();
+  for (const task of completedTasks) {
+    await logChange("task", task.id, "delete", task);
+  }
   return result.rowCount ?? 0;
 }
 
@@ -1010,6 +1138,7 @@ export async function createContact(data: InsertContact): Promise<Contact> {
     updatedAt: now,
   }).returning();
   invalidateContactCache();
+  await logChange("contact", id, "create", result);
   return result;
 }
 
@@ -1040,14 +1169,21 @@ export async function updateContact(id: string, data: UpdateContact): Promise<Co
     .where(eq(schema.contacts.id, id))
     .returning();
   invalidateContactCache();
+  if (result) {
+    await logChange("contact", id, "update", result);
+  }
   return result;
 }
 
 export async function deleteContact(id: string): Promise<boolean> {
+  const existing = await getContact(id);
   await db.delete(schema.contactNotes).where(eq(schema.contactNotes.contactId, id));
   await db.delete(schema.contactFaces).where(eq(schema.contactFaces.contactId, id));
   const result = await db.delete(schema.contacts).where(eq(schema.contacts.id, id));
   invalidateContactCache();
+  if ((result.rowCount ?? 0) > 0) {
+    await logChange("contact", id, "delete", existing || { id });
+  }
   return (result.rowCount ?? 0) > 0;
 }
 
