@@ -1899,7 +1899,7 @@ export async function registerRoutes(
       throw error;
     }
   });
-  initializeDailyCheckIn();
+  await initializeDailyCheckIn();
   
   // Set up automation SMS callback and initialize scheduled automations
   setAutomationSmsCallback(async (phone: string, message: string) => {
