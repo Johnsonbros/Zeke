@@ -1,0 +1,1222 @@
+openapi: 3.1.0
+info:
+  title: ZEKE API
+  version: 1.0.0
+  description: |
+    Typed, versioned contract for the ZEKE REST API. Clients must send the `X-API-Version`
+    header (default `2025-02-01`) to opt into breaking changes. All responses use JSON
+    unless otherwise noted.
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: https://api.zeke.local
+    description: Production gateway
+components:
+  parameters:
+    ApiVersion:
+      name: X-API-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        default: "2025-02-01"
+      description: Semantic version for the contract; new versions will remain backward compatible for one minor release.
+    ConversationId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    ListId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    ListItemId:
+      name: itemId
+      in: path
+      required: true
+      schema:
+        type: string
+    DocumentId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    GroceryItemId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        code:
+          type: string
+          description: Optional machine readable error code.
+    HealthResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        service:
+          type: string
+        ready:
+          type: boolean
+        db:
+          type: string
+    AuthChallengeRequest:
+      type: object
+      required: [phoneNumber]
+      properties:
+        phoneNumber:
+          type: string
+          description: E.164 formatted phone number.
+    AuthVerifyRequest:
+      type: object
+      required: [phoneNumber, code]
+      properties:
+        phoneNumber:
+          type: string
+        code:
+          type: string
+    WebAuthRequestCode:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+    WebAuthVerifyCode:
+      type: object
+      required: [email, code]
+      properties:
+        email:
+          type: string
+          format: email
+        code:
+          type: string
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        phoneNumber:
+          type: string
+          nullable: true
+        source:
+          type: string
+          enum: [web, sms, voice, app]
+        mode:
+          type: string
+          enum: [chat, getting_to_know]
+        summary:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ConversationInput:
+      type: object
+      required: [source]
+      properties:
+        title:
+          type: string
+        phoneNumber:
+          type: string
+          nullable: true
+        source:
+          type: string
+        mode:
+          type: string
+          enum: [chat, getting_to_know]
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+        conversationId:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        source:
+          type: string
+          enum: [web, sms, voice, app]
+        createdAt:
+          type: string
+          format: date-time
+    MessageInput:
+      type: object
+      required: [content, role]
+      properties:
+        content:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant]
+        source:
+          type: string
+          enum: [web, sms, voice, app]
+          default: web
+        fileIds:
+          type: array
+          items:
+            type: string
+    ChatRequest:
+      type: object
+      required: [message, source]
+      properties:
+        message:
+          type: string
+        conversationId:
+          type: string
+          nullable: true
+        source:
+          type: string
+          enum: [web, sms, voice, app]
+        fileIds:
+          type: array
+          items:
+            type: string
+    ChatResponse:
+      type: object
+      properties:
+        conversationId:
+          type: string
+        isNewConversation:
+          type: boolean
+        assistantMessage:
+          $ref: '#/components/schemas/Message'
+        cards:
+          type: array
+          description: Optional structured cards returned by the assistant.
+          items:
+            type: object
+        tasks:
+          type: array
+          items:
+            type: object
+    MemoryNote:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [summary, note, preference, fact]
+        content:
+          type: string
+        context:
+          type: string
+        scope:
+          type: string
+          enum: [transient, session, long_term]
+        confidenceScore:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+    MemoryNoteInput:
+      type: object
+      required: [type, content]
+      properties:
+        type:
+          type: string
+          enum: [summary, note, preference, fact]
+        content:
+          type: string
+        context:
+          type: string
+        scope:
+          type: string
+          enum: [transient, session, long_term]
+    Preference:
+      type: object
+      properties:
+        id:
+          type: string
+        key:
+          type: string
+        value:
+          type: string
+        updatedAt:
+          type: string
+    PreferenceInput:
+      type: object
+      required: [key, value]
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    GroceryItem:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        quantity:
+          type: string
+        purchased:
+          type: boolean
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+    GroceryItemInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        quantity:
+          type: string
+        category:
+          type: string
+    CustomList:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+    CustomListItem:
+      type: object
+      properties:
+        id:
+          type: string
+        listId:
+          type: string
+        label:
+          type: string
+        checked:
+          type: boolean
+        priority:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        folderId:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        status:
+          type: string
+          enum: [active, dismissed]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe
+      tags: [Health]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /readyz:
+    get:
+      summary: Readiness probe
+      tags: [Health]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '200':
+          description: Ready for traffic
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Dependencies unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/openapi.yaml:
+    get:
+      summary: Fetch the OpenAPI document
+      tags: [Docs]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '200':
+          description: YAML specification
+          content:
+            application/yaml:
+              schema:
+                type: string
+        '404':
+          description: Spec not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/auth/request-sms-code:
+    post:
+      summary: Request a login code via SMS
+      tags: [Auth]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthChallengeRequest'
+      responses:
+        '204':
+          description: Code dispatched
+        '400':
+          description: Invalid phone number
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/auth/verify-sms-code:
+    post:
+      summary: Verify a submitted SMS code
+      tags: [Auth]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthVerifyRequest'
+      responses:
+        '200':
+          description: Verification status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verified:
+                    type: boolean
+                  sessionToken:
+                    type: string
+                    nullable: true
+        '401':
+          description: Invalid code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/auth/pairing-status:
+    get:
+      summary: Check SMS pairing state
+      tags: [Auth]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '200':
+          description: Pairing status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paired:
+                    type: boolean
+                  phoneNumber:
+                    type: string
+                    nullable: true
+  /api/web-auth/request-code:
+    post:
+      summary: Request a one-time login code via email
+      tags: [Auth]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebAuthRequestCode'
+      responses:
+        '204':
+          description: Code sent
+  /api/web-auth/verify-code:
+    post:
+      summary: Verify an emailed login code
+      tags: [Auth]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebAuthVerifyCode'
+      responses:
+        '200':
+          description: Session established
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+        '401':
+          description: Invalid code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/web-auth/logout:
+    post:
+      summary: Terminate the web session
+      tags: [Auth]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '204':
+          description: Logged out
+  /api/web-auth/session:
+    get:
+      summary: Fetch current session context
+      tags: [Auth]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '200':
+          description: Session details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated:
+                    type: boolean
+                  user:
+                    type: object
+                    nullable: true
+  /api/web-auth/status:
+    get:
+      summary: Check authentication health
+      tags: [Auth]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '200':
+          description: Status payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  strategy:
+                    type: string
+  /api/transcribe:
+    post:
+      summary: Transcribe a base64 encoded audio clip
+      tags: [Voice]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  description: Base64 encoded audio payload
+                mimeType:
+                  type: string
+      responses:
+        '200':
+          description: Transcript
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text:
+                    type: string
+                  message:
+                    type: string
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/chat:
+    post:
+      summary: Send a user message and receive an assistant reply
+      tags: [Chat]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Assistant response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/conversations:
+    get:
+      summary: List conversations
+      tags: [Conversations]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '200':
+          description: Conversation collection
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Conversation'
+    post:
+      summary: Create a conversation
+      tags: [Conversations]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationInput'
+      responses:
+        '201':
+          description: Created conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+  /api/conversations/{id}:
+    get:
+      summary: Get a conversation by id
+      tags: [Conversations]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/ConversationId'
+      responses:
+        '200':
+          description: Conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a conversation and its messages
+      tags: [Conversations]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/ConversationId'
+      responses:
+        '204':
+          description: Deleted
+  /api/conversations/{id}/messages:
+    get:
+      summary: Retrieve messages for a conversation
+      tags: [Conversations]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/ConversationId'
+      responses:
+        '200':
+          description: Messages ordered newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Message'
+    post:
+      summary: Append a message to a conversation
+      tags: [Conversations]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageInput'
+      responses:
+        '201':
+          description: Created message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+  /api/memory:
+    get:
+      summary: List memory notes
+      tags: [Memory]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '200':
+          description: Memory notes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MemoryNote'
+    post:
+      summary: Store a memory note
+      tags: [Memory]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryNoteInput'
+      responses:
+        '201':
+          description: Memory created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryNote'
+  /api/memory/{id}:
+    delete:
+      summary: Delete a memory note
+      tags: [Memory]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+  /api/preferences:
+    get:
+      summary: List user preferences
+      tags: [Preferences]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '200':
+          description: Preferences
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Preference'
+    post:
+      summary: Upsert a user preference
+      tags: [Preferences]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreferenceInput'
+      responses:
+        '201':
+          description: Saved preference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preference'
+  /api/grocery:
+    get:
+      summary: List grocery items
+      tags: [Grocery]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '200':
+          description: Grocery list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GroceryItem'
+    post:
+      summary: Add a grocery item
+      tags: [Grocery]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroceryItemInput'
+      responses:
+        '201':
+          description: Created item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroceryItem'
+  /api/grocery/{id}:
+    patch:
+      summary: Update a grocery item
+      tags: [Grocery]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/GroceryItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroceryItemInput'
+      responses:
+        '200':
+          description: Updated item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroceryItem'
+    delete:
+      summary: Remove a grocery item
+      tags: [Grocery]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/GroceryItemId'
+      responses:
+        '204':
+          description: Deleted
+  /api/grocery/{id}/toggle:
+    post:
+      summary: Toggle purchased state
+      tags: [Grocery]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/GroceryItemId'
+      responses:
+        '200':
+          description: Updated item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroceryItem'
+  /api/grocery/clear-purchased:
+    post:
+      summary: Clear purchased grocery items
+      tags: [Grocery]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '204':
+          description: Cleared
+  /api/grocery/settings:
+    get:
+      summary: Fetch grocery auto-clear settings
+      tags: [Grocery]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '200':
+          description: Settings payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hours:
+                    type: integer
+    post:
+      summary: Update grocery auto-clear settings
+      tags: [Grocery]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hours]
+              properties:
+                hours:
+                  type: integer
+      responses:
+        '200':
+          description: Updated configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hours:
+                    type: integer
+  /api/lists:
+    get:
+      summary: List custom lists
+      tags: [Lists]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '200':
+          description: Lists
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomList'
+    post:
+      summary: Create a custom list
+      tags: [Lists]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                type:
+                  type: string
+      responses:
+        '201':
+          description: Created list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomList'
+  /api/lists/{id}:
+    get:
+      summary: Get a custom list
+      tags: [Lists]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/ListId'
+      responses:
+        '200':
+          description: List with items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomList'
+    patch:
+      summary: Update a custom list
+      tags: [Lists]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/ListId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                type:
+                  type: string
+      responses:
+        '200':
+          description: Updated list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomList'
+    delete:
+      summary: Delete a custom list
+      tags: [Lists]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/ListId'
+      responses:
+        '204':
+          description: Deleted
+  /api/lists/{id}/items:
+    post:
+      summary: Add an item to a list
+      tags: [Lists]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/ListId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label]
+              properties:
+                label:
+                  type: string
+                priority:
+                  type: string
+      responses:
+        '201':
+          description: Created list item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomListItem'
+  /api/lists/{id}/items/{itemId}:
+    patch:
+      summary: Update a list item
+      tags: [Lists]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/ListId'
+        - $ref: '#/components/parameters/ListItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                priority:
+                  type: string
+                checked:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomListItem'
+    delete:
+      summary: Remove a list item
+      tags: [Lists]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/ListId'
+        - $ref: '#/components/parameters/ListItemId'
+      responses:
+        '204':
+          description: Deleted
+  /api/documents:
+    get:
+      summary: List documents
+      tags: [Documents]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '200':
+          description: Document collection
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Document'
+    post:
+      summary: Create a document
+      tags: [Documents]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, content]
+              properties:
+                title:
+                  type: string
+                content:
+                  type: string
+                folderId:
+                  type: string
+      responses:
+        '201':
+          description: Created document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+  /api/documents/{id}:
+    get:
+      summary: Fetch a document
+      tags: [Documents]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+    delete:
+      summary: Delete a document
+      tags: [Documents]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '204':
+          description: Deleted
+  /api/notifications:
+    get:
+      summary: List notifications for the signed-in user
+      tags: [Notifications]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      responses:
+        '200':
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
+  /api/notifications/{id}/dismiss:
+    post:
+      summary: Dismiss a notification
+      tags: [Notifications]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Updated notification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+  /api/omi/webhook:
+    post:
+      summary: Receive an authenticated webhook from Omi
+      tags: [Webhooks]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Event payload forwarded from Omi service.
+      responses:
+        '200':
+          description: Acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+  /api/twilio/webhook:
+    post:
+      summary: Twilio SMS/voice webhook entrypoint
+      tags: [Webhooks]
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: TwiML or acknowledgment
+          content:
+            application/xml:
+              schema:
+                type: string
