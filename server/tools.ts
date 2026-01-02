@@ -1,48 +1,90 @@
 import type OpenAI from "openai";
 
 import {
-  allToolDefinitions,
-  allToolPermissions,
-  executeCommunicationTool,
-  executeReminderTool,
-  executeTaskTool,
-  executeCalendarTool,
-  executeGroceryTool,
-  executeSearchTool,
-  executeFileTool,
-  executeMemoryTool,
-  executeUtilityTool,
-  executeLocationTool,
-  executePeopleTool,
-  executeListTool,
-  executeFoodTool,
-  executeAutomationTool,
-  executeKnowledgeGraphTool,
-  executeCodebaseTool,
-  executeDocumentTool,
-  communicationToolNames,
-  reminderToolNames,
-  taskToolNames,
-  calendarToolNames,
-  groceryToolNames,
-  searchToolNames,
-  fileToolNames,
-  memoryToolNames,
-  utilityToolNames,
-  locationToolNames,
-  peopleToolNames,
-  listToolNames,
-  foodToolNames,
+  automationToolDefinitions,
   automationToolNames,
-  weatherToolNames,
-  knowledgeGraphToolNames,
+  automationToolPermissions,
+  calendarToolDefinitions,
+  calendarToolNames,
+  calendarToolPermissions,
+  codebaseToolDefinitions,
   codebaseToolNames,
+  codebaseToolPermissions,
+  communicationToolDefinitions,
+  communicationToolNames,
+  communicationToolPermissions,
+  documentToolDefinitions,
   documentToolNames,
-  weatherTools,
+  documentToolPermissions,
+  dynamicToolDefinitions,
+  dynamicToolNames,
+  dynamicToolPermissions,
+  executeAutomationTool,
+  executeCalendarTool,
+  executeCodebaseTool,
+  executeCommunicationTool,
+  executeDocumentTool,
+  executeDynamicTool,
+  executeFileTool,
+  executeFoodTool,
+  executeGroceryTool,
+  executeKnowledgeGraphTool,
+  executeListTool,
+  executeLocationTool,
+  executeMemoryTool,
+  executePeopleTool,
+  executeReminderTool,
+  executeSearchTool,
+  executeTaskTool,
+  executeUtilityTool,
+  fileToolDefinitions,
+  fileToolNames,
+  fileToolPermissions,
+  foodToolDefinitions,
+  foodToolNames,
+  foodToolPermissions,
   getActiveReminders as getActiveRemindersFromModule,
+  groceryToolDefinitions,
+  groceryToolNames,
+  groceryToolPermissions,
+  knowledgeGraphToolDefinitions,
+  knowledgeGraphToolNames,
+  knowledgeGraphToolPermissions,
+  listToolDefinitions,
+  listToolNames,
+  listToolPermissions,
+  locationToolDefinitions,
+  locationToolNames,
+  locationToolPermissions,
+  memoryToolDefinitions,
+  memoryToolNames,
+  memoryToolPermissions,
+  peopleToolDefinitions,
+  peopleToolNames,
+  peopleToolPermissions,
+  predictionToolDefinitions,
+  predictionToolNames,
+  predictionToolPermissions,
+  predictionTools,
+  reminderToolDefinitions,
+  reminderToolNames,
+  reminderToolPermissions,
   restorePendingReminders as restorePendingRemindersFromModule,
-  setReminderSendSmsCallback,
+  searchToolDefinitions,
+  searchToolNames,
+  searchToolPermissions,
   setReminderNotifyUserCallback,
+  setReminderSendSmsCallback,
+  taskToolDefinitions,
+  taskToolNames,
+  taskToolPermissions,
+  utilityToolDefinitions,
+  utilityToolNames,
+  utilityToolPermissions,
+  weatherToolDefinitions,
+  weatherToolNames,
+  weatherToolPermissions,
+  weatherTools,
 } from "./capabilities";
 
 export interface ToolPermissions {
@@ -56,9 +98,256 @@ export interface ToolPermissions {
   canSendMessages: boolean;
 }
 
-export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = allToolDefinitions;
+type ToolExecutorContext = {
+  conversationId?: string;
+  sendSmsCallback?: (phone: string, message: string, source?: string) => Promise<void> | null;
+  notifyUserCallback?: (conversationId: string, message: string) => Promise<void> | null;
+  permissions: ToolPermissions;
+};
 
-export const TOOL_PERMISSIONS: Record<string, (permissions: ToolPermissions) => boolean> = allToolPermissions;
+type CapabilityConfig = {
+  definitions: OpenAI.Chat.ChatCompletionTool[];
+  permissions?: Record<string, (permissions: ToolPermissions) => boolean>;
+  names: string[];
+  executor?: (
+    toolName: string,
+    args: Record<string, unknown>,
+    context: ToolExecutorContext
+  ) => Promise<string | null>;
+};
+
+const capabilityRegistry: Record<string, CapabilityConfig> = {
+  communication: {
+    definitions: communicationToolDefinitions,
+    permissions: communicationToolPermissions,
+    names: communicationToolNames,
+    executor: (toolName, args, context) =>
+      executeCommunicationTool(toolName, args, {
+        conversationId: context.conversationId,
+        sendSmsCallback: context.sendSmsCallback ?? undefined,
+        notifyUserCallback: context.notifyUserCallback ?? undefined,
+      }),
+  },
+  reminder: {
+    definitions: reminderToolDefinitions,
+    permissions: reminderToolPermissions,
+    names: reminderToolNames,
+    executor: (toolName, args, context) =>
+      executeReminderTool(toolName, args, {
+        conversationId: context.conversationId,
+        sendSmsCallback: context.sendSmsCallback ?? undefined,
+        notifyUserCallback: context.notifyUserCallback ?? undefined,
+      }),
+  },
+  task: {
+    definitions: taskToolDefinitions,
+    permissions: taskToolPermissions,
+    names: taskToolNames,
+    executor: (toolName, args) => executeTaskTool(toolName, args),
+  },
+  calendar: {
+    definitions: calendarToolDefinitions,
+    permissions: calendarToolPermissions,
+    names: calendarToolNames,
+    executor: (toolName, args) => executeCalendarTool(toolName, args),
+  },
+  grocery: {
+    definitions: groceryToolDefinitions,
+    permissions: groceryToolPermissions,
+    names: groceryToolNames,
+    executor: (toolName, args, context) =>
+      executeGroceryTool(toolName, args, {
+        conversationId: context.conversationId,
+        sendSmsCallback: context.sendSmsCallback ?? undefined,
+        notifyUserCallback: context.notifyUserCallback ?? undefined,
+      }),
+  },
+  search: {
+    definitions: searchToolDefinitions,
+    permissions: searchToolPermissions,
+    names: searchToolNames,
+    executor: (toolName, args, context) =>
+      executeSearchTool(toolName, args, {
+        conversationId: context.conversationId,
+        sendSmsCallback: context.sendSmsCallback ?? undefined,
+        notifyUserCallback: context.notifyUserCallback ?? undefined,
+      }),
+  },
+  file: {
+    definitions: fileToolDefinitions,
+    permissions: fileToolPermissions,
+    names: fileToolNames,
+    executor: (toolName, args) => executeFileTool(toolName, args),
+  },
+  memory: {
+    definitions: memoryToolDefinitions,
+    permissions: memoryToolPermissions,
+    names: memoryToolNames,
+    executor: (toolName, args) => executeMemoryTool(toolName, args),
+  },
+  utility: {
+    definitions: utilityToolDefinitions,
+    permissions: utilityToolPermissions,
+    names: utilityToolNames,
+    executor: (toolName, args, context) =>
+      executeUtilityTool(toolName, args, {
+        conversationId: context.conversationId,
+        sendSmsCallback: context.sendSmsCallback ?? undefined,
+        notifyUserCallback: context.notifyUserCallback ?? undefined,
+      }),
+  },
+  location: {
+    definitions: locationToolDefinitions,
+    permissions: locationToolPermissions,
+    names: locationToolNames,
+    executor: (toolName, args) => executeLocationTool(toolName, args),
+  },
+  people: {
+    definitions: peopleToolDefinitions,
+    permissions: peopleToolPermissions,
+    names: peopleToolNames,
+    executor: (toolName, args) => executePeopleTool(toolName, args),
+  },
+  list: {
+    definitions: listToolDefinitions,
+    permissions: listToolPermissions,
+    names: listToolNames,
+    executor: (toolName, args, context) => executeListTool(toolName, args, context.permissions),
+  },
+  food: {
+    definitions: foodToolDefinitions,
+    permissions: foodToolPermissions,
+    names: foodToolNames,
+    executor: (toolName, args) => executeFoodTool(toolName, args),
+  },
+  automation: {
+    definitions: automationToolDefinitions,
+    permissions: automationToolPermissions,
+    names: automationToolNames,
+    executor: (toolName, args, context) =>
+      executeAutomationTool(toolName, args, {
+        conversationId: context.conversationId,
+        sendSmsCallback: context.sendSmsCallback ?? undefined,
+        notifyUserCallback: context.notifyUserCallback ?? undefined,
+      }),
+  },
+  weather: {
+    definitions: weatherToolDefinitions,
+    permissions: weatherToolPermissions,
+    names: weatherToolNames,
+    executor: async (toolName, args) => {
+      const tool = weatherTools.find(t => t.name === toolName);
+      if (tool) {
+        return await tool.execute(args as any);
+      }
+      return null;
+    },
+  },
+  knowledgeGraph: {
+    definitions: knowledgeGraphToolDefinitions,
+    permissions: knowledgeGraphToolPermissions,
+    names: knowledgeGraphToolNames,
+    executor: async (toolName, args) => {
+      const kgResult = await executeKnowledgeGraphTool(toolName, args);
+      return JSON.stringify(kgResult);
+    },
+  },
+  codebase: {
+    definitions: codebaseToolDefinitions,
+    permissions: codebaseToolPermissions,
+    names: codebaseToolNames,
+    executor: (toolName, args) => executeCodebaseTool(toolName, args),
+  },
+  document: {
+    definitions: documentToolDefinitions,
+    permissions: documentToolPermissions,
+    names: documentToolNames,
+    executor: (toolName, args) => executeDocumentTool(toolName, args),
+  },
+  dynamic: {
+    definitions: dynamicToolDefinitions,
+    permissions: dynamicToolPermissions,
+    names: Array.from(dynamicToolNames),
+    executor: (toolName, args) => executeDynamicTool(toolName, args),
+  },
+  predictions: {
+    definitions: predictionToolDefinitions,
+    permissions: predictionToolPermissions,
+    names: predictionToolNames,
+    executor: async (toolName, args) => {
+      const executor = (predictionTools as Record<string, (params: any) => any>)[toolName];
+      if (!executor) {
+        return null;
+      }
+      const result = await executor(args as any);
+      return typeof result === "string" ? result : JSON.stringify(result);
+    },
+  },
+};
+
+const activeCategories = new Set<string>([
+  "communication",
+  "reminder",
+  "task",
+  "calendar",
+  "grocery",
+  "search",
+  "file",
+  "memory",
+  "utility",
+  "location",
+  "people",
+  "list",
+  "food",
+  "automation",
+  "weather",
+  "codebase",
+  "document",
+  "dynamic",
+]);
+
+function computeDefinitions() {
+  const defs: OpenAI.Chat.ChatCompletionTool[] = [];
+  const perms: Record<string, (permissions: ToolPermissions) => boolean> = {};
+  const names: string[] = [];
+
+  for (const category of activeCategories) {
+    const config = capabilityRegistry[category];
+    if (!config) continue;
+
+    defs.push(...config.definitions);
+    names.push(...config.names);
+    Object.assign(perms, config.permissions || {});
+  }
+
+  return { defs, perms, names };
+}
+
+export function loadToolCategory(category: string): void {
+  const normalizedCategory = category.trim();
+  const config = capabilityRegistry[normalizedCategory];
+  if (!config) {
+    throw new Error(`Unknown tool category: ${category}`);
+  }
+  activeCategories.add(normalizedCategory);
+}
+
+export function getActiveToolDefinitions(): OpenAI.Chat.ChatCompletionTool[] {
+  return computeDefinitions().defs;
+}
+
+export function getActiveToolPermissions(): Record<string, (p: ToolPermissions) => boolean> {
+  return computeDefinitions().perms;
+}
+
+export function getActiveToolNames(): string[] {
+  return computeDefinitions().names;
+}
+
+export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = getActiveToolDefinitions();
+
+export const TOOL_PERMISSIONS: Record<string, (permissions: ToolPermissions) => boolean> =
+  getActiveToolPermissions();
 
 let sendSmsCallback: ((phone: string, message: string, source?: string) => Promise<void>) | null = null;
 let notifyUserCallback: ((conversationId: string, message: string) => Promise<void>) | null = null;
@@ -74,13 +363,18 @@ export function setNotifyUserCallback(callback: (conversationId: string, message
 }
 
 export async function executeTool(
-  toolName: string, 
+  toolName: string,
   args: Record<string, unknown>,
   conversationId?: string,
   permissions?: ToolPermissions
 ): Promise<string> {
   console.log(`Executing tool: ${toolName}`, args);
-  
+
+  const activeToolNames = new Set(getActiveToolNames());
+  if (!activeToolNames.has(toolName)) {
+    return JSON.stringify({ error: `Unknown or inactive tool: ${toolName}` });
+  }
+
   const effectivePermissions: ToolPermissions = permissions || {
     isAdmin: true,
     canAccessPersonalInfo: true,
@@ -91,8 +385,8 @@ export async function executeTool(
     canQueryMemory: true,
     canSendMessages: true,
   };
-  
-  const permissionCheck = TOOL_PERMISSIONS[toolName];
+
+  const permissionCheck = getActiveToolPermissions()[toolName];
   if (permissionCheck && !permissionCheck(effectivePermissions)) {
     console.log(`Access denied for tool ${toolName} - insufficient permissions`);
     return JSON.stringify({
@@ -101,55 +395,26 @@ export async function executeTool(
       denied_tool: toolName,
     });
   }
-  
-  const options = {
+
+  const context: ToolExecutorContext = {
     conversationId,
     sendSmsCallback,
     notifyUserCallback,
+    permissions: effectivePermissions,
   };
 
   let result: string | null = null;
 
-  if (communicationToolNames.includes(toolName)) {
-    result = await executeCommunicationTool(toolName, args, options);
-  } else if (reminderToolNames.includes(toolName)) {
-    result = await executeReminderTool(toolName, args, options);
-  } else if (taskToolNames.includes(toolName)) {
-    result = await executeTaskTool(toolName, args);
-  } else if (calendarToolNames.includes(toolName)) {
-    result = await executeCalendarTool(toolName, args);
-  } else if (groceryToolNames.includes(toolName)) {
-    result = await executeGroceryTool(toolName, args, options);
-  } else if (searchToolNames.includes(toolName)) {
-    result = await executeSearchTool(toolName, args, options);
-  } else if (fileToolNames.includes(toolName)) {
-    result = await executeFileTool(toolName, args);
-  } else if (memoryToolNames.includes(toolName)) {
-    result = await executeMemoryTool(toolName, args);
-  } else if (utilityToolNames.includes(toolName)) {
-    result = await executeUtilityTool(toolName, args, options);
-  } else if (locationToolNames.includes(toolName)) {
-    result = await executeLocationTool(toolName, args);
-  } else if (peopleToolNames.includes(toolName)) {
-    result = await executePeopleTool(toolName, args);
-  } else if (listToolNames.includes(toolName)) {
-    result = await executeListTool(toolName, args, effectivePermissions);
-  } else if (foodToolNames.includes(toolName)) {
-    result = await executeFoodTool(toolName, args);
-  } else if (automationToolNames.includes(toolName)) {
-    result = await executeAutomationTool(toolName, args, options);
-  } else if (weatherToolNames.includes(toolName)) {
-    const tool = weatherTools.find(t => t.name === toolName);
-    if (tool) {
-      result = await tool.execute(args as any);
+  for (const category of activeCategories) {
+    const config = capabilityRegistry[category];
+    if (!config || !config.names.includes(toolName)) {
+      continue;
     }
-  } else if (knowledgeGraphToolNames.includes(toolName)) {
-    const kgResult = await executeKnowledgeGraphTool(toolName, args);
-    result = JSON.stringify(kgResult);
-  } else if (codebaseToolNames.includes(toolName)) {
-    result = await executeCodebaseTool(toolName, args);
-  } else if (documentToolNames.includes(toolName)) {
-    result = await executeDocumentTool(toolName, args);
+
+    if (config.executor) {
+      result = await config.executor(toolName, args, context);
+      break;
+    }
   }
 
   if (result !== null) {
