@@ -29,7 +29,7 @@ import {
   deleteVoiceSample as deleteVoiceSampleFromDb,
 } from "./db";
 import type { TranscriptSegmentEvent } from "@shared/schema";
-import { createMobileAuthMiddleware, registerSecurityLogsEndpoint, registerPairingEndpoints, validateDeviceToken } from "./mobileAuth";
+import { createMobileAuthMiddleware, registerSecurityLogsEndpoint, validateDeviceToken } from "./mobileAuth";
 import { registerSmsPairingEndpoints } from "./sms-pairing";
 import { registerWebAuthEndpoints } from "./web-auth";
 import { registerApplicationEndpoints } from "./applications";
@@ -797,9 +797,6 @@ export async function registerRoutes(
   // DEPRECATED: Legacy secret-based pairing - scheduled for removal in next version
   // The Android app now uses SMS-based pairing via registerSmsPairingEndpoints()
   // Legacy endpoints: /api/auth/pair, /api/auth/verify (uses ZEKE_SHARED_SECRET)
-  // TODO: Remove registerPairingEndpoints() after confirming no clients use legacy flow
-  // registerPairingEndpoints(app);
-  
   // SMS-based pairing (primary authentication method for mobile app)
   registerSmsPairingEndpoints(app);
   
