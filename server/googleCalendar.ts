@@ -67,6 +67,16 @@ export interface CalendarEvent {
   calendarId?: string;
   calendarName?: string;
   backgroundColor?: string;
+  attendees?: string[];
+  recurrence?: string[];
+  conferenceLink?: string;
+}
+
+export interface CalendarEventOptions {
+  calendarId?: string;
+  recurrenceRule?: string | string[];
+  attendees?: Array<string | { email: string; optional?: boolean; displayName?: string }>;
+  createConferenceLink?: boolean;
 }
 
 export async function listCalendars(): Promise<CalendarInfo[]> {
@@ -91,8 +101,8 @@ export interface CalendarFetchResult {
 }
 
 export async function listCalendarEvents(
-  timeMin?: Date, 
-  timeMax?: Date, 
+  timeMin?: Date,
+  timeMax?: Date,
   maxResults: number = 10,
   calendarIds?: string[]
 ): Promise<CalendarFetchResult> {
@@ -135,6 +145,9 @@ export async function listCalendarEvents(
         calendarId,
         calendarName: calInfo?.summary || calendarId,
         backgroundColor: calInfo?.backgroundColor || '#4285f4',
+        attendees: event.attendees?.map(att => att.email || '').filter(Boolean),
+        recurrence: event.recurrence,
+        conferenceLink: event.hangoutLink || event.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri,
       }));
       
       allEvents.push(...mappedEvents);
@@ -184,16 +197,40 @@ export async function createCalendarEvent(
   endTime: Date,
   description?: string,
   location?: string,
-  allDay: boolean = false
+  allDay: boolean = false,
+  options: CalendarEventOptions = {}
 ): Promise<CalendarEvent> {
   const calendar = await getGoogleCalendarClient();
-  
+
   const event: any = {
     summary,
     description,
     location,
   };
-  
+
+  const recurrenceRules = Array.isArray(options.recurrenceRule)
+    ? options.recurrenceRule
+    : options.recurrenceRule
+    ? [options.recurrenceRule]
+    : undefined;
+
+  if (recurrenceRules?.length) {
+    event.recurrence = recurrenceRules.map(rule => rule.startsWith('RRULE:') ? rule : `RRULE:${rule}`);
+  }
+
+  if (options.attendees?.length) {
+    event.attendees = options.attendees.map(attendee => {
+      if (typeof attendee === 'string') {
+        return { email: attendee };
+      }
+      return {
+        email: attendee.email,
+        optional: attendee.optional,
+        displayName: attendee.displayName,
+      };
+    });
+  }
+
   if (allDay) {
     event.start = { date: startTime.toISOString().split('T')[0] };
     event.end = { date: endTime.toISOString().split('T')[0] };
@@ -201,10 +238,19 @@ export async function createCalendarEvent(
     event.start = { dateTime: startTime.toISOString(), timeZone: 'America/New_York' };
     event.end = { dateTime: endTime.toISOString(), timeZone: 'America/New_York' };
   }
-  
+
+  if (options.createConferenceLink) {
+    event.conferenceData = {
+      createRequest: {
+        requestId: `zeke-${Date.now()}`,
+      },
+    };
+  }
+
   const response = await calendar.events.insert({
-    calendarId: 'primary',
+    calendarId: options.calendarId || 'primary',
     requestBody: event,
+    conferenceDataVersion: options.createConferenceLink ? 1 : undefined,
   });
   
   const created = response.data;
@@ -216,6 +262,9 @@ export async function createCalendarEvent(
     start: created.start?.dateTime || created.start?.date || '',
     end: created.end?.dateTime || created.end?.date || '',
     allDay: !created.start?.dateTime,
+    attendees: created.attendees?.map(att => att.email || '').filter(Boolean),
+    recurrence: created.recurrence || undefined,
+    conferenceLink: created.hangoutLink || created.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri,
   };
 }
 
@@ -239,7 +288,8 @@ export async function updateCalendarEvent(
     startTime?: Date;
     endTime?: Date;
   },
-  calendarId: string = 'primary'
+  calendarId: string = 'primary',
+  options: CalendarEventOptions = {}
 ): Promise<CalendarEvent> {
   const calendar = await getGoogleCalendarClient();
   
@@ -253,7 +303,27 @@ export async function updateCalendarEvent(
     description: updates.description !== undefined ? updates.description : existing.data.description,
     location: updates.location !== undefined ? updates.location : existing.data.location,
   };
-  
+
+  if (options.recurrenceRule) {
+    const recurrenceRules = Array.isArray(options.recurrenceRule)
+      ? options.recurrenceRule
+      : [options.recurrenceRule];
+    event.recurrence = recurrenceRules.map(rule => rule.startsWith('RRULE:') ? rule : `RRULE:${rule}`);
+  }
+
+  if (options.attendees) {
+    event.attendees = options.attendees.map(attendee => {
+      if (typeof attendee === 'string') {
+        return { email: attendee };
+      }
+      return {
+        email: attendee.email,
+        optional: attendee.optional,
+        displayName: attendee.displayName,
+      };
+    });
+  }
+
   if (updates.startTime) {
     event.start = { dateTime: updates.startTime.toISOString(), timeZone: 'America/New_York' };
   } else {
@@ -265,11 +335,20 @@ export async function updateCalendarEvent(
   } else {
     event.end = existing.data.end;
   }
-  
+
+  if (options.createConferenceLink) {
+    event.conferenceData = {
+      createRequest: {
+        requestId: `zeke-${Date.now()}`,
+      },
+    };
+  }
+
   const response = await calendar.events.update({
     calendarId,
     eventId,
     requestBody: event,
+    conferenceDataVersion: options.createConferenceLink ? 1 : undefined,
   });
   
   const updated = response.data;
@@ -281,5 +360,8 @@ export async function updateCalendarEvent(
     start: updated.start?.dateTime || updated.start?.date || '',
     end: updated.end?.dateTime || updated.end?.date || '',
     allDay: !updated.start?.dateTime,
+    attendees: updated.attendees?.map(att => att.email || '').filter(Boolean),
+    recurrence: updated.recurrence || undefined,
+    conferenceLink: updated.hangoutLink || updated.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri,
   };
 }
