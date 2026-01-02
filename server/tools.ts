@@ -18,6 +18,7 @@ import {
   executeFoodTool,
   executeAutomationTool,
   executeKnowledgeGraphTool,
+  executeInsightTool,
   executeCodebaseTool,
   executeDocumentTool,
   communicationToolNames,
@@ -36,6 +37,7 @@ import {
   automationToolNames,
   weatherToolNames,
   knowledgeGraphToolNames,
+  insightToolNames,
   codebaseToolNames,
   documentToolNames,
   weatherTools,
@@ -143,6 +145,9 @@ export async function executeTool(
     if (tool) {
       result = await tool.execute(args as any);
     }
+  } else if (insightToolNames.includes(toolName)) {
+    const insightResult = await executeInsightTool(toolName, args);
+    result = JSON.stringify(insightResult);
   } else if (knowledgeGraphToolNames.includes(toolName)) {
     const kgResult = await executeKnowledgeGraphTool(toolName, args);
     result = JSON.stringify(kgResult);

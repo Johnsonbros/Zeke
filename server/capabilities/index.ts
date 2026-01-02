@@ -124,6 +124,13 @@ export {
 } from "./knowledgeGraph";
 
 export {
+  insightToolDefinitions,
+  insightToolPermissions,
+  executeInsightTool,
+  insightToolNames,
+} from "./insights";
+
+export {
   codebaseToolDefinitions,
   codebaseToolPermissions,
   executeCodebaseTool,
@@ -157,6 +164,7 @@ import { automationToolDefinitions, automationToolPermissions } from "./automati
 import { weatherTools } from "./weather";
 import { predictionToolDefinitions } from "./predictions";
 import { knowledgeGraphToolDefinitions, knowledgeGraphToolPermissions } from "./knowledgeGraph";
+import { insightToolDefinitions, insightToolPermissions } from "./insights";
 import { codebaseToolDefinitions, codebaseToolPermissions } from "./codebase";
 import { documentToolDefinitions, documentToolPermissions } from "./documents";
 
@@ -216,6 +224,7 @@ export const allToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   ...foodToolDefinitions,
   ...automationToolDefinitions,
   ...weatherToolDefinitions,
+  ...insightToolDefinitions,
   // predictionToolDefinitionsFormatted excluded - 128 tool limit
   // knowledgeGraphToolDefinitions excluded - 128 tool limit (9 tools)
   ...codebaseToolDefinitions,
@@ -238,6 +247,7 @@ export const allToolPermissions: Record<string, (permissions: ToolPermissions) =
   ...foodToolPermissions,
   ...automationToolPermissions,
   ...weatherToolPermissions,
+  ...insightToolPermissions,
   // predictionToolPermissions excluded - tools removed for 128 limit
   // knowledgeGraphToolPermissions excluded - tools removed for 128 limit
   ...codebaseToolPermissions,
