@@ -18,6 +18,7 @@ import { initializePredictionScheduler } from "./predictionScheduler";
 import { startKVMaintenance } from "./kvIndex";
 import { startKnowledgeGraphBackfillScheduler } from "./jobs/knowledgeGraphBackfill";
 import { renderDocs } from "./docs";
+import { registerOpenApiRoute } from "./openapi";
 import { initializeLocationCheckIn, startLocationCheckInMonitor } from "./locationCheckInMonitor";
 import { initializeDailyCheckIn } from "./dailyCheckIn";
 import { initializeBatchScheduler } from "./notificationBatcher";
@@ -92,6 +93,8 @@ app.get("/docs", (_req, res) => {
     res.status(500).send("Failed to render documentation");
   }
 });
+
+registerOpenApiRoute(app);
 
 app.use((req, res, next) => {
   const start = Date.now();
