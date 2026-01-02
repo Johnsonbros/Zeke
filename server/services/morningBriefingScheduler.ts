@@ -1,15 +1,41 @@
 import * as cron from "node-cron";
 import {
-  getBriefingSetting,
+  getBriefingSettingByKey,
   getRecentNewsStories,
   getBriefingRecipientsByType,
   createBriefingDeliveryLog,
   getCalendarEvents,
   getTasks,
 } from "../db";
+import {
+  formatForecastForSms,
+  formatWeatherForSms,
+  getCurrentWeather,
+  getWeatherForecast,
+} from "../weather";
+import { isTwilioConfigured } from "../twilioClient";
 
 let briefingScheduler: cron.ScheduledTask | null = null;
 let sendSmsCallback: ((phone: string, message: string) => Promise<string>) | null = null;
+
+async function getBriefingTime(): Promise<string> {
+  const briefingTime = await getBriefingSettingByKey("briefing_time");
+  return briefingTime || "06:00";
+}
+
+async function getWeatherLocation(): Promise<{ city: string; state: string; country: string }> {
+  const [city, state, country] = await Promise.all([
+    getBriefingSettingByKey("weather_city"),
+    getBriefingSettingByKey("weather_state"),
+    getBriefingSettingByKey("weather_country"),
+  ]);
+
+  return {
+    city: city || "Boston",
+    state: state || "MA",
+    country: country || "US",
+  };
+}
 
 /**
  * Set the SMS callback for sending briefings
@@ -121,8 +147,17 @@ async function sendWeatherBriefing(recipientPhone: string): Promise<void> {
   if (!sendSmsCallback) return;
 
   try {
-    // TODO: Integrate with weather API
-    const weatherMessage = "Weather: Check OpenWeatherMap for updates";
+    const { city, state, country } = await getWeatherLocation();
+    const [weather, forecast] = await Promise.all([
+      getCurrentWeather(city, state, country),
+      getWeatherForecast(city, state, country, 2),
+    ]);
+
+    const forecastSummary = forecast.length > 0
+      ? `\n\nForecast:\n${formatForecastForSms(forecast)}`
+      : "";
+
+    const weatherMessage = `${formatWeatherForSms(weather)}${forecastSummary}`;
     const messageId = await sendSmsCallback(recipientPhone, weatherMessage);
     await createBriefingDeliveryLog({
       briefingType: "weather",
@@ -133,6 +168,13 @@ async function sendWeatherBriefing(recipientPhone: string): Promise<void> {
     });
   } catch (error) {
     console.error(`[MorningBriefing] Error sending weather to ${recipientPhone}:`, error);
+
+    await createBriefingDeliveryLog({
+      briefingType: "weather",
+      recipientPhone,
+      content: "Weather update unavailable right now. I'll retry soon.",
+      status: "failed",
+    });
   }
 }
 
@@ -143,8 +185,20 @@ async function sendSystemHealthReport(recipientPhone: string): Promise<void> {
   if (!sendSmsCallback) return;
 
   try {
-    // TODO: Integrate with health report generation
-    const healthMessage = "ZEKE HEALTH: All systems nominal ✓";
+    const [twilioReady, briefingTime] = await Promise.all([
+      isTwilioConfigured().catch(() => false),
+      getBriefingTime(),
+    ]);
+
+    const healthLines = [
+      "ZEKE HEALTH CHECK",
+      `• Scheduler: ${briefingScheduler ? "running" : "stopped"} (target ${briefingTime} ET)`,
+      `• Twilio: ${twilioReady ? "connected" : "not configured"}`,
+      `• OpenAI: ${process.env.OPENAI_API_KEY ? "api key set" : "missing key"}`,
+      `• Weather: ${process.env.OPENWEATHERMAP_API_KEY ? "api key set" : "missing key"}`,
+    ];
+
+    const healthMessage = healthLines.join("\n");
     const messageId = await sendSmsCallback(recipientPhone, healthMessage);
     await createBriefingDeliveryLog({
       briefingType: "system_health",
@@ -155,6 +209,13 @@ async function sendSystemHealthReport(recipientPhone: string): Promise<void> {
     });
   } catch (error) {
     console.error(`[MorningBriefing] Error sending health report to ${recipientPhone}:`, error);
+
+    await createBriefingDeliveryLog({
+      briefingType: "system_health",
+      recipientPhone,
+      content: "System health check unavailable right now.",
+      status: "failed",
+    });
   }
 }
 
@@ -194,8 +255,7 @@ export async function startMorningBriefingScheduler(): Promise<void> {
     return;
   }
 
-  const briefingTimeSetting = await getBriefingSetting("briefing_time");
-  const briefingTime = briefingTimeSetting || "06:00";
+  const briefingTime = await getBriefingTime();
   const [hours, minutes] = briefingTime.split(":").map(Number);
 
   // Schedule for 6 AM daily (0 6 * * *)
@@ -228,7 +288,7 @@ export async function getMorningBriefingStatus(): Promise<{
   running: boolean;
   scheduledTime: string;
 }> {
-  const scheduledTime = (await getBriefingSetting("briefing_time")) || "06:00";
+  const scheduledTime = await getBriefingTime();
   return {
     running: briefingScheduler !== null,
     scheduledTime,
