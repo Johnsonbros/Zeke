@@ -226,7 +226,7 @@ export const taskToolPermissions: Record<string, (permissions: ToolPermissions) 
   add_task: (p) => p.canAccessTasks,
   list_tasks: (p) => p.canAccessTasks,
   update_task: (p) => p.canAccessTasks,
-  toggle_task: (p) => p.canAccessTasks,
+  complete_task: (p) => p.canAccessTasks,
   delete_task: (p) => p.canAccessTasks,
   clear_completed_tasks: (p) => p.canAccessTasks,
   breakdown_task: (p) => p.canAccessTasks,
