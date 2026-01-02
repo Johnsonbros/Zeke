@@ -3554,8 +3554,9 @@ export type BatchJobStatus = typeof batchJobStatuses[number];
 // Batch artifact types
 export const batchArtifactTypes = [
   "MEMORY_SUMMARY",
-  "KG_EDGES", 
+  "KG_EDGES",
   "FEEDBACK_FIX",
+  "DEAD_LETTER",
   "EVAL_TESTCASE",
   "CORRELATION_INSIGHT",
   "CALIBRATION_INSIGHT",
