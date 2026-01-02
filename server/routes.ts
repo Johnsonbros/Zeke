@@ -506,6 +506,7 @@ import {
   buildConversationBundle,
   DEFAULT_TOKEN_BUDGET,
 } from "./contextRouter";
+import { CACHE_TTL, ROUTE_PREFETCH_PATTERNS, contextCache, createCacheKey, type CacheInvalidationDomain } from "./contextCache";
 import { onTaskCreated } from "./entityExtractor";
 import { 
   queryKnowledgeGraph, 
@@ -2565,7 +2566,99 @@ export async function registerRoutes(
       res.status(500).json({ message: error.message || "Failed to process chat" });
     }
   });
-  
+
+  type PrefetchEntry = {
+    key: string;
+    compute: () => Promise<unknown> | unknown;
+    ttlMs?: number;
+    domain?: CacheInvalidationDomain;
+  };
+
+  const routeBundlePrefetchers: Record<string, (conversationId?: string) => PrefetchEntry | null> = {
+    tasks: () => ({
+      key: createCacheKey("tasks", "all"),
+      compute: () => getAllTasks(),
+      ttlMs: CACHE_TTL.tasks,
+      domain: "tasks",
+    }),
+    calendar: () => ({
+      key: createCacheKey("calendar", "upcoming"),
+      compute: () => getUpcomingEvents(10),
+      ttlMs: CACHE_TTL.calendar,
+      domain: "calendar",
+    }),
+    memory: () => ({
+      key: createCacheKey("memory", "recent"),
+      compute: () => getAllMemoryNotes(),
+      ttlMs: CACHE_TTL.memory,
+      domain: "memory",
+    }),
+    grocery: () => ({
+      key: createCacheKey("grocery", "all"),
+      compute: () => getAllGroceryItems(),
+      ttlMs: CACHE_TTL.grocery,
+      domain: "grocery",
+    }),
+    contacts: () => ({
+      key: createCacheKey("contacts", "all"),
+      compute: () => getAllContacts(),
+      ttlMs: CACHE_TTL.contacts,
+      domain: "contacts",
+    }),
+    profile: () => ({
+      key: createCacheKey("profile", "all"),
+      compute: () => getAllProfileSections(),
+      ttlMs: CACHE_TTL.profile,
+      domain: "profile",
+    }),
+    omi: () => ({
+      key: createCacheKey("omi", "recent"),
+      compute: () => getRecentMemories(24, 5),
+      ttlMs: CACHE_TTL.omi,
+      domain: "omi",
+    }),
+    conversation: (conversationId?: string) => {
+      if (!conversationId) return null;
+      return {
+        key: createCacheKey("conversation", conversationId),
+        compute: () => getMessagesByConversation(conversationId),
+        ttlMs: CACHE_TTL.conversation,
+        domain: "conversation",
+      };
+    },
+  };
+
+  async function warmMobileContextCache(
+    routes: string[],
+    options: { conversationId?: string } = {}
+  ): Promise<void> {
+    const bundles = new Set<string>();
+    routes.forEach((route) => {
+      const patterns = ROUTE_PREFETCH_PATTERNS[route];
+      if (!patterns) return;
+      patterns.forEach((bundle) => bundles.add(bundle));
+    });
+
+    if (bundles.size === 0) return;
+
+    const entries: PrefetchEntry[] = [];
+    bundles.forEach((bundleName) => {
+      const builder = routeBundlePrefetchers[bundleName];
+      const entry = builder?.(options.conversationId);
+      if (entry) {
+        entries.push(entry);
+      }
+    });
+
+    if (entries.length === 0) return;
+
+    try {
+      await contextCache.prefetch(entries);
+    } catch (error) {
+      console.error("[MobileWarm] Failed to prefetch context bundles:", error);
+    }
+  }
+
   // Create a Getting To Know You conversation (resets each time, generates contextual questions)
   app.post("/api/conversations/getting-to-know", async (_req, res) => {
     try {
@@ -2601,11 +2694,17 @@ export async function registerRoutes(
   app.post("/api/conversations", async (req, res) => {
     try {
       const { title, forceNew } = req.body || {};
-      
+
       // Detect source from headers or default to "mobile"
       const deviceToken = req.headers['x-zeke-device-token'];
       const source = deviceToken ? "mobile" : "web";
-      
+
+      if (source === "mobile") {
+        warmMobileContextCache(["/", "/chat"]).catch((error) =>
+          console.error("[MobileWarm] Conversation create prefetch failed:", error)
+        );
+      }
+
       // Use unified conversation unless explicitly requesting a new one
       // Mobile app should use the unified conversation by default
       if (!forceNew) {
@@ -2659,9 +2758,20 @@ export async function registerRoutes(
       if (!conversation) {
         return res.status(404).json({ message: "Conversation not found" });
       }
-      
+
+      if (req.headers['x-zeke-device-token']) {
+        const warmRoutes = ["/chat"];
+        if (conversation.source === "sms" || conversation.phoneNumber) {
+          warmRoutes.push("sms");
+        }
+
+        warmMobileContextCache(warmRoutes, { conversationId: id }).catch((error) =>
+          console.error("[MobileWarm] Conversation detail prefetch failed:", error)
+        );
+      }
+
       const messages = await getMessagesByConversation(id);
-      
+
       res.json({ conversation, messages });
     } catch (error: any) {
       console.error("Get conversation error:", error);
@@ -2696,7 +2806,18 @@ export async function registerRoutes(
       if (!conversation) {
         return res.status(404).json({ message: "Conversation not found" });
       }
-      
+
+      if (req.headers['x-zeke-device-token']) {
+        const warmRoutes = ["/chat"];
+        if (conversation.source === "sms" || conversation.phoneNumber) {
+          warmRoutes.push("sms");
+        }
+
+        warmMobileContextCache(warmRoutes, { conversationId: id }).catch((error) =>
+          console.error("[MobileWarm] Conversation messages prefetch failed:", error)
+        );
+      }
+
       const messages = await getMessagesByConversation(id);
       res.json(messages);
     } catch (error: any) {
@@ -2719,7 +2840,18 @@ export async function registerRoutes(
       if (!conversation) {
         return res.status(404).json({ message: "Conversation not found" });
       }
-      
+
+      if (req.headers['x-zeke-device-token']) {
+        const warmRoutes = ["/chat"];
+        if (conversation.source === "sms" || conversation.phoneNumber) {
+          warmRoutes.push("sms");
+        }
+
+        warmMobileContextCache(warmRoutes, { conversationId: id }).catch((error) =>
+          console.error("[MobileWarm] Conversation send prefetch failed:", error)
+        );
+      }
+
       // Detect source from headers
       const deviceToken = req.headers['x-zeke-device-token'];
       const source = deviceToken ? "mobile" : "web";
@@ -14258,6 +14390,12 @@ export async function registerRoutes(
   // GET /api/dashboard - Dashboard summary for mobile app home screen
   app.get("/api/dashboard", async (req: Request, res: Response) => {
     try {
+      if (req.headers['x-zeke-device-token']) {
+        warmMobileContextCache(["/", "/chat", "/tasks"]).catch((error) =>
+          console.error("[MobileWarm] Dashboard prefetch failed:", error)
+        );
+      }
+
       const summary = await getDashboardSummary();
       res.json(summary);
     } catch (error: any) {

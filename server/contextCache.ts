@@ -62,12 +62,12 @@ const PRIORITY_WEIGHTS: Record<CachePriority, number> = {
   critical: 1000,
 };
 
-const DOMAIN_MODEL_AWARE_CONFIG: Record<CacheInvalidationDomain, { 
+export const DOMAIN_MODEL_AWARE_CONFIG: Record<CacheInvalidationDomain, {
   baseTtl: number;
   volatility: "high" | "medium" | "low";
   priorityBoost: number;
 }> = {
-  tasks: { baseTtl: 30000, volatility: "high", priorityBoost: 2 },
+  tasks: { baseTtl: 20000, volatility: "high", priorityBoost: 2 },
   calendar: { baseTtl: 60000, volatility: "medium", priorityBoost: 1 },
   memory: { baseTtl: 120000, volatility: "low", priorityBoost: 3 },
   grocery: { baseTtl: 30000, volatility: "high", priorityBoost: 1 },
@@ -75,12 +75,12 @@ const DOMAIN_MODEL_AWARE_CONFIG: Record<CacheInvalidationDomain, {
   locations: { baseTtl: 60000, volatility: "medium", priorityBoost: 1 },
   omi: { baseTtl: 30000, volatility: "high", priorityBoost: 2 },
   profile: { baseTtl: 600000, volatility: "low", priorityBoost: 3 },
-  conversation: { baseTtl: 10000, volatility: "high", priorityBoost: 4 },
+  conversation: { baseTtl: 5000, volatility: "high", priorityBoost: 4 },
   nlp: { baseTtl: 60000, volatility: "low", priorityBoost: 1 },
   all: { baseTtl: 60000, volatility: "medium", priorityBoost: 0 },
 };
 
-const ROUTE_PREFETCH_PATTERNS: Record<string, string[]> = {
+export const ROUTE_PREFETCH_PATTERNS: Record<string, string[]> = {
   "/": ["tasks", "calendar"],
   "/chat": ["memory", "conversation", "omi"],
   "/tasks": ["tasks", "calendar"],
@@ -475,7 +475,7 @@ export const contextCache = new ContextCache();
 
 // TTL configurations for different bundle types
 export const CACHE_TTL = {
-  tasks: 30000,        // 30 seconds - tasks change frequently
+  tasks: 20000,        // 20 seconds - tasks change frequently
   calendar: 60000,     // 1 minute - calendar events are relatively stable
   memory: 120000,      // 2 minutes - memories don't change often
   grocery: 30000,      // 30 seconds - grocery items can change
@@ -483,7 +483,7 @@ export const CACHE_TTL = {
   locations: 60000,    // 1 minute - location data
   omi: 30000,          // 30 seconds - Omi memories update frequently
   profile: 600000,     // 10 minutes - profile rarely changes
-  conversation: 10000, // 10 seconds - conversation context is dynamic
+  conversation: 5000,  // 5 seconds - conversation context is very dynamic
   global: 300000,      // 5 minutes - global context is stable
 } as const;
 
