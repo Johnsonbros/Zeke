@@ -592,6 +592,7 @@ function logTwilioMessage(params: {
   errorMessage?: string;
   hasMms?: boolean;
   mediaCount?: number;
+  latencyMs?: number;
 }) {
   try {
     const contact = getContactByPhone(
@@ -622,6 +623,7 @@ function logTwilioMessage(params: {
         direction: params.direction,
         mediaCount: params.mediaCount || 1, // Store for analytics, but unit cost is 1
         conversationId: params.conversationId,
+        latencyMs: params.latencyMs,
       }).catch(err => console.error("[TWILIO LOG] Cost tracking failed:", err));
     } else {
       logTwilioSms({
@@ -629,6 +631,7 @@ function logTwilioMessage(params: {
         phoneNumber: params.direction === "inbound" ? params.fromNumber : params.toNumber,
         messageSegments,
         conversationId: params.conversationId,
+        latencyMs: params.latencyMs,
       }).catch(err => console.error("[TWILIO LOG] Cost tracking failed:", err));
     }
     
@@ -676,17 +679,19 @@ async function sendSmsWithRef(params: {
   
   // Append ref code to body (check if already has ref to avoid double-append)
   const bodyWithRef = params.body.includes("(ref:") ? params.body : `${params.body} (ref: ${refCode})`;
-  
+
   // Send SMS with ref code
+  const sendStart = Date.now();
   const result = await client.messages.create({
     body: bodyWithRef,
     from: params.fromPhone,
     to: params.toPhone,
   });
-  
+  const latencyMs = Date.now() - sendStart;
+
   // Update DB with Twilio SID
   updateOutboundMessageSid(outboundMsg.id, result.sid);
-  
+
   // Log the outbound message
   logTwilioMessage({
     direction: "outbound",
@@ -697,6 +702,7 @@ async function sendSmsWithRef(params: {
     twilioSid: result.sid,
     status: "sent",
     conversationId: params.conversationId,
+    latencyMs,
   });
   
   return {
@@ -820,6 +826,7 @@ export async function registerRoutes(
     vad: VoiceActivityDetector | null;
     vadEnabled: boolean;
     lastHeartbeat: number;
+    startedAt: number;
   }>();
 
   // ============================================
@@ -1149,11 +1156,12 @@ export async function registerRoutes(
             sessionId, 
             deviceId: sessionDeviceId, 
             deviceType, 
-            decoder, 
-            bridge, 
-            vad, 
+            decoder,
+            bridge,
+            vad,
             vadEnabled: enableVad,
             lastHeartbeat: Date.now(),
+            startedAt: Date.now(),
           });
 
           const connected = await bridge.connect();
@@ -1193,9 +1201,11 @@ export async function registerRoutes(
             const stats = session.decoder.getStats();
             const audioMinutes = (stats.decodedFrames || 0) * 0.02 / 60; // Opus frames are typically 20ms
             if (audioMinutes > 0) {
+              const latencyMs = Date.now() - session.startedAt;
               logDeepgram({
                 audioMinutes,
                 model: "nova-2",
+                latencyMs,
               }).catch(err => console.error("[STT WS] Deepgram usage tracking failed:", err));
             }
 
@@ -1245,9 +1255,11 @@ export async function registerRoutes(
         const stats = session.decoder.getStats();
         const audioMinutes = (stats.decodedFrames || 0) * 0.02 / 60; // Opus frames are typically 20ms
         if (audioMinutes > 0) {
+          const latencyMs = Date.now() - session.startedAt;
           logDeepgram({
             audioMinutes,
             model: "nova-2",
+            latencyMs,
           }).catch(err => console.error("[STT WS] Deepgram usage tracking failed:", err));
         }
         
@@ -1787,15 +1799,19 @@ export async function registerRoutes(
     
     const formattedPhone = formatPhoneNumber(phone);
     const smsSource = (source || "reminder") as TwilioMessageSource;
-    
+
+    let sendStart: number | null = null;
+
     try {
       const client = await getTwilioClient();
+      sendStart = Date.now();
       const result = await client.messages.create({
         body: message,
         from: fromNumber,
         to: formattedPhone,
       });
-      
+      const latencyMs = Date.now() - sendStart;
+
       logTwilioMessage({
         direction: "outbound",
         source: smsSource,
@@ -1804,10 +1820,12 @@ export async function registerRoutes(
         body: message,
         twilioSid: result.sid,
         status: "sent",
+        latencyMs,
       });
-      
+
       console.log(`Reminder SMS sent to ${formattedPhone}`);
     } catch (error: any) {
+      const latencyMs = sendStart ? Date.now() - sendStart : undefined;
       logTwilioMessage({
         direction: "outbound",
         source: smsSource,
@@ -1817,8 +1835,9 @@ export async function registerRoutes(
         status: "failed",
         errorCode: error.code?.toString() || "UNKNOWN",
         errorMessage: error.message || "Unknown error",
+        latencyMs,
       });
-      
+
       console.error("Failed to send reminder SMS:", error);
       throw error;
     }
@@ -1834,17 +1853,21 @@ export async function registerRoutes(
       console.error("Twilio phone number not configured for daily check-in");
       throw new Error("Twilio not configured");
     }
-    
+
     const formattedPhone = formatPhoneNumber(phone);
-    
+
+    let sendStart: number | null = null;
+
     try {
       const client = await getTwilioClient();
+      sendStart = Date.now();
       const result = await client.messages.create({
         body: message,
         from: fromNumber,
         to: formattedPhone,
       });
-      
+      const latencyMs = Date.now() - sendStart;
+
       logTwilioMessage({
         direction: "outbound",
         source: "daily_checkin",
@@ -1853,10 +1876,12 @@ export async function registerRoutes(
         body: message,
         twilioSid: result.sid,
         status: "sent",
+        latencyMs,
       });
-      
+
       console.log(`Daily check-in SMS sent to ${formattedPhone}`);
     } catch (error: any) {
+      const latencyMs = sendStart ? Date.now() - sendStart : undefined;
       logTwilioMessage({
         direction: "outbound",
         source: "daily_checkin",
@@ -1866,6 +1891,7 @@ export async function registerRoutes(
         status: "failed",
         errorCode: error.code?.toString() || "UNKNOWN",
         errorMessage: error.message || "Unknown error",
+        latencyMs,
       });
       
       console.error("Failed to send daily check-in SMS:", error);

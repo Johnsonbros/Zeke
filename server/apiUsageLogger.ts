@@ -514,9 +514,25 @@ function getCostCategory(serviceType: ApiServiceType): string {
 
 // Get usage stats for a period
 export async function getUsageStats(startDate: string, endDate: string): Promise<{
-  byService: Record<string, { calls: number; unitsConsumed: number; costCents: number }>;
+  byService: Record<string, {
+    calls: number;
+    unitsConsumed: number;
+    costCents: number;
+    averageLatencyMs: number;
+    maxLatencyMs: number;
+  }>;
   totalCostCents: number;
   totalCalls: number;
+  averageLatencyMs: number;
+  slowestOperations: Array<{
+    id: string;
+    serviceType: string;
+    operation: string | null;
+    latencyMs: number | null;
+    timestamp: string;
+    status: string | null;
+    costCents: number;
+  }>;
 }> {
   try {
     const results = await db.select({
@@ -524,6 +540,8 @@ export async function getUsageStats(startDate: string, endDate: string): Promise
       calls: sql<number>`COUNT(*)`,
       unitsConsumed: sql<number>`SUM(${apiUsageLogs.unitsConsumed})`,
       costCents: sql<number>`SUM(${apiUsageLogs.costCents})`,
+      averageLatencyMs: sql<number>`AVG(${apiUsageLogs.latencyMs})`,
+      maxLatencyMs: sql<number>`MAX(${apiUsageLogs.latencyMs})`,
     })
     .from(apiUsageLogs)
     .where(and(
@@ -531,25 +549,56 @@ export async function getUsageStats(startDate: string, endDate: string): Promise
       lte(apiUsageLogs.timestamp, endDate)
     ))
     .groupBy(apiUsageLogs.serviceType);
-    
-    const byService: Record<string, { calls: number; unitsConsumed: number; costCents: number }> = {};
+
+    const byService: Record<string, { calls: number; unitsConsumed: number; costCents: number; averageLatencyMs: number; maxLatencyMs: number }> = {};
     let totalCostCents = 0;
     let totalCalls = 0;
-    
+
     for (const row of results) {
       byService[row.serviceType] = {
         calls: Number(row.calls),
         unitsConsumed: Number(row.unitsConsumed),
         costCents: Number(row.costCents),
+        averageLatencyMs: Number(row.averageLatencyMs) || 0,
+        maxLatencyMs: Number(row.maxLatencyMs) || 0,
       };
       totalCostCents += Number(row.costCents);
       totalCalls += Number(row.calls);
     }
-    
-    return { byService, totalCostCents, totalCalls };
+
+    const overallLatencyResult = await db.select({
+      averageLatencyMs: sql<number>`AVG(${apiUsageLogs.latencyMs})`,
+    })
+    .from(apiUsageLogs)
+    .where(and(
+      gte(apiUsageLogs.timestamp, startDate),
+      lte(apiUsageLogs.timestamp, endDate)
+    ));
+
+    const averageLatencyMs = Number(overallLatencyResult[0]?.averageLatencyMs) || 0;
+
+    const slowestOperations = await db.select({
+      id: apiUsageLogs.id,
+      serviceType: apiUsageLogs.serviceType,
+      operation: apiUsageLogs.operation,
+      latencyMs: apiUsageLogs.latencyMs,
+      timestamp: apiUsageLogs.timestamp,
+      status: apiUsageLogs.status,
+      costCents: apiUsageLogs.costCents,
+    })
+    .from(apiUsageLogs)
+    .where(and(
+      gte(apiUsageLogs.timestamp, startDate),
+      lte(apiUsageLogs.timestamp, endDate),
+      sql`${apiUsageLogs.latencyMs} IS NOT NULL`
+    ))
+    .orderBy(sql`${apiUsageLogs.latencyMs} DESC`)
+    .limit(15);
+
+    return { byService, totalCostCents, totalCalls, averageLatencyMs, slowestOperations };
   } catch (error) {
     console.error("[ApiUsageLogger] Failed to get usage stats:", error);
-    return { byService: {}, totalCostCents: 0, totalCalls: 0 };
+    return { byService: {}, totalCostCents: 0, totalCalls: 0, averageLatencyMs: 0, slowestOperations: [] };
   }
 }
 
