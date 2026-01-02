@@ -19,7 +19,7 @@ import { discoverPatterns, getActivePatterns } from "./patternRecognition.js";
 import { buildFusedContext, detectAnomalies } from "./dataFusion.js";
 import { db } from "./db";
 import { predictions } from "../shared/schema.js";
-import { eq } from "drizzle-orm";
+import { eq, and, lt } from "drizzle-orm";
 import { queueForBatch, shouldUseBatch } from "./config/batchFirst";
 
 /**
@@ -239,8 +239,10 @@ export function schedulePredictionExpiration() {
           updatedAt: now,
         })
         .where(
-          eq(predictions.status, "pending")
-          // TODO: Add where clause for validUntil < now once we have proper SQL
+          and(
+            eq(predictions.status, "pending"),
+            lt(predictions.validUntil, now)
+          )
         );
 
       logger.info(`Expired predictions check complete`);
