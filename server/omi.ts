@@ -451,6 +451,133 @@ export async function getMemoryOverview(): Promise<MemoryOverview> {
   }
 }
 
+interface MemoryInsightOptions {
+  query?: string;
+  hours?: number;
+  limit?: number;
+  includeCalendar?: boolean;
+  includeTasks?: boolean;
+}
+
+interface MemoryInsightCluster {
+  topic: string;
+  memory_ids: string[];
+  key_points: string[];
+  supporting_quotes?: string[];
+}
+
+interface MemoryInsightResult {
+  summary: string;
+  clusters: MemoryInsightCluster[];
+  anomalies: string[];
+  cross_references: string[];
+  action_items: string[];
+}
+
+export async function extractMemoryInsights(
+  options: MemoryInsightOptions = {}
+): Promise<MemoryInsightResult> {
+  const {
+    query,
+    hours = 72,
+    limit = 12,
+    includeCalendar = true,
+    includeTasks = true,
+  } = options;
+
+  const client = getOpenAIClient();
+
+  const memories = query
+    ? await searchMemories(query, { limit })
+    : await getRecentMemories(hours, limit);
+
+  if (!memories || memories.length === 0) {
+    return {
+      summary: "No memories available to analyze yet.",
+      clusters: [],
+      anomalies: [],
+      cross_references: [],
+      action_items: [],
+    };
+  }
+
+  const formattedMemories = memories.map((memory) => {
+    const excerpt = extractConversationContent(memory).slice(0, 1200);
+    return {
+      id: memory.id,
+      title: memory.structured?.title || "Memory",
+      time: formatTimeRange(memory.startedAt, memory.finishedAt),
+      excerpt,
+    };
+  });
+
+  const prompt = `You are ZEKE's memory insight analyst. Review the provided memories and surface clustered themes, contradictions,
+and next actions. Cross-reference with tasks or calendar items if hints appear in the conversations (you do NOT have live task or
+calendar data in this prompt—note any inferred follow-ups).
+
+Return concise JSON with these fields:
+{
+  "summary": "1-2 sentence overall takeaway",
+  "clusters": [
+    {
+      "topic": "short theme label",
+      "memory_ids": ["ids of memories that support the theme"],
+      "key_points": ["bullet insights connecting the memories"],
+      "supporting_quotes": ["optional short quotes"]
+    }
+  ],
+  "anomalies": ["inconsistencies, risks, or surprises to flag"],
+  "cross_references": ["links to tasks or calendar needs inferred from the memories"],
+  "action_items": ["clear follow-ups or checks Nate should consider"]
+}
+
+Use specific memory titles/timestamps when helpful. Keep lists short (max 5 entries per list).`;
+
+  const response = await client.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.2,
+    messages: [
+      {
+        role: "system",
+        content: "Analyze lifelog memories to surface patterns, anomalies, and follow-ups.",
+      },
+      {
+        role: "user",
+        content: `${prompt}\n\nMemories to analyze (include_calendar=${includeCalendar}, include_tasks=${includeTasks}):\n${JSON.stringify(
+          formattedMemories,
+          null,
+          2
+        )}`,
+      },
+    ],
+    max_tokens: 700,
+  });
+
+  const rawContent = response.choices?.[0]?.message?.content?.trim() || "";
+
+  try {
+    const cleaned = rawContent.replace(/```json\n?|```/g, "");
+    const parsed = JSON.parse(cleaned) as MemoryInsightResult;
+
+    return {
+      summary: parsed.summary || "No summary provided.",
+      clusters: parsed.clusters || [],
+      anomalies: parsed.anomalies || [],
+      cross_references: parsed.cross_references || [],
+      action_items: parsed.action_items || [],
+    };
+  } catch (error) {
+    console.error("Failed to parse memory insights:", error, rawContent);
+    return {
+      summary: "Unable to parse insights response.",
+      clusters: [],
+      anomalies: [],
+      cross_references: [],
+      action_items: [],
+    };
+  }
+}
+
 /**
  * Extract people mentioned in a memory
  */

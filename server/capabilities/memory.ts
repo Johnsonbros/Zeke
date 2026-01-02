@@ -8,6 +8,7 @@ import {
   extractConversationContent,
   checkOmiConnection,
   getMemoryOverview,
+  extractMemoryInsights,
   generateDailySummary,
   getOmiSummaryByDate,
   type OmiMemoryData,
@@ -23,6 +24,40 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
       parameters: {
         type: "object",
         properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "extract_memory_insights",
+      description:
+        "Analyze recent or searched memories to surface themes, anomalies, and action items. Clusters related conversations, highlights contradictions, and cross-references potential task/calendar follow-ups.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Optional search query to focus analysis on a topic; omit to analyze recent memories",
+          },
+          hours: {
+            type: "number",
+            description: "Lookback window in hours when no query is provided (default 72)",
+          },
+          limit: {
+            type: "number",
+            description: "Maximum number of memories to analyze (default 12)",
+          },
+          include_calendar: {
+            type: "boolean",
+            description: "Note calendar follow-ups when mentioned in memories",
+          },
+          include_tasks: {
+            type: "boolean",
+            description: "Note task follow-ups when mentioned in memories",
+          },
+        },
         required: [],
       },
     },
@@ -182,6 +217,7 @@ export const memoryToolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
 
 export const memoryToolPermissions: Record<string, (permissions: ToolPermissions) => boolean> = {
   get_memory_overview: (p) => p.canAccessPersonalInfo,
+  extract_memory_insights: (p) => p.canAccessPersonalInfo,
   search_memories: (p) => p.canAccessPersonalInfo,
   get_recent_memories: (p) => p.canAccessPersonalInfo,
   get_memory_context: (p) => p.canAccessPersonalInfo,
@@ -234,7 +270,38 @@ export async function executeMemoryTool(
         });
       }
     }
-    
+
+    case "extract_memory_insights": {
+      const { query, hours, limit, include_calendar, include_tasks } = args as {
+        query?: string;
+        hours?: number;
+        limit?: number;
+        include_calendar?: boolean;
+        include_tasks?: boolean;
+      };
+
+      try {
+        const insights = await extractMemoryInsights({
+          query,
+          hours,
+          limit,
+          includeCalendar: include_calendar ?? true,
+          includeTasks: include_tasks ?? true,
+        });
+
+        return JSON.stringify({
+          success: true,
+          ...insights,
+        });
+      } catch (error: any) {
+        console.error("Failed to extract memory insights:", error);
+        return JSON.stringify({
+          success: false,
+          error: error.message || "Failed to extract memory insights.",
+        });
+      }
+    }
+
     case "search_memories": {
       const { query, limit, date, starred_only } = args as {
         query: string;
@@ -556,6 +623,7 @@ export async function executeMemoryTool(
 
 export const memoryToolNames = [
   "get_memory_overview",
+  "extract_memory_insights",
   "search_memories",
   "get_recent_memories",
   "get_memory_context",
