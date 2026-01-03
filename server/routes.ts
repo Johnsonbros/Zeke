@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "http";
 import { v4 as uuidv4 } from "uuid";
+import OpenAI from "openai";
 import { registerOmiRoutes } from "./omi-routes";
 import { getPendantHealthStatus } from "./pendantHealthMonitor";
 import { createOpusDecoder, createDeepgramBridge, isDeepgramConfigured, createVAD, isVADAvailable } from "./stt";
@@ -769,6 +770,43 @@ const updateReminderSchema = z.object({
   scheduledFor: z.string().optional(),
   recipientPhone: z.string().optional(),
 });
+
+// In-memory error buffer for SMS/AI diagnostics (keeps last 50 errors)
+interface SmsAiError {
+  id: string;
+  timestamp: string;
+  type: "ai_processing" | "sms_send" | "quick_action" | "unknown";
+  message: string;
+  originalInput?: string;
+  errorName?: string;
+  errorCode?: string;
+  stack?: string;
+  fromNumber?: string;
+  resolved?: boolean;
+}
+const smsAiErrorBuffer: SmsAiError[] = [];
+const MAX_ERROR_BUFFER_SIZE = 50;
+
+export function logSmsAiError(error: Omit<SmsAiError, "id" | "timestamp">) {
+  const entry: SmsAiError = {
+    id: uuidv4(),
+    timestamp: new Date().toISOString(),
+    ...error,
+  };
+  smsAiErrorBuffer.unshift(entry);
+  if (smsAiErrorBuffer.length > MAX_ERROR_BUFFER_SIZE) {
+    smsAiErrorBuffer.pop();
+  }
+  console.log(`[SmsAiDiagnostics] Logged error: ${error.type} - ${error.message}`);
+}
+
+export function getSmsAiErrors(limit = 20): SmsAiError[] {
+  return smsAiErrorBuffer.slice(0, limit);
+}
+
+export function clearSmsAiErrors() {
+  smsAiErrorBuffer.length = 0;
+}
 
 // Schema for updating automations
 const updateAutomationSchema = z.object({
@@ -2388,6 +2426,105 @@ export async function registerRoutes(
       checks
     });
   });
+
+  // SMS/AI Diagnostics endpoint - view recent errors for debugging
+  app.get("/api/diagnostics/sms-ai", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const errors = getSmsAiErrors(limit);
+      
+      // Get error summary by type
+      const errorsByType = errors.reduce((acc, err) => {
+        acc[err.type] = (acc[err.type] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      // Get errors from last hour
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const recentErrors = errors.filter(e => e.timestamp > oneHourAgo);
+      
+      res.json({
+        summary: {
+          totalErrors: errors.length,
+          errorsLastHour: recentErrors.length,
+          byType: errorsByType,
+          oldestError: errors[errors.length - 1]?.timestamp || null,
+          newestError: errors[0]?.timestamp || null,
+        },
+        errors: errors.map(e => ({
+          ...e,
+          stack: undefined, // Omit stack in list view for brevity
+        })),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get detailed info for a specific error
+  app.get("/api/diagnostics/sms-ai/:errorId", async (req, res) => {
+    try {
+      const { errorId } = req.params;
+      const errors = getSmsAiErrors(MAX_ERROR_BUFFER_SIZE);
+      const error = errors.find(e => e.id === errorId);
+      
+      if (!error) {
+        return res.status(404).json({ error: "Error not found" });
+      }
+      
+      res.json(error);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Clear error buffer (for testing/reset)
+  app.delete("/api/diagnostics/sms-ai", async (_req, res) => {
+    clearSmsAiErrors();
+    res.json({ message: "Error buffer cleared" });
+  });
+
+  // Test AI connectivity - sends a simple prompt to verify OpenAI is working
+  app.post("/api/diagnostics/test-ai", async (req, res) => {
+    try {
+      const { prompt = "Say 'AI is working' in exactly 3 words." } = req.body;
+      
+      const startTime = Date.now();
+      const openai = new OpenAI();
+      
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 50,
+      });
+      
+      const latency = Date.now() - startTime;
+      const content = response.choices[0]?.message?.content || "";
+      
+      res.json({
+        success: true,
+        response: content,
+        latency: `${latency}ms`,
+        model: response.model,
+        usage: response.usage,
+      });
+    } catch (error: any) {
+      logSmsAiError({
+        type: "ai_processing",
+        message: error.message,
+        errorName: error.name,
+        errorCode: error.code || error.status?.toString(),
+        stack: error.stack?.split('\n').slice(0, 5).join('\n'),
+      });
+      
+      res.status(500).json({
+        success: false,
+        error: error.message,
+        errorType: error.name,
+        errorCode: error.code || error.status,
+      });
+    }
+  });
   
   // ZEKE Ideal Evaluation endpoint
   app.get("/api/eval", async (_req: Request, res: Response) => {
@@ -3814,6 +3951,17 @@ export async function registerRoutes(
           timestamp: new Date().toISOString(),
         };
         console.error("[SMS ERROR] Error processing SMS:", JSON.stringify(errorDetails, null, 2));
+        
+        // Log to diagnostics buffer for later analysis
+        logSmsAiError({
+          type: "ai_processing",
+          message: errorDetails.message,
+          originalInput: message || fullMessage || undefined,
+          errorName: errorDetails.name,
+          errorCode: errorDetails.code?.toString(),
+          stack: errorDetails.stack,
+          fromNumber,
+        });
         
         // Try to send error message
         try {
