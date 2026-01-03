@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -79,7 +79,7 @@ def upload_eval_results(
     client = openai.OpenAI(api_key=api_key)
 
     guid = evaluation_guid or build_evaluation_guid(test_filter)
-    run_name = f"zeke-evals-{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}"
+    run_name = f"zeke-evals-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
 
     data_source = {
         "type": "responses",

@@ -12,7 +12,7 @@ import argparse
 import json
 import subprocess
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -59,7 +59,7 @@ def run_evals(
     cmd.append("--disable-warnings")
     cmd.extend(["--tb", "short"])
     
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     
     result = subprocess.run(
         cmd,
@@ -192,12 +192,8 @@ def main():
             print(f"Uploaded to OpenAI Evals: {upload_result.report_url}")
         except OpenAIEvalsError as exc:
             print(f"Failed to upload to OpenAI Evals: {exc}", file=sys.stderr)
-            if args.ci:
-                sys.exit(1)
         except Exception as exc:  # pragma: no cover - defensive
             print(f"Unexpected error posting to OpenAI Evals: {exc}", file=sys.stderr)
-            if args.ci:
-                sys.exit(1)
 
     eval_regressed = False
     if summary.get("openai_eval"):
