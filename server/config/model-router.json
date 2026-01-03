@@ -1,0 +1,19 @@
+{
+  "routes": {
+    "primary": { "model": "gpt-4o" },
+    "light": { "model": "gpt-4o-mini" },
+    "title": { "model": "gpt-4o-mini" },
+    "memory": { "model": "gpt-4o-mini" }
+  },
+  "providers": [
+    { "id": "openai", "apiKeyEnv": "OPENAI_API_KEY" },
+    {
+      "id": "anthropic",
+      "apiKeyEnv": "EXTERNAL_MODEL_API_KEY",
+      "baseURL": "https://api.openai.com/v1"
+    }
+  ],
+  "allowedExternalModels": [
+    "anthropic:claude-3-5-sonnet-20241022"
+  ]
+}
