@@ -57,6 +57,7 @@ import {
   detectFollowUpNeeded,
 } from "./metricsCollector";
 import { getCoreConceptsContext } from "./jobs/conceptReflection";
+import { resolveModelRoute, type ModelRoute } from "./modelRouter";
 
 export interface PendingMemory {
   id: string;
@@ -233,26 +234,27 @@ const DEFAULT_MINI_MODEL = "gpt-4o-mini";
 const USE_PROMPT_OPTIMIZER = process.env.USE_PROMPT_OPTIMIZER === "true";
 
 export function getOpenAIModel(): string {
-  return process.env.OPENAI_MODEL || DEFAULT_MODEL;
+  return resolveModelRoute("primary").model;
 }
 
 export function getOpenAIMiniModel(): string {
-  return process.env.OPENAI_MINI_MODEL || DEFAULT_MINI_MODEL;
+  return resolveModelRoute("light").model;
 }
 
-// Lazily initialize OpenAI client to allow app to start without API key
-let openai: OpenAI | null = null;
+const openaiClients: Map<string, OpenAI> = new Map();
 
-function getOpenAIClient(): OpenAI {
-  if (!openai) {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error(
-        "OpenAI API key not configured. Please add OPENAI_API_KEY to your secrets.",
-      );
-    }
-    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+function getOpenAIClient(
+  route: ModelRoute = "primary",
+  overrideModel?: string,
+): { client: OpenAI; resolvedModel: ReturnType<typeof resolveModelRoute> } {
+  const resolvedModel = resolveModelRoute(route, overrideModel);
+  const cacheKey = `${resolvedModel.providerId}:${resolvedModel.clientOptions.baseURL || "openai"}`;
+
+  if (!openaiClients.has(cacheKey)) {
+    openaiClients.set(cacheKey, new OpenAI(resolvedModel.clientOptions));
   }
-  return openai;
+
+  return { client: openaiClients.get(cacheKey)!, resolvedModel };
 }
 
 async function createChatCompletion(
@@ -274,23 +276,23 @@ async function createChatCompletion(
     (typeof systemPrompt === 'string' ? hashSystemPrompt(systemPrompt) : undefined);
   
   // Extract tool names if present
-  const toolNames = params.tools?.map(t => t.function?.name).filter(Boolean).join(',');
-  
+  const toolNames = requestParams.tools?.map(t => t.function?.name).filter(Boolean).join(',');
+
   // Set logging context before the call - wrapOpenAI will auto-log
   setAiLoggingContext({
-    model,
+    model: resolvedModel.model,
     endpoint: "chat",
     agentId: context?.agentId || "zeke_main",
     toolName: context?.toolName,
     conversationId: context?.conversationId,
     systemPromptHash: systemPromptHashValue,
-    temperature: params.temperature?.toString(),
-    maxTokens: params.max_completion_tokens || params.max_tokens as number | undefined,
+    temperature: requestParams.temperature?.toString(),
+    maxTokens: requestParams.max_completion_tokens || requestParams.max_tokens as number | undefined,
     toolsEnabled: toolNames,
   });
-  
+
   try {
-    const response = await wrapOpenAI(() => client.chat.completions.create(params));
+    const response = await wrapOpenAI(() => client.chat.completions.create(requestParams));
     return response;
   } finally {
     clearAiLoggingContext();
@@ -871,9 +873,9 @@ function formatMessagesForOpenAI(
 // Generate a conversation title from the first message
 async function generateConversationTitle(userMessage: string): Promise<string> {
   try {
-    const client = getOpenAIClient();
+    const { client, resolvedModel } = getOpenAIClient("title");
     const response = await client.chat.completions.create({
-      model: getOpenAIModel(),
+      model: resolvedModel.model,
       messages: [
         {
           role: "system",
@@ -886,6 +888,7 @@ async function generateConversationTitle(userMessage: string): Promise<string> {
         },
       ],
       max_completion_tokens: 20,
+      ...(resolvedModel.params || {}),
     });
 
     return response.choices[0]?.message?.content?.trim() || "New Conversation";
@@ -901,9 +904,9 @@ async function extractMemory(
   assistantResponse: string,
 ): Promise<void> {
   try {
-    const client = getOpenAIClient();
+    const { client, resolvedModel } = getOpenAIClient("memory");
     const response = await client.chat.completions.create({
-      model: getOpenAIModel(),
+      model: resolvedModel.model,
       messages: [
         {
           role: "system",
@@ -932,6 +935,7 @@ If nothing important to remember, return: {"memories": []}`,
       ],
       response_format: { type: "json_object" },
       max_completion_tokens: 500,
+      ...(resolvedModel.params || {}),
     });
 
     // Guard against empty or missing response content
@@ -1170,8 +1174,16 @@ async function chatInternal(
   
   // Check for memory corrections before processing (only for admin users)
   // Also guard against missing OpenAI API key
-  const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
-  if (hasOpenAIKey && userPermissions.isAdmin && history.length > 0 && (isGettingToKnowMode || getAllMemoryNotes().length > 0)) {
+  const hasModelKey = (() => {
+    try {
+      resolveModelRoute("primary");
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+
+  if (hasModelKey && userPermissions.isAdmin && history.length > 0 && (isGettingToKnowMode || getAllMemoryNotes().length > 0)) {
     try {
       const recentContext = history.slice(-4).map(m => `${m.role}: ${m.content}`).join("\n");
       const correctionResult = await detectMemoryCorrection(userMessage, recentContext);
@@ -1199,7 +1211,6 @@ async function chatInternal(
       iterations++;
 
       const response = await createChatCompletion({
-        model: getOpenAIModel(),
         messages,
         tools: getActiveToolDefinitions(),
         tool_choice: "auto",
@@ -1231,7 +1242,6 @@ async function chatInternal(
           console.log("Response truncated due to length - retrying with more context");
           // Try to get a response without tool calls
           const retryResponse = await createChatCompletion({
-            model: getOpenAIModel(),
             messages: [...messages, { role: "assistant", content: null, tool_calls: [] } as any],
             max_completion_tokens: 2048,
           }, {
