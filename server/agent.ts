@@ -227,7 +227,12 @@ export function getAdminPermissions(): UserPermissions {
   };
 }
 
-// Default model - resolved via the model router (env + JSON config)
+// Default model - configurable via OPENAI_MODEL env var
+// Use "gpt-4o" as the stable default, can be updated to newer models like "gpt-4.1" when available
+const DEFAULT_MODEL = "gpt-4o";
+const DEFAULT_MINI_MODEL = "gpt-4o-mini";
+const USE_PROMPT_OPTIMIZER = process.env.USE_PROMPT_OPTIMIZER === "true";
+
 export function getOpenAIModel(): string {
   return resolveModelRoute("primary").model;
 }
@@ -254,20 +259,22 @@ function getOpenAIClient(
 
 async function createChatCompletion(
   params: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
-  context?: { agentId?: string; toolName?: string; conversationId?: string },
-  route: ModelRoute = "primary",
+  context?: {
+    agentId?: string;
+    toolName?: string;
+    conversationId?: string;
+    systemPromptHashOverride?: string;
+  }
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
-  const { client, resolvedModel } = getOpenAIClient(route, params.model);
-  const requestParams: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming = {
-    ...params,
-    ...(resolvedModel.params || {}),
-    model: resolvedModel.model,
-  };
+  const client = getOpenAIClient();
+  const model = params.model;
 
   // Extract system prompt hash for drift detection
-  const systemPrompt = requestParams.messages.find(m => m.role === 'system')?.content;
-  const systemPromptHashValue = typeof systemPrompt === 'string' ? hashSystemPrompt(systemPrompt) : undefined;
-
+  const systemPrompt = params.messages.find(m => m.role === 'system')?.content;
+  const systemPromptHashValue =
+    context?.systemPromptHashOverride ||
+    (typeof systemPrompt === 'string' ? hashSystemPrompt(systemPrompt) : undefined);
+  
   // Extract tool names if present
   const toolNames = requestParams.tools?.map(t => t.function?.name).filter(Boolean).join(',');
 
@@ -658,6 +665,55 @@ export async function buildSmartContext(
   }
 }
 
+interface SystemPromptResult {
+  prompt: string;
+  originalPromptHash: string;
+  optimizedPromptHash?: string;
+  optimizerDeltas?: string[];
+}
+
+async function maybeOptimizeSystemPrompt(
+  basePrompt: string,
+  metadata: { route: string; permissions: UserPermissions; tokenBudget?: TokenBudget }
+): Promise<{ prompt: string; deltas?: string[] } | null> {
+  if (!USE_PROMPT_OPTIMIZER) {
+    return null;
+  }
+
+  try {
+    const client = getOpenAIClient() as any;
+    const optimizer = client?.beta?.promptOptimizer || client?.promptOptimizer;
+
+    if (!optimizer?.optimizations?.create) {
+      console.log("[PromptOptimizer] SDK not available, skipping optimization");
+      return null;
+    }
+
+    const response = await optimizer.optimizations.create({
+      prompt: basePrompt,
+      metadata: {
+        route: metadata.route,
+        permissions: metadata.permissions,
+        tokenBudget: metadata.tokenBudget,
+      },
+    });
+
+    const recommendedPrompt = response?.optimized_prompt || response?.optimizedPrompt;
+    const deltas = response?.deltas;
+
+    if (recommendedPrompt) {
+      console.log(`[PromptOptimizer] Received optimized prompt for route "${metadata.route}"`);
+      return { prompt: recommendedPrompt as string, deltas };
+    }
+
+    console.log("[PromptOptimizer] No optimized prompt returned, using base prompt");
+  } catch (error) {
+    console.error("[PromptOptimizer] Optimization failed, falling back to base prompt:", error);
+  }
+
+  return null;
+}
+
 // Build the system prompt
 // Set USE_CONTEXT_ROUTER=true to enable the new Context Router for smarter context assembly
 const USE_CONTEXT_ROUTER = process.env.USE_CONTEXT_ROUTER === "true";
@@ -669,7 +725,7 @@ async function buildSystemPrompt(
   currentRoute: string = "/chat",
   conversationId?: string,
   tokenBudget?: TokenBudget
-): Promise<string> {
+): Promise<SystemPromptResult> {
   // Default to admin permissions for web (maintains current behavior)
   const userPermissions = permissions || getAdminPermissions();
   
@@ -735,7 +791,7 @@ async function buildSystemPrompt(
 - User preferences: ${styleProfile.preferences.join("; ")}
 `;
 
-  return `You are ZEKE — Nate Johnson's personal AI assistant (single-user, SMS + web).
+  const basePrompt = `You are ZEKE — Nate Johnson's personal AI assistant (single-user, SMS + web).
 
 STYLE (learned + default):
 - Direct, professional, conversational. Minimal fluff.
@@ -789,6 +845,19 @@ ${reminderContext}
 ${phoneContext}
 
 Current time: ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })}`;
+
+  const optimization = await maybeOptimizeSystemPrompt(basePrompt, {
+    route: currentRoute,
+    permissions: userPermissions,
+    tokenBudget,
+  });
+
+  return {
+    prompt: optimization?.prompt || basePrompt,
+    originalPromptHash: hashSystemPrompt(basePrompt) || "",
+    optimizedPromptHash: optimization?.prompt ? hashSystemPrompt(optimization.prompt) : undefined,
+    optimizerDeltas: optimization?.deltas,
+  };
 }
 
 // Convert message history to OpenAI format
@@ -1077,7 +1146,7 @@ async function chatInternal(
   const tokenBudget = getTokenBudgetForRoute(currentRoute);
 
   // Build system prompt with context (including phone number for SMS reminders and conversation context)
-  let systemPrompt = await buildSystemPrompt(
+  const systemPromptResult = await buildSystemPrompt(
     userMessage,
     userPhoneNumber,
     userPermissions,
@@ -1085,11 +1154,23 @@ async function chatInternal(
     conversationId,
     tokenBudget
   );
-  
+
+  let systemPrompt = systemPromptResult.prompt;
+
   // Apply Getting To Know You mode enhancements (only for admin users)
   if (isGettingToKnowMode && userPermissions.isAdmin) {
     systemPrompt = buildGettingToKnowSystemPrompt(systemPrompt);
   }
+
+  const finalSystemPromptHash = hashSystemPrompt(systemPrompt);
+  const optimizerDeltaTag = systemPromptResult.optimizerDeltas?.join(" | ");
+  const combinedPromptHash =
+    systemPromptResult.originalPromptHash
+      ? `${systemPromptResult.originalPromptHash}->${finalSystemPromptHash || systemPromptResult.optimizedPromptHash || ""}`
+      : finalSystemPromptHash;
+  const systemPromptHashOverride = optimizerDeltaTag
+    ? `${combinedPromptHash}|deltas=${optimizerDeltaTag}`
+    : combinedPromptHash;
   
   // Check for memory corrections before processing (only for admin users)
   // Also guard against missing OpenAI API key
@@ -1134,7 +1215,11 @@ async function chatInternal(
         tools: getActiveToolDefinitions(),
         tool_choice: "auto",
         max_completion_tokens: 4096,
-      }, undefined, "primary");
+      }, {
+        agentId: "zeke_main",
+        conversationId,
+        systemPromptHashOverride,
+      });
 
       const choice = response.choices[0];
       const message = choice.message;
@@ -1159,7 +1244,11 @@ async function chatInternal(
           const retryResponse = await createChatCompletion({
             messages: [...messages, { role: "assistant", content: null, tool_calls: [] } as any],
             max_completion_tokens: 2048,
-          }, undefined, "primary");
+          }, {
+            agentId: "zeke_main",
+            conversationId,
+            systemPromptHashOverride,
+          });
           if (retryResponse.choices[0]?.message?.content) {
             return retryResponse.choices[0].message.content;
           }
