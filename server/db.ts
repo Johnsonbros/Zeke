@@ -5710,13 +5710,13 @@ export async function getRecentOmiAnalytics(limit = 30): Promise<OmiAnalyticsDai
 
 // Profile Functions
 export async function getFullProfile(): Promise<Record<string, any>> {
-  const sections = await db.select().from(schema.profileSections);
+  const sections = await db.select().from(schema.userProfile);
   const profile: Record<string, any> = {};
   for (const section of sections) {
     try {
-      profile[section.sectionKey] = JSON.parse(section.data || '{}');
+      profile[section.section] = JSON.parse(section.data || '{}');
     } catch {
-      profile[section.sectionKey] = section.data;
+      profile[section.section] = section.data;
     }
   }
   return profile;
@@ -5727,29 +5727,28 @@ export async function getProfileContextForAgent(): Promise<string> {
   return JSON.stringify(profile, null, 2);
 }
 
-export async function upsertProfileSection(sectionKey: string, data: any): Promise<ProfileSection> {
+export async function upsertProfileSection(sectionKey: string, data: any): Promise<UserProfile> {
   const now = getNow();
-  const [existing] = await db.select().from(schema.profileSections)
-    .where(eq(schema.profileSections.sectionKey, sectionKey))
+  const [existing] = await db.select().from(schema.userProfile)
+    .where(eq(schema.userProfile.section, sectionKey))
     .limit(1);
   
   if (existing) {
-    await db.update(schema.profileSections)
+    await db.update(schema.userProfile)
       .set({ data: JSON.stringify(data), updatedAt: now })
-      .where(eq(schema.profileSections.sectionKey, sectionKey));
-    const [result] = await db.select().from(schema.profileSections).where(eq(schema.profileSections.sectionKey, sectionKey)).limit(1);
+      .where(eq(schema.userProfile.section, sectionKey));
+    const [result] = await db.select().from(schema.userProfile).where(eq(schema.userProfile.section, sectionKey)).limit(1);
     return result;
   }
   
   const id = uuidv4();
-  await db.insert(schema.profileSections).values({
+  await db.insert(schema.userProfile).values({
     id,
-    sectionKey,
+    section: sectionKey,
     data: JSON.stringify(data),
-    createdAt: now,
     updatedAt: now,
   });
-  const [result] = await db.select().from(schema.profileSections).where(eq(schema.profileSections.id, id)).limit(1);
+  const [result] = await db.select().from(schema.userProfile).where(eq(schema.userProfile.id, id)).limit(1);
   return result;
 }
 

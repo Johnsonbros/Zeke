@@ -7082,7 +7082,7 @@ export async function registerRoutes(
   // Get all profile sections
   app.get("/api/profile", async (req, res) => {
     try {
-      const sections = getAllProfileSections();
+      const sections = await getAllProfileSections();
       const profile: Record<string, unknown> = {};
       
       // Helper to convert snake_case to camelCase
@@ -7118,7 +7118,7 @@ export async function registerRoutes(
   app.get("/api/profile/:section", async (req, res) => {
     try {
       const { section } = req.params;
-      const profileSection = getProfileSection(section);
+      const profileSection = await getProfileSection(section);
       
       if (!profileSection) {
         return res.json({ section, data: {} });
@@ -7146,7 +7146,7 @@ export async function registerRoutes(
       }
       
       const dataStr = typeof data === 'string' ? data : JSON.stringify(data);
-      const result = upsertProfileSection(section, dataStr);
+      const result = await upsertProfileSection(section, dataStr);
       
       console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Updated profile section "${section}"`);
       
@@ -7165,7 +7165,7 @@ export async function registerRoutes(
   app.delete("/api/profile/:section", async (req, res) => {
     try {
       const { section } = req.params;
-      const success = deleteProfileSection(section);
+      const success = await deleteProfileSection(section);
       
       console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Deleted profile section "${section}" - Success: ${success}`);
       
