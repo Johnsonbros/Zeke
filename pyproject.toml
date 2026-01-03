@@ -5,6 +5,7 @@ description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
     "alpaca-py>=0.43.2",
+    "openai>=1.60.2",
     "fastapi>=0.122.0",
     "httpx>=0.28.1",
     "mcp>=1.23.3",
@@ -17,6 +18,40 @@ dependencies = [
     "streamlit>=1.52.2",
     "urllib3>=2.6.1",
     "uvicorn[standard]>=0.38.0",
+]
+
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "core",
+    "core.*",
+    "eval",
+    "eval.*",
+    "python_agents",
+    "python_agents.*",
+    "zeke_trader",
+    "zeke_trader.*",
+]
+exclude = [
+    "archive*",
+    "attached_assets*",
+    "android*",
+    "client*",
+    "codex_tasks*",
+    "data*",
+    "evals*",
+    "lib*",
+    "notes*",
+    "script*",
+    "scripts*",
+    "server*",
+    "shared*",
+    "temp_audio*",
+    "tests*",
 ]
 
 [tool.pytest.ini_options]
