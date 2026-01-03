@@ -17,13 +17,22 @@ RUNS_DIR = EVAL_DIR / "runs"
 
 @pytest.fixture(autouse=True)
 def require_openai_api_key():
-    """Skip eval tests when OpenAI credentials are not available."""
+    """Guard eval tests based on OpenAI credential availability."""
 
-    if not os.environ.get("OPENAI_API_KEY"):
-        pytest.skip(
-            "OPENAI_API_KEY not set; skipping eval tests that require OpenAI access",
-            allow_module_level=True,
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if api_key:
+        return
+
+    if os.environ.get("CI"):
+        pytest.fail(
+            "OPENAI_API_KEY not set; eval tests require credentials in CI",
+            pytrace=False,
         )
+
+    pytest.skip(
+        "OPENAI_API_KEY not set; skipping eval tests that require OpenAI access",
+        allow_module_level=True,
+    )
 
 
 @pytest.fixture

@@ -72,7 +72,11 @@ def upload_eval_results(
     except Exception as exc:  # pragma: no cover - import guard
         raise OpenAIEvalsError("The 'openai' package is required to upload evals") from exc
 
-    client = openai.OpenAI()
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise OpenAIEvalsError("OPENAI_API_KEY not set; cannot upload eval results")
+
+    client = openai.OpenAI(api_key=api_key)
 
     guid = evaluation_guid or build_evaluation_guid(test_filter)
     run_name = f"zeke-evals-{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}"
