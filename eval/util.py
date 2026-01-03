@@ -26,18 +26,23 @@ async def call_model_async(
         The model's response text
     """
     model = model or os.environ.get("EVAL_MODEL", "gpt-4o-mini")
-    
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY environment variable not set")
+
+    import openai
+
     try:
-        import openai
-        client = openai.AsyncOpenAI()
-        
+        client = openai.AsyncOpenAI(api_key=api_key)
+
         response = await client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
             max_tokens=max_tokens,
         )
-        
+
         return response.choices[0].message.content or ""
     except Exception as e:
         raise RuntimeError(f"Model call failed: {e}")
