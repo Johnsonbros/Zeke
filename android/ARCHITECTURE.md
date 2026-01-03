@@ -1,6 +1,7 @@
 # ZEKE Ecosystem Architecture
 
-This document explains how the ZEKE AI Companion mobile app (this repository) connects to and interacts with the main ZEKE backend application.
+This document explains how the ZEKE AI Companion mobile app (this repository) connects to and interacts with the main ZEKE
+backend application.
 
 ## Related Repositories
 

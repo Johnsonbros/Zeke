@@ -33,7 +33,9 @@ async function ensureOmiDevice(): Promise<string> {
 // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const OMI_WEBHOOK_SECRET = process.env.OMI_WEBHOOK_SECRET;
+function getOmiWebhookSecret(): string | undefined {
+  return process.env.OMI_WEBHOOK_SECRET;
+}
 
 function isLocalRequest(req: Request): boolean {
   const host = req.headers.host || "";
@@ -42,8 +44,12 @@ function isLocalRequest(req: Request): boolean {
          forwardedHost.includes("localhost") || forwardedHost.includes("127.0.0.1");
 }
 
-function verifyOmiWebhook(req: Request): boolean {
-  if (!OMI_WEBHOOK_SECRET) {
+type RawBodyRequest = Request & { rawBody?: Buffer };
+
+export function verifyOmiWebhook(req: RawBodyRequest): boolean {
+  const webhookSecret = getOmiWebhookSecret();
+
+  if (!webhookSecret) {
     if (process.env.NODE_ENV === "development" && isLocalRequest(req)) {
       console.warn("[Omi Webhooks] OMI_WEBHOOK_SECRET not configured - allowing local development request");
       return true;
@@ -53,11 +59,18 @@ function verifyOmiWebhook(req: Request): boolean {
   }
 
   const signature = req.headers["x-omi-signature"] as string;
+  const rawBody = req.rawBody && Buffer.isBuffer(req.rawBody)
+    ? req.rawBody
+    : typeof req.body === "string"
+    ? Buffer.from(req.body)
+    : req.body
+    ? Buffer.from(JSON.stringify(req.body))
+    : null;
 
   if (signature) {
     const expectedSignature = crypto
-      .createHmac("sha256", OMI_WEBHOOK_SECRET)
-      .update(JSON.stringify(req.body))
+      .createHmac("sha256", webhookSecret)
+      .update(rawBody || "")
       .digest("hex");
     
     if (signature === expectedSignature) {
@@ -67,13 +80,13 @@ function verifyOmiWebhook(req: Request): boolean {
   }
 
   const authHeader = req.headers.authorization;
-  if (authHeader && authHeader === `Bearer ${OMI_WEBHOOK_SECRET}`) {
+  if (authHeader && authHeader === `Bearer ${webhookSecret}`) {
     console.log("[Omi Webhooks] Valid Bearer token");
     return true;
   }
 
   const secretParam = req.query.secret as string;
-  if (secretParam && secretParam === OMI_WEBHOOK_SECRET) {
+  if (secretParam && secretParam === webhookSecret) {
     console.log("[Omi Webhooks] Valid query secret");
     return true;
   }

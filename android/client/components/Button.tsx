@@ -16,6 +16,8 @@ interface ButtonProps {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   disabled?: boolean;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 }
 
 const springConfig: WithSpringConfig = {
@@ -33,6 +35,8 @@ export function Button({
   children,
   style,
   disabled = false,
+  accessibilityLabel,
+  accessibilityHint,
 }: ButtonProps) {
   const { theme } = useTheme();
   const scale = useSharedValue(1);
@@ -53,6 +57,9 @@ export function Button({
     }
   };
 
+  // Extract text label from children if not explicitly provided
+  const label = accessibilityLabel || (typeof children === 'string' ? children : 'Button');
+
   return (
     <AnimatedPressable
       onPress={disabled ? undefined : onPress}
@@ -68,6 +75,10 @@ export function Button({
         style,
         animatedStyle,
       ]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled }}
     >
       <ThemedText
         type="body"

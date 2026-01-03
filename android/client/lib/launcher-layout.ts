@@ -1,11 +1,12 @@
-export type AnchorPosition = 
-  | "bottom-right" 
-  | "bottom-left" 
-  | "top-right" 
-  | "top-left"
+export type AnchorPosition =
+  | "bottom-right"
+  | "bottom-left"
   | "bottom-center"
-  | "bottom-right-quarter"
-  | "bottom-left-quarter";
+  | "top-right"
+  | "top-left"
+  | "top-center"
+  | "middle-right"
+  | "middle-left";
 
 export interface SnapPoint {
   anchor: AnchorPosition;
@@ -22,34 +23,188 @@ export function getSnapPoints(
 ): SnapPoint[] {
   const halfTrigger = triggerSize / 2;
   const bottomY = screenHeight - insets.bottom - padding - halfTrigger;
-  
+  const topY = insets.top + padding + halfTrigger;
+
+  const leftX = insets.left + padding + halfTrigger;
+  const rightX = screenWidth - insets.right - padding - halfTrigger;
+
+  const middleX = Math.min(Math.max(screenWidth / 2, leftX), rightX);
+  const middleY = Math.min(
+    Math.max(screenHeight / 2, topY),
+    screenHeight - insets.bottom - padding - halfTrigger,
+  );
+
   return [
     {
       anchor: "bottom-right",
-      x: screenWidth - padding - halfTrigger,
+      x: rightX,
       y: bottomY,
     },
     {
       anchor: "bottom-left",
-      x: padding + halfTrigger,
+      x: leftX,
       y: bottomY,
     },
     {
       anchor: "bottom-center",
-      x: screenWidth / 2,
+      x: middleX,
       y: bottomY,
     },
     {
-      anchor: "bottom-right-quarter",
-      x: screenWidth * 0.75,
-      y: bottomY,
+      anchor: "top-right",
+      x: rightX,
+      y: topY,
     },
     {
-      anchor: "bottom-left-quarter",
-      x: screenWidth * 0.25,
-      y: bottomY,
+      anchor: "top-left",
+      x: leftX,
+      y: topY,
+    },
+    {
+      anchor: "top-center",
+      x: middleX,
+      y: topY,
+    },
+    {
+      anchor: "middle-right",
+      x: rightX,
+      y: middleY,
+    },
+    {
+      anchor: "middle-left",
+      x: leftX,
+      y: middleY,
     },
   ];
+}
+
+export function calculateDiamondPositions(
+  itemCount: number,
+  config: LayoutConfig = DEFAULT_LAYOUT_CONFIG
+): RingPosition[] {
+  const positions: RingPosition[] = [];
+  const iconFootprint = config.iconContainerSize + config.minIconSpacing;
+  const ringSpacing = Math.max(config.ringSpacing, iconFootprint + config.minIconSpacing);
+
+  if (itemCount === 0) return positions;
+
+  if (itemCount <= 4) {
+    const minRadius = (iconFootprint * itemCount) / (2 * Math.PI);
+    const radius = Math.max(config.baseRadius * 0.85, minRadius + 10);
+    for (let i = 0; i < itemCount; i++) {
+      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(itemCount, 1);
+      positions.push({
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius,
+        angle,
+        ring: 0,
+        indexInRing: i,
+      });
+    }
+    return positions;
+  }
+  
+  if (itemCount <= 8) {
+    const innerCount = Math.min(4, itemCount);
+    const outerCount = itemCount - innerCount;
+    
+    const innerMinRadius = (iconFootprint * innerCount) / (2 * Math.PI);
+    const outerMinRadius = (iconFootprint * outerCount) / (2 * Math.PI);
+
+    const innerRadius = Math.max(config.baseRadius * 0.6, innerMinRadius + config.minIconSpacing);
+    const outerRadius = Math.max(
+      config.baseRadius + config.minIconSpacing,
+      outerMinRadius + config.minIconSpacing,
+      innerRadius + ringSpacing,
+    );
+    
+    for (let i = 0; i < innerCount; i++) {
+      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / innerCount;
+      positions.push({
+        x: Math.cos(angle) * innerRadius,
+        y: Math.sin(angle) * innerRadius,
+        angle,
+        ring: 0,
+        indexInRing: i,
+      });
+    }
+    
+    for (let i = 0; i < outerCount; i++) {
+      const offsetAngle = Math.PI / outerCount;
+      const angle = -Math.PI / 2 + offsetAngle + (i * 2 * Math.PI) / outerCount;
+      positions.push({
+        x: Math.cos(angle) * outerRadius,
+        y: Math.sin(angle) * outerRadius,
+        angle,
+        ring: 1,
+        indexInRing: i,
+      });
+    }
+    return positions;
+  }
+  
+  const innerCount = 4;
+  const middleCount = Math.min(6, itemCount - innerCount);
+  const outerCount = itemCount - innerCount - middleCount;
+
+  const innerMinRadius = (iconFootprint * innerCount) / (2 * Math.PI);
+  const middleMinRadius = (iconFootprint * middleCount) / (2 * Math.PI);
+  const outerMinRadius = outerCount > 0 ? (iconFootprint * outerCount) / (2 * Math.PI) : 0;
+
+  const spacingBoost = config.ringSpacing * 0.15;
+  const innerRadius = Math.max(
+    config.baseRadius * 0.45 + spacingBoost,
+    innerMinRadius + config.minIconSpacing,
+  );
+  const middleRadius = Math.max(
+    config.baseRadius * 0.75 + spacingBoost,
+    middleMinRadius + config.minIconSpacing,
+    innerRadius + ringSpacing,
+  );
+  const outerRadius = Math.max(
+    config.baseRadius + spacingBoost,
+    outerMinRadius + config.minIconSpacing,
+    middleRadius + (ringSpacing + spacingBoost * 0.5),
+  );
+
+  for (let i = 0; i < innerCount; i++) {
+    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / innerCount;
+    positions.push({
+      x: Math.cos(angle) * innerRadius,
+      y: Math.sin(angle) * innerRadius,
+      angle,
+      ring: 0,
+      indexInRing: i,
+    });
+  }
+  
+  for (let i = 0; i < middleCount; i++) {
+    const offsetAngle = Math.PI / middleCount;
+    const angle = -Math.PI / 2 + offsetAngle + (i * 2 * Math.PI) / middleCount;
+    positions.push({
+      x: Math.cos(angle) * middleRadius,
+      y: Math.sin(angle) * middleRadius,
+      angle,
+      ring: 1,
+      indexInRing: i,
+    });
+  }
+
+  if (outerCount > 0) {
+    const staggerOffset = Math.PI / Math.max(outerCount * 2, 6);
+    for (let i = 0; i < outerCount; i++) {
+      const angle = -Math.PI / 2 + staggerOffset + (i * 2 * Math.PI) / outerCount;
+      positions.push({
+        x: Math.cos(angle) * outerRadius,
+        y: Math.sin(angle) * outerRadius,
+        angle,
+        ring: 2,
+        indexInRing: i,
+      });
+    }
+  }
+  
+  return positions;
 }
 
 export function findClosestSnapPoint(
@@ -88,11 +243,11 @@ export interface LayoutConfig {
 }
 
 export const DEFAULT_LAYOUT_CONFIG: LayoutConfig = {
-  iconSize: 64,
-  iconContainerSize: 80,
-  baseRadius: 110,
-  ringSpacing: 95,
-  minIconSpacing: 20,
+  iconSize: 78,
+  iconContainerSize: 98,
+  baseRadius: 130,
+  ringSpacing: 110,
+  minIconSpacing: 24,
 };
 
 export function calculateSpiralPositions(
@@ -120,11 +275,11 @@ export function calculateSpiralPositions(
     
     for (let i = 0; i < iconsToPlace; i++) {
       const localAngle = startPadding + (i + 0.5) * minAngleStep;
-      
+
       let x: number;
       let y: number;
       let finalAngle: number;
-      
+
       switch (anchor) {
         case "bottom-right":
           finalAngle = Math.PI / 2 + localAngle;
@@ -137,21 +292,9 @@ export function calculateSpiralPositions(
           y = -Math.abs(Math.sin(finalAngle) * radius);
           break;
         case "bottom-center":
-        case "bottom-right-quarter":
-        case "bottom-left-quarter":
           finalAngle = Math.PI / 2 + localAngle;
           x = -Math.abs(Math.cos(finalAngle) * radius);
           y = -Math.abs(Math.sin(finalAngle) * radius);
-          break;
-        case "top-right":
-          finalAngle = Math.PI + localAngle;
-          x = -Math.abs(Math.cos(finalAngle) * radius);
-          y = Math.abs(Math.sin(finalAngle) * radius);
-          break;
-        case "top-left":
-          finalAngle = Math.PI * 1.5 + localAngle;
-          x = Math.abs(Math.cos(finalAngle) * radius);
-          y = Math.abs(Math.sin(finalAngle) * radius);
           break;
         default:
           finalAngle = Math.PI / 2 + localAngle;
@@ -218,16 +361,6 @@ export function calculateIconPositions(
           x = Math.abs(Math.cos(angle) * ringRadius);
           y = -Math.abs(Math.sin(angle) * ringRadius);
           break;
-        case "top-right":
-          angle = Math.PI + (Math.PI / 2) * t;
-          x = -Math.abs(Math.cos(angle) * ringRadius);
-          y = Math.abs(Math.sin(angle) * ringRadius);
-          break;
-        case "top-left":
-          angle = 2 * Math.PI - (Math.PI / 2) * t;
-          x = Math.abs(Math.cos(angle) * ringRadius);
-          y = Math.abs(Math.sin(angle) * ringRadius);
-          break;
         default:
           angle = Math.PI - (Math.PI / 2) * t;
           x = -Math.abs(Math.cos(angle) * ringRadius);
@@ -276,31 +409,15 @@ export function getClampedMenuSize(
 ): { menuSize: number; scale: number } {
   const triggerHalf = triggerSize / 2;
   const baseMenuSize = getMenuSize(itemCount, config);
-  
-  let availableWidth: number;
-  let availableHeight: number;
-  
-  switch (anchor) {
-    case "bottom-right":
-      availableWidth = screenWidth - padding - triggerHalf - insets.left - padding;
-      availableHeight = screenHeight - insets.bottom - padding - triggerHalf - insets.top - padding;
-      break;
-    case "bottom-left":
-      availableWidth = screenWidth - padding - triggerHalf - insets.right - padding;
-      availableHeight = screenHeight - insets.bottom - padding - triggerHalf - insets.top - padding;
-      break;
-    case "top-right":
-      availableWidth = screenWidth - padding - triggerHalf - insets.left - padding;
-      availableHeight = screenHeight - insets.top - padding - triggerHalf - insets.bottom - padding;
-      break;
-    case "top-left":
-      availableWidth = screenWidth - padding - triggerHalf - insets.right - padding;
-      availableHeight = screenHeight - insets.top - padding - triggerHalf - insets.bottom - padding;
-      break;
-    default:
-      availableWidth = screenWidth - 2 * padding - triggerHalf;
-      availableHeight = screenHeight - insets.top - insets.bottom - 2 * padding - triggerHalf;
-  }
+
+  const availableWidth = Math.max(
+    0,
+    screenWidth - insets.left - insets.right - 2 * padding - triggerHalf,
+  );
+  const availableHeight = Math.max(
+    0,
+    screenHeight - insets.top - insets.bottom - 2 * padding - triggerHalf,
+  );
   
   const maxAvailable = Math.max(Math.min(availableWidth, availableHeight), 0);
   const clampedSize = Math.min(baseMenuSize, maxAvailable);
@@ -328,6 +445,39 @@ export function calculateScaledIconPositions(
   }));
 }
 
+export function calculateCenteredIconPositions(
+  itemCount: number,
+  scale: number = 1,
+  config: LayoutConfig = DEFAULT_LAYOUT_CONFIG
+): RingPosition[] {
+  const ringDistribution = calculateRingDistribution(itemCount);
+  const positions: RingPosition[] = [];
+
+  for (let ring = 0; ring < ringDistribution.length; ring++) {
+    const itemsInRing = ringDistribution[ring];
+    const ringRadius = config.baseRadius + ring * config.ringSpacing;
+    const angleStep = (2 * Math.PI) / itemsInRing;
+
+    for (let i = 0; i < itemsInRing; i++) {
+      const angle = -Math.PI / 2 + i * angleStep;
+      const x = Math.cos(angle) * ringRadius;
+      const y = Math.sin(angle) * ringRadius;
+
+      positions.push({ x, y, angle, ring, indexInRing: i });
+    }
+  }
+
+  if (scale >= 1) {
+    return positions;
+  }
+
+  return positions.map((pos) => ({
+    ...pos,
+    x: pos.x * scale,
+    y: pos.y * scale,
+  }));
+}
+
 export function getTriggerPositionStyle(
   anchor: AnchorPosition,
   triggerSize: number,
@@ -336,7 +486,7 @@ export function getTriggerPositionStyle(
   screenWidth?: number
 ): { top?: number; bottom?: number; left?: number; right?: number } {
   const bottomPos = insets.bottom + padding;
-  
+
   switch (anchor) {
     case "bottom-right":
       return { bottom: bottomPos, right: padding };
@@ -347,20 +497,6 @@ export function getTriggerPositionStyle(
         return { bottom: bottomPos, left: (screenWidth - triggerSize) / 2 };
       }
       return { bottom: bottomPos, right: padding };
-    case "bottom-right-quarter":
-      if (screenWidth) {
-        return { bottom: bottomPos, left: screenWidth * 0.75 - triggerSize / 2 };
-      }
-      return { bottom: bottomPos, right: padding };
-    case "bottom-left-quarter":
-      if (screenWidth) {
-        return { bottom: bottomPos, left: screenWidth * 0.25 - triggerSize / 2 };
-      }
-      return { bottom: bottomPos, left: padding };
-    case "top-right":
-      return { top: insets.top + padding, right: padding };
-    case "top-left":
-      return { top: insets.top + padding, left: padding };
     default:
       return { bottom: bottomPos, right: padding };
   }
@@ -399,38 +535,6 @@ export function getMenuPositionStyle(
         bottom: bottomPos,
         right: padding + triggerHalf,
       };
-    case "bottom-right-quarter":
-      if (screenWidth) {
-        return {
-          bottom: bottomPos,
-          left: screenWidth * 0.75,
-        };
-      }
-      return {
-        bottom: bottomPos,
-        right: padding + triggerHalf,
-      };
-    case "bottom-left-quarter":
-      if (screenWidth) {
-        return {
-          bottom: bottomPos,
-          left: screenWidth * 0.25,
-        };
-      }
-      return {
-        bottom: bottomPos,
-        left: padding + triggerHalf,
-      };
-    case "top-right":
-      return {
-        top: insets.top + padding + triggerHalf,
-        right: padding + triggerHalf,
-      };
-    case "top-left":
-      return {
-        top: insets.top + padding + triggerHalf,
-        left: padding + triggerHalf,
-      };
     default:
       return {
         bottom: bottomPos,
@@ -444,46 +548,27 @@ export function getIconAnchorStyle(
   menuSize: number,
   triggerSize: number
 ): { top?: number; bottom?: number; left?: number; right?: number } {
-  switch (anchor) {
-    case "bottom-right":
-      return {
-        right: 0,
-        bottom: 0,
-      };
-    case "bottom-left":
-      return {
-        left: 0,
-        bottom: 0,
-      };
-    case "bottom-center":
-      return {
-        left: 0,
-        bottom: 0,
-      };
-    case "bottom-right-quarter":
-      return {
-        right: 0,
-        bottom: 0,
-      };
-    case "bottom-left-quarter":
-      return {
-        left: 0,
-        bottom: 0,
-      };
-    case "top-right":
-      return {
-        right: 0,
-        top: 0,
-      };
-    case "top-left":
-      return {
-        left: 0,
-        top: 0,
-      };
-    default:
-      return {
-        right: 0,
-        bottom: 0,
-      };
-  }
+  const center = menuSize / 2;
+  return {
+    left: center,
+    top: center,
+  };
+}
+
+export function getCenteredMenuPositionStyle(
+  menuSize: number,
+  screenWidth: number,
+  screenHeight: number,
+  insets: { top: number; bottom: number; left: number; right: number },
+  padding: number = 16,
+): { top: number; left: number } {
+  const availableWidth = screenWidth - insets.left - insets.right;
+  const availableHeight = screenHeight - insets.top - insets.bottom;
+
+  const left =
+    insets.left + padding + Math.max(0, (availableWidth - 2 * padding - menuSize) / 2);
+  const top =
+    insets.top + padding + Math.max(0, (availableHeight - 2 * padding - menuSize) / 2);
+
+  return { top, left };
 }

@@ -6,13 +6,13 @@ import {
   StyleSheet,
   ActivityIndicator,
   Switch,
-  Alert,
-  TextInput,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { ThemedText } from "./ThemedText";
+import { Input } from "./Input";
+import { useToast } from "./Toast";
 import { KeyboardAwareScrollViewCompat } from "./KeyboardAwareScrollViewCompat";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius, Colors } from "@/constants/theme";
@@ -34,6 +34,7 @@ export function ContactFormModal({
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const isEditing = !!contact;
 
   const [firstName, setFirstName] = useState("");
@@ -101,13 +102,11 @@ export function ContactFormModal({
     onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast.success("Contact created successfully");
       onClose();
     },
     onError: (error: any) => {
-      Alert.alert(
-        "Error",
-        error.message || "Failed to create contact. Please try again."
-      );
+      toast.error(error.message || "Failed to create contact. Please try again.");
     },
   });
 
@@ -120,13 +119,11 @@ export function ContactFormModal({
       queryClient.invalidateQueries({
         queryKey: ["/api/contacts", variables.id],
       });
+      toast.success("Contact updated successfully");
       onClose();
     },
     onError: (error: any) => {
-      Alert.alert(
-        "Error",
-        error.message || "Failed to update contact. Please try again."
-      );
+      toast.error(error.message || "Failed to update contact. Please try again.");
     },
   });
 
@@ -134,7 +131,7 @@ export function ContactFormModal({
 
   const handleSave = () => {
     if (!firstName.trim() && !lastName.trim()) {
-      Alert.alert("Error", "Please enter at least a first or last name.");
+      toast.error("Please enter at least a first or last name.");
       return;
     }
 
@@ -181,30 +178,17 @@ export function ContactFormModal({
       multiline?: boolean;
     }
   ) => (
-    <View style={styles.inputGroup}>
-      <ThemedText type="small" style={{ color: theme.textSecondary }}>
-        {label}
-      </ThemedText>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        style={[
-          styles.input,
-          {
-            backgroundColor: theme.backgroundSecondary,
-            color: theme.text,
-            borderColor: theme.border,
-          },
-          options?.multiline && styles.multilineInput,
-        ]}
-        placeholderTextColor={theme.textSecondary}
-        placeholder={options?.placeholder}
-        keyboardType={options?.keyboardType || "default"}
-        multiline={options?.multiline}
-        numberOfLines={options?.multiline ? 3 : 1}
-        editable={!isPending}
-      />
-    </View>
+    <Input
+      label={label}
+      value={value}
+      onChangeText={onChangeText}
+      placeholder={options?.placeholder}
+      keyboardType={options?.keyboardType || "default"}
+      multiline={options?.multiline}
+      numberOfLines={options?.multiline ? 3 : 1}
+      editable={!isPending}
+      containerStyle={{ marginBottom: Spacing.md }}
+    />
   );
 
   const renderSwitch = (

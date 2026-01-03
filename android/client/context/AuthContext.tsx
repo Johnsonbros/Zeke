@@ -38,6 +38,11 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { setDeviceToken } from "@/lib/query-client";
 import { apiClient, ApiError, RateLimitError } from "@/lib/api-client";
+import {
+  getPairingStatusWithGenerated,
+  pairDeviceWithGenerated,
+  verifyDeviceTokenWithGenerated,
+} from "@/lib/zeke-backend-client";
 
 const DEVICE_TOKEN_KEY = "zeke_device_token";
 const DEVICE_ID_KEY = "zeke_device_id";
@@ -226,10 +231,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (localFailed401) {
         console.log("[Auth] Local token not found, trying ZEKE backend verification...");
         try {
-          const zekeData = await apiClient.authGet<{ deviceId?: string; valid?: boolean }>(
-            "/api/zeke/auth/verify",
-            { headers: { "X-ZEKE-Device-Token": token } },
-          );
+          const zekeData = await verifyDeviceTokenWithGenerated(token);
 
           console.log("[Auth] ZEKE verify response:", JSON.stringify(zekeData));
           await updateLastVerified();
@@ -345,12 +347,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Use authPost with longer timeout (25s) for pairing
         // Route through local proxy to ZEKE backend: /api/zeke/auth/pair
         console.log("[Auth] Sending pair request to /api/zeke/auth/pair");
-        const data = await apiClient.authPost<{
-          deviceToken?: string;
-          deviceId?: string;
-          message?: string;
-          error?: string;
-        }>("/api/zeke/auth/pair", { secret, deviceName });
+        const data = await pairDeviceWithGenerated(secret, deviceName);
         console.log("[Auth] Pair response received:", JSON.stringify(data));
 
         if (data.deviceToken) {
@@ -523,10 +520,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkSmsPairingStatus = useCallback(async (): Promise<SmsPairingStatus | null> => {
     try {
       console.log("[Auth] Checking SMS pairing status...");
-      const data = await apiClient.get<{
-        configured: boolean;
-        pendingCodes: number;
-      }>("/api/zeke/auth/pairing-status");
+      const data = await getPairingStatusWithGenerated();
       
       console.log("[Auth] SMS pairing status:", data);
       return {

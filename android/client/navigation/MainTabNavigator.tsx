@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { View, StyleSheet } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
@@ -10,7 +10,8 @@ import CommunicationStackNavigator from "@/navigation/CommunicationStackNavigato
 import CalendarStackNavigator from "@/navigation/CalendarStackNavigator";
 import GeoStackNavigator from "@/navigation/GeoStackNavigator";
 import TasksStackNavigator from "@/navigation/TasksStackNavigator";
-import { ZekeLauncher, LauncherItem } from "@/components/ZekeLauncher";
+import { ZekeServicesHub } from "@/components/ZekeServicesHub";
+import { AppCardData } from "@/components/AppCard";
 import { Gradients } from "@/constants/theme";
 import type { HomeStackParamList } from "@/navigation/HomeStackNavigator";
 
@@ -24,18 +25,43 @@ export type MainTabParamList = {
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-interface ZekeLauncherWrapperProps {
+interface ZekeServicesHubWrapperProps {
   navigation: any;
 }
 
-function ZekeLauncherWrapper({ navigation }: ZekeLauncherWrapperProps) {
+function ZekeServicesHubWrapper({ navigation }: ZekeServicesHubWrapperProps) {
+  const [zekeIsActive, setZekeIsActive] = useState(false);
+  const [currentAction, setCurrentAction] = useState("Standing by");
 
-  const launcherItems: LauncherItem[] = [
+  // Simulate ZEKE activity for demo purposes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const actions = [
+        "Standing by",
+        "Syncing calendar events...",
+        "Processing voice command",
+        "Updating location data",
+        "Analyzing tasks",
+      ];
+      const randomAction = actions[Math.floor(Math.random() * actions.length)];
+      setCurrentAction(randomAction);
+      setZekeIsActive(randomAction !== "Standing by");
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const apps: AppCardData[] = [
     {
       id: "home",
+      title: "Home",
       icon: "home",
-      label: "Home",
       gradientColors: ["#6366F1", "#8B5CF6"],
+      liveData: {
+        primary: "Dashboard",
+        secondary: "View system overview and quick stats",
+      },
+      isZekeActive: currentAction.includes("overview"),
       onPress: () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         navigation.navigate("HomeTab");
@@ -43,9 +69,16 @@ function ZekeLauncherWrapper({ navigation }: ZekeLauncherWrapperProps) {
     },
     {
       id: "comms",
+      title: "Communications",
       icon: "phone",
-      label: "Comms",
       gradientColors: ["#8B5CF6", "#A855F7"],
+      liveData: {
+        primary: "3 unread messages",
+        secondary: "Last: Mom - 2 min ago",
+        count: 3,
+      },
+      needsAttention: true,
+      isZekeActive: currentAction.includes("voice"),
       onPress: () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         navigation.navigate("CommsTab");
@@ -53,9 +86,15 @@ function ZekeLauncherWrapper({ navigation }: ZekeLauncherWrapperProps) {
     },
     {
       id: "calendar",
+      title: "Calendar",
       icon: "calendar",
-      label: "Calendar",
       gradientColors: ["#10B981", "#059669"],
+      liveData: {
+        primary: "Team Standup in 15 min",
+        secondary: "4 events today",
+      },
+      needsAttention: true,
+      isZekeActive: currentAction.includes("calendar"),
       onPress: () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         navigation.navigate("CalendarTab");
@@ -63,9 +102,14 @@ function ZekeLauncherWrapper({ navigation }: ZekeLauncherWrapperProps) {
     },
     {
       id: "geo",
+      title: "Location",
       icon: "map-pin",
-      label: "Geo",
       gradientColors: ["#EF4444", "#DC2626"],
+      liveData: {
+        primary: "Current: Home",
+        secondary: "2 active geofences",
+      },
+      isZekeActive: currentAction.includes("location"),
       onPress: () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         navigation.navigate("GeoTab");
@@ -73,9 +117,15 @@ function ZekeLauncherWrapper({ navigation }: ZekeLauncherWrapperProps) {
     },
     {
       id: "tasks",
+      title: "Tasks",
       icon: "check-square",
-      label: "Tasks",
       gradientColors: ["#F59E0B", "#D97706"],
+      liveData: {
+        primary: "7 tasks today",
+        secondary: "3 high priority",
+        count: 7,
+      },
+      isZekeActive: currentAction.includes("tasks"),
       onPress: () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         navigation.navigate("TasksTab");
@@ -83,29 +133,41 @@ function ZekeLauncherWrapper({ navigation }: ZekeLauncherWrapperProps) {
     },
     {
       id: "upload",
+      title: "File Upload",
       icon: "upload-cloud",
-      label: "Upload",
       gradientColors: Gradients.accent,
+      liveData: {
+        primary: "Ready to upload",
+        secondary: "Last upload: 2 hours ago",
+      },
       onPress: () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         navigation.navigate("HomeTab", { screen: "FileUpload" });
       },
     },
     {
-      id: "message",
+      id: "chat",
+      title: "ZEKE Chat",
       icon: "message-circle",
-      label: "Message",
       gradientColors: ["#06B6D4", "#0891B2"],
+      liveData: {
+        primary: "Ask me anything",
+        secondary: "AI assistant ready",
+      },
       onPress: () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        navigation.navigate("CommsTab");
+        navigation.navigate("HomeTab", { screen: "Chat" });
       },
     },
     {
       id: "settings",
+      title: "Settings",
       icon: "settings",
-      label: "Settings",
       gradientColors: ["#64748B", "#475569"],
+      liveData: {
+        primary: "App Configuration",
+        secondary: "Manage preferences and devices",
+      },
       onPress: () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         navigation.navigate("HomeTab", { screen: "Settings" });
@@ -113,7 +175,20 @@ function ZekeLauncherWrapper({ navigation }: ZekeLauncherWrapperProps) {
     },
   ];
 
-  return <ZekeLauncher items={launcherItems} />;
+  const handleZekeStatusPress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // TODO: Show ZEKE activity details modal
+    console.log("ZEKE status pressed - show activity details");
+  };
+
+  return (
+    <ZekeServicesHub
+      apps={apps}
+      zekeCurrentAction={currentAction}
+      zekeIsActive={zekeIsActive}
+      onZekeStatusPress={handleZekeStatusPress}
+    />
+  );
 }
 
 export default function MainTabNavigator() {
@@ -121,7 +196,7 @@ export default function MainTabNavigator() {
     <View style={styles.container}>
       <Tab.Navigator
         initialRouteName="HomeTab"
-        tabBar={({ navigation }) => <ZekeLauncherWrapper navigation={navigation} />}
+        tabBar={({ navigation }) => <ZekeServicesHubWrapper navigation={navigation} />}
         screenOptions={{
           headerShown: false,
         }}

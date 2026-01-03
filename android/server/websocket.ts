@@ -3,6 +3,7 @@ import type { Server } from "node:http";
 import type { IncomingMessage } from "node:http";
 import OpenAI, { toFile } from "openai";
 import { z } from "zod";
+import { validateDeviceToken, validateMasterSecret } from "./device-auth";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -102,6 +103,42 @@ interface AudioSession {
 }
 
 const sessions = new Map<WebSocket, AudioSession>();
+
+// Track pendant status metrics
+let lastAudioReceivedAt: Date | null = null;
+let totalAudioPackets = 0;
+
+export interface PendantStatus {
+  connected: boolean;
+  streaming: boolean;
+  healthy: boolean;
+  lastAudioReceivedAt: string | null;
+  totalAudioPackets: number;
+  timeSinceLastAudioMs: number | null;
+}
+
+export function getPendantStatus(): PendantStatus {
+  const hasActiveSession = sessions.size > 0;
+  const now = Date.now();
+  const timeSinceLastAudio = lastAudioReceivedAt 
+    ? now - lastAudioReceivedAt.getTime() 
+    : null;
+  
+  // Consider streaming if we received audio in the last 10 seconds
+  const isStreaming = hasActiveSession && timeSinceLastAudio !== null && timeSinceLastAudio < 10000;
+  
+  // Healthy if connected and received audio recently (within 30 seconds)
+  const isHealthy = hasActiveSession && timeSinceLastAudio !== null && timeSinceLastAudio < 30000;
+
+  return {
+    connected: hasActiveSession,
+    streaming: isStreaming,
+    healthy: isHealthy,
+    lastAudioReceivedAt: lastAudioReceivedAt?.toISOString() ?? null,
+    totalAudioPackets,
+    timeSinceLastAudioMs: timeSinceLastAudio,
+  };
+}
 
 function sendMessage(ws: WebSocket, message: ServerMessage): void {
   if (ws.readyState === WebSocket.OPEN) {
@@ -349,6 +386,8 @@ function handleAudioChunk(ws: WebSocket, base64Data: string): void {
   try {
     const audioBuffer = Buffer.from(base64Data, "base64");
     session.audioChunks.push(audioBuffer);
+    lastAudioReceivedAt = new Date();
+    totalAudioPackets++;
     console.log(`[Audio] Received chunk: ${audioBuffer.length} bytes from device ${session.deviceId} (total chunks: ${session.audioChunks.length})`);
   } catch (error) {
     sendMessage(ws, {
@@ -427,6 +466,8 @@ async function handleBinaryOpusFrame(ws: WebSocket, opusData: Buffer): Promise<v
         const byteLength = frame.pcmData.length * Int16Array.BYTES_PER_ELEMENT;
         const pcmBuffer = Buffer.from(frame.pcmData.buffer, frame.pcmData.byteOffset, byteLength);
         session.audioChunks.push(pcmBuffer);
+        lastAudioReceivedAt = new Date();
+        totalAudioPackets++;
         console.log(`[Audio] Decoded Opus frame (WASM): ${opusData.length} bytes → ${pcmBuffer.length} PCM bytes from device ${session.deviceId}`);
       }
     } catch (error) {
@@ -458,6 +499,8 @@ async function handleBinaryOpusFrame(ws: WebSocket, opusData: Buffer): Promise<v
   } else {
     // Store raw frame directly (PCM or unknown codec)
     session.audioChunks.push(opusData);
+    lastAudioReceivedAt = new Date();
+    totalAudioPackets++;
     console.log(`[Audio] Received binary frame: ${opusData.length} bytes from device ${session.deviceId} (total chunks: ${session.audioChunks.length})`);
   }
 }
@@ -493,8 +536,44 @@ function cleanupSession(ws: WebSocket): void {
   }
 }
 
+/**
+ * Validates WebSocket authentication token from query parameters
+ * Supports both device tokens and master secret
+ */
+function validateWebSocketAuth(req: IncomingMessage): boolean {
+  const url = new URL(req.url || '', `http://${req.headers.host}`);
+  const token = url.searchParams.get('token');
+  const secret = url.searchParams.get('secret');
+
+  // If ZEKE_SHARED_SECRET is not configured, allow in development mode
+  const ZEKE_SECRET = process.env.ZEKE_SHARED_SECRET;
+  if (!ZEKE_SECRET) {
+    console.warn('[ZEKE Sync] Authentication not configured - allowing connection (development mode)');
+    return true;
+  }
+
+  // Validate device token
+  if (token) {
+    const device = validateDeviceToken(token);
+    if (device) {
+      console.log(`[ZEKE Sync] Authenticated device: ${device.deviceName} (${device.deviceId})`);
+      return true;
+    }
+  }
+
+  // Validate master secret
+  if (secret) {
+    if (validateMasterSecret(secret)) {
+      console.log('[ZEKE Sync] Authenticated with master secret');
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function setupZekeSyncWebSocket(server: Server): WebSocketServer {
-  const wss = new WebSocketServer({ 
+  const wss = new WebSocketServer({
     server,
     path: "/ws/zeke",
   });
@@ -503,6 +582,18 @@ function setupZekeSyncWebSocket(server: Server): WebSocketServer {
 
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     console.log("[ZEKE Sync] Client connected from:", req.socket.remoteAddress);
+
+    // Authenticate the WebSocket connection
+    if (!validateWebSocketAuth(req)) {
+      console.warn('[ZEKE Sync] Unauthorized connection attempt from:', req.socket.remoteAddress);
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: 'Authentication required. Provide a valid token or secret as a query parameter.',
+      }));
+      ws.close(1008, 'Authentication required');
+      return;
+    }
+
     zekeSyncClients.add(ws);
 
     ws.send(JSON.stringify({
@@ -511,9 +602,6 @@ function setupZekeSyncWebSocket(server: Server): WebSocketServer {
       data: { message: 'Connected to ZEKE sync' },
       timestamp: new Date().toISOString(),
     }));
-
-    // TODO: Implement token-based authentication for production use
-    // Currently only validating message structure, not authenticating clients
     ws.on("message", (data: Buffer | string) => {
       try {
         const messageStr = typeof data === "string" ? data : data.toString();

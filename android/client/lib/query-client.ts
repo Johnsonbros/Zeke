@@ -1,10 +1,13 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as Linking from "expo-linking";
 import { Platform } from "react-native";
 
 let cachedDeviceToken: string | null = null;
 let cachedProxyOrigin: string | null = null;
+
+const PROXY_ORIGIN_STORAGE_KEY = "cached_proxy_origin";
 
 export function setDeviceToken(token: string | null): void {
   cachedDeviceToken = token;
@@ -20,6 +23,37 @@ export function getAuthHeaders(): Record<string, string> {
     headers["X-ZEKE-Device-Token"] = cachedDeviceToken;
   }
   return headers;
+}
+
+async function loadPersistedProxyOrigin(): Promise<string | null> {
+  try {
+    const stored = await AsyncStorage.getItem(PROXY_ORIGIN_STORAGE_KEY);
+    if (stored) {
+      console.log(`[config] Loaded persisted proxy origin: ${stored}`);
+      return stored;
+    }
+  } catch (error) {
+    console.log(`[config] Could not load persisted proxy origin:`, error);
+  }
+  return null;
+}
+
+async function persistProxyOrigin(origin: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(PROXY_ORIGIN_STORAGE_KEY, origin);
+    console.log(`[config] Persisted proxy origin: ${origin}`);
+  } catch (error) {
+    console.log(`[config] Failed to persist proxy origin:`, error);
+  }
+}
+
+async function clearPersistedProxyOrigin(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(PROXY_ORIGIN_STORAGE_KEY);
+    console.log(`[config] Cleared persisted proxy origin`);
+  } catch (error) {
+    console.log(`[config] Failed to clear persisted proxy origin:`, error);
+  }
 }
 
 /**
@@ -213,15 +247,31 @@ async function getCandidateOrigins(): Promise<string[]> {
  */
 export async function initializeProxyOrigin(): Promise<void> {
   if (cachedProxyOrigin) return;
-  
+
+  // First try persisted verified origin to avoid repeated discovery calls
+  const persistedProxyOrigin = await loadPersistedProxyOrigin();
+  if (persistedProxyOrigin) {
+    const verifiedPersistedOrigin = await verifyProxyOrigin(persistedProxyOrigin);
+    if (verifiedPersistedOrigin) {
+      cachedProxyOrigin = verifiedPersistedOrigin;
+      await persistProxyOrigin(verifiedPersistedOrigin);
+      console.log(`[config] Using persisted verified proxy origin: ${cachedProxyOrigin}`);
+      return;
+    }
+
+    console.log(`[config] Persisted proxy origin failed verification. Clearing and rediscovering...`);
+    await clearPersistedProxyOrigin();
+  }
+
   const candidates = await getCandidateOrigins();
   console.log(`[config] Proxy origin candidates: ${candidates.join(', ') || 'NONE'}`);
-  
+
   // Try each candidate in order until one verifies
   for (const candidate of candidates) {
     const verifiedOrigin = await verifyProxyOrigin(candidate);
     if (verifiedOrigin) {
       cachedProxyOrigin = verifiedOrigin;
+      await persistProxyOrigin(verifiedOrigin);
       console.log(`[config] Using verified proxy origin: ${cachedProxyOrigin}`);
       return;
     }

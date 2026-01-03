@@ -1,6 +1,15 @@
 import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  varchar,
+  integer,
+  boolean,
+  timestamp,
+  jsonb,
+  index,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -29,40 +38,76 @@ export const devices = pgTable("devices", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const memories = pgTable("memories", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  deviceId: varchar("device_id").references(() => devices.id).notNull(),
-  title: text("title").notNull(),
-  summary: text("summary"),
-  transcript: text("transcript").notNull(),
-  speakers: jsonb("speakers"),
-  actionItems: jsonb("action_items"),
-  duration: integer("duration").notNull(),
-  isStarred: boolean("is_starred").default(false).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const memories = pgTable(
+  "memories",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    deviceId: varchar("device_id").references(() => devices.id).notNull(),
+    title: text("title").notNull(),
+    summary: text("summary"),
+    transcript: text("transcript").notNull(),
+    speakers: jsonb("speakers"),
+    actionItems: jsonb("action_items"),
+    duration: integer("duration").notNull(),
+    isStarred: boolean("is_starred").default(false).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    memoriesDeviceCreatedAtIdx: index("memories_device_created_at_idx").on(
+      table.deviceId,
+      table.createdAt,
+    ),
+    memoriesDeviceUpdatedAtIdx: index("memories_device_updated_at_idx").on(
+      table.deviceId,
+      table.updatedAt,
+    ),
+    memoriesStarredCreatedAtIdx: index("memories_starred_created_at_idx").on(
+      table.isStarred,
+      table.createdAt,
+    ),
+    memoriesUpdatedAtIdx: index("memories_updated_at_idx").on(table.updatedAt),
+  }),
+);
 
-export const chatSessions = pgTable("chat_sessions", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  title: text("title"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const chatSessions = pgTable(
+  "chat_sessions",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    title: text("title"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    chatSessionsUpdatedAtIdx: index("chat_sessions_updated_at_idx").on(
+      table.updatedAt,
+    ),
+  }),
+);
 
-export const chatMessages = pgTable("chat_messages", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  sessionId: varchar("session_id").references(() => chatSessions.id).notNull(),
-  role: text("role").notNull(),
-  content: text("content").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    sessionId: varchar("session_id")
+      .references(() => chatSessions.id)
+      .notNull(),
+    role: text("role").notNull(),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    chatMessagesSessionCreatedAtIdx: index(
+      "chat_messages_session_created_at_idx",
+    ).on(table.sessionId, table.createdAt),
+  }),
+);
 
 export const usersRelations = relations(users, ({ many }) => ({
   devices: many(devices),

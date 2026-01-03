@@ -9,6 +9,7 @@ import {
   Modal,
   Alert,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -716,7 +717,7 @@ export default function CalendarScreen() {
           style={[
             styles.headerControls,
             {
-              marginTop: headerHeight + Spacing.md,
+              marginTop: Platform.OS === "android" ? Spacing.md : headerHeight + Spacing.md,
             },
           ]}
         >
@@ -763,7 +764,7 @@ export default function CalendarScreen() {
           style={[
             styles.headerControls,
             {
-              marginTop: headerHeight + Spacing.md,
+              marginTop: Platform.OS === "android" ? Spacing.md : headerHeight + Spacing.md,
             },
           ]}
         >
@@ -808,7 +809,7 @@ export default function CalendarScreen() {
         style={[
           styles.headerControls,
           {
-            marginTop: headerHeight + Spacing.md,
+            marginTop: Platform.OS === "android" ? Spacing.md : headerHeight + Spacing.md,
           },
         ]}
       >

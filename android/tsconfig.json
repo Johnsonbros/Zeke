@@ -10,8 +10,8 @@
       "@shared-models": ["../shared/models/index.ts"],
       "@shared-models/*": ["../shared/models/*"]
     },
-    "types": ["node"]
+    "types": ["node", "jest"]
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
+  "exclude": ["node_modules", "build", "dist", "server_dist", "static-build"],
 }

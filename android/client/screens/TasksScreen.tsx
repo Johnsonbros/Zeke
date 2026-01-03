@@ -8,7 +8,12 @@ import {
   Modal,
   Alert,
   SectionList,
+  Platform,
 } from "react-native";
+import DateTimePicker, {
+  DateTimePickerAndroid,
+  type DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -27,6 +32,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { EmptyState } from "@/components/EmptyState";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
+import { SkeletonListItem } from "@/components/Skeleton";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, Colors, BorderRadius } from "@/constants/theme";
 import { queryClient, isZekeSyncMode } from "@/lib/query-client";
@@ -206,11 +212,13 @@ export default function TasksScreen() {
     "low" | "medium" | "high"
   >("medium");
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
+  const [isIOSDatePickerVisible, setIsIOSDatePickerVisible] = useState(false);
 
   const {
     data: tasks = [],
     refetch,
     isRefetching,
+    isLoading,
   } = useQuery<ZekeTask[]>({
     queryKey: ["tasks"],
     queryFn: getAllTasks,
@@ -258,6 +266,7 @@ export default function TasksScreen() {
     setNewTaskTitle("");
     setNewTaskDueDate("");
     setNewTaskPriority("medium");
+    setIsIOSDatePickerVisible(false);
   };
 
   const handleAddTask = () => {
@@ -342,6 +351,39 @@ export default function TasksScreen() {
     refetch();
   }, [refetch]);
 
+  const openDatePicker = useCallback(() => {
+    const currentDate = newTaskDueDate ? new Date(newTaskDueDate) : new Date();
+
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        value: currentDate,
+        mode: "date",
+        onChange: (event: DateTimePickerEvent, date?: Date) => {
+          if (event.type === "set" && date) {
+            setNewTaskDueDate(date.toISOString().split("T")[0]);
+          }
+        },
+      });
+      return;
+    }
+
+    setIsIOSDatePickerVisible((prev) => !prev);
+  }, [newTaskDueDate]);
+
+  const handleIOSDateChange = (
+    _event: DateTimePickerEvent,
+    selectedDate?: Date,
+  ) => {
+    if (selectedDate) {
+      setNewTaskDueDate(selectedDate.toISOString().split("T")[0]);
+    }
+  };
+
+  const clearDueDate = () => {
+    setNewTaskDueDate("");
+    setIsIOSDatePickerVisible(false);
+  };
+
   if (!isSyncMode) {
     return (
       <View
@@ -349,7 +391,7 @@ export default function TasksScreen() {
           styles.container,
           {
             backgroundColor: theme.backgroundRoot,
-            paddingTop: headerHeight + Spacing.xl,
+            paddingTop: Platform.OS === "android" ? Spacing.xl : headerHeight + Spacing.xl,
             paddingBottom: tabBarHeight + Spacing.xl,
           },
         ]}
@@ -369,7 +411,7 @@ export default function TasksScreen() {
         style={[
           styles.headerControls,
           {
-            marginTop: headerHeight + Spacing.md,
+            marginTop: Platform.OS === "android" ? Spacing.md : headerHeight + Spacing.md,
           },
         ]}
       >
@@ -436,7 +478,21 @@ export default function TasksScreen() {
         </View>
       </View>
 
-      {groupedTasks.length === 0 ? (
+      {isLoading ? (
+        <View
+          style={[
+            styles.loadingContainer,
+            { paddingBottom: tabBarHeight + Spacing.xl },
+          ]}
+        >
+          <SkeletonListItem />
+          <SkeletonListItem />
+          <SkeletonListItem />
+          <SkeletonListItem />
+          <SkeletonListItem />
+          <SkeletonListItem />
+        </View>
+      ) : groupedTasks.length === 0 ? (
         <View
           style={[
             styles.emptyContainer,
@@ -558,20 +614,65 @@ export default function TasksScreen() {
               <ThemedText type="small" style={styles.inputLabel}>
                 Due Date (Optional)
               </ThemedText>
-              <TextInput
+              <Pressable
+                onPress={openDatePicker}
                 style={[
-                  styles.textInput,
+                  styles.datePickerTrigger,
                   {
                     backgroundColor: theme.backgroundSecondary,
-                    color: theme.text,
                     borderColor: theme.border,
                   },
                 ]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={theme.textSecondary}
-                value={newTaskDueDate}
-                onChangeText={setNewTaskDueDate}
-              />
+              >
+                <View>
+                  <ThemedText style={{ color: theme.text }}>
+                    {newTaskDueDate
+                      ? formatDueDate(newTaskDueDate)
+                      : "Select a date"}
+                  </ThemedText>
+                  {newTaskDueDate ? (
+                    <ThemedText
+                      type="caption"
+                      style={{ color: theme.textSecondary }}
+                    >
+                      {newTaskDueDate}
+                    </ThemedText>
+                  ) : null}
+                </View>
+
+                <View style={styles.datePickerActions}>
+                  {newTaskDueDate ? (
+                    <Pressable
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        clearDueDate();
+                      }}
+                      hitSlop={8}
+                    >
+                      <Feather
+                        name="x-circle"
+                        size={18}
+                        color={theme.textSecondary}
+                      />
+                    </Pressable>
+                  ) : null}
+                  <Feather
+                    name="calendar"
+                    size={18}
+                    color={theme.textSecondary}
+                  />
+                </View>
+              </Pressable>
+
+              {Platform.OS === "ios" && isIOSDatePickerVisible ? (
+                <DateTimePicker
+                  mode="date"
+                  display="spinner"
+                  value={newTaskDueDate ? new Date(newTaskDueDate) : new Date()}
+                  onChange={handleIOSDateChange}
+                  style={styles.iosDatePicker}
+                />
+              ) : null}
             </View>
 
             <View style={styles.inputGroup}>
@@ -656,6 +757,12 @@ const styles = StyleSheet.create({
   addButtonText: {
     color: "#fff",
     fontWeight: "600",
+  },
+  loadingContainer: {
+    flex: 1,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    gap: Spacing.sm,
   },
   emptyContainer: {
     flex: 1,
@@ -742,6 +849,23 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
     fontSize: 16,
+  },
+  datePickerTrigger: {
+    height: Spacing.inputHeight,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  datePickerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  iosDatePicker: {
+    marginTop: Spacing.sm,
   },
   prioritySelector: {
     flexDirection: "row",

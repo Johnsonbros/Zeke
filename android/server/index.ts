@@ -9,13 +9,14 @@ import { registerOmiWebhooks } from "./omi-webhooks";
 import { registerWearableRoutes } from "./wearable-routes";
 import * as fs from "fs";
 import * as path from "path";
+import compression from "compression";
 
 const app = express();
 const log = console.log;
 
 declare module "http" {
   interface IncomingMessage {
-    rawBody: unknown;
+    rawBody?: Buffer;
   }
 }
 
@@ -58,21 +59,33 @@ function setupCors(app: express.Application) {
   });
 }
 
+function setupCompression(app: express.Application) {
+  app.use(
+    compression({
+      filter: (req, res) => compression.filter(req, res),
+    }),
+  );
+}
+
 function setupBodyParsing(app: express.Application) {
-  app.use(express.raw({ 
+  const captureRawBody = (req: Request, _res: Response, buf: Buffer) => {
+    if (buf && buf.length > 0) {
+      req.rawBody = Buffer.from(buf);
+    }
+  };
+
+  app.use(express.raw({
     type: ['application/octet-stream', 'audio/*'],
     limit: '50mb'
   }));
-  
+
   app.use(
     express.json({
-      verify: (req, _res, buf) => {
-        req.rawBody = buf;
-      },
+      verify: captureRawBody,
     }),
   );
 
-  app.use(express.urlencoded({ extended: false }));
+  app.use(express.urlencoded({ extended: false, verify: captureRawBody }));
 }
 
 function setupRequestLogging(app: express.Application) {
@@ -173,6 +186,32 @@ function serveLandingPage({
 
 function configureExpoAndLanding(app: express.Application) {
   const isProduction = process.env.NODE_ENV === "production";
+
+  const immutableCacheControl = "public, max-age=31536000, immutable";
+  const noCacheControl = "no-cache";
+  const oneYearMs = 1000 * 60 * 60 * 24 * 365;
+
+  const assetCacheOptions = {
+    maxAge: oneYearMs,
+    etag: true,
+    setHeaders: (res: Response) => {
+      res.setHeader("Cache-Control", immutableCacheControl);
+    },
+  } satisfies Parameters<typeof express.static>[1];
+
+  const staticCacheOptions = {
+    maxAge: oneYearMs,
+    etag: true,
+    setHeaders: (res: Response, filePath: string) => {
+      const fileName = path.basename(filePath);
+      if (fileName === "index.html") {
+        res.setHeader("Cache-Control", noCacheControl);
+        return;
+      }
+
+      res.setHeader("Cache-Control", immutableCacheControl);
+    },
+  } satisfies Parameters<typeof express.static>[1];
   
   const templatePaths = [
     path.resolve(process.cwd(), "server", "templates", "landing-page.html"),
@@ -196,10 +235,10 @@ function configureExpoAndLanding(app: express.Application) {
   const staticBuildPath = path.resolve(process.cwd(), "dist", "web");
   const assetsPath = path.resolve(process.cwd(), "assets");
 
-  app.use("/assets", express.static(assetsPath));
-  
+  app.use("/assets", express.static(assetsPath, assetCacheOptions));
+
   if (isProduction) {
-    app.use(express.static(staticBuildPath));
+    app.use(express.static(staticBuildPath, staticCacheOptions));
   }
 
   // Create Metro proxy ONCE outside the handler to prevent memory leaks
@@ -247,7 +286,7 @@ function configureExpoAndLanding(app: express.Application) {
     return metroProxy!(req, res, next);
   });
 
-  app.use(express.static(path.resolve(process.cwd(), "static-build")));
+  app.use(express.static(path.resolve(process.cwd(), "static-build"), staticCacheOptions));
 
   log("Expo routing: Checking expo-platform header on / and /manifest");
 }
@@ -271,6 +310,7 @@ function setupErrorHandler(app: express.Application) {
 
 (async () => {
   setupCors(app);
+  setupCompression(app);
   setupBodyParsing(app);
   setupRequestLogging(app);
 

@@ -30,6 +30,7 @@ export function SearchBar({
         styles.innerContainer,
         { backgroundColor: theme.backgroundDefault },
       ]}
+      accessibilityRole="search"
     >
       <Feather
         name="search"
@@ -49,12 +50,17 @@ export function SearchBar({
         autoFocus={autoFocus}
         autoCapitalize="none"
         autoCorrect={false}
+        accessibilityLabel="Search"
+        accessibilityHint="Enter search term to find memories"
       />
       {value.length > 0 ? (
         <Pressable
           onPress={() => onChangeText("")}
           hitSlop={8}
           style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+          accessibilityRole="button"
+          accessibilityLabel="Clear search"
+          accessibilityHint="Double tap to clear the search field"
         >
           <Feather name="x" size={18} color={theme.textSecondary} />
         </Pressable>

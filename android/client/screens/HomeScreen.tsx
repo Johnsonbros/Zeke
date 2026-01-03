@@ -37,6 +37,7 @@ import { OmiHealthCard } from "@/components/OmiHealthCard";
 import { LimitlessHealthCard } from "@/components/LimitlessHealthCard";
 import { NewsBriefingSection, type NewsStory } from "@/components/NewsBriefingCard";
 import { ZekeAlertStack, type ZekeAlert } from "@/components/ZekeAlertBanner";
+import { SkeletonCard } from "@/components/Skeleton";
 import { getSpeakerColor } from "@/lib/speaker-matcher";
 import { useTheme } from "@/hooks/useTheme";
 import { useLocation } from "@/hooks/useLocation";
@@ -460,7 +461,7 @@ export default function HomeScreen() {
         ref={scrollViewRef}
         style={{ flex: 1 }}
         contentContainerStyle={{
-          paddingTop: headerHeight - Spacing.lg,
+          paddingTop: Platform.OS === "android" ? Spacing.lg : headerHeight - Spacing.lg,
           paddingBottom: tabBarHeight + Spacing.lg + 40,
           paddingHorizontal: Spacing.lg,
         }}
@@ -696,14 +697,9 @@ export default function HomeScreen() {
           </View>
           {isLoadingActivities ? (
             <View style={styles.activityLoadingContainer}>
-              <ActivityIndicator size="small" color={Colors.dark.primary} />
-              <ThemedText
-                type="caption"
-                secondary
-                style={{ marginTop: Spacing.sm }}
-              >
-                Loading activities...
-              </ThemedText>
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
             </View>
           ) : activities.length === 0 ? (
             <View style={styles.activityEmptyContainer}>
@@ -1038,7 +1034,10 @@ export default function HomeScreen() {
 
             {isLoadingDevices ? (
               <View style={styles.loadingContainer}>
-                <ActivityIndicator color={Colors.dark.primary} />
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
               </View>
             ) : devices.length > 0 ? (
               devices.map((device) => (
@@ -1233,9 +1232,8 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   activityLoadingContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: Spacing.xl,
+    paddingVertical: Spacing.md,
+    gap: Spacing.md,
   },
   activityEmptyContainer: {
     alignItems: "center",
@@ -1379,8 +1377,8 @@ const styles = StyleSheet.create({
     marginRight: Spacing.sm,
   },
   loadingContainer: {
-    padding: Spacing.xl,
-    alignItems: "center",
+    paddingVertical: Spacing.md,
+    gap: Spacing.md,
   },
   seeAllButton: {
     flexDirection: "row",

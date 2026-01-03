@@ -21,7 +21,7 @@ export interface IStorage {
   updateDevice(id: string, data: Partial<InsertDevice>): Promise<Device | undefined>;
   deleteDevice(id: string): Promise<boolean>;
   
-  getMemories(filters?: { deviceId?: string; isStarred?: boolean; search?: string; limit?: number }): Promise<Memory[]>;
+  getMemories(filters: { deviceId?: string; isStarred?: boolean; search?: string; limit: number; offset: number }): Promise<Memory[]>;
   getMemory(id: string): Promise<Memory | undefined>;
   createMemory(memory: InsertMemory): Promise<Memory>;
   updateMemory(id: string, data: Partial<Pick<InsertMemory, 'title' | 'summary' | 'isStarred' | 'speakers'>>): Promise<Memory | undefined>;
@@ -33,7 +33,7 @@ export interface IStorage {
   createChatSession(session: InsertChatSession): Promise<ChatSession>;
   deleteChatSession(id: string): Promise<boolean>;
   
-  getMessagesBySession(sessionId: string): Promise<ChatMessage[]>;
+  getMessagesBySession(sessionId: string, options: { limit: number; offset: number }): Promise<ChatMessage[]>;
   createMessage(message: InsertChatMessage): Promise<ChatMessage>;
 
   getSpeakerProfiles(deviceId?: string): Promise<SpeakerProfile[]>;
@@ -89,7 +89,7 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async getMemories(filters?: { deviceId?: string; isStarred?: boolean; search?: string; limit?: number }): Promise<Memory[]> {
+  async getMemories(filters: { deviceId?: string; isStarred?: boolean; search?: string; limit: number; offset: number }): Promise<Memory[]> {
     const conditions: any[] = [];
     
     if (filters?.deviceId) {
@@ -118,10 +118,8 @@ export class DatabaseStorage implements IStorage {
     
     query = query.orderBy(desc(memories.createdAt)) as any;
     
-    if (filters?.limit) {
-      query = query.limit(filters.limit) as any;
-    }
-    
+    query = query.limit(filters.limit).offset(filters.offset) as any;
+
     return query;
   }
 
@@ -179,10 +177,12 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async getMessagesBySession(sessionId: string): Promise<ChatMessage[]> {
+  async getMessagesBySession(sessionId: string, options: { limit: number; offset: number }): Promise<ChatMessage[]> {
     return db.select().from(chatMessages)
       .where(eq(chatMessages.sessionId, sessionId))
-      .orderBy(chatMessages.createdAt);
+      .orderBy(chatMessages.createdAt)
+      .limit(options.limit)
+      .offset(options.offset);
   }
 
   async createMessage(message: InsertChatMessage): Promise<ChatMessage> {

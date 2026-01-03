@@ -14,6 +14,8 @@ import { Gradients, Shadows } from "@/constants/theme";
 interface FloatingActionButtonProps {
   onPress: () => void;
   bottom: number;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -21,6 +23,8 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 export function FloatingActionButton({
   onPress,
   bottom,
+  accessibilityLabel = "New message",
+  accessibilityHint = "Double tap to create a new message",
 }: FloatingActionButtonProps) {
   const scale = useSharedValue(1);
 
@@ -48,6 +52,9 @@ export function FloatingActionButton({
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         style={[styles.container, animatedStyle]}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityHint={accessibilityHint}
       >
         <LinearGradient
           colors={Gradients.accent}

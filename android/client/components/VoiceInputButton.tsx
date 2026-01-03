@@ -235,6 +235,14 @@ export function VoiceInputButton({
               opacity: disabled ? 0.5 : 1,
             },
           ]}
+          accessibilityRole="button"
+          accessibilityLabel={isRecording ? "Stop recording" : "Start voice input"}
+          accessibilityHint={
+            isRecording
+              ? "Double tap to stop recording and send message"
+              : "Double tap to start voice recording"
+          }
+          accessibilityState={{ disabled, busy: isRecording }}
         >
           <Feather
             name={isRecording ? "square" : "mic"}

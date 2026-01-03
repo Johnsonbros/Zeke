@@ -26,6 +26,7 @@ import { ThemedView } from "@/components/ThemedView";
 import { SearchBar } from "@/components/SearchBar";
 import { EmptyState } from "@/components/EmptyState";
 import { ContactFormModal } from "@/components/ContactFormModal";
+import { SkeletonListItem } from "@/components/Skeleton";
 import { useTheme } from "@/hooks/useTheme";
 import { useContactSync } from "@/hooks/useContactSync";
 import { Spacing, Colors, BorderRadius } from "@/constants/theme";
@@ -327,7 +328,14 @@ export default function ContactsScreen() {
     if (isLoading) {
       return (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator color={Colors.dark.primary} />
+          <SkeletonListItem />
+          <SkeletonListItem />
+          <SkeletonListItem />
+          <SkeletonListItem />
+          <SkeletonListItem />
+          <SkeletonListItem />
+          <SkeletonListItem />
+          <SkeletonListItem />
         </View>
       );
     }
@@ -363,7 +371,7 @@ export default function ContactsScreen() {
       <FlatList
         style={{ flex: 1 }}
         contentContainerStyle={{
-          paddingTop: headerHeight + Spacing.xl,
+          paddingTop: Platform.OS === "android" ? Spacing.xl : headerHeight + Spacing.xl,
           paddingBottom: tabBarHeight + Spacing.xl + 80,
           flexGrow: 1,
         }}
@@ -516,9 +524,9 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: Spacing["3xl"],
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    gap: Spacing.sm,
   },
   fab: {
     position: "absolute",

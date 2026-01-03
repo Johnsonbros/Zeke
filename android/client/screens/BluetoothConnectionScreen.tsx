@@ -37,11 +37,12 @@ export default function BluetoothConnectionScreen() {
 
   const [isScanning, setIsScanning] = useState(false);
   const [nearbyDevices, setNearbyDevices] = useState<BLEDevice[]>([]);
-  const [, setConnectionState] = useState<ConnectionState>("disconnected");
+  const [connectionState, setConnectionState] = useState<ConnectionState>("disconnected");
   const [connectingDeviceId, setConnectingDeviceId] = useState<string | null>(
     null,
   );
   const [showStreamingStatus, setShowStreamingStatus] = useState(false);
+  const [connectedDeviceName, setConnectedDeviceName] = useState<string | null>(null);
 
   const scanPulse = useSharedValue(1);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -72,6 +73,12 @@ export default function BluetoothConnectionScreen() {
         setConnectionState(state);
         if (state === "connected" && device) {
           setConnectingDeviceId(null);
+          const name = device.type === "omi" 
+            ? (device.name === "Friend" ? "Omi DevKit" : `Omi ${device.name}`)
+            : device.name;
+          setConnectedDeviceName(name);
+        } else if (state === "disconnected") {
+          setConnectedDeviceName(null);
         }
       },
     );
@@ -195,23 +202,14 @@ export default function BluetoothConnectionScreen() {
                 if (!isMountedRef.current || hasNavigatedRef.current) return;
                 
                 if (success) {
+                  setConnectedDeviceName(displayName);
                   Haptics.notificationAsync(
                     Haptics.NotificationFeedbackType.Success,
                   );
                   Alert.alert(
                     "Connected!",
-                    `Successfully connected to ${displayName}${isMockMode ? " (simulated)" : ""}.`,
-                    [
-                      {
-                        text: "OK",
-                        onPress: () => {
-                          if (navigation.canGoBack()) {
-                            hasNavigatedRef.current = true;
-                            navigation.goBack();
-                          }
-                        },
-                      },
-                    ],
+                    `Successfully connected to ${displayName}${isMockMode ? " (simulated)" : ""}. Use the button below to continue to the home screen.`,
+                    [{ text: "OK" }],
                   );
                 } else {
                   Haptics.notificationAsync(
@@ -543,6 +541,50 @@ export default function BluetoothConnectionScreen() {
           </Pressable>
         </View>
       ) : null}
+
+      {connectionState === "connected" && connectedDeviceName ? (
+        <View style={styles.connectedSection}>
+          <Card elevation={2} style={styles.connectedCard}>
+            <View style={styles.connectedHeader}>
+              <View style={[styles.connectedIcon, { backgroundColor: Colors.dark.success }]}>
+                <Feather name="check" size={24} color="#FFFFFF" />
+              </View>
+              <View style={styles.connectedInfo}>
+                <ThemedText type="h4" style={{ color: Colors.dark.success }}>
+                  Device Connected
+                </ThemedText>
+                <ThemedText type="body" style={{ marginTop: Spacing.xs }}>
+                  {connectedDeviceName}
+                </ThemedText>
+              </View>
+            </View>
+          </Card>
+
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              if (!hasNavigatedRef.current) {
+                hasNavigatedRef.current = true;
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: "Home" as never }],
+                });
+              }
+            }}
+            style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1, marginTop: Spacing.lg })}
+          >
+            <LinearGradient
+              colors={Gradients.primary}
+              style={styles.continueButton}
+            >
+              <ThemedText type="body" style={{ color: "#FFFFFF", fontWeight: "600" }}>
+                Continue to Home
+              </ThemedText>
+              <Feather name="arrow-right" size={20} color="#FFFFFF" />
+            </LinearGradient>
+          </Pressable>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -681,5 +723,35 @@ const styles = StyleSheet.create({
   },
   setupGuideText: {
     flex: 1,
+  },
+  connectedSection: {
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.xl,
+  },
+  connectedCard: {
+    marginBottom: 0,
+  },
+  connectedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  connectedIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: Spacing.md,
+  },
+  connectedInfo: {
+    flex: 1,
+  },
+  continueButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.sm,
   },
 });

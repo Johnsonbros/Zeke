@@ -33,6 +33,7 @@ import { registerLocationRoutes } from "./location";
 import { registerZekeProxyRoutes, proxyToZeke, extractForwardHeaders } from "./zeke-proxy";
 import { requestPairingCode, verifyPairingCode, getPairingStatus } from "./sms-pairing";
 import { validateDeviceToken } from "./device-auth";
+import { getPendantStatus } from "./websocket";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -68,6 +69,22 @@ Your role is to:
 You have access to the user's memory transcripts and can help them navigate their personal knowledge base. Always be respectful of the personal nature of this data and maintain user privacy.
 
 When referring to memories, be specific about dates, participants, and context when available. If you don't have enough information, ask clarifying questions.`;
+
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 100;
+
+function parsePaginationParams(limitParam: unknown, offsetParam: unknown) {
+  const parsedLimit = Number.parseInt(limitParam as string, 10);
+  const limit = Math.min(
+    Math.max(Number.isFinite(parsedLimit) ? parsedLimit : DEFAULT_PAGE_SIZE, 1),
+    MAX_PAGE_SIZE
+  );
+
+  const parsedOffset = Number.parseInt(offsetParam as string, 10);
+  const offset = Math.max(Number.isFinite(parsedOffset) ? parsedOffset : 0, 0);
+
+  return { limit, offset };
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // SMS Pairing routes (public - no auth required)
@@ -226,10 +243,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Pendant status route
+  app.get("/api/pendant/status", (_req, res) => {
+    try {
+      const status = getPendantStatus();
+      res.json(status);
+    } catch (error) {
+      console.error("Error getting pendant status:", error);
+      res.status(500).json({ error: "Failed to get pendant status" });
+    }
+  });
+
   // Memory routes
   app.get("/api/memories", async (req, res) => {
     try {
-      const filters: { deviceId?: string; isStarred?: boolean; search?: string; limit?: number } = {};
+      const { limit, offset } = parsePaginationParams(req.query.limit, req.query.offset);
+      const filters: { deviceId?: string; isStarred?: boolean; search?: string; limit: number; offset: number } = { limit, offset };
       
       if (req.query.deviceId) {
         filters.deviceId = req.query.deviceId as string;
@@ -240,10 +269,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (req.query.search) {
         filters.search = req.query.search as string;
       }
-      if (req.query.limit) {
-        filters.limit = parseInt(req.query.limit as string, 10);
-      }
-      
       const memories = await storage.getMemories(filters);
       res.json(memories);
     } catch (error) {
@@ -508,7 +533,7 @@ Respond in JSON format:
         return res.status(400).json({ error: "Query is required" });
       }
 
-      const memories = await storage.getMemories({ limit: 50 });
+      const memories = await storage.getMemories({ limit: 50, offset: 0 });
       
       if (memories.length === 0) {
         return res.json({ results: [], query });
@@ -629,7 +654,8 @@ Return at most ${Math.min(limit, 10)} results. Only include memories with releva
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
       }
-      const messages = await storage.getMessagesBySession(req.params.id);
+      const { limit, offset } = parsePaginationParams(req.query.limit, req.query.offset);
+      const messages = await storage.getMessagesBySession(req.params.id, { limit, offset });
       res.json(messages);
     } catch (error) {
       console.error("Error fetching messages:", error);
@@ -656,9 +682,9 @@ Return at most ${Math.min(limit, 10)} results. Only include memories with releva
 
       const userMessage = await storage.createMessage(parsed.data);
 
-      const previousMessages = await storage.getMessagesBySession(req.params.id);
-      
-      const recentMemories = await storage.getMemories({ limit: 10 });
+      const previousMessages = await storage.getMessagesBySession(req.params.id, { limit: 100, offset: 0 });
+
+      const recentMemories = await storage.getMemories({ limit: 10, offset: 0 });
       const memoryContext = recentMemories.length > 0 
         ? `\n\nRecent memories from the user's wearable devices:\n${recentMemories.map(m => 
             `- ${m.title} (${m.createdAt}): ${m.summary || m.transcript.substring(0, 200)}...`
@@ -745,9 +771,9 @@ Return at most ${Math.min(limit, 10)} results. Only include memories with releva
       // Send user message event
       res.write(`data: ${JSON.stringify({ type: "user_message", message: userMessage })}\n\n`);
 
-      const previousMessages = await storage.getMessagesBySession(req.params.id);
-      
-      const recentMemories = await storage.getMemories({ limit: 10 });
+      const previousMessages = await storage.getMessagesBySession(req.params.id, { limit: 100, offset: 0 });
+
+      const recentMemories = await storage.getMemories({ limit: 10, offset: 0 });
       const memoryContext = recentMemories.length > 0 
         ? `\n\nRecent memories from the user's wearable devices:\n${recentMemories.map(m => 
             `- ${m.title} (${m.createdAt}): ${m.summary || m.transcript.substring(0, 200)}...`

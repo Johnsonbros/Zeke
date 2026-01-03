@@ -13,11 +13,13 @@ import { Colors } from "@/constants/theme";
 interface PulsingDotProps {
   color?: string;
   size?: number;
+  isOnline?: boolean;
 }
 
 export function PulsingDot({
   color = Colors.dark.accent,
   size = 10,
+  isOnline = true,
 }: PulsingDotProps) {
   const opacity = useSharedValue(1);
   const scale = useSharedValue(1);
@@ -59,6 +61,9 @@ export function PulsingDot({
         },
         animatedStyle,
       ]}
+      accessibilityRole="status"
+      accessibilityLabel={isOnline ? "Connected" : "Disconnected"}
+      accessibilityLiveRegion="polite"
     />
   );
 }

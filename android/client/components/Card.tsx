@@ -18,6 +18,8 @@ interface CardProps {
   children?: React.ReactNode;
   onPress?: () => void;
   style?: ViewStyle | (ViewStyle | undefined)[];
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 }
 
 const springConfig: WithSpringConfig = {
@@ -53,6 +55,8 @@ export function Card({
   children,
   onPress,
   style,
+  accessibilityLabel,
+  accessibilityHint,
 }: CardProps) {
   const { theme } = useTheme();
   const scale = useSharedValue(1);
@@ -71,6 +75,10 @@ export function Card({
     scale.value = withSpring(1, springConfig);
   };
 
+  // Generate accessibility label from title if not provided
+  const label = accessibilityLabel || title || 'Card';
+  const hint = accessibilityHint || (onPress ? 'Double tap to open' : undefined);
+
   return (
     <AnimatedPressable
       onPress={onPress}
@@ -84,6 +92,9 @@ export function Card({
         animatedStyle,
         style,
       ]}
+      accessibilityRole={onPress ? 'button' : 'none'}
+      accessibilityLabel={label}
+      accessibilityHint={hint}
     >
       {title ? (
         <ThemedText type="h4" style={styles.cardTitle}>

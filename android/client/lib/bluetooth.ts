@@ -8,6 +8,7 @@ type Device = {
   name: string | null;
   rssi: number | null;
   serviceUUIDs: string[] | null;
+  mtu?: number;
   writeCharacteristicWithResponseForService: (
     serviceUUID: string,
     charUUID: string,
@@ -26,6 +27,7 @@ type Device = {
     serviceUUID: string,
     charUUID: string,
   ) => Promise<Characteristic>;
+  requestMTU?: (mtu: number) => Promise<Device>;
   cancelConnection: () => Promise<void>;
 };
 
@@ -413,6 +415,8 @@ class BluetoothService {
   private rawDataBuffer: number[] = [];
   private highestReceivedIndex: number = -1;
   private isInitialized: boolean = false;
+  private omiSequenceNumber: number = 0;
+  private omiAudioCodec: string | null = null;
 
   constructor() {
     this.initializeBleManager();
@@ -969,6 +973,8 @@ class BluetoothService {
     this.rawDataBuffer = [];
     this.highestReceivedIndex = -1;
     this.isInitialized = false;
+    this.omiSequenceNumber = 0;
+    this.omiAudioCodec = null;
 
     if (this.isMockMode) {
       return new Promise((resolve) => {
@@ -1019,6 +1025,7 @@ class BluetoothService {
         console.log("Setting up Limitless RX notifications...");
         await this.setupLimitlessNotifications();
       } else if (device.type === "omi") {
+        await this.optimizeOmiConnection();
         console.log("Setting up Omi audio notifications...");
         await this.setupOmiNotifications();
       }
@@ -1083,8 +1090,6 @@ class BluetoothService {
     }
   }
 
-  private omiSequenceNumber: number = 0;
-
   private async setupOmiNotifications(): Promise<void> {
     if (!this.connectedBleDevice) {
       throw new Error("No connected device");
@@ -1121,6 +1126,44 @@ class BluetoothService {
     } catch (error) {
       console.error("Failed to setup Omi notifications:", error);
       throw error;
+    }
+  }
+
+  private async optimizeOmiConnection(): Promise<void> {
+    if (!this.connectedBleDevice) {
+      throw new Error("No connected device");
+    }
+
+    if (Platform.OS === "android" && this.connectedBleDevice.requestMTU) {
+      try {
+        const updatedDevice = await this.connectedBleDevice.requestMTU(512);
+        console.log(
+          `[Omi BLE] Requested MTU=512, negotiated=${updatedDevice.mtu ?? "unknown"}`,
+        );
+      } catch (error) {
+        console.warn("[Omi BLE] MTU request failed:", error);
+      }
+    }
+
+    try {
+      const codecCharacteristic = await this.connectedBleDevice.readCharacteristicForService(
+        OMI_SERVICE_UUID,
+        OMI_AUDIO_CODEC_UUID,
+      );
+
+      if (codecCharacteristic?.value) {
+        const codecBuffer = Buffer.from(codecCharacteristic.value, "base64");
+        const codecId = codecBuffer[0];
+        const codecHex = Array.from(codecBuffer)
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join(" ");
+        this.omiAudioCodec = codecHex;
+        console.log(`[Omi Audio] Codec raw bytes: ${codecHex} (id=${codecId})`);
+      } else {
+        console.log("[Omi Audio] Codec characteristic returned no data");
+      }
+    } catch (error) {
+      console.warn("[Omi Audio] Failed to read codec characteristic:", error);
     }
   }
 

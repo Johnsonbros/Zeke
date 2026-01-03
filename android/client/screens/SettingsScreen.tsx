@@ -456,7 +456,7 @@ export default function SettingsScreen() {
       ref={scrollViewRef}
       style={{ flex: 1, backgroundColor: theme.backgroundRoot }}
       contentContainerStyle={{
-        paddingTop: headerHeight + Spacing.md,
+        paddingTop: Platform.OS === "android" ? Spacing.md : headerHeight + Spacing.md,
         paddingBottom: tabBarHeight + Spacing.lg + 20,
         paddingHorizontal: Spacing.lg,
       }}
@@ -729,6 +729,16 @@ export default function SettingsScreen() {
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               navigation.navigate("NotificationSettings");
+            }}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          <SettingsRow
+            icon="tool"
+            label="Tools & Actions"
+            value="Live backend registry"
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              navigation.navigate("ToolRegistry");
             }}
           />
           <View style={[styles.divider, { backgroundColor: theme.border }]} />

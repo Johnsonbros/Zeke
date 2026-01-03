@@ -6,6 +6,7 @@ import BluetoothConnectionScreen from "@/screens/BluetoothConnectionScreen";
 import DeviceFeaturesScreen from "@/screens/DeviceFeaturesScreen";
 import LimitlessSetupScreen from "@/screens/LimitlessSetupScreen";
 import DataRetentionScreen from "@/screens/DataRetentionScreen";
+import ToolRegistryScreen from "@/screens/ToolRegistryScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { ZekeHeaderTitle, ZekeHeaderButtons } from "@/components/ZekeHeader";
 import { createZekeSubHeader } from "@/components/ZekeSubHeader";
@@ -17,6 +18,7 @@ export type SettingsStackParamList = {
   DeviceFeatures: undefined;
   LimitlessSetup: undefined;
   DataRetention: undefined;
+  ToolRegistry: undefined;
 };
 
 const Stack = createNativeStackNavigator<SettingsStackParamList>();
@@ -70,6 +72,13 @@ export default function SettingsStackNavigator() {
         component={DataRetentionScreen}
         options={{
           headerTitle: createZekeSubHeader("Data Retention"),
+        }}
+      />
+      <Stack.Screen
+        name="ToolRegistry"
+        component={ToolRegistryScreen}
+        options={{
+          headerTitle: createZekeSubHeader("Tools & Actions"),
         }}
       />
     </Stack.Navigator>

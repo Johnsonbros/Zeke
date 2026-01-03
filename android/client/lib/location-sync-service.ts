@@ -11,6 +11,9 @@ const GEOCODE_CACHE_KEY = "@zeke/geocode_cache";
 const SYNC_STATUS_KEY = "@zeke/location_sync_status";
 
 const MAX_QUEUE_SIZE = 100;
+const MAX_RETRY_COUNT = 5;
+const BASE_RETRY_DELAY_MS = 2_000;
+const MAX_RETRY_DELAY_MS = 5 * 60 * 1_000;
 const DEDUP_DISTANCE_METERS = 50;
 const GEOCODE_CACHE_RADIUS_METERS = 100;
 const GEOCODE_CACHE_MAX_ENTRIES = 50;
@@ -202,17 +205,33 @@ class LocationSyncService {
 
       if (result.success) {
         const remaining = sortedQueue.slice(batchSize);
-        await this.savePendingQueue(remaining);
+        const filteredRemaining = remaining.filter((item) => item.retryCount <= MAX_RETRY_COUNT);
 
-        this.syncStatus.pendingCount = remaining.length;
+        if (filteredRemaining.length !== remaining.length) {
+          console.warn(
+            "[LocationSync] Dropped",
+            remaining.length - filteredRemaining.length,
+            "locations exceeding max retry attempts"
+          );
+        }
+
+        await this.savePendingQueue(filteredRemaining);
+
+        this.syncStatus.pendingCount = filteredRemaining.length;
         this.syncStatus.lastSyncAt = Date.now();
         this.syncStatus.lastSyncSuccess = true;
         await this.saveSyncStatus();
 
-        console.log("[LocationSync] Synced", result.synced, "locations,", remaining.length, "remaining");
+        console.log(
+          "[LocationSync] Synced",
+          result.synced,
+          "locations,",
+          filteredRemaining.length,
+          "remaining"
+        );
 
-        if (remaining.length > 0 && this.isOnline) {
-          setTimeout(() => this.flushPendingQueue(), 1000);
+        if (filteredRemaining.length > 0 && this.isOnline) {
+          setTimeout(() => this.flushPendingQueue(), 1_000);
         }
       } else {
         const updated = sortedQueue.map((item, index) => {
@@ -224,7 +243,14 @@ class LocationSyncService {
         await this.savePendingQueue(updated);
         this.syncStatus.lastSyncSuccess = false;
         await this.saveSyncStatus();
-        console.log("[LocationSync] Sync failed, will retry");
+        console.log("[LocationSync] Sync failed, will retry with backoff");
+
+        const attempted = updated.slice(0, batchSize);
+        const retryDelay = this.calculateBackoffDelay(attempted);
+
+        if (this.isOnline) {
+          setTimeout(() => this.flushPendingQueue(), retryDelay);
+        }
       }
 
       this.isSyncing = false;
@@ -240,6 +266,13 @@ class LocationSyncService {
       this.notifyListeners();
       return { success: false, synced: 0 };
     }
+  }
+
+  private calculateBackoffDelay(attempted: PendingLocationItem[]): number {
+    const highestRetry = attempted.reduce((max, item) => Math.max(max, item.retryCount), 0);
+    const exponentialDelay = BASE_RETRY_DELAY_MS * Math.pow(2, highestRetry);
+    const jitter = Math.floor(Math.random() * BASE_RETRY_DELAY_MS);
+    return Math.min(exponentialDelay + jitter, MAX_RETRY_DELAY_MS);
   }
 
   async getCachedGeocode(

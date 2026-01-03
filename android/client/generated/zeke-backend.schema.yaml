@@ -1,0 +1,157 @@
+openapi: 3.0.3
+info:
+  title: ZEKE Backend API
+  version: "1.0.0"
+  description: >-
+    Minimal subset of the ZEKE backend OpenAPI contract used by the mobile app.
+    The schema is used to generate a typed client instead of hand-rolled fetch calls.
+servers:
+  - url: http://localhost:5000
+    description: Local proxy used by the mobile app
+paths:
+  /api/zeke/auth/verify:
+    get:
+      operationId: verifyDeviceToken
+      summary: Verify an existing device token with the ZEKE backend
+      parameters:
+        - name: X-ZEKE-Device-Token
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Verification status for the provided device token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthVerifyResponse'
+        '401':
+          description: Token is invalid or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/zeke/auth/pair:
+    post:
+      operationId: pairDevice
+      summary: Pair a new device with the ZEKE backend
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PairDeviceRequest'
+      responses:
+        '200':
+          description: Device paired successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PairDeviceResponse'
+        '400':
+          description: Pairing failed due to invalid code or request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/zeke/auth/pairing-status:
+    get:
+      operationId: getPairingStatus
+      summary: Check if SMS pairing is configured on the backend
+      responses:
+        '200':
+          description: Pairing configuration and pending code status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PairingStatusResponse'
+  /api/zeke/dashboard:
+    get:
+      operationId: getDashboardSummary
+      summary: Fetch dashboard rollups for the current user
+      responses:
+        '200':
+          description: Counts used by the client home screen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSummary'
+components:
+  schemas:
+    AuthVerifyResponse:
+      type: object
+      properties:
+        deviceId:
+          type: string
+          description: Device identifier associated with the token
+        valid:
+          type: boolean
+          description: Whether the token is accepted by the backend
+      required:
+        - valid
+    PairDeviceRequest:
+      type: object
+      properties:
+        secret:
+          type: string
+        deviceName:
+          type: string
+      required:
+        - secret
+        - deviceName
+    PairDeviceResponse:
+      type: object
+      properties:
+        deviceToken:
+          type: string
+        deviceId:
+          type: string
+        message:
+          type: string
+        error:
+          type: string
+      required:
+        - deviceToken
+    PairingStatusResponse:
+      type: object
+      properties:
+        configured:
+          type: boolean
+        pendingCodes:
+          type: integer
+          format: int32
+      required:
+        - configured
+        - pendingCodes
+    DashboardSummary:
+      type: object
+      properties:
+        eventsCount:
+          type: integer
+          format: int32
+        pendingTasksCount:
+          type: integer
+          format: int32
+        groceryItemsCount:
+          type: integer
+          format: int32
+        memoriesCount:
+          type: integer
+          format: int32
+        userName:
+          type: string
+      required:
+        - eventsCount
+        - pendingTasksCount
+        - groceryItemsCount
+        - memoriesCount
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error

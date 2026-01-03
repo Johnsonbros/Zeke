@@ -22,6 +22,8 @@ import { AuthProvider, useAuth, loadTokenSync } from "@/context/AuthContext";
 import { PairingScreen } from "@/screens/PairingScreen";
 import { ConnectivityService } from "@/lib/connectivity";
 import { SyncTrigger } from "@/lib/sync-trigger";
+import { ToastProvider } from "@/components/Toast";
+import { useRealtimeUpdates } from "@/hooks/useRealtimeUpdates";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -63,6 +65,8 @@ function AppContent() {
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
   const notificationResponseListener =
     useRef<Notifications.Subscription | null>(null);
+
+  useRealtimeUpdates();
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -154,12 +158,14 @@ export default function App() {
       <AuthProvider>
         <QueryClientProvider client={queryClient}>
           <SafeAreaProvider>
-            <GestureHandlerRootView style={styles.root}>
-              <KeyboardProvider>
-                <AppContent />
-                <StatusBar style="light" />
-              </KeyboardProvider>
-            </GestureHandlerRootView>
+            <ToastProvider>
+              <GestureHandlerRootView style={styles.root}>
+                <KeyboardProvider>
+                  <AppContent />
+                  <StatusBar style="light" />
+                </KeyboardProvider>
+              </GestureHandlerRootView>
+            </ToastProvider>
           </SafeAreaProvider>
         </QueryClientProvider>
       </AuthProvider>

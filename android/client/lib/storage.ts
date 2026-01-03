@@ -1,6 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { DeviceInfo } from "@/components/DeviceCard";
-import { Message } from "@/components/ChatBubble";
+import type { ChatMessage, Device } from "@/lib/zeke-types";
 
 const STORAGE_KEYS = {
   DEVICES: "@zeke/devices",
@@ -59,7 +58,7 @@ export function getDefaultNotificationSettings(): NotificationSettings {
   return { ...DEFAULT_NOTIFICATION_SETTINGS };
 }
 
-export async function getDevices(): Promise<DeviceInfo[]> {
+export async function getDevices(): Promise<Device[]> {
   try {
     const data = await AsyncStorage.getItem(STORAGE_KEYS.DEVICES);
     return data ? JSON.parse(data) : [];
@@ -69,7 +68,7 @@ export async function getDevices(): Promise<DeviceInfo[]> {
   }
 }
 
-export async function saveDevices(devices: DeviceInfo[]): Promise<void> {
+export async function saveDevices(devices: Device[]): Promise<void> {
   try {
     await AsyncStorage.setItem(STORAGE_KEYS.DEVICES, JSON.stringify(devices));
   } catch (error) {
@@ -77,7 +76,7 @@ export async function saveDevices(devices: DeviceInfo[]): Promise<void> {
   }
 }
 
-export async function getChatMessages(): Promise<Message[]> {
+export async function getChatMessages(): Promise<ChatMessage[]> {
   try {
     const data = await AsyncStorage.getItem(STORAGE_KEYS.CHAT_MESSAGES);
     return data ? JSON.parse(data) : [];
@@ -87,7 +86,7 @@ export async function getChatMessages(): Promise<Message[]> {
   }
 }
 
-export async function saveChatMessages(messages: Message[]): Promise<void> {
+export async function saveChatMessages(messages: ChatMessage[]): Promise<void> {
   try {
     await AsyncStorage.setItem(
       STORAGE_KEYS.CHAT_MESSAGES,

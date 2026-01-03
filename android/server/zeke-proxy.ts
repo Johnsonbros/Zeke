@@ -67,8 +67,40 @@ function invalidateContactCache(): void {
   console.log("[Contact Cache] Invalidated");
 }
 
-function getCacheKey(endpoint: string, deviceToken?: string): string {
-  return `${endpoint}:${deviceToken || 'anonymous'}`;
+function normalizeQuery(query: Request["query"]): string {
+  if (!query || Object.keys(query).length === 0) {
+    return "";
+  }
+
+  return Object.keys(query)
+    .sort()
+    .map((key) => {
+      const value = query[key];
+
+      if (Array.isArray(value)) {
+        return `${key}=${value.map(String).sort().join(",")}`;
+      }
+
+      if (typeof value === "object" && value !== null) {
+        return `${key}=${JSON.stringify(value)}`;
+      }
+
+      return `${key}=${String(value)}`;
+    })
+    .join("&");
+}
+
+function getCacheKey(
+  endpoint: string,
+  deviceToken?: string,
+  method: string = "GET",
+  query: Request["query"] = {},
+): string {
+  const normalizedMethod = method.toUpperCase();
+  const normalizedQuery = normalizeQuery(query);
+  const querySegment = normalizedQuery ? `?${normalizedQuery}` : "";
+
+  return `${normalizedMethod}:${endpoint}${querySegment}:${deviceToken || "anonymous"}`;
 }
 
 function isCacheValid(entry: CacheEntry | undefined): boolean {
@@ -78,7 +110,7 @@ function isCacheValid(entry: CacheEntry | undefined): boolean {
 
 function invalidateCache(endpointPrefix: string): void {
   for (const key of proxyCache.keys()) {
-    if (key.startsWith(endpointPrefix)) {
+    if (key.includes(endpointPrefix)) {
       proxyCache.delete(key);
     }
   }
@@ -103,6 +135,8 @@ interface ProxyResult {
   requestId?: string;
   latencyMs?: number;
 }
+
+const isVerboseProxyLogging = process.env.NODE_ENV !== "production";
 
 export function extractForwardHeaders(reqHeaders: IncomingHttpHeaders): Record<string, string> {
   const headers: Record<string, string> = {};
@@ -157,10 +191,12 @@ export async function proxyToZeke(
     if (body && method !== "GET" && method !== "HEAD") {
       fetchOptions.body = bodyStr;
     }
-    
-    console.log(`[ZEKE Proxy] ${method} ${url.href} [${requestId}]`);
-    console.log(`[ZEKE Proxy] Headers:`, JSON.stringify(fetchOptions.headers, null, 2));
-    
+
+    if (isVerboseProxyLogging) {
+      console.log(`[ZEKE Proxy] ${method} ${url.href} [${requestId}]`);
+      console.log(`[ZEKE Proxy] Headers:`, JSON.stringify(fetchOptions.headers, null, 2));
+    }
+
     const response = await fetch(url.href, fetchOptions);
     const contentType = response.headers.get("content-type");
     const latencyMs = Date.now() - startTime;
@@ -171,12 +207,18 @@ export async function proxyToZeke(
     } else {
       data = await response.text();
     }
-    
-    console.log(`[ZEKE Proxy] Response: ${response.status} [${requestId}] ${latencyMs}ms`);
-    if (!response.ok) {
-      console.log(`[ZEKE Proxy] Error response body:`, JSON.stringify(data, null, 2));
+
+    if (isVerboseProxyLogging) {
+      console.log(`[ZEKE Proxy] Response: ${response.status} [${requestId}] ${latencyMs}ms`);
+      if (!response.ok) {
+        console.log(`[ZEKE Proxy] Error response body:`, JSON.stringify(data, null, 2));
+      }
+    } else if (!response.ok) {
+      console.error(
+        `[ZEKE Proxy] ${method} ${url.href} failed with status ${response.status} [${requestId}] ${latencyMs}ms`
+      );
     }
-    
+
     logCommunication({
       requestId,
       timestamp: new Date().toISOString(),
@@ -198,8 +240,13 @@ export async function proxyToZeke(
     };
   } catch (error) {
     const latencyMs = Date.now() - startTime;
-    console.error(`[ZEKE Proxy] Error [${requestId}]:`, error);
-    
+    if (isVerboseProxyLogging) {
+      console.error(`[ZEKE Proxy] Error [${requestId}]:`, error);
+    } else {
+      const errorMessage = error instanceof Error ? error.message : "Connection failed";
+      console.error(`[ZEKE Proxy] ${method} ${url.href} failed [${requestId}] ${latencyMs}ms: ${errorMessage}`);
+    }
+
     logCommunication({
       requestId,
       timestamp: new Date().toISOString(),
@@ -306,7 +353,7 @@ export function registerZekeProxyRoutes(app: Express): void {
   app.get("/api/zeke/grocery", async (req: Request, res: Response) => {
     const headers = extractForwardHeaders(req.headers);
     const deviceToken = headers["x-zeke-device-token"] || "";
-    const cacheKey = getCacheKey("/api/grocery", deviceToken);
+    const cacheKey = getCacheKey("/api/grocery", deviceToken, req.method, req.query);
     const cached = proxyCache.get(cacheKey);
     
     // Return cached data immediately if available (stale-while-revalidate)
@@ -625,8 +672,15 @@ export function registerZekeProxyRoutes(app: Express): void {
   app.get("/api/zeke/dashboard", async (req: Request, res: Response) => {
     const headers = extractForwardHeaders(req.headers);
     const result = await proxyToZeke("GET", "/api/dashboard", undefined, headers);
-    if (!result.success) {
-      return res.status(result.status).json({ error: result.error || "Failed to fetch dashboard" });
+    if (!result.success || typeof result.data === 'string') {
+      console.log("[Dashboard] Backend unavailable, returning fallback summary");
+      return res.json({
+        eventsCount: 0,
+        pendingTasksCount: 0,
+        groceryItemsCount: 0,
+        memoriesCount: 0,
+        userName: undefined
+      });
     }
     res.json(result.data);
   });
@@ -1157,8 +1211,8 @@ export function registerZekeProxyRoutes(app: Express): void {
     if (unreadOnly) queryString += `unreadOnly=${encodeURIComponent(unreadOnly as string)}`;
     const result = await proxyToZeke("GET", `/api/notifications${queryString ? '?' + queryString : ''}`, undefined, headers);
     if (!result.success || typeof result.data === 'string') {
-      // Return empty array if backend doesn't support this endpoint yet
-      return res.json([]);
+      console.log("[Notifications] Backend unavailable, returning empty notifications");
+      return res.json({ notifications: [] });
     }
     res.json(result.data);
   });

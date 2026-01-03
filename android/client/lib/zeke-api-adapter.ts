@@ -1,5 +1,6 @@
 import { isZekeSyncMode } from "./query-client";
 import { apiClient } from "./api-client";
+import { offlineSyncManager } from "./offline-sync-manager";
 import type {
   Task,
   GroceryItem,
@@ -7,7 +8,12 @@ import type {
   CustomListItem,
   CustomListWithItems,
   Contact,
+  Device,
+  Memory,
+  ChatSession,
+  ChatMessage,
 } from "./zeke-types";
+import { getDashboardSummaryWithGenerated } from "./zeke-backend-client";
 
 export type {
   Task,
@@ -29,45 +35,30 @@ export {
   customListItemPriorities,
 } from "./zeke-types";
 
-export interface ZekeConversation {
-  id: string;
-  title?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+export type ZekeConversation = ChatSession & {
+  createdAt: string | Date;
+  updatedAt: string | Date;
+};
 
-export interface ZekeMessage {
-  id: string;
+export type ZekeMessage = ChatMessage & {
   conversationId: string;
-  role: "user" | "assistant";
-  content: string;
-  createdAt: string;
-}
+  createdAt: string | Date;
+};
 
-export interface ZekeMemory {
-  id: string;
-  title: string;
-  summary?: string;
-  transcript: string;
-  speakers?: any;
-  actionItems?: string[];
-  duration: number;
-  isStarred: boolean;
-  createdAt: string;
-  updatedAt: string;
-  deviceId?: string;
-}
+export type ZekeMemory =
+  | (Omit<Memory, "createdAt" | "updatedAt"> & {
+      createdAt: string | Date;
+      updatedAt: string | Date;
+    })
+  | Memory;
 
-export interface ZekeDevice {
-  id: string;
-  name: string;
-  type: string;
-  macAddress?: string;
-  batteryLevel?: number;
-  isConnected: boolean;
-  lastSyncAt?: string;
-  createdAt: string;
-}
+export type ZekeDevice =
+  | (Omit<Device, "createdAt" | "lastSyncAt" | "lastHeartbeat"> & {
+      createdAt?: string | Date;
+      lastSyncAt?: string | Date | null;
+      lastHeartbeat?: string | Date | null;
+    })
+  | Device;
 
 export interface ZekeEvent {
   id: string;
@@ -171,10 +162,14 @@ export async function getConversationMessages(
 
   try {
     // Retry, timeout, and 404 fallback now handled centrally by ZekeApiClient
-    return await apiClient.get<ZekeMessage[]>(
+    const messages = await apiClient.get<ChatMessage[]>(
       `/api/conversations/${conversationId}/messages`,
       { emptyArrayOn404: true },
     );
+    return messages.map((message) => ({
+      ...message,
+      conversationId: message.sessionId || conversationId,
+    }));
   } catch (error) {
     console.error("[ZEKE Chat] Failed to fetch messages:", error);
     return [];
@@ -194,14 +189,25 @@ export async function sendMessage(
   }
 
   // Retry, timeout, and auth now handled centrally by ZekeApiClient
-  return await apiClient.post<{
-    userMessage: ZekeMessage;
-    assistantMessage: ZekeMessage;
+  const response = await apiClient.post<{
+    userMessage: ChatMessage;
+    assistantMessage: ChatMessage;
   }>(
     `/api/conversations/${conversationId}/messages`,
     { content },
     { timeoutMs: 30000 },
   );
+
+  return {
+    userMessage: {
+      ...response.userMessage,
+      conversationId,
+    },
+    assistantMessage: {
+      ...response.assistantMessage,
+      conversationId,
+    },
+  };
 }
 
 export async function chatWithZeke(
@@ -257,17 +263,18 @@ export interface ZekeReminder {
 }
 
 export async function getReminders(): Promise<ZekeReminder[]> {
-  try {
-    // Retry, timeout, and 404 fallback now handled centrally by ZekeApiClient
-    const data = await apiClient.get<{ reminders?: ZekeReminder[] }>(
-      "/api/reminders",
-      { emptyArrayOn404: true },
-    );
-    return data.reminders || [];
-  } catch (error) {
-    console.error("[Reminders] Failed to fetch reminders:", error);
-    return [];
-  }
+  return offlineSyncManager.getReminders(async () => {
+    try {
+      const data = await apiClient.get<{ reminders?: ZekeReminder[] }>(
+        "/api/reminders",
+        { emptyArrayOn404: true },
+      );
+      return data.reminders || [];
+    } catch (error) {
+      console.error("[Reminders] Failed to fetch reminders:", error);
+      return [];
+    }
+  });
 }
 
 export async function getContacts(): Promise<ZekeContact[]> {
@@ -548,23 +555,47 @@ function getDefaultZekeDevices(): ZekeDevice[] {
 }
 
 export async function getRecentMemories(limit: number = 5): Promise<ZekeMemory[]> {
-  try {
-    const data = await apiClient.get<ZekeMemory[]>("/api/memories", {
-      query: { limit: limit.toString() },
-      timeoutMs: 5000,
-    });
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
+  const summaries = await offlineSyncManager.getMemorySummaries(
+    async () => {
+      try {
+        const data = await apiClient.get<ZekeMemory[]>("/api/memories", {
+          query: { limit: limit.toString() },
+          timeoutMs: 5000,
+        });
+        return Array.isArray(data)
+          ? data.map((memory) => ({
+              id: memory.id,
+              title: memory.title,
+              summary: memory.summary,
+              createdAt: memory.createdAt,
+              updatedAt: memory.updatedAt,
+            }))
+          : [];
+      } catch {
+        return [];
+      }
+    },
+    limit,
+  );
+
+  return summaries.map((summary) => ({
+    id: summary.id,
+    title: summary.title,
+    summary: summary.summary,
+    transcript: "",
+    speakers: [],
+    actionItems: [],
+    duration: 0,
+    isStarred: false,
+    createdAt: summary.createdAt,
+    updatedAt: summary.updatedAt,
+  }));
 }
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   try {
-    // Route through local proxy to avoid CORS/network issues on mobile
-    return await apiClient.get<DashboardSummary>("/api/zeke/dashboard", {
-      timeoutMs: 5000,
-    });
+    // Prefer generated OpenAPI client to stay in sync with backend schema
+    return await getDashboardSummaryWithGenerated();
   } catch {}
 
   const [events, tasks, grocery] = await Promise.all([
@@ -591,28 +622,29 @@ export async function getEventsForDateRange(
     "to",
     endDate.toISOString(),
   );
-
-  try {
-    // Retry and timeout now handled centrally by ZekeApiClient
-    // Routes to local API via isLocalEndpoint() check
-    const data = await apiClient.get<ZekeEvent[] | { events?: ZekeEvent[] }>(
-      "/api/calendar/events",
-      {
-        query: {
-          timeMin: startDate.toISOString(),
-          timeMax: endDate.toISOString(),
-        },
-        timeoutMs: 10000,
-      },
-    );
-    // Handle both array response (server returns events directly) and object response
-    const events = Array.isArray(data) ? data : (data.events || []);
-    console.log("[Calendar] Fetched range events count:", events.length);
-    return events;
-  } catch (error) {
-    console.error("[Calendar] Range fetch error, trying ZEKE proxy:", error);
-    return getEventsFromZekeProxy(startDate, endDate);
-  }
+  return offlineSyncManager.getEvents(
+    async () => {
+      try {
+        const data = await apiClient.get<ZekeEvent[] | { events?: ZekeEvent[] }>(
+          "/api/calendar/events",
+          {
+            query: {
+              timeMin: startDate.toISOString(),
+              timeMax: endDate.toISOString(),
+            },
+            timeoutMs: 10000,
+          },
+        );
+        const events = Array.isArray(data) ? data : (data.events || []);
+        console.log("[Calendar] Fetched range events count:", events.length);
+        return events;
+      } catch (error) {
+        console.error("[Calendar] Range fetch error, trying ZEKE proxy:", error);
+        return getEventsFromZekeProxy(startDate, endDate);
+      }
+    },
+    { start: startDate, end: endDate },
+  );
 }
 
 async function getEventsFromZekeProxy(
@@ -641,22 +673,28 @@ async function getEventsFromZekeProxy(
 
 export async function getTodayEvents(): Promise<ZekeEvent[]> {
   console.log("[Calendar] Fetching today events");
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
 
-  try {
-    // Retry and timeout now handled centrally by ZekeApiClient
-    // Routes to local API via isLocalEndpoint() check
-    const data = await apiClient.get<ZekeEvent[] | { events?: ZekeEvent[] }>(
-      "/api/calendar/today",
-      { timeoutMs: 10000 },
-    );
-    // Handle both array response (server returns events directly) and object response
-    const events = Array.isArray(data) ? data : (data.events || []);
-    console.log("[Calendar] Fetched events count:", events.length);
-    return events;
-  } catch (error) {
-    console.error("[Calendar] Fetch error, trying ZEKE proxy:", error);
-    return getTodayEventsFromZekeProxy();
-  }
+  return offlineSyncManager.getEvents(
+    async () => {
+      try {
+        const data = await apiClient.get<ZekeEvent[] | { events?: ZekeEvent[] }>(
+          "/api/calendar/today",
+          { timeoutMs: 10000 },
+        );
+        const events = Array.isArray(data) ? data : (data.events || []);
+        console.log("[Calendar] Fetched events count:", events.length);
+        return events;
+      } catch (error) {
+        console.error("[Calendar] Fetch error, trying ZEKE proxy:", error);
+        return getTodayEventsFromZekeProxy();
+      }
+    },
+    { start, end },
+  );
 }
 
 async function getTodayEventsFromZekeProxy(): Promise<ZekeEvent[]> {
@@ -677,17 +715,20 @@ async function getTodayEventsFromZekeProxy(): Promise<ZekeEvent[]> {
 }
 
 export async function getPendingTasks(): Promise<ZekeTask[]> {
-  try {
-    // Retry, timeout, and 404 fallback now handled centrally by ZekeApiClient
-    // Routes to local API via isLocalEndpoint() check
-    const data = await apiClient.get<{ tasks?: ZekeTask[] }>(
-      "/api/zeke/tasks",
-      { query: { status: "pending" }, emptyArrayOn404: true, timeoutMs: 5000 },
-    );
-    return (data.tasks || []).filter((t: ZekeTask) => t.status === "pending");
-  } catch {
-    return [];
-  }
+  const tasks = await offlineSyncManager.getTasks(async () => {
+    try {
+      const data = await apiClient.get<{ tasks?: ZekeTask[] }>(
+        "/api/zeke/tasks",
+        { query: { status: "pending" }, emptyArrayOn404: true, timeoutMs: 5000 },
+      );
+      return data.tasks || [];
+    } catch (error) {
+      console.error("[ZEKE Proxy] pending tasks error:", error);
+      return [];
+    }
+  });
+
+  return tasks.filter((task) => task.status === "pending");
 }
 
 export async function addGroceryItem(
@@ -730,19 +771,19 @@ export async function toggleGroceryPurchased(
 }
 
 export async function getAllTasks(): Promise<ZekeTask[]> {
-  try {
-    // Retry, timeout, and 404 fallback now handled centrally by ZekeApiClient
-    // Routes to local API via isLocalEndpoint() check
-    const data = await apiClient.get<{ tasks?: ZekeTask[] }>(
-      "/api/zeke/tasks",
-      { emptyArrayOn404: true, timeoutMs: 5000 },
-    );
-    console.log("[ZEKE Proxy] getAllTasks fetched:", data.tasks?.length || 0);
-    return data.tasks || [];
-  } catch (error) {
-    console.error("[ZEKE Proxy] getAllTasks error:", error);
-    return [];
-  }
+  return offlineSyncManager.getTasks(async () => {
+    try {
+      const data = await apiClient.get<{ tasks?: ZekeTask[] }>(
+        "/api/zeke/tasks",
+        { emptyArrayOn404: true, timeoutMs: 5000 },
+      );
+      console.log("[ZEKE Proxy] getAllTasks fetched:", data.tasks?.length || 0);
+      return data.tasks || [];
+    } catch (error) {
+      console.error("[ZEKE Proxy] getAllTasks error:", error);
+      return [];
+    }
+  });
 }
 
 export async function createTask(
@@ -750,25 +791,108 @@ export async function createTask(
   dueDate?: string,
   priority?: string,
 ): Promise<ZekeTask> {
-  // Retry, timeout, and auth now handled centrally by ZekeApiClient
-  return await apiClient.post<ZekeTask>("/api/zeke/tasks", {
-    title,
-    dueDate,
-    priority,
-  });
+  const payload = { title, dueDate, priority };
+  const timestamp = new Date().toISOString();
+
+  if (!offlineSyncManager.isOnline()) {
+    console.log("[Tasks] Offline - queueing create task");
+    return offlineSyncManager.recordTaskChange(
+      {
+        id: `local_${Date.now()}`,
+        title,
+        dueDate,
+        priority,
+        status: "pending",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      "create",
+      payload,
+    );
+  }
+
+  try {
+    const task = await apiClient.post<ZekeTask>("/api/zeke/tasks", payload);
+    await offlineSyncManager.saveServerTasks([task]);
+    return task;
+  } catch (error) {
+    console.error("[Tasks] Failed to create task online, queueing", error);
+    return offlineSyncManager.recordTaskChange(
+      {
+        id: `local_${Date.now()}`,
+        title,
+        dueDate,
+        priority,
+        status: "pending",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      "create",
+      payload,
+    );
+  }
 }
 
 export async function updateTask(
   id: string,
   updates: Partial<ZekeTask>,
 ): Promise<ZekeTask> {
-  // Retry, timeout, and auth now handled centrally by ZekeApiClient
-  return await apiClient.patch<ZekeTask>(`/api/zeke/tasks/${id}`, updates);
+  const timestamp = new Date().toISOString();
+  const cached = await offlineSyncManager.getCachedTasks();
+  const existing = cached.find((task) => task.id === id);
+  const offlineTask: ZekeTask = {
+    id,
+    title: updates.title || existing?.title || "Task",
+    description: updates.description ?? existing?.description,
+    dueDate: updates.dueDate ?? existing?.dueDate,
+    priority: updates.priority ?? existing?.priority,
+    status: updates.status ?? existing?.status ?? "pending",
+    createdAt: existing?.createdAt || timestamp,
+    updatedAt: timestamp,
+  };
+
+  if (!offlineSyncManager.isOnline()) {
+    console.log("[Tasks] Offline - queueing update");
+    return offlineSyncManager.recordTaskChange(offlineTask, "update", updates);
+  }
+
+  try {
+    const task = await apiClient.patch<ZekeTask>(`/api/zeke/tasks/${id}`, updates);
+    await offlineSyncManager.saveServerTasks([task]);
+    return task;
+  } catch (error) {
+    console.error("[Tasks] Failed to update online, queueing", error);
+    return offlineSyncManager.recordTaskChange(offlineTask, "update", updates);
+  }
 }
 
 export async function deleteTask(id: string): Promise<void> {
-  // Retry, timeout, and auth now handled centrally by ZekeApiClient
-  await apiClient.delete(`/api/zeke/tasks/${id}`);
+  const timestamp = new Date().toISOString();
+  const cached = await offlineSyncManager.getCachedTasks();
+  const existing = cached.find((task) => task.id === id);
+  const payloadTask: ZekeTask =
+    existing ||
+    ({
+      id,
+      title: "Task",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      status: "pending",
+    } as ZekeTask);
+
+  if (!offlineSyncManager.isOnline()) {
+    console.log("[Tasks] Offline - queueing delete");
+    await offlineSyncManager.recordTaskChange(payloadTask, "delete", {});
+    return;
+  }
+
+  try {
+    await apiClient.delete(`/api/zeke/tasks/${id}`);
+    await offlineSyncManager.removeTaskLocally(id);
+  } catch (error) {
+    console.error("[Tasks] Failed to delete online, queueing", error);
+    await offlineSyncManager.recordTaskChange(payloadTask, "delete", {});
+  }
 }
 
 export async function toggleTaskComplete(
