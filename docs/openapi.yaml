@@ -125,8 +125,7 @@ components:
         title:
           type: string
         phoneNumber:
-          type: string
-          nullable: true
+          type: [string, "null"]
         source:
           type: string
           enum: [web, sms, voice, app]
@@ -134,8 +133,7 @@ components:
           type: string
           enum: [chat, getting_to_know]
         summary:
-          type: string
-          nullable: true
+          type: [string, "null"]
         createdAt:
           type: string
           format: date-time
@@ -149,8 +147,7 @@ components:
         title:
           type: string
         phoneNumber:
-          type: string
-          nullable: true
+          type: [string, "null"]
         source:
           type: string
         mode:
@@ -198,8 +195,7 @@ components:
         message:
           type: string
         conversationId:
-          type: string
-          nullable: true
+          type: [string, "null"]
         source:
           type: string
           enum: [web, sms, voice, app]
@@ -466,8 +462,7 @@ paths:
                   verified:
                     type: boolean
                   sessionToken:
-                    type: string
-                    nullable: true
+                    type: [string, "null"]
         '401':
           description: Invalid code
           content:
@@ -494,8 +489,7 @@ paths:
                   paired:
                     type: boolean
                   phoneNumber:
-                    type: string
-                    nullable: true
+                    type: [string, "null"]
   /api/web-auth/request-code:
     post:
       summary: Request a one-time login code via email
@@ -576,8 +570,7 @@ paths:
                   authenticated:
                     type: boolean
                   user:
-                    type: object
-                    nullable: true
+                    type: [object, "null"]
   /api/web-auth/status:
     get:
       summary: Check authentication health
