@@ -793,12 +793,25 @@ export function parseQuickAction(message: string): QuickActionResult {
 
   // Natural language grocery patterns:
   // "X to grocery list", "add X to grocery list", "put X on grocery list", "X on grocery list"
-  // "add X to groceries", "X to groceries", etc.
+  // "add X to groceries", "X to groceries", "buy X", "need X", "pick up X", "get X", etc.
   const groceryPatterns = [
+    // Explicit grocery list mentions
     /^(?:add\s+)?(.+?)\s+to\s+(?:the\s+)?(?:grocery\s*list|groceries)$/i,
     /^(?:put\s+)?(.+?)\s+on\s+(?:the\s+)?(?:grocery\s*list|groceries)$/i,
     /^(?:add\s+)?(.+?)\s+to\s+(?:my\s+)?(?:grocery\s*list|groceries)$/i,
     /^(?:put\s+)?(.+?)\s+on\s+(?:my\s+)?(?:grocery\s*list|groceries)$/i,
+    // Shopping intent patterns - "buy X", "need to buy X"
+    /^(?:need\s+to\s+)?buy\s+(?:some\s+)?(.+)$/i,
+    // "pick up X", "get X from store"
+    /^pick\s+up\s+(?:some\s+)?(.+?)(?:\s+from\s+(?:the\s+)?store)?$/i,
+    /^get\s+(?:some\s+)?(.+?)\s+from\s+(?:the\s+)?(?:store|grocery|market)$/i,
+    // "we need X", "I need X", "need X" (but not "need to X" which is a task)
+    /^(?:we|i)\s+need\s+(?:some\s+)?(.+?)(?:\s+from\s+(?:the\s+)?(?:store|grocery|market))?$/i,
+    /^need\s+(?:some\s+)?(.+?)(?:\s+from\s+(?:the\s+)?(?:store|grocery|market))$/i,
+    // "out of X", "running low on X", "we're out of X"
+    /^(?:we(?:'re|'re| are)?\s+)?(?:out\s+of|running\s+low\s+on)\s+(.+)$/i,
+    // "add X to shopping list"
+    /^(?:add\s+)?(.+?)\s+to\s+(?:the\s+)?(?:my\s+)?shopping\s*list$/i,
   ];
 
   for (const pattern of groceryPatterns) {
@@ -818,9 +831,47 @@ export function parseQuickAction(message: string): QuickActionResult {
     return handleRemindCommand(content);
   }
 
+  // Natural language reminder patterns:
+  // "don't forget X", "don't let me forget X", "remind me to X"
+  // We strip the prefix and pass the FULL remainder to handleRemindCommand so it can parse the time
+  const reminderPrefixes = [
+    /^don'?t\s+(?:let\s+me\s+)?forget\s+(?:to\s+)?/i,
+    /^remind\s+me\s+(?:to\s+)?/i,
+  ];
+
+  for (const prefix of reminderPrefixes) {
+    if (prefix.test(lowerMessage)) {
+      const content = trimmed.replace(prefix, "").trim();
+      if (content) {
+        return handleRemindCommand(content);
+      }
+    }
+  }
+
   if (upperMessage.startsWith("REMEMBER ") || upperMessage === "REMEMBER") {
     const content = trimmed.substring(8).trim();
     return handleRememberCommand(content);
+  }
+
+  // Natural language memory patterns:
+  // "note that X", "keep in mind X", "note: X", "fyi X"
+  const memoryPatterns = [
+    /^note\s+that\s+(.+)$/i,
+    /^note:\s*(.+)$/i,
+    /^keep\s+in\s+mind\s+(?:that\s+)?(.+)$/i,
+    /^fyi\s+(.+)$/i,
+    /^just\s+so\s+(?:you\s+know|i\s+know)\s+(.+)$/i,
+  ];
+
+  for (const pattern of memoryPatterns) {
+    const match = lowerMessage.match(pattern);
+    if (match) {
+      const itemMatch = trimmed.match(pattern);
+      const content = itemMatch ? itemMatch[1].trim() : match[1].trim();
+      if (content) {
+        return handleRememberCommand(content);
+      }
+    }
   }
 
   if (upperMessage.startsWith("LIST ") || upperMessage === "LIST") {
