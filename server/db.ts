@@ -3,9 +3,10 @@ import pg from "pg";
 import { v4 as uuidv4 } from "uuid";
 import { eq, sql, and, or, like, desc, asc, gte, lte, lt, gt, isNull, isNotNull, ne, inArray, notInArray } from "drizzle-orm";
 import * as schema from "@shared/schema";
-import type { 
-  Conversation, 
-  InsertConversation, 
+import { batchJobStatuses, batchJobTypes } from "@shared/schema";
+import type {
+  Conversation,
+  InsertConversation,
   Message, 
   InsertMessage,
   MemoryNote,
@@ -5083,18 +5084,59 @@ export async function getCustomListItem(id: string): Promise<CustomListItem | un
 }
 
 // Batch Job Stats Functions
-export async function getBatchJobStats(): Promise<{
-  pending: number;
-  processing: number;
-  completed: number;
-  failed: number;
-}> {
-  const all = await db.select().from(schema.batchJobs);
+export async function getBatchJobStats(): Promise<BatchJobStats> {
+  const jobs = await db.select().from(schema.batchJobs);
+  const artifacts = await db.select().from(schema.batchArtifacts);
+
+  const byStatus = batchJobStatuses.reduce((acc, status) => {
+    acc[status] = 0;
+    return acc;
+  }, {} as Record<BatchJobStatus, number>);
+
+  const byType = batchJobTypes.reduce((acc, type) => {
+    acc[type] = 0;
+    return acc;
+  }, {} as Record<BatchJobType, number>);
+
+  let lastCompletedAt: string | null = null;
+  let totalProcessingTimeMs = 0;
+  let completedWithDuration = 0;
+  let totalCostCents = 0;
+
+  for (const job of jobs) {
+    byStatus[job.status] = (byStatus[job.status] || 0) + 1;
+    byType[job.type] = (byType[job.type] || 0) + 1;
+
+    if (job.status === "COMPLETED" && job.completedAt) {
+      if (!lastCompletedAt || job.completedAt > lastCompletedAt) {
+        lastCompletedAt = job.completedAt;
+      }
+
+      if (job.submittedAt) {
+        const submitted = new Date(job.submittedAt).getTime();
+        const completed = new Date(job.completedAt).getTime();
+        if (!Number.isNaN(submitted) && !Number.isNaN(completed) && completed >= submitted) {
+          totalProcessingTimeMs += completed - submitted;
+          completedWithDuration++;
+        }
+      }
+    }
+
+    totalCostCents += job.actualCostCents || 0;
+  }
+
+  const averageProcessingTimeMs = completedWithDuration
+    ? Math.round(totalProcessingTimeMs / completedWithDuration)
+    : 0;
+
   return {
-    pending: all.filter(j => j.status === 'pending').length,
-    processing: all.filter(j => j.status === 'processing').length,
-    completed: all.filter(j => j.status === 'completed').length,
-    failed: all.filter(j => j.status === 'failed').length,
+    totalJobs: jobs.length,
+    byStatus,
+    byType,
+    lastCompletedAt,
+    totalArtifactsProduced: artifacts.length,
+    totalCostCents,
+    averageProcessingTimeMs,
   };
 }
 
