@@ -12928,7 +12928,7 @@ export async function registerRoutes(
       const { getNightlyEnrichmentStatus } = await import("./jobs/nightlyEnrichment");
       const { isBatchEnabled, getBatchModel, getBatchMaxItems } = await import("./services/batchService");
       
-      const stats = getBatchJobStats();
+      const stats = await getBatchJobStats();
       const schedulerStatus = getNightlyEnrichmentStatus();
       
       res.json({
