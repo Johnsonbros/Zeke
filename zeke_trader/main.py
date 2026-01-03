@@ -11,6 +11,7 @@ from .broker_mcp import AlpacaBroker
 from .agent import TradingAgent
 from .risk import risk_check
 from .logger import TradingLogger
+from .metrics import TradingMetrics
 from .schemas import TradeIntent, NoTrade, MarketSnapshot
 
 
@@ -22,6 +23,7 @@ class TradingLoop:
         self.broker = AlpacaBroker(cfg)
         self.agent = TradingAgent(cfg)
         self.logger = TradingLogger(cfg)
+        self.metrics = TradingMetrics(cfg)
         self.running = False
     
     def run_once(self) -> None:
@@ -112,6 +114,8 @@ class TradingLoop:
         print(f"Max $ Per Trade: ${self.cfg.max_dollars_per_trade}")
         print(f"Loop Interval: {self.cfg.loop_seconds}s")
         print("="*60 + "\n")
+
+        self._print_live_readiness()
         
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -140,6 +144,32 @@ class TradingLoop:
         print("\nShutting down ZEKE Trader...")
         self.broker.close()
         print("Goodbye!")
+
+    def _print_live_readiness(self) -> None:
+        """Display a readiness summary for live trading."""
+        readiness = self.metrics.evaluate_live_readiness()
+
+        print("LIVE READINESS EVALUATION")
+        print("-" * 60)
+        print(
+            f"Score: {readiness['overall_score']:.1f}/100 | "
+            f"Ready for live? {'YES' if readiness['ready'] else 'NO'}"
+        )
+
+        if readiness["gating_issues"]:
+            print("Gating issues detected:")
+            for issue in readiness["gating_issues"]:
+                print(f"  • {issue}")
+        else:
+            print("No gating issues detected")
+
+        print("Component scores:")
+        for comp in readiness["components"]:
+            print(f"  - {comp['name']}: {comp['score']:.1f}")
+            for note in comp.get("notes", []):
+                print(f"      · {note}")
+
+        print("-" * 60 + "\n")
 
 
 def main():

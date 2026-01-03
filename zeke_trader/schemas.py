@@ -1,7 +1,8 @@
 """
 Pydantic schemas for trade decisions - strict contract between agent and execution.
 """
-from typing import Literal, Union, Optional
+from typing import Literal, Optional, Union
+
 from pydantic import BaseModel, Field, field_validator
 
 

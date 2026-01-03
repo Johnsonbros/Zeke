@@ -11,6 +11,7 @@ A self-contained agentic trading module for ZEKE, using OpenAI Agents SDK and Al
 - **Risk gate**: Deterministic checks before every trade
 - **Full logging**: CSV logs for decisions, trades, and equity
 - **Dashboard**: Real-time Streamlit visualization
+- **Live readiness score**: Weighted assessment before enabling live mode
 
 ## Quick Start
 
@@ -31,6 +32,8 @@ cp zeke_trader/.env.example .env
 ```bash
 python -m zeke_trader.main
 ```
+
+The loop now prints a **Live Readiness Evaluation** banner that scores configuration completeness, safety limits, logging health, and paper-performance track record before any trades are attempted.
 
 ### 3. Run the Dashboard
 
