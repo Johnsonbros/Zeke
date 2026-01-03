@@ -15,6 +15,12 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from eval.openai_evals import OpenAIEvalsError, upload_eval_results
+
 EVAL_DIR = Path(__file__).parent
 RUNS_DIR = EVAL_DIR / "runs"
 
@@ -69,9 +75,10 @@ def run_evals(
         "stderr": result.stderr,
         "passed": result.returncode == 0,
     }
-    
+
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     run_file = RUNS_DIR / f"{timestamp}.json"
+    summary["run_file"] = str(run_file)
     with open(run_file, 'w') as f:
         json.dump(summary, f, indent=2)
     
@@ -139,6 +146,11 @@ def main():
     parser.add_argument("--maxfail", "-x", type=int, help="Stop after N failures")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     parser.add_argument("--ci", action="store_true", help="CI mode (exit non-zero on failure)")
+    parser.add_argument(
+        "--openai-evals",
+        action="store_true",
+        help="Upload results to OpenAI Evals after pytest completes",
+    )
     parser.add_argument("--last", action="store_true", help="Show last run summary")
     parser.add_argument("--tasks", action="store_true", help="Generate TASKS.md from last run")
     
@@ -166,8 +178,35 @@ def main():
         verbose=args.verbose,
         ci_mode=args.ci,
     )
-    
-    if args.ci and not summary["passed"]:
+
+    if args.openai_evals:
+        run_file = Path(summary["run_file"])
+        try:
+            upload_result = upload_eval_results(
+                summary,
+                run_file,
+                test_filter=args.test,
+                ci_mode=args.ci,
+            )
+            summary["openai_eval"] = upload_result.__dict__
+            print(f"Uploaded to OpenAI Evals: {upload_result.report_url}")
+        except OpenAIEvalsError as exc:
+            print(f"Failed to upload to OpenAI Evals: {exc}", file=sys.stderr)
+            if args.ci:
+                sys.exit(1)
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"Unexpected error posting to OpenAI Evals: {exc}", file=sys.stderr)
+            if args.ci:
+                sys.exit(1)
+
+    eval_regressed = False
+    if summary.get("openai_eval"):
+        counts = summary["openai_eval"].get("result_counts", {})
+        eval_regressed = counts.get("failed", 0) > 0 or counts.get("errored", 0) > 0
+        if eval_regressed:
+            print("OpenAI Evals detected regressions.", file=sys.stderr)
+
+    if args.ci and (not summary["passed"] or eval_regressed):
         sys.exit(1)
 
 
