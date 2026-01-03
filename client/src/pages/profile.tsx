@@ -53,6 +53,7 @@ import type {
   CustomFieldData,
 } from "@shared/schema";
 import { FamilyMemberInput } from "@/components/FamilyMemberInput";
+import { GettingToKnowYouChat } from "@/components/GettingToKnowYouChat";
 
 const SECTION_CONFIG = {
   basic_info: { label: "Basic Info", icon: User, color: "text-blue-500" },
@@ -1255,6 +1256,8 @@ export default function ProfilePage() {
               Tell ZEKE about yourself so it can be a more effective personal assistant. The more context you provide, the better ZEKE can help you.
             </p>
           </div>
+
+          <GettingToKnowYouChat />
 
           <Accordion
             type="single"

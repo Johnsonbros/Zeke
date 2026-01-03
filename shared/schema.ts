@@ -834,6 +834,47 @@ export interface FullProfile {
   custom?: CustomFieldData[];
 }
 
+// Getting to Know You session table - tracks the conversational onboarding flow
+export const gettingToKnowSessions = pgTable("getting_to_know_sessions", {
+  id: text("id").primaryKey(),
+  status: text("status", { enum: ["active", "completed", "paused"] as const }).notNull().default("active"),
+  currentTopic: text("current_topic"),  // Which profile section we're currently exploring
+  questionsAsked: integer("questions_asked").notNull().default(0),
+  answersCollected: integer("answers_collected").notNull().default(0),
+  topicsCompleted: text("topics_completed"),  // JSON array of completed topic names
+  lastQuestionAt: text("last_question_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertGettingToKnowSessionSchema = createInsertSchema(gettingToKnowSessions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertGettingToKnowSession = z.infer<typeof insertGettingToKnowSessionSchema>;
+export type GettingToKnowSession = typeof gettingToKnowSessions.$inferSelect;
+
+// Getting to Know You message - stores the Q&A exchanges
+export const gettingToKnowMessages = pgTable("getting_to_know_messages", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  role: text("role", { enum: ["assistant", "user"] as const }).notNull(),
+  content: text("content").notNull(),
+  topic: text("topic"),  // Which profile section this relates to
+  extractedData: text("extracted_data"),  // JSON of profile data extracted from user answer
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertGettingToKnowMessageSchema = createInsertSchema(gettingToKnowMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertGettingToKnowMessage = z.infer<typeof insertGettingToKnowMessageSchema>;
+export type GettingToKnowMessage = typeof gettingToKnowMessages.$inferSelect;
+
 // Twilio message directions and statuses
 export const twilioMessageDirections = ["inbound", "outbound"] as const;
 export type TwilioMessageDirection = typeof twilioMessageDirections[number];

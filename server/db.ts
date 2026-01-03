@@ -6734,3 +6734,75 @@ export async function getDashboardSummary(): Promise<schema.DashboardSummary> {
   };
 }
 
+// ============================================================================
+// GETTING TO KNOW YOU SESSION MANAGEMENT
+// ============================================================================
+
+export async function getActiveGettingToKnowSession(): Promise<schema.GettingToKnowSession | undefined> {
+  const [result] = await db.select().from(schema.gettingToKnowSessions)
+    .where(eq(schema.gettingToKnowSessions.status, "active"))
+    .orderBy(desc(schema.gettingToKnowSessions.createdAt))
+    .limit(1);
+  return result;
+}
+
+export async function createGettingToKnowSession(): Promise<schema.GettingToKnowSession> {
+  const now = getNow();
+  const id = uuidv4();
+  await db.insert(schema.gettingToKnowSessions).values({
+    id,
+    status: "active",
+    questionsAsked: 0,
+    answersCollected: 0,
+    topicsCompleted: "[]",
+    createdAt: now,
+    updatedAt: now,
+  });
+  const [result] = await db.select().from(schema.gettingToKnowSessions).where(eq(schema.gettingToKnowSessions.id, id)).limit(1);
+  return result;
+}
+
+export async function updateGettingToKnowSession(id: string, updates: Partial<{
+  status: string;
+  currentTopic: string | null;
+  questionsAsked: number;
+  answersCollected: number;
+  topicsCompleted: string;
+  lastQuestionAt: string;
+}>): Promise<schema.GettingToKnowSession | undefined> {
+  const now = getNow();
+  await db.update(schema.gettingToKnowSessions)
+    .set({ ...updates, updatedAt: now })
+    .where(eq(schema.gettingToKnowSessions.id, id));
+  const [result] = await db.select().from(schema.gettingToKnowSessions).where(eq(schema.gettingToKnowSessions.id, id)).limit(1);
+  return result;
+}
+
+export async function getGettingToKnowMessages(sessionId: string): Promise<schema.GettingToKnowMessage[]> {
+  return await db.select().from(schema.gettingToKnowMessages)
+    .where(eq(schema.gettingToKnowMessages.sessionId, sessionId))
+    .orderBy(asc(schema.gettingToKnowMessages.createdAt));
+}
+
+export async function addGettingToKnowMessage(message: {
+  sessionId: string;
+  role: "assistant" | "user";
+  content: string;
+  topic?: string;
+  extractedData?: string;
+}): Promise<schema.GettingToKnowMessage> {
+  const now = getNow();
+  const id = uuidv4();
+  await db.insert(schema.gettingToKnowMessages).values({
+    id,
+    sessionId: message.sessionId,
+    role: message.role,
+    content: message.content,
+    topic: message.topic,
+    extractedData: message.extractedData,
+    createdAt: now,
+  });
+  const [result] = await db.select().from(schema.gettingToKnowMessages).where(eq(schema.gettingToKnowMessages.id, id)).limit(1);
+  return result;
+}
+

@@ -44,6 +44,7 @@ Key architectural decisions and features include:
 - **Unified Conversation System**: All communications across channels converge into a single conversation thread.
 - **Companion App Integration**: Location ingestion, push notification infrastructure via Expo, and calendar proxy routes. Includes real-time contact synchronization via WebSocket.
 - **Daily Operations**: Journal/Daily Summary System, Anticipation Engine for morning briefings, and a Pattern Detection System. Personalized news and morning briefing system.
+- **Getting to Know You**: Conversational onboarding feature on the profile page where ZEKE asks questions to learn about user preferences and personality. Uses dedicated session tracking for natural conversation flow, stores extracted insights as preferences. API endpoints: `/api/getting-to-know/session`, `/api/getting-to-know/message`, `/api/getting-to-know/complete`, `/api/getting-to-know/reset`.
 - **Hardware Device Registry**: Supports multi-device integration for Omi and Limitless pendants, tracking status and metrics.
 - **Voice Enrollment System**: Manages voice profiles for speaker identification.
 - **Push Notification Service**: Expo-based push notification delivery for Android.

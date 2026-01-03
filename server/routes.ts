@@ -111,6 +111,11 @@ import {
   upsertProfileSection,
   deleteProfileSection,
   getFullProfile,
+  getActiveGettingToKnowSession,
+  createGettingToKnowSession,
+  updateGettingToKnowSession,
+  getGettingToKnowMessages,
+  addGettingToKnowMessage,
   createTwilioMessage,
   getAllTwilioMessages,
   getTwilioMessagesByPhone,
@@ -7176,6 +7181,195 @@ export async function registerRoutes(
     }
   });
   
+  // === GETTING TO KNOW YOU CHAT API ===
+  
+  // Get or create active session with messages
+  app.get("/api/getting-to-know/session", async (req, res) => {
+    try {
+      let session = await getActiveGettingToKnowSession();
+      
+      if (!session) {
+        session = await createGettingToKnowSession();
+      }
+      
+      const messages = await getGettingToKnowMessages(session.id);
+      
+      res.json({
+        session,
+        messages,
+      });
+    } catch (error: any) {
+      console.error("Get getting-to-know session error:", error);
+      res.status(500).json({ message: "Failed to get session" });
+    }
+  });
+  
+  // Send a message in the getting-to-know chat
+  app.post("/api/getting-to-know/message", async (req, res) => {
+    try {
+      const { message } = req.body;
+      
+      if (!message || typeof message !== "string") {
+        return res.status(400).json({ message: "Message is required" });
+      }
+      
+      let session = await getActiveGettingToKnowSession();
+      if (!session) {
+        session = await createGettingToKnowSession();
+      }
+      
+      // Save the user message
+      await addGettingToKnowMessage({
+        sessionId: session.id,
+        role: "user",
+        content: message,
+      });
+      
+      // Get conversation history for context
+      const messages = await getGettingToKnowMessages(session.id);
+      
+      // Format messages for OpenAI
+      const conversationHistory = messages.map(m => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
+      
+      // Get existing profile data to avoid repeating questions
+      const existingProfile = await getFullProfile();
+      const existingPrefs = await getAllPreferences();
+      
+      const profileContext = existingProfile ? JSON.stringify(existingProfile) : "{}";
+      const prefsContext = existingPrefs?.map(p => `${p.key}: ${p.value}`).join("\n") || "";
+      
+      const systemPrompt = `You are ZEKE, Nate's personal AI assistant. You're having a friendly conversation to get to know Nate better.
+
+Your goal is to learn about Nate's preferences, personality, and lifestyle through natural conversation. Ask ONE question at a time and keep it conversational - not like a form or interview.
+
+Topics to explore (only ask about ones not already known):
+- Work and professional life
+- Hobbies and interests  
+- Communication preferences
+- Daily routines and habits
+- Food preferences and dietary restrictions
+- Travel and leisure
+- Relationships and social life
+- Goals and aspirations
+
+EXISTING PROFILE DATA (don't ask about these):
+${profileContext}
+
+EXISTING PREFERENCES (don't repeat these):
+${prefsContext}
+
+Guidelines:
+- Be warm and personable, not robotic
+- Ask follow-up questions when appropriate
+- Share brief, relevant observations
+- Extract and remember key facts from answers
+- After learning something, acknowledge it naturally
+- Keep questions open-ended when possible
+- Avoid rapid-fire questioning - have a real conversation
+
+When you learn something new, note it with [LEARNED: category - key insight] at the end of your response. This helps store the information.`;
+
+      // Call OpenAI for response
+      const openai = (await import("openai")).default;
+      const client = new openai();
+      
+      const completion = await client.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...conversationHistory,
+        ],
+        temperature: 0.8,
+        max_tokens: 500,
+      });
+      
+      const assistantResponse = completion.choices[0]?.message?.content || "I'd love to learn more about you! What's something you're passionate about?";
+      
+      // Extract learned data if present
+      let extractedData: string | undefined;
+      const learnedMatch = assistantResponse.match(/\[LEARNED:\s*([^\]]+)\]/);
+      if (learnedMatch) {
+        extractedData = learnedMatch[1];
+        
+        // Store extracted data as a preference/memory
+        const [category, insight] = extractedData.split(" - ");
+        if (category && insight) {
+          const prefKey = `gtky_${category.toLowerCase().replace(/\s+/g, "_")}`;
+          await setPreference({ key: prefKey, value: insight.trim() });
+        }
+      }
+      
+      // Clean response for display (remove the [LEARNED:...] tag)
+      const cleanResponse = assistantResponse.replace(/\[LEARNED:[^\]]+\]/g, "").trim();
+      
+      // Save assistant message
+      const assistantMessage = await addGettingToKnowMessage({
+        sessionId: session.id,
+        role: "assistant",
+        content: cleanResponse,
+        extractedData,
+      });
+      
+      // Update session stats
+      await updateGettingToKnowSession(session.id, {
+        questionsAsked: session.questionsAsked + 1,
+        answersCollected: session.answersCollected + 1,
+        lastQuestionAt: new Date().toISOString(),
+      });
+      
+      res.json({
+        message: assistantMessage,
+        extractedData,
+      });
+    } catch (error: any) {
+      console.error("Getting-to-know message error:", error);
+      res.status(500).json({ message: error.message || "Failed to process message" });
+    }
+  });
+  
+  // Complete/pause the getting-to-know session
+  app.post("/api/getting-to-know/complete", async (req, res) => {
+    try {
+      const session = await getActiveGettingToKnowSession();
+      if (!session) {
+        return res.status(404).json({ message: "No active session found" });
+      }
+      
+      await updateGettingToKnowSession(session.id, {
+        status: "completed",
+      });
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Complete getting-to-know session error:", error);
+      res.status(500).json({ message: "Failed to complete session" });
+    }
+  });
+  
+  // Reset/start a new getting-to-know session
+  app.post("/api/getting-to-know/reset", async (req, res) => {
+    try {
+      // Mark any active session as completed
+      const activeSession = await getActiveGettingToKnowSession();
+      if (activeSession) {
+        await updateGettingToKnowSession(activeSession.id, {
+          status: "completed",
+        });
+      }
+      
+      // Create a new session
+      const newSession = await createGettingToKnowSession();
+      
+      res.json({ session: newSession });
+    } catch (error: any) {
+      console.error("Reset getting-to-know session error:", error);
+      res.status(500).json({ message: "Failed to reset session" });
+    }
+  });
+  
   // === TWILIO MESSAGE LOG API ROUTES ===
   
   // Get all Twilio messages (with optional limit)
@@ -7779,15 +7973,17 @@ export async function registerRoutes(
   });
 
   // GET /api/user/profile - Get user profile context for personalization
-  app.get("/api/user/profile", requireInternalApiKey, (req, res) => {
+  app.get("/api/user/profile", requireInternalApiKey, async (req, res) => {
     try {
-      const profile = getFullProfile();
-      const preferences = getAllPreferences();
+      const profile = await getFullProfile();
+      const preferences = await getAllPreferences();
       
       // Convert preferences array to object
       const preferencesObj: Record<string, string> = {};
-      for (const pref of preferences) {
-        preferencesObj[pref.key] = pref.value;
+      if (Array.isArray(preferences)) {
+        for (const pref of preferences) {
+          preferencesObj[pref.key] = pref.value;
+        }
       }
       
       res.json({
@@ -12301,7 +12497,7 @@ export async function registerRoutes(
   const fileStorage = multer.diskStorage({
     destination: uploadDir,
     filename: (req, file, cb) => {
-      const uniqueName = `${Date.now()}-${require("uuid").v4()}${path.extname(file.originalname)}`;
+      const uniqueName = `${Date.now()}-${uuidv4()}${path.extname(file.originalname)}`;
       cb(null, uniqueName);
     }
   });
