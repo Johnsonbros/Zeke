@@ -32,7 +32,6 @@ import { ThemedView } from "@/components/ThemedView";
 import { SearchBar } from "@/components/SearchBar";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, Colors, BorderRadius, Gradients } from "@/constants/theme";
-import { formatAccessLevel, getAccessLevelColor } from "@/lib/access-levels";
 import { CommunicationStackParamList } from "@/navigation/CommunicationStackNavigator";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { queryClient } from "@/lib/query-client";
@@ -398,6 +397,36 @@ function getContactFullName(contact: ZekeContact): string {
     contact.lastName,
   ].filter(Boolean);
   return parts.join(" ") || "Unknown";
+}
+
+function getAccessLevelColor(accessLevel: ZekeContact["accessLevel"]): string {
+  switch (accessLevel) {
+    case "family":
+      return Colors.dark.accent;
+    case "close_friend":
+      return Colors.dark.primary;
+    case "friend":
+      return Colors.dark.secondary;
+    case "acquaintance":
+      return Colors.dark.warning;
+    default:
+      return Colors.dark.textSecondary;
+  }
+}
+
+function formatAccessLevel(accessLevel: ZekeContact["accessLevel"]): string {
+  switch (accessLevel) {
+    case "close_friend":
+      return "Close Friend";
+    case "family":
+      return "Family";
+    case "friend":
+      return "Friend";
+    case "acquaintance":
+      return "Acquaintance";
+    default:
+      return "";
+  }
 }
 
 interface ContactRowProps {

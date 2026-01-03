@@ -776,20 +776,12 @@ class BluetoothService {
     this.audioStreamState = "starting";
     this.notifyAudioStreamStateChange();
 
-    if (this.isMockMode) {
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          this.audioStreamState = "streaming";
-          this.notifyAudioStreamStateChange();
-          this.startMockAudioStream();
-          resolve(true);
-        }, 300);
-      });
+    if (!this.isMockMode) {
+      this.audioStreamState = "streaming";
+      this.notifyAudioStreamStateChange();
+      return true;
     }
 
-    console.warn(
-      "Real BLE audio streaming not implemented - native build required",
-    );
     return new Promise((resolve) => {
       setTimeout(() => {
         this.audioStreamState = "streaming";
@@ -1043,10 +1035,6 @@ class BluetoothService {
         if (!initSuccess) {
           console.warn("Limitless initialization failed, but connection was established");
         }
-      } else if (device.type === "omi") {
-        console.log("Omi device ready for audio streaming");
-        this.audioStreamState = "streaming";
-        this.notifyAudioStreamStateChange();
       }
 
       return true;

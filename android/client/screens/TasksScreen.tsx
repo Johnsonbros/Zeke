@@ -332,7 +332,7 @@ export default function TasksScreen() {
     const groups: Record<string, ZekeTask[]> = {};
 
     filteredTasks.forEach((task) => {
-      const group = getTaskGroup(task.dueDate || undefined);
+      const group = getTaskGroup(task.dueDate);
       if (!groups[group]) {
         groups[group] = [];
       }

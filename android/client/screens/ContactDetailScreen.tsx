@@ -36,7 +36,6 @@ import {
   ZekeContact,
   ZekeContactConversation,
 } from "@/lib/zeke-api-adapter";
-import { formatAccessLevel, getAccessLevelColor } from "@/lib/access-levels";
 import { CommunicationStackParamList } from "@/navigation/CommunicationStackNavigator";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 
@@ -62,6 +61,40 @@ function getFullName(contact: ZekeContact): string {
     contact.lastName,
   ].filter(Boolean);
   return parts.join(" ") || "Unknown";
+}
+
+function getAccessLevelColor(accessLevel: ZekeContact["accessLevel"]): string {
+  switch (accessLevel) {
+    case "admin":
+      return Colors.dark.accent;
+    case "inner_circle":
+      return Colors.dark.primary;
+    case "friend":
+      return Colors.dark.secondary;
+    case "acquaintance":
+      return Colors.dark.warning;
+    case "work":
+      return Colors.dark.link;
+    default:
+      return Colors.dark.textSecondary;
+  }
+}
+
+function formatAccessLevel(accessLevel: ZekeContact["accessLevel"]): string {
+  switch (accessLevel) {
+    case "admin":
+      return "Admin";
+    case "inner_circle":
+      return "Inner Circle";
+    case "friend":
+      return "Friend";
+    case "acquaintance":
+      return "Acquaintance";
+    case "work":
+      return "Work";
+    default:
+      return "Unknown";
+  }
 }
 
 function formatRelativeDate(dateStr: string): string {

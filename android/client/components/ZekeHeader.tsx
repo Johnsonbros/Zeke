@@ -19,9 +19,25 @@ export function ZekeHeaderTitle() {
     staleTime: 30000,
   });
 
-  const isOnline = isSuccess && health?.connected === true;
+  // Also poll pendant status for activity
+  const { data: pendantStatus } = useQuery<any>({
+    queryKey: ["/api/pendant/status"],
+    refetchInterval: 3000,
+    retry: 1,
+  });
 
-  return <HeaderTitle title="ZEKE" isOnline={isOnline} />;
+  const isOnline = isSuccess && health?.connected === true;
+  const isActive = pendantStatus?.streaming === true;
+  const currentAction = isActive ? "Listening..." : "Connected";
+
+  return (
+    <HeaderTitle 
+      title="ZEKE" 
+      isOnline={isOnline} 
+      isActive={isActive}
+      currentAction={currentAction}
+    />
+  );
 }
 
 export function ZekeHeaderButtons() {

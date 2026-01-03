@@ -28,7 +28,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppCard, AppCardData } from "@/components/AppCard";
-import { ZekeStatusBar } from "@/components/ZekeStatusBar";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
@@ -39,9 +38,6 @@ type ViewMode = "grid" | "carousel";
 
 interface ZekeServicesHubProps {
   apps: AppCardData[];
-  zekeCurrentAction?: string;
-  zekeIsActive?: boolean;
-  onZekeStatusPress?: () => void;
   onViewModeChange?: (mode: ViewMode) => void;
 }
 
@@ -60,9 +56,6 @@ const SPRING_CONFIG = {
 
 export function ZekeServicesHub({
   apps,
-  zekeCurrentAction = "Standing by",
-  zekeIsActive = false,
-  onZekeStatusPress,
   onViewModeChange,
 }: ZekeServicesHubProps) {
   const { theme, isDark } = useTheme();
@@ -180,28 +173,47 @@ export function ZekeServicesHub({
               showsVerticalScrollIndicator={false}
             >
               <View style={styles.header}>
-                <View style={styles.headerLeft}>
-                  <View style={styles.headerIcon}>
-                    <Feather name="grid" size={24} color="#6366F1" />
-                  </View>
-                  <View>
-                    <ThemedText type="h2" style={[styles.headerTitle, { color: theme.text }]}>
-                      ZEKE Apps
-                    </ThemedText>
-                    <ThemedText type="small" style={[styles.headerSubtitle, { color: theme.textSecondary }]}>
-                      {apps.length} services available
-                    </ThemedText>
-                  </View>
+                <Pressable
+                  onPress={() => handleViewModeSwitch("grid")}
+                  style={[
+                    styles.viewModeButton,
+                    viewMode === "grid" && styles.viewModeButtonActive,
+                  ]}
+                  accessible
+                  accessibilityRole="button"
+                  accessibilityLabel="Grid view"
+                >
+                  <Feather 
+                    name="grid" 
+                    size={20} 
+                    color={viewMode === "grid" ? "#6366F1" : theme.textSecondary} 
+                  />
+                </Pressable>
+
+                <View style={styles.headerCenter}>
+                  <ThemedText type="h2" style={[styles.headerTitle, { color: theme.text }]}>
+                    ZEKE Apps
+                  </ThemedText>
+                  <ThemedText type="small" style={[styles.headerSubtitle, { color: theme.textSecondary }]}>
+                    {apps.length} services available
+                  </ThemedText>
                 </View>
 
                 <Pressable
                   onPress={() => handleViewModeSwitch("carousel")}
-                  style={styles.viewModeButton}
+                  style={[
+                    styles.viewModeButton,
+                    viewMode === "carousel" && styles.viewModeButtonActive,
+                  ]}
                   accessible
                   accessibilityRole="button"
-                  accessibilityLabel="Switch to carousel view"
+                  accessibilityLabel="Stack view"
                 >
-                  <Feather name="layers" size={20} color={theme.textSecondary} />
+                  <Feather 
+                    name="layers" 
+                    size={20} 
+                    color={viewMode === "carousel" ? "#6366F1" : theme.textSecondary} 
+                  />
                 </Pressable>
               </View>
 
@@ -237,22 +249,46 @@ export function ZekeServicesHub({
           <View style={styles.carouselHeader}>
             <Pressable
               onPress={() => handleViewModeSwitch("grid")}
-              style={styles.backButton}
+              style={[
+                styles.viewModeButton,
+                viewMode === "grid" && styles.viewModeButtonActive,
+              ]}
               accessible
               accessibilityRole="button"
-              accessibilityLabel="Back to grid view"
+              accessibilityLabel="Grid view"
             >
-              <Feather name="grid" size={20} color={theme.text} />
-              <ThemedText type="small" style={[styles.backText, { color: theme.text }]}>
-                Grid
-              </ThemedText>
+              <Feather 
+                name="grid" 
+                size={20} 
+                color={viewMode === "grid" ? "#6366F1" : theme.textSecondary} 
+              />
             </Pressable>
 
-            <ThemedText type="h3" style={[styles.carouselTitle, { color: theme.text }]}>
-              Services
-            </ThemedText>
+            <View style={styles.headerCenter}>
+              <ThemedText type="h3" style={[styles.headerTitle, { color: theme.text }]}>
+                Services
+              </ThemedText>
+              <ThemedText type="small" style={[styles.headerSubtitle, { color: theme.textSecondary }]}>
+                {apps.length} available
+              </ThemedText>
+            </View>
 
-            <View style={{ width: 60 }} />
+            <Pressable
+              onPress={() => handleViewModeSwitch("carousel")}
+              style={[
+                styles.viewModeButton,
+                viewMode === "carousel" && styles.viewModeButtonActive,
+              ]}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel="Stack view"
+            >
+              <Feather 
+                name="layers" 
+                size={20} 
+                color={viewMode === "carousel" ? "#6366F1" : theme.textSecondary} 
+              />
+            </Pressable>
           </View>
 
           <FlatList
@@ -299,11 +335,6 @@ export function ZekeServicesHub({
         </View>
       )}
 
-      <ZekeStatusBar
-        currentAction={zekeCurrentAction}
-        isActive={zekeIsActive}
-        onPress={onZekeStatusPress}
-      />
 
       <Modal
         visible={showQuickActions}
@@ -383,18 +414,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: Spacing.xl,
   },
-  headerLeft: {
-    flexDirection: "row",
+  headerCenter: {
     alignItems: "center",
-    gap: Spacing.md,
-  },
-  headerIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.md,
-    backgroundColor: "rgba(99, 102, 241, 0.15)",
-    alignItems: "center",
-    justifyContent: "center",
   },
   headerTitle: {
     fontWeight: "700",
@@ -403,12 +424,15 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   viewModeButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: BorderRadius.md,
     backgroundColor: "rgba(255, 255, 255, 0.05)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  viewModeButtonActive: {
+    backgroundColor: "rgba(99, 102, 241, 0.15)",
   },
   grid: {
     flexDirection: "row",
@@ -435,21 +459,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.xl,
     paddingBottom: Spacing.md,
-  },
-  backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
-    paddingVertical: Spacing.xs,
-    paddingHorizontal: Spacing.sm,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-  },
-  backText: {
-    fontWeight: "600",
-  },
-  carouselTitle: {
-    fontWeight: "700",
   },
   carouselContent: {
     paddingVertical: Spacing.lg,

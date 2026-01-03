@@ -10,7 +10,7 @@ import CommunicationStackNavigator from "@/navigation/CommunicationStackNavigato
 import CalendarStackNavigator from "@/navigation/CalendarStackNavigator";
 import GeoStackNavigator from "@/navigation/GeoStackNavigator";
 import TasksStackNavigator from "@/navigation/TasksStackNavigator";
-import { ZekeServicesHub } from "@/components/ZekeServicesHub";
+import { ServicesShade } from "@/components/ServicesShade";
 import { AppCardData } from "@/components/AppCard";
 import { Gradients } from "@/constants/theme";
 import type { HomeStackParamList } from "@/navigation/HomeStackNavigator";
@@ -30,10 +30,8 @@ interface ZekeServicesHubWrapperProps {
 }
 
 function ZekeServicesHubWrapper({ navigation }: ZekeServicesHubWrapperProps) {
-  const [zekeIsActive, setZekeIsActive] = useState(false);
   const [currentAction, setCurrentAction] = useState("Standing by");
 
-  // Simulate ZEKE activity for demo purposes
   useEffect(() => {
     const interval = setInterval(() => {
       const actions = [
@@ -45,7 +43,6 @@ function ZekeServicesHubWrapper({ navigation }: ZekeServicesHubWrapperProps) {
       ];
       const randomAction = actions[Math.floor(Math.random() * actions.length)];
       setCurrentAction(randomAction);
-      setZekeIsActive(randomAction !== "Standing by");
     }, 8000);
 
     return () => clearInterval(interval);
@@ -175,18 +172,9 @@ function ZekeServicesHubWrapper({ navigation }: ZekeServicesHubWrapperProps) {
     },
   ];
 
-  const handleZekeStatusPress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    // TODO: Show ZEKE activity details modal
-    console.log("ZEKE status pressed - show activity details");
-  };
-
   return (
-    <ZekeServicesHub
+    <ServicesShade
       apps={apps}
-      zekeCurrentAction={currentAction}
-      zekeIsActive={zekeIsActive}
-      onZekeStatusPress={handleZekeStatusPress}
     />
   );
 }

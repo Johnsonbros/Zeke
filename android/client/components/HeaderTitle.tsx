@@ -7,6 +7,7 @@ import Animated, {
   withTiming,
   withSequence,
   Easing,
+  interpolate,
 } from "react-native-reanimated";
 
 import { ThemedText } from "@/components/ThemedText";
@@ -15,11 +16,19 @@ import { Spacing, Colors, Gradients } from "@/constants/theme";
 interface HeaderTitleProps {
   title: string;
   isOnline?: boolean;
+  currentAction?: string;
+  isActive?: boolean;
 }
 
-export function HeaderTitle({ title, isOnline = false }: HeaderTitleProps) {
+export function HeaderTitle({ 
+  title, 
+  isOnline = false,
+  currentAction,
+  isActive = false 
+}: HeaderTitleProps) {
   const pulseScale = useSharedValue(1);
   const pulseOpacity = useSharedValue(1);
+  const statusPulse = useSharedValue(0);
 
   useEffect(() => {
     if (isOnline) {
@@ -43,11 +52,30 @@ export function HeaderTitle({ title, isOnline = false }: HeaderTitleProps) {
       pulseScale.value = withTiming(1, { duration: 200 });
       pulseOpacity.value = withTiming(1, { duration: 200 });
     }
-  }, [isOnline, pulseScale, pulseOpacity]);
+  }, [isOnline]);
+
+  useEffect(() => {
+    if (isActive) {
+      statusPulse.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 1000 }),
+          withTiming(0, { duration: 1000 })
+        ),
+        -1,
+        false
+      );
+    } else {
+      statusPulse.value = withTiming(0, { duration: 300 });
+    }
+  }, [isActive]);
 
   const pulseAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulseScale.value }],
     opacity: pulseOpacity.value,
+  }));
+
+  const statusTextStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(statusPulse.value, [0, 1], [0.6, 1]),
   }));
 
   return (
@@ -65,7 +93,7 @@ export function HeaderTitle({ title, isOnline = false }: HeaderTitleProps) {
               <Animated.View
                 style={[
                   styles.statusDotPulse,
-                  { backgroundColor: Colors.dark.success },
+                  { backgroundColor: isActive ? Colors.dark.accent : Colors.dark.success },
                   pulseAnimatedStyle,
                 ]}
               />
@@ -75,20 +103,26 @@ export function HeaderTitle({ title, isOnline = false }: HeaderTitleProps) {
                 styles.statusDot,
                 {
                   backgroundColor: isOnline
-                    ? Colors.dark.success
+                    ? (isActive ? Colors.dark.accent : Colors.dark.success)
                     : Colors.dark.error,
                 },
               ]}
             />
           </View>
-          <ThemedText
-            style={[
-              styles.statusText,
-              { color: isOnline ? Colors.dark.success : Colors.dark.error },
-            ]}
-          >
-            {isOnline ? "Connected" : "Offline"}
-          </ThemedText>
+          <Animated.View style={statusTextStyle}>
+            <ThemedText
+              style={[
+                styles.statusText,
+                { 
+                  color: isOnline 
+                    ? (isActive ? Colors.dark.accent : Colors.dark.success) 
+                    : Colors.dark.error 
+                },
+              ]}
+            >
+              {isActive && currentAction ? currentAction : (isOnline ? "Connected" : "Offline")}
+            </ThemedText>
+          </Animated.View>
         </View>
       </View>
     </View>
