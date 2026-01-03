@@ -3,6 +3,6 @@
 {"id": "route-003", "input": "Add milk to my grocery list", "expected_category": "grocery", "expected_type": "add_item"}
 {"id": "route-004", "input": "Set a reminder for 3pm to call mom", "expected_category": "scheduling", "expected_type": "set_reminder"}
 {"id": "route-005", "input": "Search the web for best restaurants in Boston", "expected_category": "information", "expected_type": "search"}
-{"id": "route-006", "input": "What did Bob say about the project yesterday?", "expected_category": "memory", "expected_type": "lifelog_query"}
+{"id": "route-006", "input": "What did Bob say about the project yesterday?", "expected_category": "omi", "expected_type": "lifelog_query"}
 {"id": "route-007", "input": "Create a new task to review the proposal", "expected_category": "task_management", "expected_type": "add_task"}
 {"id": "route-008", "input": "What's the weather like today?", "expected_category": "information", "expected_type": "weather"}

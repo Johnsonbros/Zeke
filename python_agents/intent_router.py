@@ -93,7 +93,7 @@ INTENT_PATTERNS: list[PatternRule] = [
     ),
     PatternRule(
         patterns=[
-            r"\b(what('?s|\s+is)|show|check|look\s+at)\s+(my\s+)?(calendar|schedule|agenda)\b",
+            r"\b(what('?s|\s+is)|show|check|look\s+at)\s+(on\s+)?(my\s+)?(calendar|schedule|agenda)\b",
             r"\bwhat\s+(do\s+i\s+have|am\s+i\s+doing)\s+(today|tomorrow|this\s+week)\b",
             r"\b(any|do\s+i\s+have)\s+(meetings?|appointments?|events?)\b",
             r"\bwhat('?s|\s+is)\s+(happening|going\s+on)\s+(today|tomorrow|this\s+week)\b",
@@ -264,6 +264,7 @@ INTENT_PATTERNS: list[PatternRule] = [
         patterns=[
             r"\b(lifelog|pendant|omi|recording)\b",
             r"\bwhat\s+(did\s+)?(i|we)\s+(talk|discuss|say)\s+about\b",
+            r"\bwhat\s+did\s+\w+\s+(say|talk|discuss|mention)\s+(about)?\b",
             r"\b(conversation|meeting)\s+recording\b",
             r"\bwhat\s+was\s+(said|discussed)\s+(in|during)\b",
         ],
@@ -285,9 +286,9 @@ INTENT_PATTERNS: list[PatternRule] = [
     ),
     PatternRule(
         patterns=[
-            r"\badd\s+(.+)\s+to\s+(the\s+)?(grocery|shopping)\s+list\b",
+            r"\badd\s+(.+)\s+to\s+(the\s+|my\s+)?(grocery|shopping)\s+list\b",
             r"\b(need|get|buy)\s+(.+)\s+(from|at)\s+(the\s+)?(store|grocery|market)\b",
-            r"\bput\s+(.+)\s+on\s+(the\s+)?(grocery|shopping)\s+list\b",
+            r"\bput\s+(.+)\s+on\s+(the\s+|my\s+)?(grocery|shopping)\s+list\b",
             r"\bwe('re|\s+are)\s+(out\s+of|low\s+on)\b",
             r"\bpick\s+up\s+(.+)\s+(from|at)\s+(the\s+)?store\b",
             r"\bneed\s+more\s+\w+\b",

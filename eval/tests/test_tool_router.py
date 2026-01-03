@@ -19,8 +19,10 @@ def get_classify_intent_fast():
         project_root = str(Path(__file__).parent.parent.parent)
         if project_root not in sys.path:
             sys.path.insert(0, project_root)
-        from python_agents.intent_router import classify_intent_fast
-        _classify_intent_fast = classify_intent_fast
+        from python_agents.agents.base import CapabilityCategory, IntentType
+        from python_agents.intent_router import IntentRouter
+        router = IntentRouter()
+        _classify_intent_fast = router.classify
     return _classify_intent_fast
 
 

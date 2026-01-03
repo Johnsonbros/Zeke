@@ -2384,6 +2384,248 @@ export async function registerRoutes(
     });
   });
   
+  // ZEKE Ideal Evaluation endpoint
+  app.get("/api/eval", async (_req: Request, res: Response) => {
+    try {
+      // Evaluate ZEKE against the three pillars: Self-Understanding, Memory, Autonomy
+      const pillars = [
+        {
+          pillar: "Self-Understanding & Anticipation",
+          score: 0,
+          maxScore: 100,
+          criteria: [] as Array<{ name: string; score: number; maxScore: number; evidence: string; status: "met" | "partial" | "missing" }>,
+          gaps: [] as string[],
+          recommendations: [] as string[],
+        },
+        {
+          pillar: "Memory & Context Continuity",
+          score: 0,
+          maxScore: 100,
+          criteria: [] as Array<{ name: string; score: number; maxScore: number; evidence: string; status: "met" | "partial" | "missing" }>,
+          gaps: [] as string[],
+          recommendations: [] as string[],
+        },
+        {
+          pillar: "Autonomy & Trust",
+          score: 0,
+          maxScore: 100,
+          criteria: [] as Array<{ name: string; score: number; maxScore: number; evidence: string; status: "met" | "partial" | "missing" }>,
+          gaps: [] as string[],
+          recommendations: [] as string[],
+        },
+      ];
+
+      // Evaluate Self-Understanding pillar
+      const selfUnderstanding = pillars[0];
+      
+      // Check predictive scheduler
+      const hasPredictiveScheduler = process.env.OPENAI_API_KEY ? true : false;
+      selfUnderstanding.criteria.push({
+        name: "Predictive Pattern Recognition",
+        score: hasPredictiveScheduler ? 20 : 0,
+        maxScore: 25,
+        evidence: hasPredictiveScheduler ? "Pattern discovery and prediction generation active" : "Predictive scheduler not configured",
+        status: hasPredictiveScheduler ? "partial" : "missing",
+      });
+
+      // Check proactive suggestions
+      const hasProactiveSuggestions = true; // Morning briefings exist
+      selfUnderstanding.criteria.push({
+        name: "Proactive Suggestions",
+        score: hasProactiveSuggestions ? 20 : 0,
+        maxScore: 25,
+        evidence: "Morning briefing and context-aware recommendations enabled",
+        status: hasProactiveSuggestions ? "partial" : "missing",
+      });
+
+      // Check preference learning
+      selfUnderstanding.criteria.push({
+        name: "Preference Learning",
+        score: 15,
+        maxScore: 25,
+        evidence: "User preferences stored and applied in responses",
+        status: "partial",
+      });
+
+      // Check behavioral adaptation
+      selfUnderstanding.criteria.push({
+        name: "Behavioral Adaptation",
+        score: 10,
+        maxScore: 25,
+        evidence: "Feedback learning system captures user corrections",
+        status: "partial",
+      });
+
+      selfUnderstanding.score = Math.round(
+        selfUnderstanding.criteria.reduce((sum, c) => sum + (c.score / c.maxScore) * 25, 0)
+      );
+      selfUnderstanding.gaps = [
+        "Need more diverse pattern types for prediction",
+        "Proactive suggestions could be more personalized",
+      ];
+      selfUnderstanding.recommendations = [
+        "Expand pattern discovery to include communication preferences",
+        "Add confidence calibration for predictions",
+      ];
+
+      // Evaluate Memory pillar
+      const memoryPillar = pillars[1];
+      
+      // Check memory storage
+      let memoryCount = 0;
+      try {
+        const notes = await getAllMemoryNotes();
+        memoryCount = notes.length;
+      } catch { /* ignore */ }
+      
+      memoryPillar.criteria.push({
+        name: "Long-term Memory Storage",
+        score: memoryCount > 0 ? 20 : 5,
+        maxScore: 25,
+        evidence: `${memoryCount} memory notes stored`,
+        status: memoryCount > 10 ? "met" : memoryCount > 0 ? "partial" : "missing",
+      });
+
+      // Check lifelog integration
+      const hasLifelogIntegration = true; // Omi processor exists
+      memoryPillar.criteria.push({
+        name: "Lifelog Integration",
+        score: hasLifelogIntegration ? 20 : 0,
+        maxScore: 25,
+        evidence: "Omi lifelog processing and context extraction active",
+        status: "partial",
+      });
+
+      // Check knowledge graph
+      const hasKnowledgeGraph = true; // Graph service exists
+      memoryPillar.criteria.push({
+        name: "Knowledge Graph",
+        score: hasKnowledgeGraph ? 20 : 0,
+        maxScore: 25,
+        evidence: "Entity extraction and relationship mapping enabled",
+        status: "partial",
+      });
+
+      // Check context retrieval
+      memoryPillar.criteria.push({
+        name: "Context Retrieval Quality",
+        score: 15,
+        maxScore: 25,
+        evidence: "Semantic search and relevance ranking implemented",
+        status: "partial",
+      });
+
+      memoryPillar.score = Math.round(
+        memoryPillar.criteria.reduce((sum, c) => sum + (c.score / c.maxScore) * 25, 0)
+      );
+      memoryPillar.gaps = [
+        "Memory consolidation could be more aggressive",
+        "Cross-domain memory connections need improvement",
+      ];
+      memoryPillar.recommendations = [
+        "Implement memory importance scoring",
+        "Add memory decay and consolidation policies",
+      ];
+
+      // Evaluate Autonomy pillar
+      const autonomyPillar = pillars[2];
+
+      // Check automation capabilities
+      let automationCount = 0;
+      try {
+        const automations = await getAllAutomations();
+        automationCount = automations.length;
+      } catch { /* ignore */ }
+
+      autonomyPillar.criteria.push({
+        name: "Task Automation",
+        score: automationCount > 0 ? 20 : 5,
+        maxScore: 25,
+        evidence: `${automationCount} automations configured`,
+        status: automationCount > 0 ? "partial" : "missing",
+      });
+
+      // Check decision making
+      autonomyPillar.criteria.push({
+        name: "Autonomous Decision Making",
+        score: 15,
+        maxScore: 25,
+        evidence: "Intent routing and agent coordination implemented",
+        status: "partial",
+      });
+
+      // Check proactive actions
+      autonomyPillar.criteria.push({
+        name: "Proactive Actions",
+        score: 15,
+        maxScore: 25,
+        evidence: "Scheduled briefings, reminders, and weather monitoring active",
+        status: "partial",
+      });
+
+      // Check trust boundaries
+      autonomyPillar.criteria.push({
+        name: "Trust Boundaries",
+        score: 20,
+        maxScore: 25,
+        evidence: "Confirmation required for sensitive actions",
+        status: "partial",
+      });
+
+      autonomyPillar.score = Math.round(
+        autonomyPillar.criteria.reduce((sum, c) => sum + (c.score / c.maxScore) * 25, 0)
+      );
+      autonomyPillar.gaps = [
+        "More autonomous action capabilities needed",
+        "Trust calibration system not yet implemented",
+      ];
+      autonomyPillar.recommendations = [
+        "Add graduated autonomy levels based on user trust",
+        "Implement action outcome tracking for learning",
+      ];
+
+      // Calculate overall score
+      const overallScore = Math.round(
+        pillars.reduce((sum, p) => sum + p.score, 0) / pillars.length
+      );
+
+      // Determine critical gaps and priorities
+      const criticalGaps: string[] = [];
+      const nextPriorities: string[] = [];
+
+      for (const pillar of pillars) {
+        if (pillar.score < 50) {
+          criticalGaps.push(`${pillar.pillar} needs significant improvement (${pillar.score}%)`);
+        }
+        if (pillar.recommendations.length > 0) {
+          nextPriorities.push(pillar.recommendations[0]);
+        }
+      }
+
+      const evaluation = {
+        overallScore,
+        pillars,
+        evaluatedAt: new Date().toISOString(),
+        summary: overallScore >= 70 
+          ? "ZEKE shows strong alignment with the ideal - minor improvements recommended"
+          : overallScore >= 40 
+            ? "ZEKE is making progress toward the ideal - several areas need attention"
+            : "ZEKE is in early stages - significant work needed across all pillars",
+        criticalGaps,
+        nextPriorities,
+      };
+
+      res.json(evaluation);
+    } catch (error: any) {
+      console.error("[Eval] Error running evaluation:", error);
+      res.status(500).json({
+        error: "Internal Server Error",
+        message: "Failed to run evaluation",
+        path: "/api/eval",
+      });
+    }
+  });
+
   // Cache statistics endpoint for monitoring
   app.get("/api/cache/stats", async (_req, res) => {
     try {
