@@ -26,6 +26,15 @@ Key architectural decisions and features include:
 - **Real-Time STT Pipeline**: WebSocket-based real-time speech-to-text transcription using Deepgram Live API with speaker diarization and WebRTC-based Voice Activity Detection (VAD) for cost efficiency.
 - **Proactive Features**: Proactive Memory Creation, Context Enhancement through semantic search, and a Feedback Learning Loop system.
 - **Efficiency & Resilience**: Overnight Batch Factory using OpenAI Batch API, AI Usage Logging System, Circuit Breaker, and Retry with Jittered Backoff. A batch-first architecture prioritizes non-realtime AI tasks for cost savings.
+- **Self-Healing SMS/AI System** (`server/services/resilientChat.ts`, `server/services/evalService.ts`):
+    - Resilient chat wrapper with automatic retry, exponential backoff, and error classification (rate_limit, context_overflow, api_down, timeout).
+    - Circuit breaker pattern to prevent cascade failures (opens after 5 failures, auto-resets after 60s).
+    - Ground truth collection for failed messages to enable continuous improvement.
+    - OpenAI Evals API integration for automated testing and pattern improvement.
+    - Nightly EVAL_ANALYSIS batch job analyzes error patterns and suggests new quick action patterns.
+    - Pattern suggestion engine uses GPT-4o to generate regex patterns from failed messages.
+    - Auto-applies safe patterns (confidence >= 90%) while flagging others for review.
+    - API endpoints: `/api/diagnostics/sms-ai`, `/api/diagnostics/recovery`, `/api/diagnostics/eval`, `/api/diagnostics/eval/run`.
 - **AI Cost Dashboard**: Enhanced cost monitoring widget with 14-day trend charts, budget tracking (daily/weekly/monthly limits), agent/job cost breakdown, and visual alerts for budget overruns. API endpoints: `/api/ai-logs/trends`, `/api/ai-logs/by-agent`, `/api/ai-logs/budget`.
 - **Unified P&L System** (`server/apiUsageLogger.ts`):
     - Tracks usage and costs for all external APIs: Twilio (SMS/MMS/Voice), Deepgram (STT), ElevenLabs (TTS), Perplexity (Search), Google Maps/Calendar, OpenWeatherMap, Alpaca.

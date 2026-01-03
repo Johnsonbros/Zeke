@@ -39,6 +39,7 @@ import type {
   BatchArtifactType,
 } from "@shared/schema";
 import { generateDailySummary } from "../jobs/dailySummaryAgent";
+import { runNightlyEvalJob, getUnprocessedGroundTruth } from "./evalService";
 
 // ============================================
 // CONFIGURATION
@@ -201,6 +202,15 @@ const JOB_TEMPLATES: BatchJobTemplate[] = [
     requiresAI: true,
     estimatedTokensPerItem: 3000,
     description: "Update ZEKE's self-model based on interaction patterns and feedback",
+  },
+  {
+    type: "EVAL_ANALYSIS",
+    window: "nightly",
+    priority: 17,
+    artifactTypes: ["EVAL_PATTERN_SUGGESTION"],
+    requiresAI: true,
+    estimatedTokensPerItem: 2000,
+    description: "Analyze failed SMS/AI interactions and suggest quick action pattern improvements",
   },
   {
     type: "MIDDAY_INCREMENTAL",
@@ -462,6 +472,32 @@ async function runJobFromTemplate(template: BatchJobTemplate): Promise<{
         }
       } catch (error) {
         console.error(`[BatchOrchestrator] Daily journal generation failed:`, error);
+        return { submitted: false, estimatedCostCents: 0 };
+      }
+    
+    case "EVAL_ANALYSIS":
+      // Run nightly eval analysis for SMS/AI error patterns
+      // This runs synchronously and analyzes ground truth data
+      const unprocessedCount = getUnprocessedGroundTruth().length;
+      
+      if (unprocessedCount === 0) {
+        console.log(`[BatchOrchestrator] No ground truth data to analyze, skipping EVAL_ANALYSIS`);
+        return { submitted: false, estimatedCostCents: 0 };
+      }
+      
+      try {
+        console.log(`[BatchOrchestrator] Running eval analysis on ${unprocessedCount} ground truth entries`);
+        const evalResult = await runNightlyEvalJob();
+        
+        if (evalResult.patternsGenerated > 0 || evalResult.insights.length > 0) {
+          console.log(`[BatchOrchestrator] Eval analysis complete: ${evalResult.patternsGenerated} patterns, ${evalResult.insights.length} insights`);
+          return { submitted: true, estimatedCostCents: 3, jobId: `eval-${evalResult.timestamp}` };
+        } else {
+          console.log(`[BatchOrchestrator] Eval analysis complete - no actionable patterns found`);
+          return { submitted: true, estimatedCostCents: 1, jobId: `eval-${evalResult.timestamp}` };
+        }
+      } catch (error) {
+        console.error(`[BatchOrchestrator] Eval analysis failed:`, error);
         return { submitted: false, estimatedCostCents: 0 };
       }
       

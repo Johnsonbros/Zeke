@@ -3585,6 +3585,7 @@ export const batchJobTypes = [
   "OMI_MEETINGS",
   "OMI_ACTION_ITEMS",
   "SELF_UNDERSTANDING",
+  "EVAL_ANALYSIS",
 ] as const;
 export type BatchJobType = typeof batchJobTypes[number];
 
@@ -3612,6 +3613,8 @@ export const batchArtifactTypes = [
   "OMI_MEETING_EXTRACTION",
   "OMI_ACTION_ITEM",
   "SELF_MODEL_UPDATE",
+  "EVAL_PATTERN_SUGGESTION",
+  "KG_ENTITY_EXTRACTION",
 ] as const;
 export type BatchArtifactType = typeof batchArtifactTypes[number];
 

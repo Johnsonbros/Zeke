@@ -346,6 +346,8 @@ import path from "path";
 import fsNode from "fs";
 import { generateContextualQuestion } from "./gettingToKnow";
 import { chat, getPermissionsForPhone, getAdminPermissions } from "./agent";
+import { resilientChat, getRecoveryStats, getCircuitBreakerStatus } from "./services/resilientChat";
+import { addGroundTruth, getGroundTruth, getEvalStats, runNightlyEvalJob } from "./services/evalService";
 import {
   setSendSmsCallback,
   restorePendingReminders,
@@ -2525,6 +2527,74 @@ export async function registerRoutes(
       });
     }
   });
+
+  // Self-healing diagnostics - recovery stats
+  app.get("/api/diagnostics/recovery", async (_req, res) => {
+    try {
+      const recoveryStats = getRecoveryStats();
+      const circuitBreaker = getCircuitBreakerStatus();
+      
+      res.json({
+        recovery: recoveryStats,
+        circuitBreaker: {
+          ...circuitBreaker,
+          status: circuitBreaker.isOpen ? "OPEN" : "CLOSED",
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Eval system diagnostics - ground truth and eval stats
+  app.get("/api/diagnostics/eval", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const evalStats = getEvalStats();
+      const groundTruth = getGroundTruth(limit);
+      
+      res.json({
+        stats: evalStats,
+        groundTruth: groundTruth.slice(0, 10), // Preview
+        groundTruthTotal: groundTruth.length,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Manually add ground truth entry (for corrections)
+  app.post("/api/diagnostics/eval/ground-truth", async (req, res) => {
+    try {
+      const { smsText, expectedAction, expectedResult } = req.body;
+      
+      if (!smsText || !expectedAction) {
+        return res.status(400).json({ error: "smsText and expectedAction required" });
+      }
+      
+      const id = addGroundTruth({
+        smsText,
+        expectedAction,
+        expectedResult,
+        wasCorrect: false,
+        source: "correction",
+      });
+      
+      res.json({ success: true, id });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Trigger nightly eval job manually (for testing)
+  app.post("/api/diagnostics/eval/run", async (_req, res) => {
+    try {
+      const result = await runNightlyEvalJob();
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
   
   // ZEKE Ideal Evaluation endpoint
   app.get("/api/eval", async (_req: Request, res: Response) => {
@@ -3887,8 +3957,11 @@ export async function registerRoutes(
           console.log(`[QuickAction] Matched: type="${quickAction.type}", params=${JSON.stringify(quickAction.params)}`);
           aiResponse = quickAction.response;
         } else {
-          console.log(`[QuickAction] No match - forwarding to AI`);
-          aiResponse = await chat(conversation.id, fullMessage, false, fromNumber);
+          console.log(`[QuickAction] No match - forwarding to AI with resilient wrapper`);
+          aiResponse = await resilientChat(conversation.id, fullMessage, false, fromNumber, {
+            useFallback: true,
+            collectGroundTruth: true,
+          });
         }
         
         // Store assistant message
