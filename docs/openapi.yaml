@@ -570,7 +570,7 @@ paths:
                   authenticated:
                     type: boolean
                   user:
-                    type: [object, "null"]
+                    type: ["object", "null"]
   /api/web-auth/status:
     get:
       summary: Check authentication health
