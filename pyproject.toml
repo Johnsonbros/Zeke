@@ -20,6 +20,22 @@ dependencies = [
     "uvicorn[standard]>=0.38.0",
 ]
 
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = [
+    "core",
+    "core.*",
+    "eval",
+    "eval.*",
+    "python_agents",
+    "python_agents.*",
+    "zeke_trader",
+    "zeke_trader.*",
+]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests/agent_tests"]
