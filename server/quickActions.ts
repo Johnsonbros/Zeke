@@ -784,10 +784,33 @@ export function parseQuickAction(message: string): QuickActionResult {
   }
 
   const upperMessage = trimmed.toUpperCase();
+  const lowerMessage = trimmed.toLowerCase();
 
   if (upperMessage.startsWith("GROCERY ") || upperMessage === "GROCERY") {
     const content = trimmed.substring(7).trim();
     return handleGroceryCommand(content);
+  }
+
+  // Natural language grocery patterns:
+  // "X to grocery list", "add X to grocery list", "put X on grocery list", "X on grocery list"
+  // "add X to groceries", "X to groceries", etc.
+  const groceryPatterns = [
+    /^(?:add\s+)?(.+?)\s+to\s+(?:the\s+)?(?:grocery\s*list|groceries)$/i,
+    /^(?:put\s+)?(.+?)\s+on\s+(?:the\s+)?(?:grocery\s*list|groceries)$/i,
+    /^(?:add\s+)?(.+?)\s+to\s+(?:my\s+)?(?:grocery\s*list|groceries)$/i,
+    /^(?:put\s+)?(.+?)\s+on\s+(?:my\s+)?(?:grocery\s*list|groceries)$/i,
+  ];
+
+  for (const pattern of groceryPatterns) {
+    const match = lowerMessage.match(pattern);
+    if (match) {
+      // Extract the item from the original trimmed message to preserve case
+      const itemMatch = trimmed.match(pattern);
+      const item = itemMatch ? itemMatch[1].trim() : match[1].trim();
+      if (item) {
+        return handleGroceryCommand(item);
+      }
+    }
   }
 
   if (upperMessage.startsWith("REMIND ") || upperMessage === "REMIND") {
