@@ -89,7 +89,7 @@ function extractEmbeddedCards(response: string): { cards: ChatCard[]; cleanedRes
 /**
  * Detect if response mentions tasks and fetch recent task data
  */
-function detectTaskCards(response: string, userMessage: string): TaskCard[] {
+async function detectTaskCards(response: string, userMessage: string): Promise<TaskCard[]> {
   const mentionsTasks = TASK_PATTERNS.some(p => p.test(response)) || 
                         TASK_PATTERNS.some(p => p.test(userMessage));
   
@@ -102,7 +102,7 @@ function detectTaskCards(response: string, userMessage: string): TaskCard[] {
   
   if (isListQuery) {
     // Return task list card
-    const allTasks = getAllTasks();
+    const allTasks = await getAllTasks();
     const incompleteTasks = allTasks.filter(t => !t.completed).slice(0, 5);
     
     if (incompleteTasks.length > 0) {
@@ -118,7 +118,7 @@ function detectTaskCards(response: string, userMessage: string): TaskCard[] {
     }
   } else if (isCreation) {
     // Try to find the most recently created task
-    const allTasks = getAllTasks();
+    const allTasks = await getAllTasks();
     const recentTask = allTasks
       .filter(t => !t.completed)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
@@ -142,7 +142,7 @@ function detectTaskCards(response: string, userMessage: string): TaskCard[] {
 /**
  * Detect if response mentions reminders and fetch reminder data
  */
-function detectReminderCards(response: string, userMessage: string): ReminderCard[] {
+async function detectReminderCards(response: string, userMessage: string): Promise<ReminderCard[]> {
   const mentionsReminders = REMINDER_PATTERNS.some(p => p.test(response)) ||
                             REMINDER_PATTERNS.some(p => p.test(userMessage));
   
@@ -151,7 +151,7 @@ function detectReminderCards(response: string, userMessage: string): ReminderCar
   const isListQuery = /(?:what|show|list|get|my|all).*reminders?/i.test(userMessage);
   const isCreation = /(?:created|set|scheduled|I'll remind)/i.test(response);
   
-  const allReminders = getAllReminders();
+  const allReminders = await getAllReminders();
   const pendingReminders = allReminders.filter(r => !r.sent);
   
   if (isListQuery && pendingReminders.length > 0) {
@@ -219,7 +219,7 @@ function detectWeatherCard(response: string): WeatherCard | null {
 /**
  * Detect grocery list mentions
  */
-function detectGroceryCard(response: string, userMessage: string): GroceryListCard | null {
+async function detectGroceryCard(response: string, userMessage: string): Promise<GroceryListCard | null> {
   const mentionsGrocery = GROCERY_PATTERNS.some(p => p.test(response)) ||
                           GROCERY_PATTERNS.some(p => p.test(userMessage));
   
@@ -229,7 +229,7 @@ function detectGroceryCard(response: string, userMessage: string): GroceryListCa
                       /grocery list/i.test(userMessage);
   
   if (isListQuery) {
-    const items = getAllGroceryItems();
+    const items = await getAllGroceryItems();
     const unpurchased = items.filter(i => !i.purchased);
     
     if (unpurchased.length > 0) {
@@ -254,10 +254,10 @@ function detectGroceryCard(response: string, userMessage: string): GroceryListCa
 /**
  * Main extraction function
  */
-export function extractCardsFromResponse(
+export async function extractCardsFromResponse(
   response: string, 
   userMessage: string
-): ExtractedCards {
+): Promise<ExtractedCards> {
   const cards: ChatCard[] = [];
   let cleanedResponse = response;
   
@@ -267,16 +267,16 @@ export function extractCardsFromResponse(
   cleanedResponse = embedded.cleanedResponse;
   
   // Then detect cards from response content
-  const taskCards = detectTaskCards(response, userMessage);
+  const taskCards = await detectTaskCards(response, userMessage);
   cards.push(...taskCards);
   
-  const reminderCards = detectReminderCards(response, userMessage);
+  const reminderCards = await detectReminderCards(response, userMessage);
   cards.push(...reminderCards);
   
   const weatherCard = detectWeatherCard(response);
   if (weatherCard) cards.push(weatherCard);
   
-  const groceryCard = detectGroceryCard(response, userMessage);
+  const groceryCard = await detectGroceryCard(response, userMessage);
   if (groceryCard) cards.push(groceryCard);
   
   return { cards, cleanedResponse };

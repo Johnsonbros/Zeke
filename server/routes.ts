@@ -2843,7 +2843,7 @@ export async function registerRoutes(
       const updatedConversation = getConversation(conversation.id);
       
       // Extract structured cards from the response
-      const { cards } = extractCardsFromResponse(aiResponse, message);
+      const { cards } = await extractCardsFromResponse(aiResponse, message);
       
       res.json({
         message: assistantMessage,
@@ -5777,6 +5777,31 @@ export async function registerRoutes(
   });
   
   // === TASKS API ROUTES ===
+  
+  // Helper function to serialize task for API response
+  function serializeTask(task: any) {
+    return {
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      completed: task.completed,
+      priority: task.priority,
+      category: task.category,
+      dueDate: task.dueDate,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      parentId: task.parentId,
+      placeId: task.placeId,
+      reminderTime: task.reminderTime,
+      recurring: task.recurring,
+      source: task.source,
+      metadata: task.metadata,
+    };
+  }
+  
+  function serializeTasks(tasks: any[]) {
+    return tasks.map(serializeTask);
+  }
   
   // Get all tasks
   app.get("/api/tasks", async (req, res) => {
