@@ -61,18 +61,19 @@ export class LocalDataLayer {
   private initialized = false;
 
   constructor() {
-    this.db = SQLite.openDatabase("zeke_offline.db");
+    this.db = SQLite.openDatabaseSync("zeke_offline.db");
   }
 
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    await this.runMigrations();
+    this.runMigrations();
     this.initialized = true;
   }
 
-  async runMigrations(): Promise<void> {
-    await this.execute(
+  runMigrations(): void {
+    
+    this.execute(
       `CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY NOT NULL,
         title TEXT NOT NULL,
@@ -87,7 +88,7 @@ export class LocalDataLayer {
       )`,
     );
 
-    await this.execute(
+    this.execute(
       `CREATE TABLE IF NOT EXISTS reminders (
         id TEXT PRIMARY KEY NOT NULL,
         title TEXT NOT NULL,
@@ -100,7 +101,7 @@ export class LocalDataLayer {
       )`,
     );
 
-    await this.execute(
+    this.execute(
       `CREATE TABLE IF NOT EXISTS events (
         id TEXT PRIMARY KEY NOT NULL,
         title TEXT NOT NULL,
@@ -119,7 +120,7 @@ export class LocalDataLayer {
       )`,
     );
 
-    await this.execute(
+    this.execute(
       `CREATE TABLE IF NOT EXISTS memory_summaries (
         id TEXT PRIMARY KEY NOT NULL,
         title TEXT NOT NULL,
@@ -131,7 +132,7 @@ export class LocalDataLayer {
       )`,
     );
 
-    await this.execute(
+    this.execute(
       `CREATE TABLE IF NOT EXISTS outbound_changes (
         id TEXT PRIMARY KEY NOT NULL,
         entityType TEXT NOT NULL,
@@ -146,11 +147,10 @@ export class LocalDataLayer {
   }
 
   async getTasks(): Promise<OfflineTask[]> {
-    const result = await this.query(
+    const result = this.db.getAllSync(
       "SELECT * FROM tasks ORDER BY datetime(updatedAt) DESC",
-      [],
     );
-    return result.rows._array.map((row) => ({
+    return result.map((row: any) => ({
       id: row.id,
       title: row.title,
       description: row.description || undefined,
@@ -166,34 +166,31 @@ export class LocalDataLayer {
 
   async upsertTasks(tasks: OfflineTask[]): Promise<void> {
     if (!tasks.length) return;
-    await this.transaction(async (tx) => {
-      for (const task of tasks) {
-        tx.executeSql(
-          `INSERT OR REPLACE INTO tasks (id, title, description, dueDate, priority, status, createdAt, updatedAt, version, dirtyAction)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT dirtyAction FROM tasks WHERE id = ?), NULL))`,
-          [
-            task.id,
-            task.title,
-            task.description ?? null,
-            task.dueDate ?? null,
-            task.priority ?? null,
-            task.status ?? null,
-            task.createdAt,
-            task.updatedAt,
-            task.version ?? 0,
-            task.id,
-          ],
-        );
-      }
-    });
+    for (const task of tasks) {
+      this.db.runSync(
+        `INSERT OR REPLACE INTO tasks (id, title, description, dueDate, priority, status, createdAt, updatedAt, version, dirtyAction)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT dirtyAction FROM tasks WHERE id = ?), NULL))`,
+        [
+          task.id,
+          task.title,
+          task.description ?? null,
+          task.dueDate ?? null,
+          task.priority ?? null,
+          task.status ?? null,
+          task.createdAt,
+          task.updatedAt,
+          task.version ?? 0,
+          task.id,
+        ],
+      );
+    }
   }
 
   async getReminders(): Promise<OfflineReminder[]> {
-    const result = await this.query(
+    const result = this.db.getAllSync(
       "SELECT * FROM reminders ORDER BY datetime(updatedAt) DESC",
-      [],
     );
-    return result.rows._array.map((row) => ({
+    return result.map((row: any) => ({
       id: row.id,
       title: row.title,
       dueAt: row.dueAt,
@@ -207,32 +204,29 @@ export class LocalDataLayer {
 
   async upsertReminders(reminders: OfflineReminder[]): Promise<void> {
     if (!reminders.length) return;
-    await this.transaction(async (tx) => {
-      for (const reminder of reminders) {
-        tx.executeSql(
-          `INSERT OR REPLACE INTO reminders (id, title, dueAt, completed, createdAt, updatedAt, version, dirtyAction)
-           VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT dirtyAction FROM reminders WHERE id = ?), NULL))`,
-          [
-            reminder.id,
-            reminder.title,
-            reminder.dueAt,
-            reminder.completed ? 1 : 0,
-            reminder.createdAt,
-            reminder.updatedAt,
-            reminder.version ?? 0,
-            reminder.id,
-          ],
-        );
-      }
-    });
+    for (const reminder of reminders) {
+      this.db.runSync(
+        `INSERT OR REPLACE INTO reminders (id, title, dueAt, completed, createdAt, updatedAt, version, dirtyAction)
+         VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT dirtyAction FROM reminders WHERE id = ?), NULL))`,
+        [
+          reminder.id,
+          reminder.title,
+          reminder.dueAt,
+          reminder.completed ? 1 : 0,
+          reminder.createdAt,
+          reminder.updatedAt,
+          reminder.version ?? 0,
+          reminder.id,
+        ],
+      );
+    }
   }
 
   async getEvents(): Promise<OfflineEvent[]> {
-    const result = await this.query(
+    const result = this.db.getAllSync(
       "SELECT * FROM events ORDER BY datetime(startTime) ASC",
-      [],
     );
-    return result.rows._array.map((row) => ({
+    return result.map((row: any) => ({
       id: row.id,
       title: row.title,
       description: row.description || undefined,
@@ -252,38 +246,35 @@ export class LocalDataLayer {
 
   async upsertEvents(events: OfflineEvent[]): Promise<void> {
     if (!events.length) return;
-    await this.transaction(async (tx) => {
-      for (const event of events) {
-        tx.executeSql(
-          `INSERT OR REPLACE INTO events (id, title, description, startTime, endTime, location, allDay, calendarId, calendarName, color, createdAt, updatedAt, version, dirtyAction)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT dirtyAction FROM events WHERE id = ?), NULL))`,
-          [
-            event.id,
-            event.title,
-            event.description ?? null,
-            event.startTime,
-            event.endTime ?? null,
-            event.location ?? null,
-            event.allDay ? 1 : 0,
-            event.calendarId ?? null,
-            event.calendarName ?? null,
-            event.color ?? null,
-            event.createdAt,
-            event.updatedAt,
-            event.version ?? 0,
-            event.id,
-          ],
-        );
-      }
-    });
+    for (const event of events) {
+      this.db.runSync(
+        `INSERT OR REPLACE INTO events (id, title, description, startTime, endTime, location, allDay, calendarId, calendarName, color, createdAt, updatedAt, version, dirtyAction)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT dirtyAction FROM events WHERE id = ?), NULL))`,
+        [
+          event.id,
+          event.title,
+          event.description ?? null,
+          event.startTime,
+          event.endTime ?? null,
+          event.location ?? null,
+          event.allDay ? 1 : 0,
+          event.calendarId ?? null,
+          event.calendarName ?? null,
+          event.color ?? null,
+          event.createdAt,
+          event.updatedAt,
+          event.version ?? 0,
+          event.id,
+        ],
+      );
+    }
   }
 
   async getMemorySummaries(): Promise<OfflineMemorySummary[]> {
-    const result = await this.query(
+    const result = this.db.getAllSync(
       "SELECT * FROM memory_summaries ORDER BY datetime(updatedAt) DESC",
-      [],
     );
-    return result.rows._array.map((row) => ({
+    return result.map((row: any) => ({
       id: row.id,
       title: row.title,
       summary: row.summary || undefined,
@@ -296,23 +287,21 @@ export class LocalDataLayer {
 
   async upsertMemorySummaries(memories: OfflineMemorySummary[]): Promise<void> {
     if (!memories.length) return;
-    await this.transaction(async (tx) => {
-      for (const memory of memories) {
-        tx.executeSql(
-          `INSERT OR REPLACE INTO memory_summaries (id, title, summary, createdAt, updatedAt, version, dirtyAction)
-           VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT dirtyAction FROM memory_summaries WHERE id = ?), NULL))`,
-          [
-            memory.id,
-            memory.title,
-            memory.summary ?? null,
-            memory.createdAt,
-            memory.updatedAt,
-            memory.version ?? 0,
-            memory.id,
-          ],
-        );
-      }
-    });
+    for (const memory of memories) {
+      this.db.runSync(
+        `INSERT OR REPLACE INTO memory_summaries (id, title, summary, createdAt, updatedAt, version, dirtyAction)
+         VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT dirtyAction FROM memory_summaries WHERE id = ?), NULL))`,
+        [
+          memory.id,
+          memory.title,
+          memory.summary ?? null,
+          memory.createdAt,
+          memory.updatedAt,
+          memory.version ?? 0,
+          memory.id,
+        ],
+      );
+    }
   }
 
   async deleteMissing(
@@ -322,11 +311,11 @@ export class LocalDataLayer {
   ): Promise<void> {
     const dirtyFilter = dirtyOnly ? "dirtyAction IS NULL" : "1=1";
     if (!serverIds.length) {
-      await this.execute(`DELETE FROM ${table} WHERE ${dirtyFilter}`);
+      this.db.runSync(`DELETE FROM ${table} WHERE ${dirtyFilter}`);
       return;
     }
     const placeholders = serverIds.map(() => "?").join(",");
-    await this.execute(
+    this.db.runSync(
       `DELETE FROM ${table} WHERE id NOT IN (${placeholders}) AND ${dirtyFilter}`,
       serverIds,
     );
@@ -337,7 +326,7 @@ export class LocalDataLayer {
     entity: OfflineEntity,
     action: "create" | "update" | "delete",
   ): Promise<void> {
-    await this.execute(
+    this.db.runSync(
       `UPDATE ${table} SET dirtyAction = ? , updatedAt = ? WHERE id = ?`,
       [action, entity.updatedAt, entity.id],
     );
@@ -347,7 +336,7 @@ export class LocalDataLayer {
     const id = `change_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const payload = JSON.stringify(change.payload);
     const timestamp = nowIso();
-    await this.execute(
+    this.db.runSync(
       `INSERT INTO outbound_changes (id, entityType, entityId, action, payload, attempts, createdAt, updatedAt)
        VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
       [id, change.entityType, change.entityId, change.action, payload, timestamp, timestamp],
@@ -363,11 +352,11 @@ export class LocalDataLayer {
   }
 
   async getOutboundChanges(limit = 25): Promise<OutboundChange[]> {
-    const result = await this.query(
+    const result = this.db.getAllSync(
       "SELECT * FROM outbound_changes ORDER BY datetime(createdAt) ASC LIMIT ?",
       [limit],
     );
-    return result.rows._array.map((row) => ({
+    return result.map((row: any) => ({
       id: row.id,
       entityType: row.entityType,
       entityId: row.entityId,
@@ -380,69 +369,22 @@ export class LocalDataLayer {
   }
 
   async incrementChangeAttempts(id: string): Promise<void> {
-    await this.execute(
+    this.db.runSync(
       `UPDATE outbound_changes SET attempts = attempts + 1, updatedAt = ? WHERE id = ?`,
       [nowIso(), id],
     );
   }
 
   async removeOutboundChange(id: string): Promise<void> {
-    await this.execute("DELETE FROM outbound_changes WHERE id = ?", [id]);
+    this.db.runSync("DELETE FROM outbound_changes WHERE id = ?", [id]);
   }
 
   async removeById(table: string, id: string): Promise<void> {
-    await this.execute(`DELETE FROM ${table} WHERE id = ?`, [id]);
+    this.db.runSync(`DELETE FROM ${table} WHERE id = ?`, [id]);
   }
 
-  private execute(sql: string, params: any[] = []): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.db.transaction(
-        (tx) => {
-          tx.executeSql(
-            sql,
-            params,
-            () => resolve(),
-            (_tx, error) => {
-              reject(error);
-              return false;
-            },
-          );
-        },
-        reject,
-      );
-    });
-  }
-
-  private query(sql: string, params: any[] = []): Promise<SQLite.SQLResultSet> {
-    return new Promise((resolve, reject) => {
-      this.db.readTransaction(
-        (tx) => {
-          tx.executeSql(
-            sql,
-            params,
-            (_tx, result) => resolve(result),
-            (_tx, error) => {
-              reject(error);
-              return false;
-            },
-          );
-        },
-        reject,
-      );
-    });
-  }
-
-  private transaction(
-    fn: (tx: SQLite.SQLTransaction) => void | Promise<void>,
-  ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.db.transaction(
-        (tx) => {
-          Promise.resolve(fn(tx)).then(resolve).catch(reject);
-        },
-        reject,
-      );
-    });
+  private execute(sql: string, params: any[] = []): void {
+    this.db.runSync(sql, params);
   }
 }
 

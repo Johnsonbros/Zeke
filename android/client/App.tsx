@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { StyleSheet, Platform } from "react-native";
+import { ActivityIndicator, StyleSheet, Platform, View } from "react-native";
 import {
   NavigationContainer,
   DefaultTheme,
@@ -24,6 +24,7 @@ import { ConnectivityService } from "@/lib/connectivity";
 import { SyncTrigger } from "@/lib/sync-trigger";
 import { ToastProvider } from "@/components/Toast";
 import { useRealtimeUpdates } from "@/hooks/useRealtimeUpdates";
+import { ThemedText } from "@/components/ThemedText";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -51,7 +52,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, [isLoading]);
 
   if (isLoading) {
-    return null;
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={Colors.dark.text} />
+        <ThemedText style={styles.loadingText}>Preparing your session...</ThemedText>
+      </View>
+    );
   }
 
   if (!isAuthenticated) {
@@ -183,5 +189,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: Colors.dark.backgroundRoot,
+    gap: 12,
+  },
+  loadingText: {
+    color: Colors.dark.text,
+    fontSize: 16,
   },
 });

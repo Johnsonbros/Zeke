@@ -56,6 +56,22 @@ module.exports = {
     '/node_modules/',
     '/server_dist/',
     '/static-build/',
+    '/\\.cache/',
+  ],
+
+  // Module path ignore patterns (prevents Haste module map conflicts)
+  modulePathIgnorePatterns: [
+    '/\\.cache/',
+    '/server_dist/',
+    '/static-build/',
+  ],
+
+  // Watch path ignore patterns
+  watchPathIgnorePatterns: [
+    '/\\.cache/',
+    '/node_modules/',
+    '/server_dist/',
+    '/static-build/',
   ],
 
   // Transform ignore patterns for node_modules
