@@ -72,7 +72,7 @@ app.get("/healthz", (_req, res) => {
 app.get("/readyz", async (_req, res) => {
   try {
     const { dbReady } = await import("./src/db/health");
-    const dbOk = dbReady();
+    const dbOk = await dbReady();
     if (dbOk) {
       res.json({ ready: true, db: "ok" });
     } else {

@@ -11,7 +11,21 @@ servers:
     description: Local development server
   - url: https://api.zeke.local
     description: Production gateway
+security:
+  - bearerAuth: []
+  - cookieAuth: []
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token from authentication endpoints
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session
+      description: Session cookie for web authentication
   parameters:
     ApiVersion:
       name: X-API-Version
@@ -111,8 +125,7 @@ components:
         title:
           type: string
         phoneNumber:
-          type: string
-          nullable: true
+          type: [string, "null"]
         source:
           type: string
           enum: [web, sms, voice, app]
@@ -120,8 +133,7 @@ components:
           type: string
           enum: [chat, getting_to_know]
         summary:
-          type: string
-          nullable: true
+          type: [string, "null"]
         createdAt:
           type: string
           format: date-time
@@ -135,8 +147,7 @@ components:
         title:
           type: string
         phoneNumber:
-          type: string
-          nullable: true
+          type: [string, "null"]
         source:
           type: string
         mode:
@@ -184,8 +195,7 @@ components:
         message:
           type: string
         conversationId:
-          type: string
-          nullable: true
+          type: [string, "null"]
         source:
           type: string
           enum: [web, sms, voice, app]
@@ -356,6 +366,7 @@ paths:
     get:
       summary: Liveness probe
       tags: [Health]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -369,6 +380,7 @@ paths:
     get:
       summary: Readiness probe
       tags: [Health]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -388,6 +400,7 @@ paths:
     get:
       summary: Fetch the OpenAPI document
       tags: [Docs]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -407,6 +420,7 @@ paths:
     post:
       summary: Request a login code via SMS
       tags: [Auth]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -428,6 +442,7 @@ paths:
     post:
       summary: Verify a submitted SMS code
       tags: [Auth]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -447,8 +462,7 @@ paths:
                   verified:
                     type: boolean
                   sessionToken:
-                    type: string
-                    nullable: true
+                    type: [string, "null"]
         '401':
           description: Invalid code
           content:
@@ -459,6 +473,9 @@ paths:
     get:
       summary: Check SMS pairing state
       tags: [Auth]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -472,12 +489,12 @@ paths:
                   paired:
                     type: boolean
                   phoneNumber:
-                    type: string
-                    nullable: true
+                    type: [string, "null"]
   /api/web-auth/request-code:
     post:
       summary: Request a one-time login code via email
       tags: [Auth]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -493,6 +510,7 @@ paths:
     post:
       summary: Verify an emailed login code
       tags: [Auth]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -524,6 +542,9 @@ paths:
     post:
       summary: Terminate the web session
       tags: [Auth]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -533,6 +554,9 @@ paths:
     get:
       summary: Fetch current session context
       tags: [Auth]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -546,12 +570,12 @@ paths:
                   authenticated:
                     type: boolean
                   user:
-                    type: object
-                    nullable: true
+                    type: ["object", "null"]
   /api/web-auth/status:
     get:
       summary: Check authentication health
       tags: [Auth]
+      security: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -570,6 +594,9 @@ paths:
     post:
       summary: Transcribe a base64 encoded audio clip
       tags: [Voice]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -607,6 +634,9 @@ paths:
     post:
       summary: Send a user message and receive an assistant reply
       tags: [Chat]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -632,6 +662,9 @@ paths:
     get:
       summary: List conversations
       tags: [Conversations]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -646,6 +679,9 @@ paths:
     post:
       summary: Create a conversation
       tags: [Conversations]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -665,6 +701,9 @@ paths:
     get:
       summary: Get a conversation by id
       tags: [Conversations]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - $ref: '#/components/parameters/ConversationId'
@@ -684,6 +723,9 @@ paths:
     delete:
       summary: Delete a conversation and its messages
       tags: [Conversations]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - $ref: '#/components/parameters/ConversationId'
@@ -694,6 +736,9 @@ paths:
     get:
       summary: Retrieve messages for a conversation
       tags: [Conversations]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - $ref: '#/components/parameters/ConversationId'
@@ -709,6 +754,9 @@ paths:
     post:
       summary: Append a message to a conversation
       tags: [Conversations]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - $ref: '#/components/parameters/ConversationId'
@@ -729,6 +777,9 @@ paths:
     get:
       summary: List memory notes
       tags: [Memory]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -743,6 +794,9 @@ paths:
     post:
       summary: Store a memory note
       tags: [Memory]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -762,6 +816,9 @@ paths:
     delete:
       summary: Delete a memory note
       tags: [Memory]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - name: id
@@ -776,6 +833,9 @@ paths:
     get:
       summary: List user preferences
       tags: [Preferences]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -790,6 +850,9 @@ paths:
     post:
       summary: Upsert a user preference
       tags: [Preferences]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -809,6 +872,9 @@ paths:
     get:
       summary: List grocery items
       tags: [Grocery]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -823,6 +889,9 @@ paths:
     post:
       summary: Add a grocery item
       tags: [Grocery]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -842,6 +911,9 @@ paths:
     patch:
       summary: Update a grocery item
       tags: [Grocery]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - $ref: '#/components/parameters/GroceryItemId'
@@ -861,6 +933,9 @@ paths:
     delete:
       summary: Remove a grocery item
       tags: [Grocery]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - $ref: '#/components/parameters/GroceryItemId'
@@ -871,6 +946,9 @@ paths:
     post:
       summary: Toggle purchased state
       tags: [Grocery]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - $ref: '#/components/parameters/GroceryItemId'
@@ -885,6 +963,9 @@ paths:
     post:
       summary: Clear purchased grocery items
       tags: [Grocery]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -894,6 +975,9 @@ paths:
     get:
       summary: Fetch grocery auto-clear settings
       tags: [Grocery]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -909,6 +993,9 @@ paths:
     post:
       summary: Update grocery auto-clear settings
       tags: [Grocery]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -935,6 +1022,9 @@ paths:
     get:
       summary: List custom lists
       tags: [Lists]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -949,6 +1039,9 @@ paths:
     post:
       summary: Create a custom list
       tags: [Lists]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -974,6 +1067,9 @@ paths:
     get:
       summary: Get a custom list
       tags: [Lists]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - $ref: '#/components/parameters/ListId'
@@ -987,6 +1083,9 @@ paths:
     patch:
       summary: Update a custom list
       tags: [Lists]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - $ref: '#/components/parameters/ListId'
@@ -1011,6 +1110,9 @@ paths:
     delete:
       summary: Delete a custom list
       tags: [Lists]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - $ref: '#/components/parameters/ListId'
@@ -1021,6 +1123,9 @@ paths:
     post:
       summary: Add an item to a list
       tags: [Lists]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - $ref: '#/components/parameters/ListId'
@@ -1047,6 +1152,9 @@ paths:
     patch:
       summary: Update a list item
       tags: [Lists]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - $ref: '#/components/parameters/ListId'
@@ -1074,6 +1182,9 @@ paths:
     delete:
       summary: Remove a list item
       tags: [Lists]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - $ref: '#/components/parameters/ListId'
@@ -1085,6 +1196,9 @@ paths:
     get:
       summary: List documents
       tags: [Documents]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -1099,6 +1213,9 @@ paths:
     post:
       summary: Create a document
       tags: [Documents]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       requestBody:
@@ -1126,6 +1243,9 @@ paths:
     get:
       summary: Fetch a document
       tags: [Documents]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - $ref: '#/components/parameters/DocumentId'
@@ -1139,6 +1259,9 @@ paths:
     delete:
       summary: Delete a document
       tags: [Documents]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - $ref: '#/components/parameters/DocumentId'
@@ -1149,6 +1272,9 @@ paths:
     get:
       summary: List notifications for the signed-in user
       tags: [Notifications]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
       responses:
@@ -1164,6 +1290,9 @@ paths:
     post:
       summary: Dismiss a notification
       tags: [Notifications]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ApiVersion'
         - name: id
