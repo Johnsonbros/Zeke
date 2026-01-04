@@ -133,17 +133,7 @@ export async function processLimitlessZip(
       log(`[LimitlessImport] Failed to cleanup extract dir: ${e}`, "import");
     }
     
-    log(`[LimitlessImport] Import complete: ${progress.createdMemories} memories created, ${progress.skippedDuplicates} duplicates skipped`, "import");
-    
-    if (progress.createdMemories > 0) {
-      try {
-        const today = new Date().toISOString().split("T")[0];
-        await enqueueKnowledgeGraphExtraction(today, today);
-        log(`[LimitlessImport] Queued knowledge graph extraction for imported memories`, "import");
-      } catch (e) {
-        log(`[LimitlessImport] Failed to queue batch processing: ${e}`, "import");
-      }
-    }
+    log(`[LimitlessImport] ZIP import complete: ${progress.createdMemories} new memories, ${progress.skippedDuplicates} duplicates skipped`, "import");
     
     return progress;
     
@@ -390,14 +380,7 @@ export async function processLimitlessDirectory(
     progress.currentFile = undefined;
     onProgress?.(progress);
     
-    if (progress.createdMemories > 0) {
-      try {
-        const today = new Date().toISOString().split("T")[0];
-        await enqueueKnowledgeGraphExtraction(today, today);
-      } catch (e) {
-        log(`[LimitlessImport] Failed to queue batch processing: ${e}`, "import");
-      }
-    }
+    log(`[LimitlessImport] Directory import complete: ${progress.createdMemories} new memories, ${progress.skippedDuplicates} duplicates skipped`, "import");
     
     return progress;
     
