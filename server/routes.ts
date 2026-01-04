@@ -9,6 +9,8 @@ import { getPendantHealthStatus } from "./pendantHealthMonitor";
 import { createOpusDecoder, createDeepgramBridge, isDeepgramConfigured, createVAD, isVADAvailable } from "./stt";
 import { limitlessClient, getLimitlessStatus, type ListLifelogsParams, type LimitlessConfig } from "./services/limitless";
 import { limitlessSyncService, initLimitlessSync } from "./services/limitlessSync";
+import { processLimitlessZip, processLimitlessDirectory, getImportProgress, getAllImportProgress, clearCompletedImports } from "./services/limitlessImport";
+import os from "os";
 import type { VoiceActivityDetector } from "./stt";
 import { createSttSession, endSttSession, createSttSegment, getSttSession } from "./db";
 import { createRealtimeService } from "./realtimeMessaging";
@@ -1546,6 +1548,127 @@ export async function registerRoutes(
   // Initialize Limitless sync on startup
   initLimitlessSync().catch(err => {
     console.error("[LimitlessSync] Failed to initialize:", err);
+  });
+
+  // ============================================================================
+  // LIMITLESS DATA IMPORT API ROUTES
+  // ============================================================================
+  
+  const importUpload = multer({
+    dest: path.join(os.tmpdir(), "limitless-uploads"),
+    limits: { fileSize: 20 * 1024 * 1024 * 1024 }, // 20GB limit
+  });
+
+  // POST /api/limitless/import/zip - Import from uploaded ZIP file
+  app.post("/api/limitless/import/zip", importUpload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const filePath = req.file.path;
+      console.log(`[LimitlessImport] Starting ZIP import: ${req.file.originalname} (${req.file.size} bytes)`);
+
+      // Start processing in background
+      const progress = await processLimitlessZip(filePath, (p) => {
+        console.log(`[LimitlessImport] Progress: ${p.processedFiles}/${p.totalFiles} files, ${p.createdMemories} memories`);
+      });
+
+      // Clean up uploaded file
+      try {
+        fsNode.unlinkSync(filePath);
+      } catch (e) {
+        console.warn("[LimitlessImport] Failed to cleanup uploaded file:", e);
+      }
+
+      res.json({
+        success: true,
+        importId: progress.id,
+        totalFiles: progress.totalFiles,
+        createdMemories: progress.createdMemories,
+        skippedDuplicates: progress.skippedDuplicates,
+        errors: progress.errors.slice(0, 10),
+        status: progress.status,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[LimitlessImport] ZIP import failed:", message);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/limitless/import/directory - Import from a directory path (for large imports)
+  app.post("/api/limitless/import/directory", async (req, res) => {
+    try {
+      const { path: dirPath } = req.body;
+      if (!dirPath) {
+        return res.status(400).json({ error: "Directory path is required" });
+      }
+
+      if (!fsNode.existsSync(dirPath)) {
+        return res.status(400).json({ error: "Directory does not exist" });
+      }
+
+      console.log(`[LimitlessImport] Starting directory import: ${dirPath}`);
+
+      // Start processing (this will run synchronously for now)
+      const progress = await processLimitlessDirectory(dirPath, (p) => {
+        console.log(`[LimitlessImport] Progress: ${p.processedFiles}/${p.totalFiles} files, ${p.createdMemories} memories`);
+      });
+
+      res.json({
+        success: true,
+        importId: progress.id,
+        totalFiles: progress.totalFiles,
+        createdMemories: progress.createdMemories,
+        skippedDuplicates: progress.skippedDuplicates,
+        errors: progress.errors.slice(0, 10),
+        status: progress.status,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[LimitlessImport] Directory import failed:", message);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // GET /api/limitless/import/:id - Get import progress
+  app.get("/api/limitless/import/:id", (req, res) => {
+    try {
+      const progress = getImportProgress(req.params.id);
+      if (!progress) {
+        return res.status(404).json({ error: "Import not found" });
+      }
+      res.json(progress);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // GET /api/limitless/import - List all imports
+  app.get("/api/limitless/import", (_req, res) => {
+    try {
+      const imports = getAllImportProgress();
+      res.json({
+        total: imports.length,
+        imports,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // DELETE /api/limitless/import/completed - Clear completed imports
+  app.delete("/api/limitless/import/completed", (_req, res) => {
+    try {
+      const cleared = clearCompletedImports();
+      res.json({ success: true, cleared });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
   });
 
   // ============================================================================

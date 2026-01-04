@@ -58,6 +58,7 @@ import {
 } from "./metricsCollector";
 import { getCoreConceptsContext } from "./jobs/conceptReflection";
 import { resolveModelRoute, type ModelRoute } from "./modelRouter";
+import { generateProactiveContext, formatProactiveContextForPrompt, shouldTriggerProactiveResponse } from "./proactiveContext";
 
 export interface PendingMemory {
   id: string;
@@ -742,7 +743,23 @@ async function buildSystemPrompt(
       conversationId,
       tokenBudget
     );
-    dynamicContext = smartContext;
+    
+    // Add proactive context for more helpful responses
+    let proactiveContextStr = "";
+    try {
+      const shouldBeProactive = await shouldTriggerProactiveResponse(userMessage);
+      if (shouldBeProactive) {
+        const proactiveContext = await generateProactiveContext(userMessage, conversationId);
+        if (proactiveContext.insights.length > 0) {
+          proactiveContextStr = formatProactiveContextForPrompt(proactiveContext);
+          console.log(`[Agent] Added proactive context with ${proactiveContext.insights.length} insights`);
+        }
+      }
+    } catch (error) {
+      console.error("[Agent] Proactive context generation failed (non-fatal):", error);
+    }
+    
+    dynamicContext = proactiveContextStr ? `${smartContext}\n\n${proactiveContextStr}` : smartContext;
     console.log("[Agent] Using Context Router for dynamic context");
   } else {
     // Legacy context building (fallback)
