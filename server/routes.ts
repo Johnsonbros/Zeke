@@ -313,6 +313,7 @@ import {
   getMobileNotification,
   updateMobileNotification,
   dismissMobileNotification,
+  getPendingReminders,
 } from "./db";
 import type { TwilioMessageSource, UploadedFileType, ZekeNotification, MobileNotificationActionType } from "@shared/schema";
 import { insertFolderSchema, updateFolderSchema, insertDocumentSchema, updateDocumentSchema, locationSampleBatchSchema, insertSavedPlaceSchema, companionLocationHistorySchema, companionLocationSampleBatchSchema, registerPushTokenSchema, deltaQuerySchema, updateMobileNotificationSchema } from "@shared/schema";
@@ -6870,6 +6871,17 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Get reminders error:", error);
       res.status(500).json({ message: "Failed to get reminders" });
+    }
+  });
+
+  // Get pending reminders (for mobile app)
+  app.get("/api/reminders/pending", async (_req, res) => {
+    try {
+      const reminders = await getPendingReminders();
+      res.json(serializeReminders(reminders));
+    } catch (error: any) {
+      console.error("Get pending reminders error:", error);
+      res.status(500).json({ message: "Failed to get pending reminders" });
     }
   });
 
