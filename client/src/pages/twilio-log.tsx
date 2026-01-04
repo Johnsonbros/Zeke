@@ -74,7 +74,8 @@ const STATUS_CONFIG: Record<string, { label: string; icon: typeof CheckCircle2; 
   failed: { label: "Failed", icon: AlertCircle, color: "text-destructive" },
 };
 
-function formatPhoneDisplay(phone: string): string {
+function formatPhoneDisplay(phone: string | undefined | null): string {
+  if (!phone) return "Unknown";
   const digits = phone.replace(/\D/g, "");
   if (digits.length === 11 && digits.startsWith("1")) {
     const num = digits.slice(1);
@@ -104,11 +105,12 @@ function ConversationCard({
   onClick: () => void;
   isSelected: boolean;
 }) {
+  const phoneDisplay = conversation.phoneNumber || "Unknown";
   return (
     <Card 
       className={`p-3 cursor-pointer hover-elevate transition-all ${isSelected ? "ring-2 ring-primary" : ""}`}
       onClick={onClick}
-      data-testid={`twilio-conversation-${conversation.phoneNumber}`}
+      data-testid={`twilio-conversation-${phoneDisplay}`}
     >
       <div className="flex items-start gap-3">
         <Avatar className="h-10 w-10 shrink-0">
@@ -132,17 +134,19 @@ function ConversationCard({
           )}
           
           <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
-            {conversation.lastMessage}
+            {conversation.lastMessage || "No messages"}
           </p>
           
           <div className="flex items-center gap-2 mt-2">
             <Badge variant="secondary" className="text-xs gap-1">
               <MessageSquare className="h-3 w-3" />
-              {conversation.messageCount}
+              {conversation.messageCount || 0}
             </Badge>
-            <span className="text-[10px] text-muted-foreground">
-              {format(parseISO(conversation.lastMessageAt), "MMM d, h:mm a")}
-            </span>
+            {conversation.lastMessageAt && (
+              <span className="text-[10px] text-muted-foreground">
+                {format(parseISO(conversation.lastMessageAt), "MMM d, h:mm a")}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -417,11 +421,11 @@ export default function TwilioLogPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {conversations.map((conv) => (
+              {conversations.map((conv, index) => (
                 <ConversationCard
-                  key={conv.phoneNumber}
+                  key={conv.phoneNumber || `conversation-${index}`}
                   conversation={conv}
-                  onClick={() => setSelectedPhone(conv.phoneNumber)}
+                  onClick={() => setSelectedPhone(conv.phoneNumber || "")}
                   isSelected={selectedPhone === conv.phoneNumber}
                 />
               ))}

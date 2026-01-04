@@ -786,8 +786,11 @@ export function parseQuickAction(message: string): QuickActionResult {
   const upperMessage = trimmed.toUpperCase();
   const lowerMessage = trimmed.toLowerCase();
 
+  console.log(`[QuickAction] Parsing message: "${trimmed.substring(0, 80)}${trimmed.length > 80 ? '...' : ''}"`);
+
   if (upperMessage.startsWith("GROCERY ") || upperMessage === "GROCERY") {
     const content = trimmed.substring(7).trim();
+    console.log(`[QuickAction] Matched GROCERY command, item: "${content}"`);
     return handleGroceryCommand(content);
   }
 
@@ -795,11 +798,11 @@ export function parseQuickAction(message: string): QuickActionResult {
   // "X to grocery list", "add X to grocery list", "put X on grocery list", "X on grocery list"
   // "add X to groceries", "X to groceries", "buy X", "need X", "pick up X", "get X", etc.
   const groceryPatterns = [
-    // Explicit grocery list mentions
-    /^(?:add\s+)?(.+?)\s+to\s+(?:the\s+)?(?:grocery\s*list|groceries)$/i,
-    /^(?:put\s+)?(.+?)\s+on\s+(?:the\s+)?(?:grocery\s*list|groceries)$/i,
-    /^(?:add\s+)?(.+?)\s+to\s+(?:my\s+)?(?:grocery\s*list|groceries)$/i,
-    /^(?:put\s+)?(.+?)\s+on\s+(?:my\s+)?(?:grocery\s*list|groceries)$/i,
+    // Explicit grocery list mentions - more flexible matching
+    /^(?:add\s+)?(.+?)\s+to\s+(?:the\s+)?(?:my\s+)?(?:grocery\s*list|groceries)$/i,
+    /^(?:put\s+)?(.+?)\s+(?:on|to)\s+(?:the\s+)?(?:my\s+)?(?:grocery\s*list|groceries)$/i,
+    // Also match with "grocery" alone at the end (common SMS shorthand)
+    /^(?:add\s+)?(.+?)\s+to\s+(?:the\s+)?(?:my\s+)?grocery$/i,
     // Shopping intent patterns - "buy X", "need to buy X"
     /^(?:need\s+to\s+)?buy\s+(?:some\s+)?(.+)$/i,
     // "pick up X", "get X from store"
@@ -821,7 +824,28 @@ export function parseQuickAction(message: string): QuickActionResult {
       const itemMatch = trimmed.match(pattern);
       const item = itemMatch ? itemMatch[1].trim() : match[1].trim();
       if (item) {
+        console.log(`[QuickAction] Matched grocery pattern, item: "${item}"`);
         return handleGroceryCommand(item);
+      }
+    }
+  }
+  
+  // Fallback: Check for simple "grocery list" mention at end of message
+  if (lowerMessage.endsWith("to grocery list") || lowerMessage.endsWith("to groceries") || 
+      lowerMessage.endsWith("to the grocery list") || lowerMessage.endsWith("on grocery list")) {
+    // Extract everything before the grocery suffix
+    const suffixes = ["to the grocery list", "to grocery list", "to groceries", "on grocery list"];
+    for (const suffix of suffixes) {
+      if (lowerMessage.endsWith(suffix)) {
+        let item = trimmed.slice(0, -suffix.length).trim();
+        // Remove "add" prefix if present
+        if (item.toLowerCase().startsWith("add ")) {
+          item = item.slice(4).trim();
+        }
+        if (item) {
+          console.log(`[QuickAction] Matched grocery fallback, item: "${item}"`);
+          return handleGroceryCommand(item);
+        }
       }
     }
   }
@@ -887,6 +911,7 @@ export function parseQuickAction(message: string): QuickActionResult {
     return handleListCommand(content);
   }
 
+  console.log(`[QuickAction] No pattern matched for: "${trimmed.substring(0, 50)}${trimmed.length > 50 ? '...' : ''}"`);
   return {
     isQuickAction: false,
     type: "",
