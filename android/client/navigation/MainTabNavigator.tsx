@@ -74,6 +74,10 @@ function ZekeServicesHubWrapper({ navigation }: ZekeServicesHubWrapperProps) {
         secondary: "Last: Mom - 2 min ago",
         count: 3,
       },
+      notifications: [
+        { id: "comms-1", label: "3 new SMS messages", icon: "message-square", color: "#8B5CF6" },
+        { id: "comms-2", label: "1 missed call from Dad", icon: "phone-missed", color: "#EF4444" },
+      ],
       needsAttention: true,
       isZekeActive: currentAction.includes("voice"),
       onPress: () => {
@@ -90,6 +94,10 @@ function ZekeServicesHubWrapper({ navigation }: ZekeServicesHubWrapperProps) {
         primary: "Team Standup in 15 min",
         secondary: "4 events today",
       },
+      notifications: [
+        { id: "cal-1", label: "Next: Team Standup @ 3:30 PM", icon: "clock", color: "#10B981" },
+        { id: "cal-2", label: "3 more events today", icon: "calendar" },
+      ],
       needsAttention: true,
       isZekeActive: currentAction.includes("calendar"),
       onPress: () => {
@@ -104,8 +112,12 @@ function ZekeServicesHubWrapper({ navigation }: ZekeServicesHubWrapperProps) {
       gradientColors: ["#EF4444", "#DC2626"],
       liveData: {
         primary: "Current: Home",
-        secondary: "2 active geofences",
+        secondary: "Tracking active",
       },
+      notifications: [
+        { id: "geo-1", label: "2 active geofences", icon: "target", color: "#EF4444" },
+        { id: "geo-2", label: "Near: Home Depot (0.5 mi)", icon: "navigation", color: "#F59E0B" },
+      ],
       isZekeActive: currentAction.includes("location"),
       onPress: () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -122,6 +134,10 @@ function ZekeServicesHubWrapper({ navigation }: ZekeServicesHubWrapperProps) {
         secondary: "3 high priority",
         count: 7,
       },
+      notifications: [
+        { id: "tasks-1", label: "3 high priority tasks", icon: "alert-triangle", color: "#EF4444" },
+        { id: "tasks-2", label: "Due today: Submit report", icon: "clock", color: "#F59E0B" },
+      ],
       isZekeActive: currentAction.includes("tasks"),
       onPress: () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

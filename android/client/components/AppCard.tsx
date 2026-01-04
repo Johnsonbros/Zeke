@@ -22,6 +22,13 @@ import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 
+export interface CardNotification {
+  id: string;
+  label: string;
+  icon?: keyof typeof Feather.glyphMap;
+  color?: string;
+}
+
 export interface AppCardData {
   id: string;
   title: string;
@@ -32,6 +39,7 @@ export interface AppCardData {
     secondary?: string;
     count?: number;
   };
+  notifications?: CardNotification[];
   isZekeActive?: boolean;
   needsAttention?: boolean;
   onPress: () => void;
@@ -40,7 +48,7 @@ export interface AppCardData {
 
 interface AppCardProps extends AppCardData {
   size?: "small" | "medium" | "large";
-  mode?: "grid" | "carousel";
+  mode?: "carousel";
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -50,12 +58,13 @@ export function AppCard({
   icon,
   gradientColors,
   liveData,
+  notifications,
   isZekeActive = false,
   needsAttention = false,
   onPress,
   onLongPress,
   size = "medium",
-  mode = "grid",
+  mode = "carousel",
 }: AppCardProps) {
   const { theme } = useTheme();
   const pulseAnim = useSharedValue(0);
@@ -149,7 +158,7 @@ export function AppCard({
     };
   });
 
-  const cardHeight = mode === "carousel" ? 240 : size === "large" ? 200 : size === "small" ? 140 : 160;
+  const cardHeight = mode === "carousel" ? (size === "small" ? 160 : 170) : size === "large" ? 200 : size === "small" ? 140 : 160;
 
   return (
     <AnimatedPressable
@@ -254,32 +263,46 @@ export function AppCard({
               <ThemedText
                 type="small"
                 style={[styles.secondaryData, { color: theme.textSecondary }]}
-                numberOfLines={2}
+                numberOfLines={1}
               >
                 {liveData.secondary}
               </ThemedText>
             )}
+
+            {notifications && notifications.length > 0 && (
+              <View style={styles.notificationsContainer}>
+                {notifications.slice(0, 3).map((notification) => (
+                  <View
+                    key={notification.id}
+                    style={[
+                      styles.notificationRow,
+                      { backgroundColor: `${notification.color || gradientColors[0]}15` },
+                    ]}
+                  >
+                    {notification.icon && (
+                      <Feather
+                        name={notification.icon}
+                        size={12}
+                        color={notification.color || gradientColors[0]}
+                        style={styles.notificationIcon}
+                      />
+                    )}
+                    <ThemedText
+                      type="caption"
+                      style={[
+                        styles.notificationLabel,
+                        { color: notification.color || theme.textSecondary },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {notification.label}
+                    </ThemedText>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
 
-          {mode === "grid" && (
-            <View style={styles.cardFooter}>
-              <View style={styles.statusIndicator}>
-                <View
-                  style={[
-                    styles.statusDot,
-                    {
-                      backgroundColor: isZekeActive
-                        ? "#10B981"
-                        : theme.border,
-                    },
-                  ]}
-                />
-                <ThemedText type="caption" style={styles.statusText}>
-                  {isZekeActive ? "Active" : "Ready"}
-                </ThemedText>
-              </View>
-            </View>
-          )}
         </LinearGradient>
       </Animated.View>
     </AnimatedPressable>
@@ -370,7 +393,7 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     flex: 1,
-    justifyContent: "center",
+    justifyContent: "flex-start",
   },
   cardTitle: {
     fontWeight: "700",
@@ -384,22 +407,25 @@ const styles = StyleSheet.create({
   secondaryData: {
     fontSize: 13,
     lineHeight: 18,
+    marginBottom: Spacing.xs,
   },
-  cardFooter: {
+  notificationsContainer: {
     marginTop: Spacing.sm,
-  },
-  statusIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
     gap: Spacing.xs,
   },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  notificationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: BorderRadius.sm,
   },
-  statusText: {
+  notificationIcon: {
+    marginRight: 6,
+  },
+  notificationLabel: {
     fontSize: 11,
-    opacity: 0.7,
+    fontWeight: "500",
+    flex: 1,
   },
 });
