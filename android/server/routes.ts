@@ -1269,7 +1269,7 @@ Return at most ${Math.min(limit, 10)} results. Only include memories with releva
 
   app.post("/api/twilio/webhook/voice-status", async (req, res) => {
     try {
-      const { CallSid, CallStatus, CallDuration, From, To } = req.body;
+      const { CallSid, CallStatus, CallDuration, From, To, Direction, StartTime, EndTime } = req.body;
       
       console.log("[Twilio Webhook] Call status update:", CallSid, CallStatus, "duration:", CallDuration);
       
@@ -1288,6 +1288,72 @@ Return at most ${Math.min(limit, 10)} results. Only include memories with releva
         },
         timestamp: new Date().toISOString()
       });
+      
+      if (CallStatus === 'completed') {
+        const durationSeconds = parseInt(CallDuration || '0', 10);
+        const durationMinutes = Math.floor(durationSeconds / 60);
+        const durationRemainderSeconds = durationSeconds % 60;
+        const callDirection = Direction || 'outbound-api';
+        const isInbound = callDirection === 'inbound';
+        
+        const callLog = {
+          type: 'voice_call',
+          callSid: CallSid,
+          from: From,
+          to: To,
+          direction: callDirection,
+          duration: durationSeconds,
+          status: CallStatus,
+          startTime: StartTime || null,
+          endTime: EndTime || new Date().toISOString(),
+          source: 'zeke-companion-app',
+          syncedAt: new Date().toISOString()
+        };
+        
+        const callSummary = `Voice call ${isInbound ? 'received from' : 'placed to'} ${isInbound ? From : To}. Duration: ${durationMinutes} minutes ${durationRemainderSeconds} seconds.`;
+        
+        console.log("[Twilio Webhook] Call completed:", CallSid, "duration:", durationMinutes, "min", durationRemainderSeconds, "sec");
+        
+        broadcastZekeSync({
+          type: 'voice',
+          action: 'status_change',
+          data: {
+            call: callLog,
+            summary: callSummary
+          },
+          timestamp: new Date().toISOString()
+        });
+        
+        (async () => {
+          try {
+            const { proxyToZeke } = await import("./zeke-proxy");
+            
+            const result = await proxyToZeke('POST', '/api/call-logs', {
+              content: callSummary,
+              callSid: CallSid,
+              from: From,
+              to: To,
+              direction: callDirection,
+              duration: durationSeconds,
+              status: CallStatus,
+              startTime: StartTime || null,
+              endTime: EndTime || new Date().toISOString(),
+              source: 'zeke-companion-app',
+              tags: ['voice-call', 'communication', 'twilio']
+            }, {
+              'X-Zeke-Service-Source': 'twilio-webhook'
+            });
+            
+            if (result.success) {
+              console.log("[Twilio Webhook] Call log synced to ZEKE:", CallSid);
+            } else {
+              console.log("[Twilio Webhook] ZEKE sync pending - endpoint /api/call-logs returned:", result.status);
+            }
+          } catch (error) {
+            console.error("[Twilio Webhook] ZEKE sync error:", error instanceof Error ? error.message : error);
+          }
+        })();
+      }
       
       res.sendStatus(200);
     } catch (error) {

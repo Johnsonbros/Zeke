@@ -1,4 +1,4 @@
-import { bluetoothService, type AudioChunk, type DeviceType, type OpusFrame } from "./bluetooth";
+import { bluetoothService, type AudioChunk, type DeviceType } from "./bluetooth";
 import { getApiUrl } from "./query-client";
 
 export type TranscriptionCallback = (text: string, isFinal: boolean) => void;
@@ -30,14 +30,10 @@ export interface AudioStreamer {
 }
 
 interface ServerMessage {
-  type: "TRANSCRIPTION" | "ERROR" | "WARNING" | "config_ack" | "heartbeat_ack" | "session_started";
+  type: "TRANSCRIPTION" | "ERROR" | "WARNING" | "config_ack" | "heartbeat_ack";
   text?: string;
   isFinal?: boolean;
   message?: string;
-  session_id?: string;
-  device_id?: string;
-  device_type?: string;
-  deepgram_connected?: boolean;
 }
 
 const HEARTBEAT_INTERVAL_MS = 30000;
@@ -49,15 +45,10 @@ function getWebSocketUrl(): string {
   return `${wsProtocol}://${host}/ws/audio`;
 }
 
-const CONFIG_TIMEOUT_MS = 10000;
-const MAX_PENDING_CHUNKS = 50;
-
 class AudioStreamerImpl implements AudioStreamer {
   private ws: WebSocket | null = null;
   private unsubscribeAudioChunk: (() => void) | null = null;
-  private unsubscribeOpusFrame: (() => void) | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private configTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
   private transcriptionCallback: TranscriptionCallback | null = null;
   private warningCallback: WarningCallback | null = null;
   private fullTranscript: string = "";
@@ -134,30 +125,16 @@ class AudioStreamerImpl implements AudioStreamer {
         this.notifyMetricsUpdate();
 
         this.sendConfig();
-        this.startConfigTimeout();
 
-        if (this.deviceType === "limitless") {
-          console.log("[AudioStreamer] Using Opus frame subscription for Limitless device");
-          this.unsubscribeOpusFrame = bluetoothService.onOpusFrame(
-            (frame: OpusFrame) => {
-              this.metrics.framesReceived++;
-              this.metrics.bytesReceived += frame.data.length;
-              this.metrics.lastFrameTimestamp = Date.now();
-              this.sendBinaryOpus(new Uint8Array(frame.data));
-              this.notifyMetricsUpdate();
-            },
-          );
-        } else {
-          this.unsubscribeAudioChunk = bluetoothService.onAudioChunk(
-            (chunk: AudioChunk) => {
-              this.metrics.framesReceived++;
-              this.metrics.bytesReceived += chunk.data.length;
-              this.metrics.lastFrameTimestamp = Date.now();
-              this.sendBinaryOpus(chunk.data);
-              this.notifyMetricsUpdate();
-            },
-          );
-        }
+        this.unsubscribeAudioChunk = bluetoothService.onAudioChunk(
+          (chunk: AudioChunk) => {
+            this.metrics.framesReceived++;
+            this.metrics.bytesReceived += chunk.data.length;
+            this.metrics.lastFrameTimestamp = Date.now();
+            this.sendBinaryOpus(chunk.data);
+            this.notifyMetricsUpdate();
+          },
+        );
 
         this.streaming = true;
         resolve();
@@ -218,9 +195,9 @@ class AudioStreamerImpl implements AudioStreamer {
     if (!this.ws) return;
 
     const configMessage = {
-      type: "start_session",
+      type: "config",
       codec: "opus",
-      sample_rate_hint: 16000,
+      sample_rate: 16000,
       frame_format: "raw_opus_packets",
       device_type: this.deviceType,
       device_id: this.deviceId,
@@ -260,37 +237,13 @@ class AudioStreamerImpl implements AudioStreamer {
     this.ws.send(JSON.stringify(heartbeatMessage));
   }
 
-  private startConfigTimeout(): void {
-    this.stopConfigTimeout();
-    this.configTimeoutTimer = setTimeout(() => {
-      if (!this.isConfigured && this.streaming) {
-        console.warn("[AudioStreamer] Config timeout - proceeding without transcription confirmation");
-        this.isConfigured = true;
-        this.metrics.configAcknowledged = true;
-        this.notifyMetricsUpdate();
-        this.flushPendingChunks();
-        this.startHeartbeat();
-        this.warningCallback?.("Session handshake timeout - audio may not be transcribed");
-      }
-    }, CONFIG_TIMEOUT_MS);
-  }
-
-  private stopConfigTimeout(): void {
-    if (this.configTimeoutTimer) {
-      clearTimeout(this.configTimeoutTimer);
-      this.configTimeoutTimer = null;
-    }
-  }
-
   private sendBinaryOpus(opusData: Uint8Array): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return;
     }
 
     if (!this.isConfigured) {
-      if (this.pendingChunks.length < MAX_PENDING_CHUNKS) {
-        this.pendingChunks.push(opusData);
-      }
+      this.pendingChunks.push(opusData);
       return;
     }
 
@@ -312,21 +265,12 @@ class AudioStreamerImpl implements AudioStreamer {
   private handleServerMessage(message: ServerMessage): void {
     switch (message.type) {
       case "config_ack":
-      case "session_started":
-        this.stopConfigTimeout();
         this.isConfigured = true;
         this.metrics.configAcknowledged = true;
         this.notifyMetricsUpdate();
         this.flushPendingChunks();
         this.startHeartbeat();
-        if (message.type === "session_started") {
-          console.log(`[AudioStreamer] Session started: ${message.session_id}, Deepgram: ${message.deepgram_connected}`);
-          if (!message.deepgram_connected) {
-            this.warningCallback?.("Transcription service not connected - audio will be captured but not transcribed");
-          }
-        } else {
-          console.log("[AudioStreamer] Config acknowledged, ready for audio");
-        }
+        console.log("[AudioStreamer] Config acknowledged, ready for audio");
         break;
 
       case "TRANSCRIPTION":
@@ -365,16 +309,10 @@ class AudioStreamerImpl implements AudioStreamer {
 
   private cleanup(): void {
     this.stopHeartbeat();
-    this.stopConfigTimeout();
 
     if (this.unsubscribeAudioChunk) {
       this.unsubscribeAudioChunk();
       this.unsubscribeAudioChunk = null;
-    }
-
-    if (this.unsubscribeOpusFrame) {
-      this.unsubscribeOpusFrame();
-      this.unsubscribeOpusFrame = null;
     }
 
     if (this.ws) {
@@ -387,7 +325,6 @@ class AudioStreamerImpl implements AudioStreamer {
       this.ws = null;
     }
 
-    this.pendingChunks = [];
     this.streaming = false;
     this.isConfigured = false;
     this.metrics.wsConnected = false;
