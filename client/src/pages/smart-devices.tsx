@@ -220,6 +220,35 @@ export default function SmartDevicesPage() {
                 </Button>
               </div>
 
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="default"
+                  onClick={() => powerMutation.mutate({ ip: deviceIp, action: "on" })}
+                  disabled={powerMutation.isPending || !deviceIp}
+                  data-testid="button-quick-on"
+                >
+                  {powerMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Power className="h-4 w-4 mr-2" />
+                  )}
+                  Turn On
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => powerMutation.mutate({ ip: deviceIp, action: "off" })}
+                  disabled={powerMutation.isPending || !deviceIp}
+                  data-testid="button-quick-off"
+                >
+                  {powerMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <PowerOff className="h-4 w-4 mr-2" />
+                  )}
+                  Turn Off
+                </Button>
+              </div>
+
               {currentDevice && (
                 <div className="mt-6 space-y-4">
                   <Separator />
