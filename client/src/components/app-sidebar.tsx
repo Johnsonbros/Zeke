@@ -57,6 +57,7 @@ import {
   TrendingUp,
   Rss,
   DollarSign,
+  Plug,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import type { Conversation } from "@shared/schema";
@@ -169,6 +170,12 @@ const mainNavItems = [
     icon: Bluetooth,
     href: "/devices",
     description: "Manage hardware pendants",
+  },
+  {
+    title: "Smart Plugs",
+    icon: Plug,
+    href: "/smart-devices",
+    description: "Control Tapo smart plugs",
   },
   {
     title: "Voice Profiles",

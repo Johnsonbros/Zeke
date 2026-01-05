@@ -150,6 +150,15 @@ export {
   documentToolNames,
 } from "./documents";
 
+export {
+  smartDeviceToolDefinitions,
+  smartDeviceToolPermissions,
+  executeSmartDeviceTool,
+  smartDeviceToolNames,
+} from "./smartDevices";
+
+import { smartDeviceToolDefinitions, smartDeviceToolPermissions } from "./smartDevices";
+
 import type OpenAI from "openai";
 import type { ToolPermissions } from "../tools";
 

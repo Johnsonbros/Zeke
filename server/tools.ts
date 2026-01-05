@@ -85,6 +85,10 @@ import {
   weatherToolNames,
   weatherToolPermissions,
   weatherTools,
+  smartDeviceToolDefinitions,
+  smartDeviceToolNames,
+  smartDeviceToolPermissions,
+  executeSmartDeviceTool,
 } from "./capabilities";
 
 export interface ToolPermissions {
@@ -283,6 +287,12 @@ const capabilityRegistry: Record<string, CapabilityConfig> = {
       return typeof result === "string" ? result : JSON.stringify(result);
     },
   },
+  smartDevice: {
+    definitions: smartDeviceToolDefinitions,
+    permissions: smartDeviceToolPermissions,
+    names: smartDeviceToolNames,
+    executor: (toolName, args) => executeSmartDeviceTool(toolName, args),
+  },
 };
 
 let toolRegistryVersion = 1;
@@ -306,6 +316,7 @@ const activeCategories = new Set<string>([
   "codebase",
   "document",
   "dynamic",
+  "smartDevice",
 ]);
 
 function computeDefinitions() {

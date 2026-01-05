@@ -40,6 +40,7 @@ import TradingPage from "@/pages/trading";
 import NewsPage from "@/pages/news";
 import ZekeTradePage from "@/pages/zeketrade";
 import ZekeTradeDashboard from "@/pages/zeketrade-dashboard";
+import SmartDevicesPage from "@/pages/smart-devices";
 import LoginPage from "@/pages/login";
 import ApplyPage from "@/pages/apply";
 import LandingPage from "@/pages/landing";
@@ -76,6 +77,7 @@ function ProtectedRoutes() {
       <Route path="/voice-profiles" component={VoiceProfilesPage} />
       <Route path="/trading" component={TradingPage} />
       <Route path="/news" component={NewsPage} />
+      <Route path="/smart-devices" component={SmartDevicesPage} />
       <Route component={NotFound} />
     </Switch>
   );
