@@ -7677,7 +7677,29 @@ export async function registerRoutes(
         session = await createGettingToKnowSession();
       }
       
-      const messages = await getGettingToKnowMessages(session.id);
+      let messages = await getGettingToKnowMessages(session.id);
+      
+      // Add initial greeting if session has no messages yet
+      // Check that no assistant messages exist to prevent race condition duplicates
+      const hasAssistantMessage = messages.some(m => m.role === "assistant");
+      if (messages.length === 0 && !hasAssistantMessage) {
+        try {
+          const { generateContextualQuestion } = await import("./gettingToKnow");
+          const initialGreeting = await generateContextualQuestion();
+          
+          await addGettingToKnowMessage({
+            sessionId: session.id,
+            role: "assistant",
+            content: initialGreeting,
+          });
+          
+          // Refresh messages to include the new greeting
+          messages = await getGettingToKnowMessages(session.id);
+        } catch (greetingError) {
+          console.error("Failed to generate initial greeting:", greetingError);
+          // Continue without initial greeting - user can still start conversation
+        }
+      }
       
       res.json({
         session,
