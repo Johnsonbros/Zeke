@@ -4739,3 +4739,44 @@ export interface PnlSummary {
   netPnl: number;
   profitMargin: number;
 }
+
+// ============================================
+// SMART DEVICES (Tapo P110, etc.)
+// ============================================
+
+export const smartDeviceTypes = ["plug", "bulb", "switch", "sensor"] as const;
+export type SmartDeviceType = typeof smartDeviceTypes[number];
+
+export const smartDevices = pgTable("smart_devices", {
+  id: text("id").primaryKey(),
+  deviceId: text("device_id").notNull().unique(), // TP-Link device ID
+  name: text("name").notNull(),
+  nickname: text("nickname"), // User-friendly name
+  deviceType: text("device_type", { enum: smartDeviceTypes }).notNull().default("plug"),
+  model: text("model"), // e.g., "P110"
+  ipAddress: text("ip_address"),
+  macAddress: text("mac_address"),
+  firmwareVersion: text("firmware_version"),
+  isOnline: boolean("is_online").notNull().default(false),
+  isOn: boolean("is_on").notNull().default(false),
+  lastSeen: text("last_seen"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertSmartDeviceSchema = createInsertSchema(smartDevices).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateSmartDeviceSchema = z.object({
+  nickname: z.string().optional(),
+  isOnline: z.boolean().optional(),
+  isOn: z.boolean().optional(),
+  lastSeen: z.string().optional(),
+});
+
+export type InsertSmartDevice = z.infer<typeof insertSmartDeviceSchema>;
+export type UpdateSmartDevice = z.infer<typeof updateSmartDeviceSchema>;
+export type SmartDevice = typeof smartDevices.$inferSelect;

@@ -15540,6 +15540,180 @@ When you learn something new, note it with [LEARNED: category - key insight] at 
   });
 
   console.log("[Mobile API] Dashboard and Notifications endpoints registered");
+
+  // ============================================================================
+  // SMART DEVICES API ROUTES (Tapo P110, etc.)
+  // ============================================================================
+
+  const { tapoService } = await import("./services/tapoService");
+
+  // GET /api/smart-devices/status - Check if Tapo is configured
+  app.get("/api/smart-devices/status", (_req, res) => {
+    res.json({
+      configured: tapoService.isConfigured(),
+      message: tapoService.isConfigured()
+        ? "Tapo service is configured"
+        : "TAPO_EMAIL and TAPO_PASSWORD environment variables are required",
+    });
+  });
+
+  // GET /api/smart-devices/discover - Discover devices from TP-Link cloud
+  app.get("/api/smart-devices/discover", async (_req, res) => {
+    try {
+      if (!tapoService.isConfigured()) {
+        return res.status(400).json({
+          error: "Tapo service not configured",
+          message: "TAPO_EMAIL and TAPO_PASSWORD secrets are required",
+        });
+      }
+
+      const devices = await tapoService.discoverDevices();
+      res.json({
+        success: true,
+        devices: devices.map((d: any) => ({
+          deviceId: d.deviceId,
+          name: d.deviceName || d.alias,
+          model: d.deviceModel,
+          mac: d.deviceMac,
+          type: d.deviceType,
+          status: d.status,
+        })),
+      });
+    } catch (error: any) {
+      console.error("[Smart Devices] Discovery error:", error);
+      res.status(500).json({
+        error: "Failed to discover devices",
+        message: error.message,
+      });
+    }
+  });
+
+  // POST /api/smart-devices/:ip/power - Control device power (on/off/toggle)
+  app.post("/api/smart-devices/:ip/power", async (req, res) => {
+    try {
+      if (!tapoService.isConfigured()) {
+        return res.status(400).json({
+          error: "Tapo service not configured",
+          message: "TAPO_EMAIL and TAPO_PASSWORD secrets are required",
+        });
+      }
+
+      const { ip } = req.params;
+      const { action } = req.body; // "on", "off", or "toggle"
+
+      if (!action || !["on", "off", "toggle"].includes(action)) {
+        return res.status(400).json({
+          error: "Invalid action",
+          message: "action must be 'on', 'off', or 'toggle'",
+        });
+      }
+
+      let isOn: boolean;
+      if (action === "on") {
+        await tapoService.turnOn(ip);
+        isOn = true;
+      } else if (action === "off") {
+        await tapoService.turnOff(ip);
+        isOn = false;
+      } else {
+        isOn = await tapoService.toggle(ip);
+      }
+
+      res.json({
+        success: true,
+        ip,
+        action,
+        isOn,
+      });
+    } catch (error: any) {
+      console.error(`[Smart Devices] Power control error for ${req.params.ip}:`, error);
+      res.status(500).json({
+        error: "Failed to control device",
+        message: error.message,
+      });
+    }
+  });
+
+  // GET /api/smart-devices/:ip/status - Get device status
+  app.get("/api/smart-devices/:ip/status", async (req, res) => {
+    try {
+      if (!tapoService.isConfigured()) {
+        return res.status(400).json({
+          error: "Tapo service not configured",
+          message: "TAPO_EMAIL and TAPO_PASSWORD secrets are required",
+        });
+      }
+
+      const { ip } = req.params;
+      const info = await tapoService.getDeviceInfo(ip);
+
+      if (!info) {
+        return res.status(404).json({
+          error: "Device not found or unreachable",
+          ip,
+        });
+      }
+
+      res.json({
+        success: true,
+        ip,
+        deviceId: info.device_id,
+        isOn: info.device_on,
+        nickname: info.nickname,
+        model: info.model,
+        mac: info.mac,
+        firmwareVersion: info.fw_ver,
+      });
+    } catch (error: any) {
+      console.error(`[Smart Devices] Status error for ${req.params.ip}:`, error);
+      res.status(500).json({
+        error: "Failed to get device status",
+        message: error.message,
+      });
+    }
+  });
+
+  // GET /api/smart-devices/:ip/energy - Get energy usage (P110 only)
+  app.get("/api/smart-devices/:ip/energy", async (req, res) => {
+    try {
+      if (!tapoService.isConfigured()) {
+        return res.status(400).json({
+          error: "Tapo service not configured",
+          message: "TAPO_EMAIL and TAPO_PASSWORD secrets are required",
+        });
+      }
+
+      const { ip } = req.params;
+      const energy = await tapoService.getEnergyUsage(ip);
+
+      if (!energy) {
+        return res.status(404).json({
+          error: "Energy data not available",
+          message: "Device may not support energy monitoring or is unreachable",
+          ip,
+        });
+      }
+
+      res.json({
+        success: true,
+        ip,
+        todayRuntime: energy.today_runtime,
+        monthRuntime: energy.month_runtime,
+        todayEnergy: energy.today_energy,
+        monthEnergy: energy.month_energy,
+        currentPower: energy.current_power,
+        localTime: energy.local_time,
+      });
+    } catch (error: any) {
+      console.error(`[Smart Devices] Energy error for ${req.params.ip}:`, error);
+      res.status(500).json({
+        error: "Failed to get energy data",
+        message: error.message,
+      });
+    }
+  });
+
+  console.log("[Smart Devices] Tapo smart device endpoints registered");
   
   return httpServer;
 }
