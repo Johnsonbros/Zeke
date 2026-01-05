@@ -274,6 +274,7 @@ export const PROTECTED_ROUTE_PATTERNS = [
   '/api/conversations',
   '/api/news/briefing',
   '/api/realtime',
+  '/api/call-logs',
 ];
 
 export function shouldProtectRoute(path: string): boolean {

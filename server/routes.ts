@@ -4655,6 +4655,109 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to delete memory note" });
     }
   });
+
+  // ============================================
+  // ZEKE Companion App Call Logs Endpoint
+  // ============================================
+  // Receives call logs from the ZEKE companion mobile app for AI processing and memory creation.
+  // Authentication: HMAC signature verification via X-ZEKE-Signature header
+  // This is a server-to-server call from Twilio webhooks (no user session/device token available)
+  
+  const callLogSchema = z.object({
+    content: z.string().min(1, "Content is required"),
+    callSid: z.string().optional(),
+    from: z.string().optional(),
+    to: z.string().optional(),
+    direction: z.string().optional(),
+    duration: z.number().optional(),
+    status: z.string().optional(),
+    startTime: z.string().nullable().optional(),
+    endTime: z.string().nullable().optional(),
+    source: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+  });
+
+  app.post("/api/call-logs", async (req, res) => {
+    // Authentication: This endpoint REQUIRES HMAC signature for server-to-server calls from the companion app
+    // The middleware validates signature when X-ZEKE-Signature header is present, but allows
+    // requests without auth headers through (for browser/web UI routes). We must explicitly
+    // reject unauthenticated requests to this server-to-server endpoint.
+    
+    const proxyId = req.headers['x-zeke-proxy-id'] as string | undefined;
+    const serviceSource = req.headers['x-zeke-service-source'] as string | undefined;
+    const hasSignature = !!req.headers['x-zeke-signature'];
+    const requestId = (req as any).zekeRequestId || `call-log-${Date.now()}`;
+
+    // Require HMAC authentication - reject requests without signature
+    if (!hasSignature) {
+      console.warn(`[CALL-LOGS] Rejected request without X-ZEKE-Signature header, requestId: ${requestId}`);
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'HMAC authentication required - missing X-ZEKE-Signature header',
+        requestId 
+      });
+    }
+
+    // If we reach here, middleware has validated the signature (sets zekeRequestId on success)
+    // If signature was invalid, middleware would have returned 401 and never called next()
+    console.log(`[CALL-LOGS] Received authenticated request from proxy: ${proxyId}, service: ${serviceSource}, requestId: ${requestId}`);
+
+    try {
+      // Validate request body
+      const parsed = callLogSchema.safeParse(req.body);
+      if (!parsed.success) {
+        console.warn(`[CALL-LOGS] Invalid request body:`, parsed.error.errors);
+        return res.status(400).json({ 
+          error: 'Bad Request',
+          message: 'Invalid request body',
+          details: parsed.error.errors,
+          requestId 
+        });
+      }
+
+      const callLog = parsed.data;
+      console.log(`[CALL-LOGS] Processing call log: ${callLog.callSid || 'unknown'}, direction: ${callLog.direction}, duration: ${callLog.duration}s`);
+
+      // Build context string from call metadata
+      const contextParts: string[] = [];
+      if (callLog.from) contextParts.push(`From: ${callLog.from}`);
+      if (callLog.to) contextParts.push(`To: ${callLog.to}`);
+      if (callLog.direction) contextParts.push(`Direction: ${callLog.direction}`);
+      if (callLog.duration !== undefined) contextParts.push(`Duration: ${callLog.duration}s`);
+      if (callLog.status) contextParts.push(`Status: ${callLog.status}`);
+      if (callLog.callSid) contextParts.push(`Call SID: ${callLog.callSid}`);
+      if (callLog.endTime) contextParts.push(`End Time: ${callLog.endTime}`);
+      if (callLog.source) contextParts.push(`Source: ${callLog.source}`);
+      if (callLog.tags?.length) contextParts.push(`Tags: ${callLog.tags.join(', ')}`);
+
+      // Create memory note from call log
+      const memoryNote = await createMemoryNote({
+        type: 'note',
+        content: callLog.content,
+        context: contextParts.join(' | '),
+        sourceType: 'observation',
+        sourceId: callLog.callSid || `call-${Date.now()}`,
+        scope: 'long_term',
+        confidenceScore: '0.9',
+      });
+
+      console.log(`[CALL-LOGS] Created memory note: ${memoryNote.id} for call ${callLog.callSid || 'unknown'}`);
+
+      res.status(200).json({ 
+        success: true,
+        message: 'Call log received and memory created',
+        memoryNoteId: memoryNote.id,
+        requestId 
+      });
+    } catch (error: any) {
+      console.error(`[CALL-LOGS] Error processing call log:`, error);
+      res.status(500).json({ 
+        error: 'Internal Server Error',
+        message: 'Failed to process call log',
+        requestId 
+      });
+    }
+  });
   
   // Get all preferences
   app.get("/api/preferences", async (_req, res) => {
