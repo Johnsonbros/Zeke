@@ -1,7 +1,4 @@
-import { cloudLogin } from "tp-link-tapo-connect";
-
-const TAPO_EMAIL = process.env.TAPO_EMAIL;
-const TAPO_PASSWORD = process.env.TAPO_PASSWORD;
+import { cloudLogin, loginDeviceByIp } from "tp-link-tapo-connect";
 
 export interface TapoDevice {
   deviceId: string;
@@ -40,19 +37,52 @@ export interface TapoEnergyUsage {
 
 class TapoService {
   private cloudApi: any = null;
+  private cloudLoginPromise: Promise<any> | null = null;
 
-  private async ensureCloudLogin(): Promise<any> {
-    if (!TAPO_EMAIL || !TAPO_PASSWORD) {
+  private getCredentials(): { email: string; password: string } {
+    const email = process.env.TAPO_EMAIL;
+    const password = process.env.TAPO_PASSWORD;
+    
+    if (!email || !password) {
       throw new Error("TAPO_EMAIL and TAPO_PASSWORD environment variables are required");
     }
+    
+    return { email, password };
+  }
 
-    if (!this.cloudApi) {
-      console.log("[Tapo] Logging into TP-Link cloud...");
-      this.cloudApi = await cloudLogin(TAPO_EMAIL, TAPO_PASSWORD);
-      console.log("[Tapo] Cloud login successful");
+  private async ensureCloudLogin(): Promise<any> {
+    const { email, password } = this.getCredentials();
+
+    if (this.cloudApi) {
+      return this.cloudApi;
     }
 
-    return this.cloudApi;
+    if (this.cloudLoginPromise) {
+      return this.cloudLoginPromise;
+    }
+
+    this.cloudLoginPromise = (async () => {
+      try {
+        console.log("[Tapo] Logging into TP-Link cloud...");
+        this.cloudApi = await cloudLogin(email, password);
+        console.log("[Tapo] Cloud login successful");
+        return this.cloudApi;
+      } catch (error) {
+        this.cloudApi = null;
+        this.cloudLoginPromise = null;
+        throw error;
+      } finally {
+        this.cloudLoginPromise = null;
+      }
+    })();
+
+    return this.cloudLoginPromise;
+  }
+
+  resetCloudSession(): void {
+    this.cloudApi = null;
+    this.cloudLoginPromise = null;
+    console.log("[Tapo] Cloud session reset");
   }
 
   async discoverDevices(): Promise<TapoDevice[]> {
@@ -63,18 +93,15 @@ class TapoService {
       return devices;
     } catch (error: any) {
       console.error("[Tapo] Failed to discover devices:", error.message);
+      this.resetCloudSession();
       throw error;
     }
   }
 
   async getDeviceInfo(deviceIp: string): Promise<TapoDeviceInfo | null> {
     try {
-      if (!TAPO_EMAIL || !TAPO_PASSWORD) {
-        throw new Error("TAPO_EMAIL and TAPO_PASSWORD environment variables are required");
-      }
-
-      const { loginDeviceByIp } = await import("tp-link-tapo-connect");
-      const device = await loginDeviceByIp(TAPO_EMAIL, TAPO_PASSWORD, deviceIp);
+      const { email, password } = this.getCredentials();
+      const device = await loginDeviceByIp(email, password, deviceIp);
       const info = await device.getDeviceInfo();
       return info;
     } catch (error: any) {
@@ -85,12 +112,8 @@ class TapoService {
 
   async turnOn(deviceIp: string): Promise<boolean> {
     try {
-      if (!TAPO_EMAIL || !TAPO_PASSWORD) {
-        throw new Error("TAPO_EMAIL and TAPO_PASSWORD environment variables are required");
-      }
-
-      const { loginDeviceByIp } = await import("tp-link-tapo-connect");
-      const device = await loginDeviceByIp(TAPO_EMAIL, TAPO_PASSWORD, deviceIp);
+      const { email, password } = this.getCredentials();
+      const device = await loginDeviceByIp(email, password, deviceIp);
       await device.turnOn();
       console.log(`[Tapo] Device at ${deviceIp} turned ON`);
       return true;
@@ -102,12 +125,8 @@ class TapoService {
 
   async turnOff(deviceIp: string): Promise<boolean> {
     try {
-      if (!TAPO_EMAIL || !TAPO_PASSWORD) {
-        throw new Error("TAPO_EMAIL and TAPO_PASSWORD environment variables are required");
-      }
-
-      const { loginDeviceByIp } = await import("tp-link-tapo-connect");
-      const device = await loginDeviceByIp(TAPO_EMAIL, TAPO_PASSWORD, deviceIp);
+      const { email, password } = this.getCredentials();
+      const device = await loginDeviceByIp(email, password, deviceIp);
       await device.turnOff();
       console.log(`[Tapo] Device at ${deviceIp} turned OFF`);
       return true;
@@ -139,12 +158,8 @@ class TapoService {
 
   async getEnergyUsage(deviceIp: string): Promise<TapoEnergyUsage | null> {
     try {
-      if (!TAPO_EMAIL || !TAPO_PASSWORD) {
-        throw new Error("TAPO_EMAIL and TAPO_PASSWORD environment variables are required");
-      }
-
-      const { loginDeviceByIp } = await import("tp-link-tapo-connect");
-      const device = await loginDeviceByIp(TAPO_EMAIL, TAPO_PASSWORD, deviceIp);
+      const { email, password } = this.getCredentials();
+      const device = await loginDeviceByIp(email, password, deviceIp);
       const energy = await device.getEnergyUsage();
       return energy;
     } catch (error: any) {
@@ -154,7 +169,12 @@ class TapoService {
   }
 
   isConfigured(): boolean {
-    return !!(TAPO_EMAIL && TAPO_PASSWORD);
+    try {
+      this.getCredentials();
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 

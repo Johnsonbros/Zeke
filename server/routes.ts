@@ -504,6 +504,7 @@ import {
   getNLAutomationStats as getNLAutomationStatsDb,
 } from "./db";
 import type { EntityDomain, EntityType, InsightCategory, InsightStatus, InsightPriority, ActivityType } from "@shared/schema";
+import { tapoService } from "./services/tapoService";
 import { chatRequestSchema, insertMemoryNoteSchema, insertPreferenceSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertTaskSchema, updateTaskSchema, insertContactSchema, updateContactSchema, insertContactNoteSchema, insertAutomationSchema, insertCustomListSchema, updateCustomListSchema, insertCustomListItemSchema, updateCustomListItemSchema, insertFoodPreferenceSchema, insertDietaryRestrictionSchema, insertSavedRecipeSchema, updateSavedRecipeSchema, insertMealHistorySchema, insertNewsTopicSchema, type Automation, type InsertAutomation, getContactFullName } from "@shared/schema";
 import { getTwilioClient, getTwilioFromPhoneNumber, isTwilioConfigured, validateTwilioSignature } from "./twilioClient";
 import { z } from "zod";
@@ -15544,8 +15545,6 @@ When you learn something new, note it with [LEARNED: category - key insight] at 
   // ============================================================================
   // SMART DEVICES API ROUTES (Tapo P110, etc.)
   // ============================================================================
-
-  const { tapoService } = await import("./services/tapoService");
 
   // GET /api/smart-devices/status - Check if Tapo is configured
   app.get("/api/smart-devices/status", (_req, res) => {
