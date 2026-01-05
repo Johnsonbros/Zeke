@@ -117,7 +117,7 @@ function AuthenticatedContent() {
               <span className="font-semibold text-base">ZEKE</span>
             </div>
           </header>
-          <main className="flex-1 overflow-hidden pb-6 md:pb-0">
+          <main className="flex-1 overflow-auto pb-6 md:pb-0">
             <ProtectedRoutes />
           </main>
         </SidebarInset>
