@@ -194,8 +194,8 @@ export default function SmartDevicesPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-end gap-3 flex-wrap">
-                <div className="flex-1 min-w-[200px]">
+              <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                <div className="flex-1">
                   <Label htmlFor="deviceIp">Device IP Address</Label>
                   <Input
                     id="deviceIp"
@@ -206,6 +206,7 @@ export default function SmartDevicesPage() {
                   />
                 </div>
                 <Button
+                  className="w-full sm:w-auto"
                   onClick={handleRefreshStatus}
                   disabled={getStatusMutation.isPending || !deviceIp}
                   data-testid="button-refresh-status"
@@ -299,7 +300,7 @@ export default function SmartDevicesPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="p-3 bg-muted/50 rounded-lg">
                     <p className="text-sm text-muted-foreground">Current Power</p>
                     <p className="text-xl font-semibold" data-testid="text-current-power">
@@ -359,14 +360,14 @@ export default function SmartDevicesPage() {
                   {cloudDevices.devices.map((device) => (
                     <div
                       key={device.deviceId}
-                      className="flex items-center justify-between gap-4 p-3 border rounded-lg"
+                      className="flex flex-wrap items-center justify-between gap-2 p-3 border rounded-lg"
                       data-testid={`device-${device.deviceId}`}
                     >
-                      <div className="flex items-center gap-3">
-                        <Plug className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <p className="font-medium">{device.name}</p>
-                          <p className="text-sm text-muted-foreground">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Plug className="h-5 w-5 text-muted-foreground shrink-0" />
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{device.name}</p>
+                          <p className="text-sm text-muted-foreground truncate">
                             {device.model} • {device.region}
                           </p>
                         </div>
