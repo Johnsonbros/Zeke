@@ -7635,8 +7635,8 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Data is required" });
       }
       
-      const dataStr = typeof data === 'string' ? data : JSON.stringify(data);
-      const result = await upsertProfileSection(section, dataStr);
+      // Pass raw data object - upsertProfileSection handles JSON.stringify
+      const result = await upsertProfileSection(section, data);
       
       console.log(`[AUDIT] [${new Date().toISOString()}] Web UI: Updated profile section "${section}"`);
       
