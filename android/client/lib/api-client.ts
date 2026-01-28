@@ -88,44 +88,29 @@ const LOCAL_API_PREFIXES = [
   // REMOVED: "/api/zeke/" - Now handled specially in getBaseUrl()
 ];
 
-// TODO: CLEANUP - CORE_API_PREFIXES is empty and never matched - consider removing this dead code
-// TODO: ARCHITECTURE - Simplify endpoint routing logic since CORE_API_PREFIXES is unused
-const CORE_API_PREFIXES: string[] = [
-  // Note: Most "core" endpoints are now proxied via /api/zeke/* routes
-  // Keep this list minimal - only add endpoints that truly need direct access
-];
+// Note: Core API endpoints are now proxied via /api/zeke/* routes
+// All non-local endpoints go to the main API URL via getApiUrl()
 
 /**
  * Classify endpoint as 'local' or 'core' backend
- * With development safety check to catch routing conflicts
+ * Local endpoints are handled by the local proxy server
+ * Core endpoints go to the main ZEKE backend
  */
 export function classifyEndpoint(endpoint: string): "local" | "core" {
   const isLocal = LOCAL_API_PREFIXES.some((prefix) =>
     endpoint.startsWith(prefix),
   );
 
-  // Development-only safety check: catch ambiguous routing
+  // Development-only logging for debugging routing decisions
   const isDev =
     typeof __DEV__ !== "undefined"
       ? __DEV__
       : process.env.NODE_ENV === "development";
-  if (isDev) {
-    const couldBeCore = CORE_API_PREFIXES.some((prefix) =>
-      endpoint.startsWith(prefix),
-    );
-    if (isLocal && couldBeCore) {
-      console.error(
-        `[ZekeApiClient] ROUTING CONFLICT: "${endpoint}" matches BOTH local and core prefixes. ` +
-          `Endpoints must route to exactly one backend. Fix the prefix definitions. ` +
-          `Local: [${LOCAL_API_PREFIXES.join(", ")}] | Core: [${CORE_API_PREFIXES.join(", ")}]`,
-      );
-    }
-
+  if (isDev && isLocal) {
     if (
-      isLocal &&
-      (endpoint.includes("/api/calendar/") ||
-        endpoint.includes("/api/twilio/") ||
-        endpoint === "/api/sms-log")
+      endpoint.includes("/api/calendar/") ||
+      endpoint.includes("/api/twilio/") ||
+      endpoint === "/api/sms-log"
     ) {
       console.log(`[ZekeApiClient] Routing ${endpoint} to LOCAL API`);
     }

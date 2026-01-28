@@ -294,9 +294,6 @@ function configureExpoAndLanding(app: express.Application) {
   log("Expo routing: Checking expo-platform header on / and /manifest");
 }
 
-// TODO: MONITORING - Send errors to external monitoring service (e.g., Sentry)
-// TODO: LOGGING - Add request ID to error logs for tracing
-// TODO: SECURITY - Don't expose internal error details in production
 function setupErrorHandler(app: express.Application) {
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     const error = err as {
@@ -306,12 +303,20 @@ function setupErrorHandler(app: express.Application) {
     };
 
     const status = error.status || error.statusCode || 500;
-    const message = error.message || "Internal Server Error";
+    const isProduction = process.env.NODE_ENV === "production";
 
-    res.status(status).json({ message });
+    // Don't expose internal error details in production
+    const message = isProduction && status === 500
+      ? "Internal Server Error"
+      : (error.message || "Internal Server Error");
 
-    // TODO: BUG - Re-throwing after response is sent - consider removing or logging instead
-    throw err;
+    // Log the error for debugging/monitoring
+    console.error(`[Error Handler] ${status}: ${error.message || 'Unknown error'}`, err);
+
+    // Only send response if not already sent
+    if (!res.headersSent) {
+      res.status(status).json({ message });
+    }
   });
 }
 

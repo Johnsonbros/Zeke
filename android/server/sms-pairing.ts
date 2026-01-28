@@ -38,10 +38,11 @@ const CODE_EXPIRY_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 3;
 // TODO: SECURITY - Add cooldown period between SMS code requests to prevent rapid-fire requests
 
-// TODO: SECURITY - Math.random() is not cryptographically secure - use crypto.randomInt() instead
-// TODO: FEATURE - Consider making code length configurable (currently 6 digits)
+// Generate cryptographically secure 6-digit code
 function generateCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  // crypto.randomInt generates a cryptographically secure random integer
+  // Range: 100000 to 999999 (inclusive) for 6-digit codes
+  return crypto.randomInt(100000, 1000000).toString();
 }
 
 function generateSessionId(): string {
