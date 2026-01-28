@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for ZEKE
 
-> **Last Updated:** 2026-01-03
+> **Last Updated:** 2026-01-28
 >
 > This document provides comprehensive guidance for AI assistants (like Claude) working on the ZEKE AI Personal Assistant codebase. It covers architecture, conventions, workflows, and best practices to ensure consistent, high-quality contributions.
 
@@ -66,6 +66,11 @@ ZEKE is a **single-user personal AI assistant** designed for Nate Johnson (CEO, 
 - Google Calendar API
 - OpenWeatherMap API
 - Omi API (wearable pendant lifelogs)
+- Limitless API (wearable integration)
+- ElevenLabs (text-to-speech)
+- TP-Link Tapo (smart device control)
+- Alpaca (stock trading - ZEKE Trader)
+- GitHub API (code integration)
 
 ### Design Principles
 
@@ -147,6 +152,11 @@ Zeke/
 │   └── ...
 │
 ├── zeke_trader/             # Trading agent (separate module)
+│   ├── CLAUDE.md            # Trading system AI guide
+│   ├── main.py              # Trading loop entry point
+│   ├── agents/              # Multi-agent trading system
+│   ├── strategy/            # Trading strategies
+│   └── dashboard/           # Streamlit dashboard
 │
 ├── docs/                    # Documentation
 │   ├── AGENTS.md            # Agent system docs
@@ -459,23 +469,31 @@ export async function executeAnyTool(toolName: string, args: Record<string, unkn
 }
 ```
 
-**Available Capability Modules:**
+**Available Capability Modules (24 total):**
 - `automations.ts` - Automation management
 - `calendar.ts` - Google Calendar integration
 - `codebase.ts` - Code analysis tools
-- `communication.ts` - SMS, email, calls
-- `documents.ts` - Document management
-- `files.ts` - File operations
-- `food.ts` - Food preferences, recipes
+- `communication.ts` - SMS, email, calls (Twilio)
+- `documents.ts` - Document management & processing
+- `dynamic.ts` - Dynamic tool loading
+- `files.ts` - File storage & retrieval
+- `food.ts` - Food preferences, recipes, meals
 - `grocery.ts` - Grocery list management
+- `insights.ts` - Analytics & insight generation
 - `knowledgeGraph.ts` - Knowledge graph operations
-- `lists.ts` - List management
+- `lists.ts` - Custom list management
 - `location.ts` - Location tracking, geofencing
 - `memory.ts` - Memory operations
 - `notes.ts` - Note taking
+- `people.ts` - Contact & people management
+- `predictions.ts` - Pattern-based predictions
+- `reminders.ts` - Reminder creation & notifications
 - `search.ts` - Web search (Perplexity)
-- `tasks.ts` - Task management
+- `smartDevices.ts` - Smart device control (TP-Link Tapo)
+- `tasks.ts` - Task management (CRUD with subtasks)
+- `utilities.ts` - General utilities
 - `weather.ts` - Weather information
+- `workflows.ts` - Workflow orchestration
 
 ### 3. Memory System
 
@@ -548,7 +566,141 @@ memories = await recall(
 
 Memory operations are typically called through the agent system or capability tools.
 
-### 4. Database (Drizzle ORM)
+### 4. Knowledge Graph System
+
+ZEKE implements a **knowledge graph** for tracking entities and their relationships with confidence-based evidence.
+
+**Feature Flag:** Enable with `KG_ENABLED=true` in environment.
+
+**Knowledge Graph Schema:**
+
+```typescript
+// Entities (people, places, concepts, events)
+export const kgEntities = pgTable("kg_entities", {
+  id: text("id").primaryKey(),
+  type: text("type", { enum: ["person", "place", "organization", "concept", "event", "thing"] }),
+  name: text("name").notNull(),
+  description: text("description"),
+  metadata: text("metadata"),  // JSON for type-specific data
+  embedding: text("embedding"), // Vector for semantic search
+  createdAt: text("created_at"),
+  updatedAt: text("updated_at"),
+});
+
+// Relationships between entities
+export const kgRelationships = pgTable("kg_relationships", {
+  id: text("id").primaryKey(),
+  fromEntityId: text("from_entity_id").references(() => kgEntities.id),
+  toEntityId: text("to_entity_id").references(() => kgEntities.id),
+  relationshipType: text("relationship_type"),  // e.g., "works_at", "knows", "located_in"
+  confidence: real("confidence").default(0.5),  // 0-1 confidence score
+  metadata: text("metadata"),
+  createdAt: text("created_at"),
+  updatedAt: text("updated_at"),
+});
+
+// Evidence backing relationships
+export const kgEvidence = pgTable("kg_evidence", {
+  id: text("id").primaryKey(),
+  relationshipId: text("relationship_id").references(() => kgRelationships.id),
+  sourceType: text("source_type", { enum: ["conversation", "lifelog", "manual"] }),
+  sourceId: text("source_id"),
+  excerpt: text("excerpt"),  // Supporting text
+  createdAt: text("created_at"),
+});
+```
+
+**Key Operations:**
+
+```typescript
+// server/knowledgeGraph.ts
+import { extractEntities, createRelationship, queryGraph } from './knowledgeGraph';
+
+// Extract entities from text
+const entities = await extractEntities("Nate met with John at the office");
+// Returns: [{ type: "person", name: "Nate" }, { type: "person", name: "John" }, { type: "place", name: "office" }]
+
+// Create relationship
+await createRelationship({
+  fromEntity: "nate-id",
+  toEntity: "john-id",
+  type: "knows",
+  confidence: 0.8,
+  evidence: { sourceType: "conversation", excerpt: "Nate met with John" }
+});
+
+// Query graph
+const connections = await queryGraph({
+  entityId: "nate-id",
+  depth: 2,  // Traverse 2 levels
+  relationshipTypes: ["knows", "works_with"]
+});
+```
+
+**Key Files:**
+- `server/knowledgeGraph.ts` - Graph operations (30 KB)
+- `server/graph-service.ts` - Graph database service layer
+- `server/entityExtractor.ts` - NLP entity extraction (40 KB)
+- `server/capabilities/knowledgeGraph.ts` - AI tool definitions
+- `server/jobs/knowledgeGraphBackfill.ts` - Backfill job
+- `KNOWLEDGE_GRAPH.md` - Full documentation
+- `KG_QUICK_START.md` - Quick start guide
+
+### 5. Smart Devices (TP-Link Tapo)
+
+ZEKE integrates with **TP-Link Tapo smart devices** for home automation control.
+
+**Supported Devices:**
+- Smart plugs (power on/off, energy monitoring)
+- Smart bulbs (on/off, brightness, color temperature)
+- Smart switches
+- Sensors (motion, contact)
+
+**Schema:**
+
+```typescript
+export const smartDevices = pgTable("smart_devices", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  type: text("type", { enum: ["plug", "bulb", "switch", "sensor"] }),
+  ipAddress: text("ip_address").notNull(),
+  macAddress: text("mac_address"),
+  room: text("room"),
+  isOnline: boolean("is_online").default(false),
+  lastSeen: text("last_seen"),
+  metadata: text("metadata"),  // Device-specific data (energy usage, etc.)
+  createdAt: text("created_at"),
+  updatedAt: text("updated_at"),
+});
+```
+
+**Key Operations:**
+
+```typescript
+// server/services/tapoService.ts
+import { TapoService } from './services/tapoService';
+
+const tapo = new TapoService();
+
+// Control devices
+await tapo.turnOn(deviceId);
+await tapo.turnOff(deviceId);
+await tapo.setBrightness(deviceId, 75);
+
+// Get energy usage
+const energy = await tapo.getEnergyUsage(deviceId);
+// Returns: { power: 45.2, today: 1.2, month: 35.5 }  // watts, kWh
+
+// Discover devices
+const devices = await tapo.discoverDevices();
+```
+
+**Key Files:**
+- `server/services/tapoService.ts` - TP-Link Tapo integration
+- `server/capabilities/smartDevices.ts` - AI tool definitions
+- `client/src/pages/smart-devices.tsx` - Smart device control UI
+
+### 6. Database (Drizzle ORM)
 
 **Schema Definition:**
 
@@ -612,7 +764,7 @@ npx drizzle-kit generate:pg
 npx drizzle-kit push:pg
 ```
 
-### 5. API Routes
+### 7. API Routes
 
 **Main API Routes** (`server/routes.ts`):
 
@@ -669,9 +821,9 @@ const mutation = useMutation({
 });
 ```
 
-### 6. Background Jobs
+### 8. Background Jobs
 
-ZEKE runs several **cron-based background jobs** defined in `server/jobs/`:
+ZEKE runs **19 cron-based background jobs** defined in `server/jobs/`:
 
 | Job | File | Schedule | Purpose |
 |-----|------|----------|---------|
@@ -682,8 +834,124 @@ ZEKE runs several **cron-based background jobs** defined in `server/jobs/`:
 | Morning Briefing | `morningBriefingScheduler.ts` | Morning | Send morning briefing SMS |
 | Omi Processor | `omiProcessor.ts` | Continuous | Process Omi pendant lifelogs |
 | Knowledge Graph Backfill | `knowledgeGraphBackfill.ts` | Periodic | Populate knowledge graph |
+| Omi Action Items | `omiActionItems.ts` | Continuous | Extract action items from Omi |
+| Omi Meetings | `omiMeetings.ts` | Continuous | Meeting analysis from lifelogs |
+| Omi Analytics | `omiAnalytics.ts` | Periodic | Lifelog analytics |
+| Omi Search | `omiSearch.ts` | On-demand | Lifelog search indexing |
+| Omi Digest | `omiDigest.ts` | Daily | Lifelog digest generation |
+| Pattern Detection | `patternDetection.ts` | Periodic | Pattern discovery in data |
+| Anticipation Engine | `anticipationEngine.ts` | Continuous | Anticipatory suggestions |
+| Concept Reflection | `conceptReflection.ts` | Nightly | Concept learning & consolidation |
+| Feedback Trainer | `feedbackTrainer.ts` | Continuous | Feedback-based training |
+| Specialized Workers | `specializedWorkers.ts` | Continuous | Specialized task processing |
+| Async Queue | `asyncQueue.ts` | Continuous | Async job queue processing |
 
 Jobs are initialized in `server/index.ts` on startup.
+
+---
+
+## ZEKE Trader Module
+
+ZEKE includes a **self-contained algorithmic trading system** located in `/zeke_trader/`.
+
+### Overview
+
+ZEKE Trader is a multi-agent trading system with strict safety controls:
+
+- **Paper trading by default** - Live trading requires dual safety latches
+- **Conservative agent** - Prefers NO_TRADE when uncertain
+- **Deterministic risk gates** - Hard limits on position sizing and drawdown
+- **Full audit trail** - JSON/JSONL logging of all decisions
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────┐
+│              Orchestrator Agent             │
+│     (Coordinates all specialist agents)     │
+└─────────────────────┬───────────────────────┘
+                      │
+    ┌─────────────────┼─────────────────┐
+    ▼                 ▼                 ▼
+┌─────────┐    ┌───────────┐    ┌────────────┐
+│ Market  │    │ Portfolio │    │   Signal   │
+│  Data   │    │   Agent   │    │   Agent    │
+└────┬────┘    └─────┬─────┘    └──────┬─────┘
+     │               │                 │
+     └───────────────┴────────┬────────┘
+                              ▼
+                    ┌─────────────────┐
+                    │ Decision Agent  │
+                    │ (Buy/Sell/Hold) │
+                    └────────┬────────┘
+                             ▼
+                    ┌─────────────────┐
+                    │   Risk Gate     │
+                    │ (Deterministic) │
+                    └────────┬────────┘
+                             ▼
+                    ┌─────────────────┐
+                    │  Alpaca Broker  │
+                    │   (Execution)   │
+                    └─────────────────┘
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `main.py` | Trading loop entry point |
+| `agent.py` | Agent framework |
+| `config.py` | Safety latches & configuration |
+| `broker_mcp.py` | Alpaca broker wrapper |
+| `risk.py` | Risk management |
+| `metrics.py` | Performance analytics |
+| `agents/orchestrator.py` | Top-level conductor |
+| `agents/market_data.py` | Market snapshot fetching |
+| `agents/signal.py` | Trading signal generation |
+| `agents/decision.py` | Trade decision making |
+| `agents/risk_gate.py` | Deterministic risk validation |
+
+### Safety Controls
+
+**Dual Safety Latch (Required for Live Trading):**
+```bash
+# Both must be set to enable live trading
+TRADING_MODE=live           # First latch
+LIVE_TRADING_ENABLED=true   # Second latch
+```
+
+**Risk Limits:**
+- Max position size: 5% of portfolio
+- Max daily loss: 2% of portfolio
+- Max concurrent positions: 10
+- Stop loss: Required for all positions
+
+### Running ZEKE Trader
+
+```bash
+# Paper trading (default)
+cd zeke_trader
+python main.py
+
+# Shadow mode (decisions logged, not executed)
+TRADING_MODE=shadow python main.py
+
+# Live trading (requires both latches)
+TRADING_MODE=live LIVE_TRADING_ENABLED=true python main.py
+
+# Dashboard (Streamlit)
+cd zeke_trader/dashboard
+streamlit run app.py
+```
+
+### Integration with Main ZEKE
+
+- Trading P&L tracked in `dailyPnl` table
+- Trading pages in web UI: `/zeketrade`, `/zeketrade-dashboard`, `/pnl`, `/trading`
+- Trading news service in `server/services/tradingNewsService.ts`
+
+**Documentation:** See `zeke_trader/CLAUDE.md` for full trading system documentation.
 
 ---
 
@@ -1680,15 +1948,49 @@ uv pip install .             # Install with uv
 - [ ] `APP_ENV` - development|staging|production
 - [ ] `PORT` - Server port (default: 5000)
 - [ ] `PYTHON_AGENTS_PORT` - Python port (default: 5001)
+- [ ] `LOG_LEVEL` - debug|info|warn|error
 
-**Optional (for full features):**
+**Communication (Twilio):**
 - [ ] `TWILIO_ACCOUNT_SID` - SMS/Voice
 - [ ] `TWILIO_AUTH_TOKEN`
 - [ ] `TWILIO_PHONE_NUMBER`
-- [ ] `OMI_API_KEY` - Omi pendant
-- [ ] `GOOGLE_CALENDAR_CREDENTIALS` - Google Calendar
+- [ ] `MASTER_ADMIN_PHONE` - Admin notifications
+
+**Wearables (Omi & Limitless):**
+- [ ] `OMI_API_KEY` - Omi pendant API key
+- [ ] `OMI_DEV_API_KEY` - Omi development key
+- [ ] `OMI_MCP_API_KEY` - Omi MCP integration
+- [ ] `OMI_COMMANDS_ENABLED` - Enable Omi command detection
+- [ ] `LIMITLESS_API_KEY` - Limitless wearable
+
+**External Services:**
+- [ ] `GOOGLE_CALENDAR_CREDENTIALS` - Google Calendar service account JSON
+- [ ] `GOOGLE_CALENDAR_ID` - Calendar ID to use
 - [ ] `PERPLEXITY_API_KEY` - Web search
 - [ ] `OPENWEATHERMAP_API_KEY` - Weather
+- [ ] `ELEVENLABS_API_KEY` - Text-to-speech
+
+**Smart Devices:**
+- [ ] `TAPO_USERNAME` - TP-Link Tapo account
+- [ ] `TAPO_PASSWORD` - TP-Link Tapo password
+
+**Knowledge Graph:**
+- [ ] `KG_ENABLED` - Enable knowledge graph (feature flag)
+
+**Trading (ZEKE Trader):**
+- [ ] `TRADING_MODE` - paper|shadow|live
+- [ ] `LIVE_TRADING_ENABLED` - Second safety latch for live trading
+- [ ] `ALPACA_API_KEY` - Alpaca trading API key
+- [ ] `ALPACA_SECRET_KEY` - Alpaca secret key
+- [ ] `ALPACA_BASE_URL` - Alpaca API URL (paper/live)
+
+**Security:**
+- [ ] `INTERNAL_BRIDGE_KEY` - Python ↔ Node.js bridge auth
+- [ ] `EXPORT_SECRET_TOKEN` - Secure data export
+- [ ] `SESSION_SECRET` - Express session secret
+
+**Briefing System:**
+- [ ] `MORNING_BRIEFING_ENABLED` - Enable morning briefings
 
 ---
 
@@ -1700,11 +2002,20 @@ uv pip install .             # Install with uv
 - [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) - Development guidelines
 - [docs/MEMORY.md](./docs/MEMORY.md) - Memory system
 - [docs/TOOLS.md](./docs/TOOLS.md) - Tool definitions
+- [docs/OMI_INTEGRATION.md](./docs/OMI_INTEGRATION.md) - Omi pendant integration
+- [docs/ZEKE_ONTOLOGY.md](./docs/ZEKE_ONTOLOGY.md) - Data model and concepts
 - [design_guidelines.md](./design_guidelines.md) - Design system
+- [KNOWLEDGE_GRAPH.md](./KNOWLEDGE_GRAPH.md) - Knowledge graph system
+- [KG_QUICK_START.md](./KG_QUICK_START.md) - Knowledge graph quick start
+
+**ZEKE Trader:**
+- [zeke_trader/CLAUDE.md](./zeke_trader/CLAUDE.md) - Trading system AI guide
+- [zeke_trader/README.md](./zeke_trader/README.md) - Trading system overview
 
 **Mobile App:**
 - [android/CLAUDE.md](./android/CLAUDE.md) - Mobile app AI guide
 - [android/ARCHITECTURE.md](./android/ARCHITECTURE.md) - Mobile architecture
+- [android/TESTING.md](./android/TESTING.md) - Mobile testing guide
 
 **External Documentation:**
 - [OpenAI Agents SDK](https://github.com/openai/openai-agents)
@@ -1712,6 +2023,7 @@ uv pip install .             # Install with uv
 - [TanStack Query](https://tanstack.com/query/)
 - [FastAPI](https://fastapi.tiangolo.com/)
 - [shadcn/ui](https://ui.shadcn.com/)
+- [TP-Link Tapo](https://www.tapo.com/) - Smart device control
 
 ---
 
@@ -1719,6 +2031,7 @@ uv pip install .             # Install with uv
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-01-28 | Updated with Knowledge Graph, ZEKE Trader, Smart Devices, expanded capabilities (24), background jobs (19), and environment variables | Claude (AI Assistant) |
 | 2026-01-03 | Initial CLAUDE.md creation for root repository | Claude (AI Assistant) |
 
 ---
