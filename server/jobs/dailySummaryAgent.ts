@@ -14,6 +14,7 @@ import {
   getAllTasks,
   getAllMemoryNotes,
   getLocationHistoryInRange,
+  getCalendarEventsInRange,
   createJournalEntry,
   getJournalEntryByDate,
   createBatchJob,
@@ -126,9 +127,19 @@ async function gatherDailyContext(targetDate: string): Promise<DailyContext> {
       priority: t.priority,
     }));
   
-  // Calendar events - placeholder for future integration
-  // TODO: Add calendar events when getCalendarEventsForDate is available
-  const calendarEvents: DailyContext["calendarEvents"] = [];
+  // Get calendar events for the target date
+  let calendarEvents: DailyContext["calendarEvents"] = [];
+  try {
+    const events = await getCalendarEventsInRange(startOfDay, endOfDay);
+    calendarEvents = events.map(e => ({
+      title: e.title,
+      start: e.start,
+      end: e.end,
+      location: e.location || undefined,
+    }));
+  } catch (e) {
+    console.log("[DailySummaryAgent] No calendar data found for date");
+  }
   
   // Get memories created today
   const allMemories = getAllMemoryNotes(false);
