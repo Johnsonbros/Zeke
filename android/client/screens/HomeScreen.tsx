@@ -81,6 +81,8 @@ interface ApiDevice {
   createdAt: string;
 }
 
+// TODO: REUSE - Move getRelativeTime to a shared utility module (duplicated in multiple files)
+// TODO: LOCALIZATION - Relative time strings should be internationalized
 function mapApiDeviceToDeviceInfo(device: ApiDevice): DeviceInfo {
   const getRelativeTime = (dateStr: string | null) => {
     if (!dateStr) return "Never";
@@ -187,6 +189,11 @@ function QuickActionButton({
   );
 }
 
+// TODO: ARCHITECTURE - This component is too large (1400+ lines) - split into smaller sub-components
+// TODO: PERFORMANCE - Multiple useQuery calls could be consolidated into a single dashboard query
+// TODO: PERFORMANCE - Add useMemo for expensive computed values (events, tasks, etc.)
+// TODO: RELIABILITY - Add error boundaries around individual sections to prevent full-screen failures
+// TODO: UX - Add pull-to-refresh loading states for individual sections, not just the whole screen
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();

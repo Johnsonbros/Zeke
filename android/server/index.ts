@@ -20,6 +20,9 @@ declare module "http" {
   }
 }
 
+// TODO: SECURITY - Consider using a CORS library instead of manual implementation
+// TODO: CONFIG - Move allowed origins to environment variables for easier management
+// TODO: SECURITY - Log CORS rejections for security monitoring
 function setupCors(app: express.Application) {
   app.use((req, res, next) => {
     const origins = new Set<string>();
@@ -291,6 +294,9 @@ function configureExpoAndLanding(app: express.Application) {
   log("Expo routing: Checking expo-platform header on / and /manifest");
 }
 
+// TODO: MONITORING - Send errors to external monitoring service (e.g., Sentry)
+// TODO: LOGGING - Add request ID to error logs for tracing
+// TODO: SECURITY - Don't expose internal error details in production
 function setupErrorHandler(app: express.Application) {
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     const error = err as {
@@ -304,6 +310,7 @@ function setupErrorHandler(app: express.Application) {
 
     res.status(status).json({ message });
 
+    // TODO: BUG - Re-throwing after response is sent - consider removing or logging instead
     throw err;
   });
 }

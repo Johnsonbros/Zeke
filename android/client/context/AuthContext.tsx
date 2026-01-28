@@ -49,6 +49,8 @@ const DEVICE_ID_KEY = "zeke_device_id";
 const LAST_VERIFIED_KEY = "zeke_last_verified";
 
 // Trust cached auth for 7 days before requiring re-verification
+// TODO: SECURITY - Consider reducing offline validity period (7 days is long)
+// TODO: SECURITY - Implement token refresh mechanism before expiry instead of relying on offline validity
 const OFFLINE_AUTH_VALIDITY_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
@@ -115,6 +117,9 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+// TODO: SECURITY - localStorage on web is less secure than SecureStore on native
+// TODO: Consider using a more secure storage mechanism for web (e.g., IndexedDB with encryption)
+// TODO: Add token encryption before storage on web platform
 async function getStoredValue(key: string): Promise<string | null> {
   if (Platform.OS === "web") {
     return localStorage.getItem(key);
@@ -280,6 +285,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Network errors without cached auth - keep credentials for retry
+      // TODO: RELIABILITY - Add automatic retry with exponential backoff for network errors
+      // TODO: UX - Show more specific error messages based on error type (network vs server)
+      // TODO: FEATURE - Add "retry" button in UI that triggers checkAuth() again
       console.log("[Auth] Network errors, no valid cache, but keeping credentials for retry");
       setState({
         isAuthenticated: false,

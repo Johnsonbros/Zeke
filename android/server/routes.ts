@@ -35,7 +35,11 @@ import { requestPairingCode, verifyPairingCode, getPairingStatus } from "./sms-p
 import { validateDeviceToken } from "./device-auth";
 import { getPendantStatus } from "./websocket";
 
+// TODO: SECURITY - Validate OPENAI_API_KEY is present before creating client
+// TODO: RELIABILITY - Add error handling for missing API key at startup
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// TODO: SECURITY - Consider adding file type validation (mimetype whitelist)
+// TODO: MONITORING - Add metrics for upload sizes and failures
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 function estimateSpeakerCount(transcript: string): number {
@@ -88,9 +92,12 @@ function parsePaginationParams(limitParam: unknown, offsetParam: unknown) {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // SMS Pairing routes (public - no auth required)
+  // TODO: SECURITY - Add rate limiting per IP address to prevent SMS bombing
+  // TODO: SECURITY - Add CAPTCHA or proof-of-work for SMS requests to prevent abuse
   app.post("/api/auth/request-sms-code", async (req, res) => {
     try {
       const { deviceName } = req.body;
+      // TODO: SECURITY - Sanitize deviceName input (max length, allowed characters)
       if (!deviceName || typeof deviceName !== "string") {
         return res.status(400).json({ error: "Device name is required" });
       }
@@ -449,12 +456,14 @@ Respond in JSON format:
         };
       }
 
+      // TODO: BUG - speakerCount is computed but never used - either use it or remove dead code
       const speakerCount = estimateSpeakerCount(transcript);
 
       const memoryData = {
         deviceId,
         transcript,
         duration,
+        // TODO: Consider using speakerCount if req.body.speakers is not provided
         speakers: req.body.speakers || null,
         title: analysis.title || "Untitled Memory",
         summary: analysis.summary || null,
@@ -725,6 +734,9 @@ Return at most ${Math.min(limit, 10)} results. Only include memories with releva
   });
 
   // Streaming chat endpoint using Server-Sent Events
+  // TODO: RELIABILITY - Add timeout for long-running streams to prevent resource leaks
+  // TODO: MONITORING - Track streaming latency and chunk delivery times
+  // TODO: SECURITY - Validate session ownership before streaming
   app.post("/api/chat/sessions/:id/messages/stream", async (req, res) => {
     let aborted = false;
     let streamController: AbortController | null = null;

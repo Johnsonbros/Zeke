@@ -42,6 +42,8 @@ const DarkTheme = {
   },
 };
 
+// TODO: UX - Consider adding a timeout for the loading state in case auth check hangs
+// TODO: FEATURE - Add deep linking support to handle links while on PairingScreen
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
 
@@ -77,6 +79,8 @@ function AppContent() {
   useEffect(() => {
     if (Platform.OS === "web") return;
 
+    // TODO: FEATURE - Handle more notification types beyond just "grocery_prompt"
+    // TODO: ARCHITECTURE - Move notification handling logic to a dedicated service/hook
     notificationResponseListener.current =
       Notifications.addNotificationResponseReceivedListener((response) => {
         const data = response.notification.request.content.data;
@@ -114,6 +118,9 @@ export default function App() {
 
   // Gate app until proxy origin is initialized (prevents stale URL issues in published apps)
   // Also initialize connectivity monitoring and sync trigger
+  // TODO: ERROR_HANDLING - initializeProxyOrigin errors are caught but not displayed to user
+  // TODO: UX - Consider showing a loading indicator with status messages during initialization
+  // TODO: RELIABILITY - ConnectivityService cleanup may not be called on hot reload in development
   useEffect(() => {
     // Load token synchronously on web before any queries start
     loadTokenSync();

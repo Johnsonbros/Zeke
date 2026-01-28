@@ -5,6 +5,9 @@ import OpenAI, { toFile } from "openai";
 import { z } from "zod";
 import { validateDeviceToken, validateMasterSecret } from "./device-auth";
 
+// TODO: SECURITY - Validate OPENAI_API_KEY is present before creating client
+// TODO: RELIABILITY - Add connection timeout and ping/pong heartbeat to detect stale connections
+// TODO: SCALABILITY - Consider Redis pub/sub for broadcasting in multi-server deployments
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export type ZekeSyncMessageType = 'sms' | 'voice' | 'activity' | 'device_status' | 'notification';
@@ -23,8 +26,12 @@ const zekeSyncMessageSchema = z.object({
   timestamp: z.string().optional(),
 });
 
+// TODO: MEMORY - Stale clients may not be removed if they disconnect without close event
+// TODO: SECURITY - Add authentication token validation for WebSocket connections
 const zekeSyncClients = new Set<WebSocket>();
 
+// TODO: RELIABILITY - Add message queuing for offline clients with recent disconnection
+// TODO: MONITORING - Track message delivery success/failure rates
 export function broadcastZekeSync(message: ZekeSyncMessage): void {
   const messageStr = JSON.stringify(message);
   zekeSyncClients.forEach((client) => {

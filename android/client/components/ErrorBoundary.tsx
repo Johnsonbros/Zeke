@@ -13,6 +13,10 @@ type ErrorBoundaryState = { error: Error | null };
  * https://react.dev/reference/react/Component#catching-rendering-errors-with-an-error-boundary
  */
 
+// TODO: MONITORING - Add error logging to external service (e.g., Sentry, Bugsnag)
+// TODO: UX - Add "Report Bug" button to ErrorFallback component
+// TODO: FEATURE - Store error context (screen name, user state) for better debugging
+// TODO: RELIABILITY - Consider automatic retry logic for recoverable errors
 export class ErrorBoundary extends Component<
   ErrorBoundaryProps,
   ErrorBoundaryState

@@ -33,9 +33,13 @@ import { pairingCodes } from "@shared/schema";
 import { eq, lt } from "drizzle-orm";
 
 const MASTER_PHONE_NUMBER = process.env.ZEKE_MASTER_PHONE;
+// TODO: CONFIG - Consider making these values configurable via environment variables
 const CODE_EXPIRY_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 3;
+// TODO: SECURITY - Add cooldown period between SMS code requests to prevent rapid-fire requests
 
+// TODO: SECURITY - Math.random() is not cryptographically secure - use crypto.randomInt() instead
+// TODO: FEATURE - Consider making code length configurable (currently 6 digits)
 function generateCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }

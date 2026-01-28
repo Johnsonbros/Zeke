@@ -392,6 +392,11 @@ class LimitlessProtocol {
   }
 }
 
+// TODO: RELIABILITY - Add automatic reconnection when device disconnects unexpectedly
+// TODO: RELIABILITY - Add connection timeout handling (currently waits indefinitely)
+// TODO: MONITORING - Add telemetry for BLE connection success/failure rates
+// TODO: FEATURE - Add signal strength monitoring during active connection
+// TODO: TESTING - Mock device IDs are hardcoded and could conflict with real device IDs
 class BluetoothService {
   private bleManager: MockBleManager | null = null;
   private connectedBleDevice: Device | null = null;
@@ -511,11 +516,15 @@ class BluetoothService {
     };
   }
 
+  // TODO: BUG - Loading a device from storage sets state to "connected" but doesn't verify BLE connection
+  // TODO: RELIABILITY - Should attempt to reconnect to saved device on app launch
+  // TODO: FEATURE - Add timeout to clear stale saved devices after extended disconnection
   private async loadConnectedDevice(): Promise<void> {
     try {
       const data = await AsyncStorage.getItem(STORAGE_KEY);
       if (data) {
         this.connectedDevice = JSON.parse(data);
+        // TODO: BUG - Setting connected state without verifying actual BLE connection
         this.connectionState = "connected";
         this.notifyConnectionStateChange();
       }
@@ -1155,6 +1164,9 @@ class BluetoothService {
     }
   }
 
+  // TODO: RELIABILITY - Battery monitoring failures are silently ignored - should notify user
+  // TODO: FEATURE - Add battery low alerts when level drops below threshold (e.g., 20%)
+  // TODO: PERSISTENCE - Store battery level history for tracking device health over time
   private async setupBatteryMonitoring(): Promise<void> {
     if (!this.connectedBleDevice) {
       console.log("[Battery] No connected device for battery monitoring");
