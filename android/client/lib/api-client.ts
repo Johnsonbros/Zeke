@@ -88,6 +88,8 @@ const LOCAL_API_PREFIXES = [
   // REMOVED: "/api/zeke/" - Now handled specially in getBaseUrl()
 ];
 
+// TODO: CLEANUP - CORE_API_PREFIXES is empty and never matched - consider removing this dead code
+// TODO: ARCHITECTURE - Simplify endpoint routing logic since CORE_API_PREFIXES is unused
 const CORE_API_PREFIXES: string[] = [
   // Note: Most "core" endpoints are now proxied via /api/zeke/* routes
   // Keep this list minimal - only add endpoints that truly need direct access
@@ -292,6 +294,9 @@ class ZekeApiClient {
     const finalSignal = signal || controller?.signal;
 
     // Retry logic with exponential backoff
+    // TODO: RELIABILITY - Add circuit breaker pattern to stop retrying after repeated failures
+    // TODO: RELIABILITY - Consider making retry delays configurable per endpoint type
+    // TODO: MONITORING - Add telemetry/metrics for retry rates to identify flaky endpoints
     const maxAttempts = 3;
     const retryDelays = [1000, 2000, 4000]; // ms
 
@@ -325,6 +330,8 @@ class ZekeApiClient {
         }
 
         // Handle non-ok responses
+        // TODO: LOGGING - Log failed requests to a monitoring service for debugging
+        // TODO: UX - Consider caching the last successful response for offline fallback on GET requests
         if (!response.ok) {
           const bodyText = await response.text();
           const errorMsg = `${response.status} ${response.statusText}`;

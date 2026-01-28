@@ -67,6 +67,9 @@ function buildWebSocketUrl(token: string | null): string {
   return url.toString();
 }
 
+// TODO: ARCHITECTURE - This hook has significant overlap with useZekeSync - consider consolidating
+// TODO: FEATURE - Handle sms/voice/device_status message types that are currently ignored (line 131-132)
+// TODO: RELIABILITY - Add heartbeat mechanism to detect stale connections
 export function useRealtimeUpdates(): void {
   const { isAuthenticated } = useAuth();
   const isSyncMode = isZekeSyncMode();

@@ -32,6 +32,11 @@ const INITIAL_RECONNECT_DELAY = 1000;
 const MAX_RECONNECT_DELAY = 30000;
 const RECONNECT_MULTIPLIER = 2;
 
+// TODO: RELIABILITY - Add heartbeat/ping mechanism to detect stale connections before they timeout
+// TODO: SECURITY - Send device token with WebSocket connection for authentication
+// TODO: FEATURE - Add connection quality indicator (latency, message drop rate)
+// TODO: ARCHITECTURE - Consider consolidating with useRealtimeUpdates hook to avoid duplication
+
 export function useZekeSync(options: UseZekeSyncOptions = {}) {
   const { enabled = true, onMessage } = options;
   const queryClient = useQueryClient();
@@ -156,6 +161,8 @@ export function useZekeSync(options: UseZekeSyncOptions = {}) {
       };
 
       ws.onerror = (error) => {
+        // TODO: LOGGING - Send WebSocket errors to monitoring service
+        // TODO: UX - Show user-friendly notification when sync connection is degraded
         console.error("[ZEKE Sync] WebSocket error:", error);
       };
     } catch (error) {
