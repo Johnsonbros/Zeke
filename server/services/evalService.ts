@@ -18,6 +18,8 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { v4 as uuidv4 } from "uuid";
+import { createQuickActionPattern, findQuickActionPatternByPattern } from "../db";
+import type { QuickActionType } from "@shared/schema";
 
 // ============================================
 // TYPES
@@ -74,6 +76,22 @@ export interface SuggestedPattern {
   confidence: number;
   basedOnExamples: string[];
   autoApplySafe: boolean;
+}
+
+// Helper to map action strings to QuickActionType enum
+function mapActionToQuickActionType(action: string): QuickActionType | null {
+  const actionMap: Record<string, QuickActionType> = {
+    "add_grocery": "add_grocery",
+    "grocery": "add_grocery",
+    "set_reminder": "set_reminder",
+    "reminder": "set_reminder",
+    "remind": "set_reminder",
+    "store_memory": "store_memory",
+    "memory": "store_memory",
+    "remember": "store_memory",
+    "list": "list",
+  };
+  return actionMap[action.toLowerCase()] || null;
 }
 
 // ============================================
@@ -433,7 +451,32 @@ export async function runNightlyEvalJob(): Promise<NightlyEvalResult> {
         result.insights.push(
           `Auto-applied pattern: ${pattern.pattern} -> ${pattern.action} (confidence: ${pattern.confidence})`
         );
-        // TODO: Actually add to quickActions.ts
+
+        // Add pattern to database for dynamic matching
+        try {
+          // Check if pattern already exists
+          const existing = await findQuickActionPatternByPattern(pattern.pattern);
+          if (!existing) {
+            // Map action string to QuickActionType
+            const actionType = mapActionToQuickActionType(pattern.action);
+            if (actionType) {
+              await createQuickActionPattern({
+                pattern: pattern.pattern,
+                action: actionType,
+                description: `Auto-learned pattern from eval: matches ${pattern.action}`,
+                confidenceScore: pattern.confidence.toString(),
+                examples: JSON.stringify(pattern.basedOnExamples),
+                source: "auto",
+                isActive: true,
+              });
+              console.log(`[EvalService] Added new quick action pattern: ${pattern.pattern} -> ${actionType}`);
+            }
+          } else {
+            console.log(`[EvalService] Pattern already exists: ${pattern.pattern}`);
+          }
+        } catch (err) {
+          console.error(`[EvalService] Failed to add pattern: ${pattern.pattern}`, err);
+        }
       }
       
       // Log unsafe patterns for review

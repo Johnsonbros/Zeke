@@ -3184,6 +3184,39 @@ export interface CorrectionDetection {
 }
 
 // ============================================
+// QUICK ACTION PATTERNS (Learned from Eval)
+// ============================================
+
+// Quick action types that can be matched by patterns
+export const quickActionTypes = ["add_grocery", "set_reminder", "store_memory", "list"] as const;
+export type QuickActionType = typeof quickActionTypes[number];
+
+// Quick action patterns table - stores regex patterns learned from failed messages
+export const quickActionPatterns = pgTable("quick_action_patterns", {
+  id: text("id").primaryKey(),
+  pattern: text("pattern").notNull(), // Regex pattern string
+  action: text("action", { enum: quickActionTypes }).notNull(), // Target quick action type
+  description: text("description"), // Human-readable description of what this pattern matches
+  confidenceScore: text("confidence_score").notNull().default("0.8"), // 0-1 confidence
+  examples: text("examples"), // JSON array of example messages that match
+  matchCount: integer("match_count").notNull().default(0), // Times this pattern was matched
+  lastMatchedAt: text("last_matched_at"), // When pattern last matched a message
+  isActive: boolean("is_active").notNull().default(true), // Whether pattern is currently active
+  source: text("source", { enum: ["auto", "manual"] }).notNull().default("auto"), // How pattern was created
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const insertQuickActionPatternSchema = createInsertSchema(quickActionPatterns).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertQuickActionPattern = z.infer<typeof insertQuickActionPatternSchema>;
+export type QuickActionPattern = typeof quickActionPatterns.$inferSelect;
+
+// ============================================
 // DOCUMENTS & FILES SYSTEM
 // ============================================
 

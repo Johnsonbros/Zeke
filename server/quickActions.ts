@@ -11,7 +11,10 @@ import {
   toggleCustomListItemChecked,
   createCustomList,
   getCustomListItems,
+  getActiveQuickActionPatterns,
+  updateQuickActionPatternMatch,
 } from "./db";
+import type { QuickActionPattern } from "@shared/schema";
 
 export type QuickActionResult = {
   isQuickAction: boolean;
@@ -19,6 +22,74 @@ export type QuickActionResult = {
   params: Record<string, unknown>;
   response: string;
 };
+
+// ============================================
+// DYNAMIC PATTERN CACHE
+// ============================================
+
+// Cache for dynamic patterns loaded from database
+let dynamicPatternCache: QuickActionPattern[] = [];
+let lastPatternRefresh = 0;
+const PATTERN_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// Load patterns from database into cache
+export async function refreshDynamicPatterns(): Promise<void> {
+  try {
+    dynamicPatternCache = await getActiveQuickActionPatterns();
+    lastPatternRefresh = Date.now();
+    console.log(`[QuickAction] Loaded ${dynamicPatternCache.length} dynamic patterns`);
+  } catch (error) {
+    console.error("[QuickAction] Failed to load dynamic patterns:", error);
+  }
+}
+
+// Check if cache needs refresh (called on each parseQuickAction)
+function ensurePatternsLoaded(): void {
+  if (Date.now() - lastPatternRefresh > PATTERN_CACHE_TTL_MS) {
+    // Refresh in background, don't block the current request
+    refreshDynamicPatterns().catch(console.error);
+  }
+}
+
+// Try to match against dynamic patterns
+function matchDynamicPattern(message: string): QuickActionResult | null {
+  const lowerMessage = message.toLowerCase();
+
+  for (const patternEntry of dynamicPatternCache) {
+    try {
+      const regex = new RegExp(patternEntry.pattern, 'i');
+      const match = lowerMessage.match(regex);
+
+      if (match) {
+        // Update match count in background
+        updateQuickActionPatternMatch(patternEntry.id).catch(console.error);
+
+        // Extract captured content (first capture group or full match)
+        const capturedContent = match[1] || match[0];
+
+        console.log(`[QuickAction] Dynamic pattern matched: ${patternEntry.pattern} -> ${patternEntry.action}`);
+
+        // Route to appropriate handler based on action type
+        switch (patternEntry.action) {
+          case "add_grocery":
+            return handleGroceryCommand(capturedContent);
+          case "set_reminder":
+            return handleRemindCommand(capturedContent);
+          case "store_memory":
+            return handleRememberCommand(capturedContent);
+          case "list":
+            return handleListCommand(capturedContent);
+          default:
+            return null;
+        }
+      }
+    } catch (err) {
+      console.error(`[QuickAction] Invalid regex pattern: ${patternEntry.pattern}`, err);
+    }
+  }
+
+  return null;
+}
 
 function normalizeMessage(message: string): string {
   return message.trim().replace(/\s+/g, " ");
@@ -773,7 +844,7 @@ function handleListCommand(content: string): QuickActionResult {
 
 export function parseQuickAction(message: string): QuickActionResult {
   const trimmed = normalizeMessage(message);
-  
+
   if (!trimmed) {
     return {
       isQuickAction: false,
@@ -782,6 +853,9 @@ export function parseQuickAction(message: string): QuickActionResult {
       response: "",
     };
   }
+
+  // Trigger background refresh of dynamic patterns if needed
+  ensurePatternsLoaded();
 
   const upperMessage = trimmed.toUpperCase();
   const lowerMessage = trimmed.toLowerCase();
@@ -909,6 +983,13 @@ export function parseQuickAction(message: string): QuickActionResult {
       };
     }
     return handleListCommand(content);
+  }
+
+  // Check dynamic patterns learned from eval service
+  const dynamicResult = matchDynamicPattern(trimmed);
+  if (dynamicResult) {
+    console.log(`[QuickAction] Matched via dynamic pattern`);
+    return dynamicResult;
   }
 
   console.log(`[QuickAction] No pattern matched for: "${trimmed.substring(0, 50)}${trimmed.length > 50 ? '...' : ''}"`);

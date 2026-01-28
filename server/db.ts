@@ -147,6 +147,9 @@ import type {
   UpdateLearnedPreference,
   LearnedPreferenceCategory,
   FeedbackLearningStats,
+  QuickActionPattern,
+  InsertQuickActionPattern,
+  QuickActionType,
   Folder,
   InsertFolder,
   UpdateFolder,
@@ -6803,6 +6806,74 @@ export async function addGettingToKnowMessage(message: {
     createdAt: now,
   });
   const [result] = await db.select().from(schema.gettingToKnowMessages).where(eq(schema.gettingToKnowMessages.id, id)).limit(1);
+  return result;
+}
+
+// ============================================
+// QUICK ACTION PATTERNS (Learned from Eval)
+// ============================================
+
+export async function createQuickActionPattern(data: InsertQuickActionPattern): Promise<QuickActionPattern> {
+  const now = getNow();
+  const id = uuidv4();
+  const [result] = await db.insert(schema.quickActionPatterns).values({
+    ...data,
+    id,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  return result;
+}
+
+export async function getQuickActionPattern(id: string): Promise<QuickActionPattern | undefined> {
+  const [result] = await db.select().from(schema.quickActionPatterns).where(eq(schema.quickActionPatterns.id, id));
+  return result;
+}
+
+export async function getActiveQuickActionPatterns(): Promise<QuickActionPattern[]> {
+  return await db.select().from(schema.quickActionPatterns)
+    .where(eq(schema.quickActionPatterns.isActive, true))
+    .orderBy(desc(schema.quickActionPatterns.confidenceScore));
+}
+
+export async function getQuickActionPatternsByAction(action: QuickActionType): Promise<QuickActionPattern[]> {
+  return await db.select().from(schema.quickActionPatterns)
+    .where(and(
+      eq(schema.quickActionPatterns.action, action),
+      eq(schema.quickActionPatterns.isActive, true)
+    ))
+    .orderBy(desc(schema.quickActionPatterns.confidenceScore));
+}
+
+export async function getAllQuickActionPatterns(): Promise<QuickActionPattern[]> {
+  return await db.select().from(schema.quickActionPatterns)
+    .orderBy(desc(schema.quickActionPatterns.createdAt));
+}
+
+export async function updateQuickActionPatternMatch(id: string): Promise<void> {
+  const now = getNow();
+  await db.update(schema.quickActionPatterns)
+    .set({
+      matchCount: sql`${schema.quickActionPatterns.matchCount} + 1`,
+      lastMatchedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(schema.quickActionPatterns.id, id));
+}
+
+export async function deactivateQuickActionPattern(id: string): Promise<void> {
+  const now = getNow();
+  await db.update(schema.quickActionPatterns)
+    .set({
+      isActive: false,
+      updatedAt: now,
+    })
+    .where(eq(schema.quickActionPatterns.id, id));
+}
+
+export async function findQuickActionPatternByPattern(pattern: string): Promise<QuickActionPattern | undefined> {
+  const [result] = await db.select().from(schema.quickActionPatterns)
+    .where(eq(schema.quickActionPatterns.pattern, pattern));
   return result;
 }
 
