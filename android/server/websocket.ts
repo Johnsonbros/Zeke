@@ -5,10 +5,11 @@ import OpenAI, { toFile } from "openai";
 import { z } from "zod";
 import { validateDeviceToken, validateMasterSecret } from "./device-auth";
 
-// TODO: SECURITY - Validate OPENAI_API_KEY is present before creating client
-// TODO: RELIABILITY - Add connection timeout and ping/pong heartbeat to detect stale connections
-// TODO: SCALABILITY - Consider Redis pub/sub for broadcasting in multi-server deployments
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// WebSocket heartbeat configuration
+const HEARTBEAT_INTERVAL_MS = 30000; // Send ping every 30 seconds
+const HEARTBEAT_TIMEOUT_MS = 10000; // Consider connection dead if no pong within 10 seconds
 
 export type ZekeSyncMessageType = 'sms' | 'voice' | 'activity' | 'device_status' | 'notification';
 
@@ -26,20 +27,28 @@ const zekeSyncMessageSchema = z.object({
   timestamp: z.string().optional(),
 });
 
-// TODO: MEMORY - Stale clients may not be removed if they disconnect without close event
-// TODO: SECURITY - Add authentication token validation for WebSocket connections
-const zekeSyncClients = new Set<WebSocket>();
+// Track clients with their last activity timestamp for stale connection detection
+interface ZekeSyncClient {
+  ws: WebSocket;
+  isAlive: boolean;
+  lastActivity: Date;
+}
 
-// TODO: RELIABILITY - Add message queuing for offline clients with recent disconnection
-// TODO: MONITORING - Track message delivery success/failure rates
+const zekeSyncClients = new Map<WebSocket, ZekeSyncClient>();
+
+// Heartbeat interval reference (started in setupZekeSyncWebSocket)
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+
 export function broadcastZekeSync(message: ZekeSyncMessage): void {
   const messageStr = JSON.stringify(message);
+  let sentCount = 0;
   zekeSyncClients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(messageStr);
+    if (client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(messageStr);
+      sentCount++;
     }
   });
-  console.log(`[ZEKE Sync] Broadcast to ${zekeSyncClients.size} clients:`, message.type, message.action);
+  console.log(`[ZEKE Sync] Broadcast to ${sentCount}/${zekeSyncClients.size} clients:`, message.type, message.action);
 }
 
 export function getZekeSyncClientCount(): number {
@@ -587,6 +596,26 @@ function setupZekeSyncWebSocket(server: Server): WebSocketServer {
 
   console.log("ZEKE Sync WebSocket server initialized at /ws/zeke");
 
+  // Start heartbeat interval to detect stale connections
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+  }
+  heartbeatInterval = setInterval(() => {
+    zekeSyncClients.forEach((client, ws) => {
+      if (!client.isAlive) {
+        // Client didn't respond to previous ping - terminate connection
+        console.log("[ZEKE Sync] Terminating stale connection (no pong received)");
+        zekeSyncClients.delete(ws);
+        ws.terminate();
+        return;
+      }
+
+      // Mark as not alive and send ping - will be marked alive again on pong
+      client.isAlive = false;
+      ws.ping();
+    });
+  }, HEARTBEAT_INTERVAL_MS);
+
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     console.log("[ZEKE Sync] Client connected from:", req.socket.remoteAddress);
 
@@ -601,7 +630,22 @@ function setupZekeSyncWebSocket(server: Server): WebSocketServer {
       return;
     }
 
-    zekeSyncClients.add(ws);
+    // Track client with heartbeat state
+    const client: ZekeSyncClient = {
+      ws,
+      isAlive: true,
+      lastActivity: new Date(),
+    };
+    zekeSyncClients.set(ws, client);
+
+    // Handle pong responses to mark connection as alive
+    ws.on("pong", () => {
+      const trackedClient = zekeSyncClients.get(ws);
+      if (trackedClient) {
+        trackedClient.isAlive = true;
+        trackedClient.lastActivity = new Date();
+      }
+    });
 
     ws.send(JSON.stringify({
       type: 'notification',
@@ -609,23 +653,31 @@ function setupZekeSyncWebSocket(server: Server): WebSocketServer {
       data: { message: 'Connected to ZEKE sync' },
       timestamp: new Date().toISOString(),
     }));
+
     ws.on("message", (data: Buffer | string) => {
+      // Update last activity on any message
+      const trackedClient = zekeSyncClients.get(ws);
+      if (trackedClient) {
+        trackedClient.lastActivity = new Date();
+        trackedClient.isAlive = true;
+      }
+
       try {
         const messageStr = typeof data === "string" ? data : data.toString();
         const rawMessage = JSON.parse(messageStr);
         console.log("[ZEKE Sync] Received message:", rawMessage);
-        
+
         const validationResult = zekeSyncMessageSchema.safeParse(rawMessage);
-        
+
         if (!validationResult.success) {
           console.error("[ZEKE Sync] Validation failed:", validationResult.error.format());
-          ws.send(JSON.stringify({ 
-            type: 'error', 
-            message: 'Invalid message format' 
+          ws.send(JSON.stringify({
+            type: 'error',
+            message: 'Invalid message format'
           }));
           return;
         }
-        
+
         const message = validationResult.data;
         broadcastZekeSync({
           type: message.type,
@@ -635,9 +687,9 @@ function setupZekeSyncWebSocket(server: Server): WebSocketServer {
         });
       } catch (error) {
         console.error("[ZEKE Sync] Message parse error:", error);
-        ws.send(JSON.stringify({ 
-          type: 'error', 
-          message: 'Invalid message format' 
+        ws.send(JSON.stringify({
+          type: 'error',
+          message: 'Invalid message format'
         }));
       }
     });

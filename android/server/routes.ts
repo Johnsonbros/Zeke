@@ -456,15 +456,22 @@ Respond in JSON format:
         };
       }
 
-      // TODO: BUG - speakerCount is computed but never used - either use it or remove dead code
       const speakerCount = estimateSpeakerCount(transcript);
+
+      // Generate default speaker array from estimated count if not provided in request
+      const defaultSpeakers = speakerCount > 0
+        ? Array.from({ length: speakerCount }, (_, i) => ({
+            id: i,
+            label: `Speaker ${i + 1}`,
+            isUser: i === 0, // Assume first speaker is user
+          }))
+        : null;
 
       const memoryData = {
         deviceId,
         transcript,
         duration,
-        // TODO: Consider using speakerCount if req.body.speakers is not provided
-        speakers: req.body.speakers || null,
+        speakers: req.body.speakers || defaultSpeakers,
         title: analysis.title || "Untitled Memory",
         summary: analysis.summary || null,
         actionItems: analysis.actionItems || []

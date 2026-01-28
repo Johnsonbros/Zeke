@@ -392,11 +392,6 @@ class LimitlessProtocol {
   }
 }
 
-// TODO: RELIABILITY - Add automatic reconnection when device disconnects unexpectedly
-// TODO: RELIABILITY - Add connection timeout handling (currently waits indefinitely)
-// TODO: MONITORING - Add telemetry for BLE connection success/failure rates
-// TODO: FEATURE - Add signal strength monitoring during active connection
-// TODO: TESTING - Mock device IDs are hardcoded and could conflict with real device IDs
 class BluetoothService {
   private bleManager: MockBleManager | null = null;
   private connectedBleDevice: Device | null = null;
@@ -516,20 +511,124 @@ class BluetoothService {
     };
   }
 
-  // TODO: BUG - Loading a device from storage sets state to "connected" but doesn't verify BLE connection
-  // TODO: RELIABILITY - Should attempt to reconnect to saved device on app launch
-  // TODO: FEATURE - Add timeout to clear stale saved devices after extended disconnection
+    // Load previously connected device from storage
+  // Note: Does NOT set connected state - call attemptReconnect() to restore connection
   private async loadConnectedDevice(): Promise<void> {
     try {
       const data = await AsyncStorage.getItem(STORAGE_KEY);
       if (data) {
-        this.connectedDevice = JSON.parse(data);
-        // TODO: BUG - Setting connected state without verifying actual BLE connection
-        this.connectionState = "connected";
-        this.notifyConnectionStateChange();
+        const savedDevice = JSON.parse(data) as BLEDevice;
+        // Store as "last known device" but don't claim connected status
+        // The actual BLE connection needs to be re-established
+        this.connectedDevice = savedDevice;
+        // Leave connectionState as "disconnected" until actual BLE connection is verified
+        console.log(`[BLE] Loaded saved device: ${savedDevice.name} (${savedDevice.id}) - not yet connected`);
       }
     } catch (error) {
       console.error("Error loading connected device:", error);
+    }
+  }
+
+  /**
+   * Attempt to reconnect to a previously saved device
+   * Call this on app launch after BLE is ready
+   * @returns true if reconnection was successful
+   */
+  public async attemptReconnect(): Promise<boolean> {
+    if (!this.connectedDevice) {
+      console.log("[BLE] No saved device to reconnect to");
+      return false;
+    }
+
+    if (this.connectionState !== "disconnected") {
+      console.log("[BLE] Already connected or connecting");
+      return this.connectionState === "connected";
+    }
+
+    const deviceId = this.connectedDevice.id;
+    const deviceName = this.connectedDevice.name;
+    console.log(`[BLE] Attempting to reconnect to: ${deviceName} (${deviceId})`);
+
+    // In mock mode, simulate successful reconnect
+    if (this.isMockMode) {
+      this.connectionState = "connected";
+      this.notifyConnectionStateChange();
+      console.log(`[BLE] Mock reconnect successful: ${deviceName}`);
+      return true;
+    }
+
+    // For real BLE, scan briefly to find the device then connect
+    // The device needs to be discovered before connecting
+    try {
+      this.connectionState = "connecting";
+      this.notifyConnectionStateChange();
+
+      // Start scan to find the specific device
+      await this.startScan();
+
+      // Wait for scan to find devices (max 5 seconds)
+      await new Promise<void>((resolve) => {
+        const checkInterval = setInterval(() => {
+          const found = this.discoveredDevices.find((d) => d.id === deviceId);
+          if (found) {
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }, 500);
+
+        // Timeout after 5 seconds
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          resolve();
+        }, 5000);
+      });
+
+      this.stopScan();
+
+      // Check if we found the device
+      const device = this.discoveredDevices.find((d) => d.id === deviceId);
+      if (!device) {
+        console.log(`[BLE] Saved device not found during reconnect scan: ${deviceName}`);
+        this.connectionState = "disconnected";
+        this.notifyConnectionStateChange();
+        return false;
+      }
+
+      // Connect to the device
+      const success = await this.connect(deviceId);
+      if (success) {
+        console.log(`[BLE] Successfully reconnected to: ${deviceName}`);
+      }
+      return success;
+    } catch (error) {
+      console.error("[BLE] Reconnect failed:", error);
+      this.connectionState = "disconnected";
+      this.notifyConnectionStateChange();
+      return false;
+    }
+  }
+
+  /**
+   * Check if there's a saved device that can potentially be reconnected
+   */
+  public hasSavedDevice(): boolean {
+    return this.connectedDevice !== null && this.connectionState === "disconnected";
+  }
+
+  /**
+   * Get the saved device info (if any)
+   */
+  public getSavedDevice(): BLEDevice | null {
+    return this.connectedDevice;
+  }
+
+  /**
+   * Clear saved device without disconnecting (for when user explicitly unpairs)
+   */
+  public async clearSavedDevice(): Promise<void> {
+    await this.saveConnectedDevice(null);
+    if (this.connectionState === "disconnected") {
+      this.connectedDevice = null;
     }
   }
 
@@ -1164,9 +1263,6 @@ class BluetoothService {
     }
   }
 
-  // TODO: RELIABILITY - Battery monitoring failures are silently ignored - should notify user
-  // TODO: FEATURE - Add battery low alerts when level drops below threshold (e.g., 20%)
-  // TODO: PERSISTENCE - Store battery level history for tracking device health over time
   private async setupBatteryMonitoring(): Promise<void> {
     if (!this.connectedBleDevice) {
       console.log("[Battery] No connected device for battery monitoring");
