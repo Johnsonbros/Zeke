@@ -14,8 +14,11 @@ export function startPythonAgents(): void {
   
   log("Starting Python agents service...", "python-agents");
   
+  // Prefer python3 in modern environments; fall back to python (Replit often provides `python`).
+  const pythonCmd = process.env.PYTHON_CMD || (process.platform === "win32" ? "python" : "python3");
+
   pythonProcess = spawn(
-    "python",
+    pythonCmd,
     ["-m", "uvicorn", "python_agents.main:app", "--host", "127.0.0.1", "--port", "5001"],
     {
       env: {
@@ -41,6 +44,24 @@ export function startPythonAgents(): void {
   });
   
   pythonProcess.on("error", (error) => {
+    // If python3 isn't available (e.g., some platforms), try `python` as a fallback.
+    if ((pythonCmd === "python3" || pythonCmd === "python3.exe") && error.message.includes("ENOENT")) {
+      log(`Failed to start with ${pythonCmd}: ${error.message}. Falling back to python...`, "python-agents");
+      pythonProcess = null;
+      pythonProcess = spawn(
+        "python",
+        ["-m", "uvicorn", "python_agents.main:app", "--host", "127.0.0.1", "--port", "5001"],
+        {
+          env: {
+            ...process.env,
+            PYTHONPATH: pythonPath,
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      return;
+    }
+
     log(`Failed to start: ${error.message}`, "python-agents");
     pythonProcess = null;
   });
@@ -49,6 +70,12 @@ export function startPythonAgents(): void {
     if (!isShuttingDown) {
       log(`Process exited with code ${code}, signal ${signal}`, "python-agents");
       pythonProcess = null;
+
+      // Avoid tight restart loops in local environments missing python deps (uvicorn/pip).
+      if (process.env.PYTHON_AGENTS_AUTORESTART === "false") {
+        log("Auto-restart disabled (PYTHON_AGENTS_AUTORESTART=false)", "python-agents");
+        return;
+      }
       
       setTimeout(() => {
         if (!isShuttingDown) {

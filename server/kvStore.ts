@@ -19,7 +19,20 @@
 import Database from "@replit/database";
 import { log } from "./logger";
 
-const db = new Database();
+// Replit KV isn't available in most local environments.
+// Fallback to an in-memory Map so the server can run locally.
+let db: Database | null = null;
+const memoryKV = new Map<string, unknown>();
+
+try {
+  // @replit/database expects REPLIT_DB_URL to be set.
+  if (process.env.REPLIT_DB_URL) {
+    db = new Database(process.env.REPLIT_DB_URL);
+  }
+} catch (e) {
+  db = null;
+  log(`[KVStore] Replit KV unavailable; falling back to in-memory store (${String(e)})`, "warn");
+}
 
 export type KVNamespace = 
   | "session" 
@@ -79,7 +92,7 @@ export async function kvGet<T>(namespace: KVNamespace, key: string): Promise<T |
   stats.gets++;
   
   try {
-    const raw = await db.get(fullKey) as unknown;
+    const raw = db ? (await db.get(fullKey) as unknown) : memoryKV.get(fullKey);
     
     if (!raw) {
       stats.misses++;
@@ -90,7 +103,8 @@ export async function kvGet<T>(namespace: KVNamespace, key: string): Promise<T |
     
     if (entry.expiresAt && entry.expiresAt < Date.now()) {
       stats.expirations++;
-      await db.delete(fullKey);
+      if (db) await db.delete(fullKey);
+      else memoryKV.delete(fullKey);
       return null;
     }
     
@@ -123,7 +137,8 @@ export async function kvSet<T>(
       version: CURRENT_VERSION,
     };
     
-    await db.set(fullKey, entry);
+    if (db) await db.set(fullKey, entry);
+    else memoryKV.set(fullKey, entry);
     return true;
   } catch (error) {
     log(`[KVStore] Error setting ${fullKey}: ${error}`, "error");
@@ -139,7 +154,8 @@ export async function kvDelete(namespace: KVNamespace, key: string): Promise<boo
   stats.deletes++;
   
   try {
-    await db.delete(fullKey);
+    if (db) await db.delete(fullKey);
+    else memoryKV.delete(fullKey);
     return true;
   } catch (error) {
     log(`[KVStore] Error deleting ${fullKey}: ${error}`, "error");
@@ -153,6 +169,15 @@ export async function kvDelete(namespace: KVNamespace, key: string): Promise<boo
 export async function kvList(namespace: KVNamespace, prefix?: string): Promise<string[]> {
   try {
     const fullPrefix = prefix ? createKey(namespace, prefix) : `${namespace}:`;
+
+    if (!db) {
+      const keys = [...memoryKV.keys()].filter(k => k.startsWith(fullPrefix));
+      return keys.map(k => {
+        const parsed = parseKey(k);
+        return parsed?.key || k;
+      });
+    }
+
     const keysResult = await db.list(fullPrefix);
     
     if (!keysResult || typeof keysResult !== 'object') {
@@ -211,6 +236,19 @@ export async function kvIncrement(
  */
 export async function kvClearNamespace(namespace: KVNamespace): Promise<number> {
   try {
+    if (!db) {
+      const prefix = `${namespace}:`;
+      let count = 0;
+      for (const key of [...memoryKV.keys()]) {
+        if (key.startsWith(prefix)) {
+          memoryKV.delete(key);
+          count++;
+        }
+      }
+      log(`[KVStore] Cleared ${count} keys from namespace: ${namespace}`, "cache");
+      return count;
+    }
+
     const keysResult = await db.list(`${namespace}:`);
     const keys = Array.isArray(keysResult) ? keysResult : 
       (keysResult && typeof keysResult === 'object' && 'value' in keysResult && Array.isArray(keysResult.value)) 
@@ -235,6 +273,21 @@ export async function kvClearNamespace(namespace: KVNamespace): Promise<number> 
  */
 export async function kvCleanupExpired(): Promise<number> {
   try {
+    if (!db) {
+      let cleaned = 0;
+      for (const [key, raw] of memoryKV.entries()) {
+        const entry = raw as KVEntry<unknown>;
+        if (entry?.expiresAt && entry.expiresAt < Date.now()) {
+          memoryKV.delete(key);
+          cleaned++;
+        }
+      }
+      if (cleaned > 0) {
+        log(`[KVStore] Cleaned up ${cleaned} expired entries`, "cache");
+      }
+      return cleaned;
+    }
+
     const keysResult = await db.list();
     const allKeys = Array.isArray(keysResult) ? keysResult : 
       (keysResult && typeof keysResult === 'object' && 'value' in keysResult && Array.isArray(keysResult.value)) 
