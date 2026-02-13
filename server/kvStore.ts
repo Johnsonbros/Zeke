@@ -1,25 +1,23 @@
 /**
- * Replit Key-Value Store Service for ZEKE
+ * Key-Value Store Service for ZEKE
  * 
- * Provides persistent, fast caching using Replit's built-in Key-Value Store.
- * This complements the in-memory cache by offering:
- * - Persistence across restarts
- * - Simple key-value operations with typed access
- * - Automatic JSON serialization/deserialization
- * - TTL support via expiry timestamps
- * - Namespaced keys for organization
- * 
- * Use Cases:
- * - Session state persistence
- * - Preference caching
- * - Rate limiting
- * - Cross-restart context preservation
+ * In-memory fallback (non-Replit environment)
  */
 
-import Database from "@replit/database";
 import { log } from "./logger";
 
-const db = new Database();
+// In-memory store for non-Replit environments
+const memoryStore = new Map<string, unknown>();
+
+const db = {
+  async get(key: string) { return memoryStore.get(key); },
+  async set(key: string, value: unknown) { memoryStore.set(key, value); },
+  async delete(key: string) { memoryStore.delete(key); },
+  async list(prefix?: string) { 
+    const keys = Array.from(memoryStore.keys());
+    return prefix ? keys.filter(k => k.startsWith(prefix)) : keys;
+  }
+};
 
 export type KVNamespace = 
   | "session" 
@@ -71,9 +69,6 @@ function parseKey(fullKey: string): { namespace: KVNamespace; key: string } | nu
   };
 }
 
-/**
- * Get a value from the KV Store
- */
 export async function kvGet<T>(namespace: KVNamespace, key: string): Promise<T | null> {
   const fullKey = createKey(namespace, key);
   stats.gets++;
@@ -102,9 +97,6 @@ export async function kvGet<T>(namespace: KVNamespace, key: string): Promise<T |
   }
 }
 
-/**
- * Set a value in the KV Store with optional TTL
- */
 export async function kvSet<T>(
   namespace: KVNamespace,
   key: string,
@@ -131,9 +123,6 @@ export async function kvSet<T>(
   }
 }
 
-/**
- * Delete a value from the KV Store
- */
 export async function kvDelete(namespace: KVNamespace, key: string): Promise<boolean> {
   const fullKey = createKey(namespace, key);
   stats.deletes++;
@@ -147,20 +136,10 @@ export async function kvDelete(namespace: KVNamespace, key: string): Promise<boo
   }
 }
 
-/**
- * List all keys in a namespace (with optional prefix filter)
- */
 export async function kvList(namespace: KVNamespace, prefix?: string): Promise<string[]> {
   try {
     const fullPrefix = prefix ? createKey(namespace, prefix) : `${namespace}:`;
-    const keysResult = await db.list(fullPrefix);
-    
-    if (!keysResult || typeof keysResult !== 'object') {
-      return [];
-    }
-    
-    const keys = Array.isArray(keysResult) ? keysResult : 
-      ('value' in keysResult && Array.isArray(keysResult.value)) ? keysResult.value : [];
+    const keys = await db.list(fullPrefix) as string[];
     
     return keys.map((k: string) => {
       const parsed = parseKey(k);
@@ -172,9 +151,6 @@ export async function kvList(namespace: KVNamespace, prefix?: string): Promise<s
   }
 }
 
-/**
- * Get or compute a value with caching
- */
 export async function kvGetOrCompute<T>(
   namespace: KVNamespace,
   key: string,
@@ -191,9 +167,6 @@ export async function kvGetOrCompute<T>(
   return data;
 }
 
-/**
- * Increment a counter (atomic-ish - uses get/set)
- */
 export async function kvIncrement(
   namespace: KVNamespace,
   key: string,
@@ -206,15 +179,9 @@ export async function kvIncrement(
   return newValue;
 }
 
-/**
- * Clear all keys in a namespace
- */
 export async function kvClearNamespace(namespace: KVNamespace): Promise<number> {
   try {
-    const keysResult = await db.list(`${namespace}:`);
-    const keys = Array.isArray(keysResult) ? keysResult : 
-      (keysResult && typeof keysResult === 'object' && 'value' in keysResult && Array.isArray(keysResult.value)) 
-        ? keysResult.value : [];
+    const keys = await db.list(`${namespace}:`) as string[];
     let count = 0;
     
     for (const key of keys) {
@@ -230,15 +197,9 @@ export async function kvClearNamespace(namespace: KVNamespace): Promise<number> 
   }
 }
 
-/**
- * Clean up expired entries across all namespaces
- */
 export async function kvCleanupExpired(): Promise<number> {
   try {
-    const keysResult = await db.list();
-    const allKeys = Array.isArray(keysResult) ? keysResult : 
-      (keysResult && typeof keysResult === 'object' && 'value' in keysResult && Array.isArray(keysResult.value)) 
-        ? keysResult.value : [];
+    const allKeys = await db.list() as string[];
     let cleaned = 0;
     
     for (const key of allKeys) {
@@ -267,9 +228,6 @@ export async function kvCleanupExpired(): Promise<number> {
   }
 }
 
-/**
- * Get KV Store statistics
- */
 export function getKVStats(): KVStats & { hitRate: number } {
   const total = stats.hits + stats.misses;
   return {
@@ -278,9 +236,6 @@ export function getKVStats(): KVStats & { hitRate: number } {
   };
 }
 
-/**
- * Reset statistics
- */
 export function resetKVStats(): void {
   stats.gets = 0;
   stats.sets = 0;
