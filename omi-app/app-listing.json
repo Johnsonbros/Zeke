@@ -1,0 +1,24 @@
+{
+  "name": "Zeke Hermes",
+  "category": "Productivity",
+  "visibility": "Private until tested, then Public",
+  "description": "Route Omi and Limitless voice transcripts into a private Hermes-backed Zeke workflow for memory capture, task routing, and follow-up.",
+  "capabilities": [
+    "external_integration",
+    "real_time_transcript",
+    "memory_trigger",
+    "audio_bytes",
+    "chat_tools"
+  ],
+  "urls": {
+    "app_home_url": "https://YOUR_DEPLOYMENT_URL/",
+    "real_time_transcript_webhook": "https://YOUR_DEPLOYMENT_URL/webhook/transcript",
+    "memory_creation_webhook": "https://YOUR_DEPLOYMENT_URL/webhook/memory",
+    "audio_bytes_webhook": "https://YOUR_DEPLOYMENT_URL/webhook/audio",
+    "setup_completed_url": "https://YOUR_DEPLOYMENT_URL/setup-completed",
+    "chat_tools_manifest_url": "https://YOUR_DEPLOYMENT_URL/.well-known/omi-tools.json",
+    "github_source_url": "https://github.com/Johnsonbros/Zeke/tree/main/omi-app"
+  },
+  "setup_instructions": "Install the app, keep the webhook endpoints enabled, and speak naturally to Zeke or Hermes through Omi. Requests are routed into the private Hermes workflow configured by the deployment owner.",
+  "privacy_summary": "The app stores event metadata and extracted text by default. Full payload and raw audio storage are disabled unless explicitly enabled for debugging."
+}
