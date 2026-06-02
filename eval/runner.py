@@ -43,7 +43,7 @@ def run_evals(
     Returns:
         dict with run summary
     """
-    cmd = ["python", "-m", "pytest", str(EVAL_DIR / "tests")]
+    cmd = [sys.executable, "-m", "pytest", str(EVAL_DIR / "tests")]
     
     if test_filter:
         cmd.extend(["-k", test_filter])
