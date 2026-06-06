@@ -399,7 +399,7 @@ export default function TasksScreen() {
         <EmptyState
           icon="wifi-off"
           title="Connection Required"
-          description="Task sync requires a connection to ZEKE. Please connect to ZEKE in Settings to access your tasks."
+          description="Task sync requires a connection to Atlas. Please connect to Atlas in Settings to access your tasks."
         />
       </View>
     );

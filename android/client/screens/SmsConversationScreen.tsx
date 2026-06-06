@@ -110,7 +110,7 @@ function groupMessagesByDate(
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
 
-// Notification detection patterns - messages that look like automated notifications from ZEKE
+// Notification detection patterns - messages that look like automated notifications from Atlas
 const NOTIFICATION_PATTERNS = [
   /^reminder:/i,
   /^alert:/i,
@@ -126,7 +126,7 @@ const NOTIFICATION_PATTERNS = [
 ];
 
 function isNotificationMessage(message: TwilioSmsMessage, isOutbound: boolean): boolean {
-  // Only inbound messages from ZEKE can be notifications
+  // Only inbound messages from Atlas can be notifications
   if (isOutbound) return false;
   
   const body = message.body.toLowerCase();

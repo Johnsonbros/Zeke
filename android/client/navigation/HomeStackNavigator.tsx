@@ -50,7 +50,7 @@ export default function HomeStackNavigator() {
         name="FileUpload"
         component={FileUploadScreen}
         options={{
-          headerTitle: createZekeSubHeader("Upload to ZEKE"),
+          headerTitle: createZekeSubHeader("Upload to Atlas"),
         }}
       />
       <Stack.Screen

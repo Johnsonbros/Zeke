@@ -3,7 +3,7 @@
  * CRITICAL FILE - SMS PAIRING HANDSHAKE
  * ============================================================================
  * 
- * This file contains the device pairing flow for ZEKE AI.
+ * This file contains the device pairing flow for Atlas AI.
  * 
  * DO NOT MODIFY without explicit approval from the project owner.
  * 
@@ -264,7 +264,7 @@ export function PairingScreen() {
             <Feather name="shield" size={48} color={Colors.dark.text} />
           </LinearGradient>
 
-          <ThemedText style={styles.title}>ZEKE Command Center</ThemedText>
+          <ThemedText style={styles.title}>Atlas Command Center</ThemedText>
           <ThemedText style={styles.subtitle}>
             {step === "request" ? "Secure Device Pairing" : step === "verify" ? "Enter Verification Code" : "Legacy Pairing"}
           </ThemedText>
@@ -424,7 +424,7 @@ export function PairingScreen() {
         ) : (
           <View style={styles.form}>
             <ThemedText style={styles.label}>
-              Enter the pairing secret from ZEKE settings
+              Enter the pairing secret from Atlas settings
             </ThemedText>
 
             <TextInput
@@ -494,8 +494,8 @@ export function PairingScreen() {
             {step === "request"
               ? "A verification code will be sent to the master phone number. Enter it here to pair this device."
               : step === "verify"
-              ? "Once verified, this device will have secure access to all ZEKE features."
-              : "Enter the secret key generated in ZEKE settings to pair this device."}
+              ? "Once verified, this device will have secure access to all Atlas features."
+              : "Enter the secret key generated in Atlas settings to pair this device."}
           </ThemedText>
         </View>
       </KeyboardAwareScrollViewCompat>

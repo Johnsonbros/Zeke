@@ -3,7 +3,7 @@
  * CRITICAL FILE - AUTHENTICATION CONTEXT
  * ============================================================================
  * 
- * This file manages device authentication and SMS pairing for ZEKE AI.
+ * This file manages device authentication and SMS pairing for Atlas AI.
  * 
  * DO NOT MODIFY without explicit approval from the project owner.
  * 
@@ -227,18 +227,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (localErr instanceof ApiError && localErr.status === 401) {
           localFailed401 = true;
-          // Token not found locally, try ZEKE backend next
+          // Token not found locally, try Atlas backend next
         }
-        // For other errors (network issues), continue to try ZEKE backend or cached auth
+        // For other errors (network issues), continue to try Atlas backend or cached auth
       }
 
-      // If local verification returned 401, try ZEKE backend (for legacy tokens paired via ZEKE)
+      // If local verification returned 401, try Atlas backend (for legacy tokens paired via Atlas)
       if (localFailed401) {
-        console.log("[Auth] Local token not found, trying ZEKE backend verification...");
+        console.log("[Auth] Local token not found, trying Atlas backend verification...");
         try {
           const zekeData = await verifyDeviceTokenWithGenerated(token);
 
-          console.log("[Auth] ZEKE verify response:", JSON.stringify(zekeData));
+          console.log("[Auth] Atlas verify response:", JSON.stringify(zekeData));
           await updateLastVerified();
           setState({
             isAuthenticated: true,
@@ -249,11 +249,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
           return true;
         } catch (zekeErr) {
-          console.log("[Auth] ZEKE verification also failed:", zekeErr instanceof ApiError ? `${zekeErr.status}` : String(zekeErr));
+          console.log("[Auth] Atlas verification also failed:", zekeErr instanceof ApiError ? `${zekeErr.status}` : String(zekeErr));
           
-          // Both local and ZEKE verification failed with 401 - token is truly invalid
+          // Both local and Atlas verification failed with 401 - token is truly invalid
           if (zekeErr instanceof ApiError && zekeErr.status === 401) {
-            console.log("[Auth] Token invalid on both local and ZEKE, clearing credentials");
+            console.log("[Auth] Token invalid on both local and Atlas, clearing credentials");
             await deleteStoredValue(DEVICE_TOKEN_KEY);
             await deleteStoredValue(DEVICE_ID_KEY);
             await deleteStoredValue(LAST_VERIFIED_KEY);
@@ -267,7 +267,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
             return false;
           }
-          // Network error on ZEKE backend - continue to cached auth check
+          // Network error on Atlas backend - continue to cached auth check
         }
       }
 
@@ -353,7 +353,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       try {
         // Use authPost with longer timeout (25s) for pairing
-        // Route through local proxy to ZEKE backend: /api/zeke/auth/pair
+        // Route through local proxy to Atlas backend: /api/zeke/auth/pair
         console.log("[Auth] Sending pair request to /api/zeke/auth/pair");
         const data = await pairDeviceWithGenerated(secret, deviceName);
         console.log("[Auth] Pair response received:", JSON.stringify(data));

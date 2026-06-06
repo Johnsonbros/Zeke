@@ -209,7 +209,7 @@ export default function AudioUploadScreen() {
       } else {
         Alert.alert(
           "Audio Uploaded",
-          `Your audio has been sent to ZEKE for processing: "${result.title || 'Audio recording'}"`,
+          `Your audio has been sent to Atlas for processing: "${result.title || 'Audio recording'}"`,
           [
             {
               text: "Done",

@@ -302,7 +302,7 @@ export default function ImportContactsScreen() {
             Access Your Contacts
           </ThemedText>
           <ThemedText style={styles.emptySubtitle}>
-            Allow access to your device contacts to import them into ZEKE
+            Allow access to your device contacts to import them into Atlas
           </ThemedText>
           <Pressable onPress={requestPermission}>
             <LinearGradient
@@ -422,7 +422,7 @@ export default function ImportContactsScreen() {
                   <Feather name="download" size={20} color="#FFFFFF" />
                   <Text style={styles.importButtonText}>
                     Import {selectedCount} Contact
-                    {selectedCount !== 1 ? "s" : ""} to ZEKE
+                    {selectedCount !== 1 ? "s" : ""} to Atlas
                   </Text>
                 </>
               )}

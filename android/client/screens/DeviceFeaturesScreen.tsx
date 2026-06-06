@@ -328,7 +328,7 @@ export default function DeviceFeaturesScreen() {
     }
 
     Alert.alert(
-      "Share ZEKE AI",
+      "Share Atlas AI",
       "Sharing feature ready! In a real implementation, this would share app content or exported data.",
     );
   };
@@ -344,7 +344,7 @@ export default function DeviceFeaturesScreen() {
 
     setIsSpeaking(true);
     Speech.speak(
-      "Hello! I am ZEKE, your AI assistant. I can help you manage your tasks, calendar, and daily activities.",
+      "Hello! I am Atlas, your AI assistant. I can help you manage your tasks, calendar, and daily activities.",
       {
         language: "en-US",
         pitch: 1.0,
@@ -627,8 +627,8 @@ export default function DeviceFeaturesScreen() {
         <View style={{ borderRadius: BorderRadius.md, overflow: "hidden" }}>
           <SettingsRow
             icon="volume-2"
-            label={isSpeaking ? "Stop Speaking" : "Test ZEKE Voice"}
-            value={isSpeaking ? "Speaking..." : "Tap to hear ZEKE"}
+            label={isSpeaking ? "Stop Speaking" : "Test Atlas Voice"}
+            value={isSpeaking ? "Speaking..." : "Tap to hear Atlas"}
             onPress={testTextToSpeech}
           />
         </View>

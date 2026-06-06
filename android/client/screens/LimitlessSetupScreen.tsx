@@ -68,7 +68,7 @@ const FACTORY_RESET_STEPS: SetupStep[] = [
     id: 5,
     title: "Confirm Solid Blue",
     description:
-      "The light should turn solid blue. This means your pendant is factory reset and ready to pair with ZEKE.",
+      "The light should turn solid blue. This means your pendant is factory reset and ready to pair with Atlas.",
     icon: "bluetooth",
     lightColor: Colors.dark.primary,
     lightLabel: "Blue = Ready to pair",
@@ -113,14 +113,14 @@ const TROUBLESHOOTING_TIPS = [
     solutions: [
       "Keep phone within a few feet of pendant",
       "Don't force-close the app - keep it in background",
-      "On Android: disable battery optimization for ZEKE",
+      "On Android: disable battery optimization for Atlas",
       "Only pair to one phone at a time",
     ],
   },
   {
     problem: "Not recording audio",
     solutions: [
-      "Check pendant is connected in ZEKE app (not just Bluetooth settings)",
+      "Check pendant is connected in Atlas app (not just Bluetooth settings)",
       "Verify app has microphone permission",
       "Restart phone and reconnect",
     ],
@@ -201,7 +201,7 @@ export default function LimitlessSetupScreen() {
             Limitless Pendant Setup
           </ThemedText>
           <ThemedText type="body" secondary style={styles.heroSubtitle}>
-            Follow these steps to prepare your pendant for pairing with ZEKE
+            Follow these steps to prepare your pendant for pairing with Atlas
           </ThemedText>
         </View>
       </Animated.View>
@@ -211,7 +211,7 @@ export default function LimitlessSetupScreen() {
           Factory Reset Your Pendant
         </ThemedText>
         <ThemedText type="small" secondary style={styles.sectionSubtitle}>
-          Required if switching from Limitless app to ZEKE
+          Required if switching from Limitless app to Atlas
         </ThemedText>
 
         <View style={styles.stepsContainer}>

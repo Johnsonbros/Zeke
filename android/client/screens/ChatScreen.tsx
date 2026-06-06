@@ -130,7 +130,7 @@ export default function ChatScreen() {
           await AsyncStorage.removeItem(ZEKE_CONVERSATION_KEY);
         }
 
-        const newConversation = await createConversation("Chat with ZEKE");
+        const newConversation = await createConversation("Chat with Atlas");
         if (!newConversation?.id || !isValidId(newConversation.id)) {
           throw new Error(
             "Failed to create conversation - invalid ID received",
@@ -163,7 +163,7 @@ export default function ChatScreen() {
 
           const data = await apiClient.post<{ id: string }>(
             "/api/chat/sessions",
-            { title: "Chat with ZEKE" },
+            { title: "Chat with Atlas" },
           );
           console.log("[Chat] Session created successfully:", data.id);
 
@@ -402,7 +402,7 @@ export default function ChatScreen() {
     return (
       <View style={styles.emptyContainer}>
         <ThemedText type="h3" style={{ marginBottom: Spacing.sm }}>
-          Welcome to ZEKE
+          Welcome to Atlas
         </ThemedText>
         <ThemedText type="body" secondary style={{ textAlign: "center" }}>
           Ask me about your schedule, tasks, or anything I can help with.
@@ -453,7 +453,7 @@ export default function ChatScreen() {
             style={[styles.input, { color: theme.text }]}
             value={inputText}
             onChangeText={setInputText}
-            placeholder="Ask ZEKE anything..."
+            placeholder="Ask Atlas anything..."
             placeholderTextColor={theme.textSecondary}
             multiline
             maxLength={1000}

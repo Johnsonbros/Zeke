@@ -20,7 +20,7 @@ export function ZekeSubHeader({ title }: ZekeSubHeaderProps) {
       />
       <View style={styles.textContainer}>
         <ThemedText style={[styles.zekeText, { color: Gradients.primary[0] }]}>
-          ZEKE
+          Atlas
         </ThemedText>
         <View
           style={[styles.separator, { backgroundColor: theme.border }]}

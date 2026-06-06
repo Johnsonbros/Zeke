@@ -426,7 +426,7 @@ export default function GroceryScreen() {
             description={
               filter === "unpurchased"
                 ? "All items have been purchased! Switch to 'All' to see your complete list."
-                : "Add items to your grocery list. Items sync with your ZEKE account."
+                : "Add items to your grocery list. Items sync with your Atlas account."
             }
           />
         </View>

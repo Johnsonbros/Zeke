@@ -252,7 +252,7 @@ export default function SettingsScreen() {
             });
             
             if (!sendRes.ok) {
-              console.warn("Failed to send to ZEKE, will retry later");
+              console.warn("Failed to send to Atlas, will retry later");
             }
             
             resolve();
@@ -338,7 +338,7 @@ export default function SettingsScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert(
           "Profile Updated",
-          "Your selfie has been saved and will be sent to ZEKE for your aging documentation project."
+          "Your selfie has been saved and will be sent to Atlas for your aging documentation project."
         );
       }
     } catch (error) {
@@ -386,7 +386,7 @@ export default function SettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     Alert.alert(
       "Unpair Device",
-      "This will disconnect this device from ZEKE. You will need to enter the pairing secret again to reconnect.",
+      "This will disconnect this device from Atlas. You will need to enter the pairing secret again to reconnect.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -403,7 +403,7 @@ export default function SettingsScreen() {
   const handleAbout = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Alert.alert(
-      "ZEKE AI Companion",
+      "Atlas AI Companion",
       "Version 1.0.0\n\nA companion dashboard for your AI wearables.\n\nBuilt with Expo.",
       [{ text: "OK" }],
     );
@@ -426,7 +426,7 @@ export default function SettingsScreen() {
     if (!calendarConnection?.authUrl) {
       Alert.alert(
         "Connection Not Available",
-        "Google Calendar connection is not available in this environment. Please connect via the ZEKE web portal.",
+        "Google Calendar connection is not available in this environment. Please connect via the Atlas web portal.",
         [{ text: "OK" }],
       );
       return;
@@ -768,7 +768,7 @@ export default function SettingsScreen() {
         <View style={{ borderRadius: BorderRadius.md, overflow: "hidden" }}>
           <SettingsRow
             icon="info"
-            label="About ZEKE AI"
+            label="About Atlas AI"
             onPress={handleAbout}
           />
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
@@ -811,7 +811,7 @@ export default function SettingsScreen() {
       </SettingsSection>
 
       <ThemedText type="caption" secondary style={styles.version}>
-        ZEKE AI Companion v1.0.0
+        Atlas AI Companion v1.0.0
       </ThemedText>
     </ScrollView>
   );

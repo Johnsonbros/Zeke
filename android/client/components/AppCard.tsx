@@ -174,7 +174,7 @@ export function AppCard({
       accessible
       accessibilityRole="button"
       accessibilityLabel={`${title} app. ${liveData?.primary || ""}`}
-      accessibilityHint={isZekeActive ? "ZEKE is currently active here" : undefined}
+      accessibilityHint={isZekeActive ? "Atlas is currently active here" : undefined}
     >
       <Animated.View
         style={[

@@ -343,7 +343,7 @@ function TriggerButton({
           accessibilityHint={
             isDraggable
               ? "Long press and drag to reposition the launcher handle"
-              : "Opens the ZEKE quick launcher"
+              : "Opens the Atlas quick launcher"
           }
           accessibilityState={{ expanded: isOpen }}
           style={[
@@ -1023,7 +1023,7 @@ export function ZekeLauncher({ items, skinId = "default" }: ZekeLauncherProps) {
                 </View>
                 <View style={styles.menuHeaderTextBlock}>
                   <ThemedText type="small" style={styles.menuHeaderTitle}>
-                    ZEKE menu
+                    Atlas menu
                   </ThemedText>
                   <ThemedText type="caption" style={styles.menuHeaderSubtitle} numberOfLines={1}>
                     {isEditMode ? "Drag icons to reorder" : "Tap to launch. Long-press to edit."}

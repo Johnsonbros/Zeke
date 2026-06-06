@@ -841,7 +841,7 @@ export default function LocationScreen() {
               secondary
               style={{ marginTop: Spacing.xs, textAlign: "center" }}
             >
-              Allow ZEKE to access your location for tracking features.
+              Allow Atlas to access your location for tracking features.
             </ThemedText>
             <Pressable
               onPress={requestPermission}
@@ -875,8 +875,8 @@ export default function LocationScreen() {
             secondary
             style={{ marginLeft: Spacing.sm, flex: 1 }}
           >
-            ZEKE uses GPS for accurate location tracking. Your location data is
-            stored locally and synced with your ZEKE account.
+            Atlas uses GPS for accurate location tracking. Your location data is
+            stored locally and synced with your Atlas account.
           </ThemedText>
         </View>
       </View>
@@ -912,7 +912,7 @@ export default function LocationScreen() {
             secondary
             style={{ marginTop: Spacing.xs, textAlign: "center" }}
           >
-            Your location history will appear here as ZEKE tracks your
+            Your location history will appear here as Atlas tracks your
             movements.
           </ThemedText>
         </View>
@@ -1621,7 +1621,7 @@ export default function LocationScreen() {
                   secondary
                   style={{ marginBottom: Spacing.sm }}
                 >
-                  When you arrive or leave home, ZEKE can:
+                  When you arrive or leave home, Atlas can:
                 </ThemedText>
                 <View style={styles.automationItem}>
                   <Feather

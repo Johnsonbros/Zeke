@@ -482,7 +482,7 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* ZEKE Alert Notifications Stack */}
+        {/* Atlas Alert Notifications Stack */}
         {isSyncMode && zekeAlerts.length > 0 ? (
           <ZekeAlertStack
             alerts={zekeAlerts}
@@ -503,7 +503,7 @@ export default function HomeScreen() {
                 : ""}
             </GradientText>
             <ThemedText type="body" secondary style={{ marginTop: Spacing.xs }}>
-              ZEKE Command Center
+              Atlas Command Center
             </ThemedText>
           </View>
 
@@ -660,7 +660,7 @@ export default function HomeScreen() {
                   secondary
                   style={{ marginTop: Spacing.xs }}
                 >
-                  Tap to allow ZEKE to track your location
+                  Tap to allow Atlas to track your location
                 </ThemedText>
               </>
             )}
@@ -1137,7 +1137,7 @@ export default function HomeScreen() {
             </View>
             <View style={styles.uploadContent}>
               <ThemedText type="body" style={styles.uploadTitle}>
-                Upload to ZEKE
+                Upload to Atlas
               </ThemedText>
               <ThemedText type="small" style={styles.uploadSubtitle}>
                 Upload any file to process and store

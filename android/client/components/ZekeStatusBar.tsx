@@ -113,8 +113,8 @@ export function ZekeStatusBar({
       ]}
       accessible
       accessibilityRole="button"
-      accessibilityLabel={`ZEKE status: ${currentAction}`}
-      accessibilityHint="Tap to see ZEKE's activity details"
+      accessibilityLabel={`Atlas status: ${currentAction}`}
+      accessibilityHint="Tap to see Atlas's activity details"
     >
       {Platform.OS === "ios" ? (
         <BlurView
@@ -181,7 +181,7 @@ function StatusBarContent({
 
         <View style={styles.textSection}>
           <ThemedText type="caption" style={styles.label}>
-            ZEKE
+            Atlas
           </ThemedText>
           <ThemedText
             type="small"

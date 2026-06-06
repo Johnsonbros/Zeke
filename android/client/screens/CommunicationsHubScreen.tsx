@@ -347,14 +347,14 @@ function ChatPlaceholder({ onStartChat }: ChatPlaceholderProps) {
         type="h3"
         style={{ marginTop: Spacing.xl, marginBottom: Spacing.sm }}
       >
-        Chat with ZEKE
+        Chat with Atlas
       </ThemedText>
       <ThemedText
         type="body"
         secondary
         style={{ textAlign: "center", paddingHorizontal: Spacing.xl }}
       >
-        Direct connection with ZEKE. Ask about your schedule, tasks, or get help
+        Direct connection with Atlas. Ask about your schedule, tasks, or get help
         with daily activities.
       </ThemedText>
       <Pressable
@@ -968,7 +968,7 @@ export default function CommunicationsHubScreen() {
             onPress={() => handleTabPress("voice")}
           />
           <TabButton
-            label="ZEKE"
+            label="Atlas"
             isActive={activeTab === "chat"}
             onPress={() => handleTabPress("chat")}
           />

@@ -69,7 +69,7 @@ export default function DataRetentionScreen() {
       showsVerticalScrollIndicator={false}
     >
       <ThemedText type="body" secondary style={styles.description}>
-        Choose how long ZEKE keeps your conversation history and memories. 
+        Choose how long Atlas keeps your conversation history and memories. 
         Select "Forever" to store your data indefinitely.
       </ThemedText>
 

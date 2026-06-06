@@ -160,7 +160,7 @@ function ZekeServicesHubWrapper({ navigation }: ZekeServicesHubWrapperProps) {
     },
     {
       id: "chat",
-      title: "ZEKE Chat",
+      title: "Atlas Chat",
       icon: "message-circle",
       gradientColors: ["#06B6D4", "#0891B2"],
       liveData: {

@@ -187,7 +187,7 @@ export default function BluetoothConnectionScreen() {
         `Connect to ${displayName}?`,
         isMockMode
           ? "This is a simulated connection. In a production build with BLE support, the device would pair here."
-          : "ZEKE will pair with this device.",
+          : "Atlas will pair with this device.",
         [
           { text: "Cancel", style: "cancel" },
           {

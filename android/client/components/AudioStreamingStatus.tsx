@@ -260,7 +260,7 @@ export function AudioStreamingStatus({ isVisible = true, compact = false }: Audi
             <ThemedText type="caption" style={{ 
               color: metrics.transcriptionsReceived > 0 ? Colors.dark.success : theme.textSecondary 
             }}>
-              ZEKE
+              Atlas
             </ThemedText>
           </View>
         </View>

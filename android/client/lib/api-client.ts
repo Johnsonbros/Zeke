@@ -157,12 +157,18 @@ async function parseResponseBody<T>(response: Response): Promise<T> {
  * - /api/calendar/*, /api/twilio/* → Local proxy (integration endpoints)
  */
 function getBaseUrl(endpoint: string): { baseUrl: string; rewrittenPath: string } {
-  // ALL /api/zeke/* routes go through local proxy (which forwards to ZEKE backend)
-  // This includes auth endpoints - mobile devices can't reach external backend directly
+  // Self-hosted backend: the app talks directly to the main ZEKE backend (no proxy).
+  // The backend serves calendar + websocket status under /api/zeke/*, but all other
+  // data routes live under /api/* — so strip the /zeke segment for those.
   if (endpoint.startsWith("/api/zeke/")) {
+    const keepZekePrefix =
+      endpoint.startsWith("/api/zeke/calendar") ||
+      endpoint.startsWith("/api/zeke/ws");
     return {
       baseUrl: getLocalApiUrl(),
-      rewrittenPath: endpoint
+      rewrittenPath: keepZekePrefix
+        ? endpoint
+        : endpoint.replace("/api/zeke/", "/api/"),
     };
   }
 

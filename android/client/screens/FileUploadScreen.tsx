@@ -277,7 +277,7 @@ export default function FileUploadScreen() {
       const uploadResult = await response.json();
       setUploadProgress(70);
 
-      // Send directly to ZEKE backend for processing
+      // Send directly to Atlas backend for processing
       try {
         await sendToZekeMutation.mutateAsync(uploadResult.id);
         setUploadProgress(100);
@@ -286,7 +286,7 @@ export default function FileUploadScreen() {
 
         Alert.alert(
           "Success",
-          `Your ${selectedFile.fileType} has been sent to ZEKE for processing!`,
+          `Your ${selectedFile.fileType} has been sent to Atlas for processing!`,
           [
             {
               text: "OK",
@@ -299,13 +299,13 @@ export default function FileUploadScreen() {
           ]
         );
       } catch (zekerror) {
-        // File uploaded but ZEKE forward failed - user can retry from library
-        console.error("ZEKE forward error:", zekerror);
+        // File uploaded but Atlas forward failed - user can retry from library
+        console.error("Atlas forward error:", zekerror);
         setUploadProgress(100);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         Alert.alert(
           "File Saved",
-          "Your file was saved but couldn't be sent to ZEKE right now. You can retry from your file library.",
+          "Your file was saved but couldn't be sent to Atlas right now. You can retry from your file library.",
           [
             {
               text: "OK",
@@ -358,9 +358,9 @@ export default function FileUploadScreen() {
     try {
       await sendToZekeMutation.mutateAsync(upload.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Success", "Content sent to ZEKE for processing!");
+      Alert.alert("Success", "Content sent to Atlas for processing!");
     } catch {
-      Alert.alert("Error", "Failed to send to ZEKE");
+      Alert.alert("Error", "Failed to send to Atlas");
     }
   };
 
@@ -481,10 +481,10 @@ export default function FileUploadScreen() {
           <Feather name="upload-cloud" size={48} color="#FFFFFF" />
         </LinearGradient>
         <ThemedText type="h2" style={styles.title}>
-          Upload to ZEKE
+          Upload to Atlas
         </ThemedText>
         <ThemedText type="body" secondary style={styles.subtitle}>
-          Upload any file to process, tag, and send to ZEKE
+          Upload any file to process, tag, and send to Atlas
         </ThemedText>
       </View>
 
@@ -641,7 +641,7 @@ export default function FileUploadScreen() {
 
       <View style={styles.tipsSection}>
         <ThemedText type="h4" style={styles.tipsTitle}>
-          What ZEKE Can Process
+          What Atlas Can Process
         </ThemedText>
         <View style={styles.tipItem}>
           <Feather name="music" size={16} color={Colors.dark.primary} />

@@ -209,7 +209,7 @@ export function ZekeCube({ actions, onZekePress }: ZekeCubeProps) {
                     <Feather name="zap" size={isExpanded ? 32 : 18} color="#FFFFFF" />
                   </View>
                   {isExpanded ? (
-                    <ThemedText style={styles.zekeLabel}>ZEKE</ThemedText>
+                    <ThemedText style={styles.zekeLabel}>Atlas</ThemedText>
                   ) : null}
                 </Pressable>
               ) : (

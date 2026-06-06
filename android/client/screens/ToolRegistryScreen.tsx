@@ -28,7 +28,7 @@ export default function ToolRegistryScreen() {
           Tools & Actions
         </ThemedText>
         <ThemedText type="body" secondary style={{ marginTop: Spacing.xs }}>
-          ZEKE pulls your available tools straight from the backend registry so new
+          Atlas pulls your available tools straight from the backend registry so new
           capabilities appear instantly without redeploying the app.
         </ThemedText>
       </View>

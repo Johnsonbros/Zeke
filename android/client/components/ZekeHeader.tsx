@@ -32,7 +32,7 @@ export function ZekeHeaderTitle() {
 
   return (
     <HeaderTitle 
-      title="ZEKE" 
+      title="Atlas" 
       isOnline={isOnline} 
       isActive={isActive}
       currentAction={currentAction}

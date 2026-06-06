@@ -226,7 +226,7 @@ export default function NotificationSettingsScreen() {
         <View style={{ borderRadius: BorderRadius.md, overflow: "hidden" }}>
           <SettingsRow
             icon="message-circle"
-            label="ZEKE AI Responses"
+            label="Atlas AI Responses"
             isToggle
             toggleValue={settings.aiResponses}
             onToggle={(v) => updateSetting("aiResponses", v)}

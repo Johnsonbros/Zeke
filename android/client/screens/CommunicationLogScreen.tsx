@@ -347,7 +347,7 @@ export default function CommunicationLogScreen() {
         id: `app-${conv.id}`,
         conversationId: conv.id,
         type: "app",
-        title: conv.title || "Chat with ZEKE",
+        title: conv.title || "Chat with Atlas",
         timestamp: conv.updatedAt,
       });
     });

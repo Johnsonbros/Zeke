@@ -2,24 +2,24 @@ module.exports = ({ config }) => {
   const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   const expoConfig = {
-    name: "ZEKE AI",
+    name: "Atlas",
     slug: "zeke-ai",
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/images/icon.png",
-    scheme: "zekeai",
+    scheme: "atlas",
     userInterfaceStyle: "dark",
     newArchEnabled: true,
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.zekeai.companion",
       infoPlist: {
-        NSBluetoothAlwaysUsageDescription: "ZEKE AI uses Bluetooth to connect to your Limitless pendant and Omi wearable for real-time audio transcription.",
-        NSBluetoothPeripheralUsageDescription: "ZEKE AI uses Bluetooth to connect to your Limitless pendant and Omi wearable.",
-        NSLocationWhenInUseUsageDescription: "ZEKE AI uses your location to save places you want to remember and provide location-based reminders.",
-        NSLocationAlwaysAndWhenInUseUsageDescription: "ZEKE AI uses your location in the background to provide location-based reminders when you arrive at saved places.",
-        NSContactsUsageDescription: "ZEKE AI can access your contacts to help you remember important information about people in your life.",
-        NSUserNotificationUsageDescription: "ZEKE AI sends notifications to remind you about important information, location-based alerts, and updates from your AI companion."
+        NSBluetoothAlwaysUsageDescription: "Atlas uses Bluetooth to connect to your Limitless pendant and Omi wearable for real-time audio transcription.",
+        NSBluetoothPeripheralUsageDescription: "Atlas uses Bluetooth to connect to your Limitless pendant and Omi wearable.",
+        NSLocationWhenInUseUsageDescription: "Atlas uses your location to save places you want to remember and provide location-based reminders.",
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Atlas uses your location in the background to provide location-based reminders when you arrive at saved places.",
+        NSContactsUsageDescription: "Atlas can access your contacts to help you remember important information about people in your life.",
+        NSUserNotificationUsageDescription: "Atlas sends notifications to remind you about important information, location-based alerts, and updates from your AI companion."
       }
     },
     android: {
@@ -72,7 +72,7 @@ module.exports = ({ config }) => {
         {
           isBackgroundEnabled: false,
           modes: ["peripheral", "central"],
-          bluetoothAlwaysPermission: "Allow ZEKE AI to use Bluetooth to connect to your Limitless pendant and Omi wearable"
+          bluetoothAlwaysPermission: "Allow Atlas to use Bluetooth to connect to your Limitless pendant and Omi wearable"
         }
       ]
     ],
@@ -84,8 +84,9 @@ module.exports = ({ config }) => {
         projectId: "fd634d5b-ef00-4215-a63a-1c962f8f4015"
       },
       // For production Android/iOS builds, set EXPO_PUBLIC_DOMAIN at build time
-      // This bakes the deployed server URL into the app bundle for offline URL resolution
-      localApiDomain: process.env.EXPO_PUBLIC_DOMAIN || process.env.REPLIT_INTERNAL_APP_DOMAIN || "https://zekeai.replit.app"
+      // This bakes the deployed server URL into the app bundle for offline URL resolution.
+      // Default points at the self-hosted backend over Tailscale (tailnet-only HTTPS).
+      localApiDomain: process.env.EXPO_PUBLIC_DOMAIN || "https://aisync.tail5b81a2.ts.net:17443"
     },
     runtimeVersion: "1.0.0",
     updates: {

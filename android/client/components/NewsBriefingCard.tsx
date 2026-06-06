@@ -235,13 +235,13 @@ export function NewsBriefingCard({
         <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.feedbackConfirm}>
           <Feather name="check-circle" size={16} color={Colors.dark.primary} />
           <ThemedText type="small" style={{ color: Colors.dark.primary }}>
-            Feedback sent to ZEKE
+            Feedback sent to Atlas
           </ThemedText>
         </Animated.View>
       ) : (
         <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.reasonContainer}>
           <ThemedText type="small" secondary style={styles.reasonLabel}>
-            Tell ZEKE why:
+            Tell Atlas why:
           </ThemedText>
           <TextInput
             style={[styles.reasonInput, { backgroundColor: theme.backgroundSecondary, color: theme.text }]}
