@@ -1525,6 +1525,25 @@ export async function createDeviceToken(data: { token: string; platform: string;
   return result;
 }
 
+// Atlas secret-pair: correct insert matching the real device_tokens schema
+// (id integer PK, token, device_id, device_name, created_at, last_used_at).
+export async function createPairedDeviceToken(token: string, deviceId: string, deviceName: string): Promise<typeof schema.deviceTokens.$inferSelect> {
+  const now = getNow();
+  const [{ maxId }] = await db
+    .select({ maxId: sql<number>`COALESCE(MAX(${schema.deviceTokens.id}), 0)` })
+    .from(schema.deviceTokens);
+  const id = Number(maxId) + 1;
+  const [result] = await db.insert(schema.deviceTokens).values({
+    id,
+    token,
+    deviceId,
+    deviceName,
+    createdAt: now,
+    lastUsedAt: now,
+  }).returning();
+  return result;
+}
+
 export async function updateDeviceToken(id: string, data: Partial<typeof schema.deviceTokens.$inferInsert>): Promise<typeof schema.deviceTokens.$inferSelect | undefined> {
   const [result] = await db.update(schema.deviceTokens)
     .set({ ...data, updatedAt: getNow() })

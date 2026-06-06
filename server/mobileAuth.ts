@@ -284,7 +284,7 @@ export function shouldProtectRoute(path: string): boolean {
 }
 
 // Validate device token from X-ZEKE-Device-Token header
-export function validateDeviceToken(req: Request, res: Response, next: NextFunction): void {
+export async function validateDeviceToken(req: Request, res: Response, next: NextFunction): Promise<void> {
   const startTime = Date.now();
   const deviceToken = req.headers['x-zeke-device-token'] as string | undefined;
   const requestId = (req.headers['x-zeke-request-id'] as string) || `req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -313,7 +313,7 @@ export function validateDeviceToken(req: Request, res: Response, next: NextFunct
   }
 
   try {
-    const device = getDeviceTokenByToken(deviceToken);
+    const device = await getDeviceTokenByToken(deviceToken);
     if (!device) {
       const latencyMs = Date.now() - startTime;
       console.log(`[DEVICE TOKEN AUTH] === REJECTED: Invalid Token ===`);
@@ -337,7 +337,7 @@ export function validateDeviceToken(req: Request, res: Response, next: NextFunct
     }
 
     // Update last used timestamp
-    updateDeviceTokenLastUsed(deviceToken);
+    await updateDeviceTokenLastUsed(deviceToken);
 
     const latencyMs = Date.now() - startTime;
     addAuditEntry({

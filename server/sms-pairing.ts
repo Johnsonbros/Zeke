@@ -18,7 +18,7 @@ import {
   countPendingPairingCodes,
   countPairingCodesForDevice,
   deleteOldestPairingCodeForDevice,
-  createDeviceToken
+  createPairedDeviceToken
 } from './db';
 import { 
   smsCodeRequestSchema, 
@@ -196,7 +196,7 @@ export function registerSmsPairingEndpoints(app: Express): void {
       const deviceId = generateDeviceId();
       
       // Create device token in database
-      createDeviceToken(deviceToken, deviceId, pairingCode.deviceName);
+      await createPairedDeviceToken(deviceToken, deviceId, pairingCode.deviceName);
       
       // Delete the used pairing code
       deletePairingCode(sessionId);

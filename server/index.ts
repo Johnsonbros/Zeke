@@ -60,6 +60,21 @@ app.use(
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
+// Atlas: the installed app's generated OpenAPI client calls literal /api/zeke/* paths
+// directly against this backend (there is no local proxy in a production build). Translate
+// /api/zeke/<X> -> /api/<X> here, before routing/auth, so the existing /api/* handlers serve
+// them. Exclude the few paths the backend genuinely serves under /api/zeke (ws status, calendar).
+app.use((req, _res, next) => {
+  if (
+    req.url.startsWith("/api/zeke/") &&
+    !req.url.startsWith("/api/zeke/ws") &&
+    !req.url.startsWith("/api/zeke/calendar")
+  ) {
+    req.url = "/api" + req.url.slice("/api/zeke".length);
+  }
+  next();
+});
+
 // Health and readiness endpoints (no auth, no logging, crash-resistant)
 app.get("/healthz", (_req, res) => {
   try {

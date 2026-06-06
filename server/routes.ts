@@ -14,7 +14,8 @@ import os from "os";
 import type { VoiceActivityDetector } from "./stt";
 import { createSttSession, endSttSession, createSttSegment, getSttSession } from "./db";
 import { createRealtimeService } from "./realtimeMessaging";
-import { getDeviceTokenByToken } from "./db";
+import { getDeviceTokenByToken, createPairedDeviceToken, updateDeviceTokenLastUsed } from "./db";
+import crypto from "node:crypto";
 import { 
   createDevice as createDeviceInDb,
   getDevice as getDeviceFromDb,
@@ -33,7 +34,7 @@ import {
   deleteVoiceSample as deleteVoiceSampleFromDb,
 } from "./db";
 import type { TranscriptSegmentEvent } from "@shared/schema";
-import { createMobileAuthMiddleware, registerSecurityLogsEndpoint, validateDeviceToken } from "./mobileAuth";
+import { createMobileAuthMiddleware, registerSecurityLogsEndpoint, validateDeviceToken, generateDeviceToken, generateDeviceId } from "./mobileAuth";
 import { registerSmsPairingEndpoints } from "./sms-pairing";
 import { registerWebAuthEndpoints } from "./web-auth";
 import { registerApplicationEndpoints } from "./applications";
@@ -851,11 +852,49 @@ export async function registerRoutes(
   app.use(createMobileAuthMiddleware());
   registerSecurityLogsEndpoint(app);
   
-  // Register device pairing endpoints for mobile companion app authentication
-  // DEPRECATED: Legacy secret-based pairing - scheduled for removal in next version
-  // The Android app now uses SMS-based pairing via registerSmsPairingEndpoints()
-  // Legacy endpoints: /api/auth/pair, /api/auth/verify (uses ZEKE_SHARED_SECRET)
-  // SMS-based pairing (primary authentication method for mobile app)
+  // --- Atlas secret-based device pairing (re-enabled 2026-06-06) ---
+  // The app's "Have a pairing secret?" flow POSTs here. (Its generated client uses the
+  // literal path /api/zeke/auth/pair, which the middleware in index.ts rewrites to
+  // /api/auth/pair.) Unprotected by mobileAuth (not in PROTECTED_ROUTE_PATTERNS); the
+  // handler validates the shared secret itself, then mints a device token the app stores
+  // and sends back as X-ZEKE-Device-Token on every later request.
+  app.post("/api/auth/pair", async (req, res) => {
+    try {
+      const configured = process.env.ZEKE_PAIRING_SECRET;
+      if (!configured) return res.status(503).json({ error: "Pairing not configured" });
+      const { secret, deviceName } = req.body || {};
+      if (!secret || !deviceName) {
+        return res.status(400).json({ error: "secret and deviceName are required" });
+      }
+      const a = Buffer.from(String(secret));
+      const b = Buffer.from(configured);
+      const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
+      if (!ok) return res.status(401).json({ error: "Invalid pairing secret" });
+      const deviceToken = generateDeviceToken();
+      const deviceId = generateDeviceId();
+      await createPairedDeviceToken(deviceToken, deviceId, String(deviceName));
+      return res.status(200).json({ deviceToken, deviceId, message: "Device paired successfully" });
+    } catch (err) {
+      console.error("[PAIR] Failed to pair device:", err);
+      return res.status(500).json({ error: "Failed to pair device" });
+    }
+  });
+
+  // Verify a stored device token on app startup (app calls /api/zeke/auth/verify -> rewritten).
+  app.get("/api/auth/verify", async (req, res) => {
+    try {
+      const token = req.headers["x-zeke-device-token"] as string | undefined;
+      if (!token) return res.status(401).json({ valid: false });
+      const device = await getDeviceTokenByToken(token);
+      if (!device) return res.status(401).json({ valid: false });
+      await updateDeviceTokenLastUsed(token);
+      return res.json({ valid: true, deviceId: device.deviceId, deviceName: device.deviceName });
+    } catch {
+      return res.status(500).json({ valid: false });
+    }
+  });
+
+  // SMS-based pairing (alternative path; requires MASTER_ADMIN_PHONE + Twilio)
   registerSmsPairingEndpoints(app);
   
   // Register web authentication and application endpoints
