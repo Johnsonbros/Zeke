@@ -137,11 +137,21 @@ export default function App() {
       },
     });
     
+    // Watchdog: never gate the UI on origin discovery for more than 4s. A native call
+    // in the discovery chain (e.g. Linking.getInitialURL behind the lock screen) can
+    // stall, and since we render null until isProxyReady, that would leave the app on a
+    // blank screen indefinitely. getLocalApiUrl() falls back to the build-time
+    // localApiDomain synchronously, so rendering before discovery finishes is safe.
+    const readyWatchdog = setTimeout(() => {
+      console.warn("[config] Proxy init watchdog fired (4s) - rendering app with fallback origin");
+      setIsProxyReady(true);
+    }, 4000);
+
     initializeProxyOrigin()
       .then(() => {
         const apiUrl = getApiUrl();
         const localApiUrl = getLocalApiUrl();
-        
+
         console.log("[config] ========== BOOT-TIME CONFIG ==========");
         console.log(`[config] Platform: ${Platform.OS}`);
         console.log(`[config] Environment: ${__DEV__ ? "development" : "production"}`);
@@ -152,10 +162,12 @@ export default function App() {
         console.log("[config] ======================================");
       })
       .finally(() => {
+        clearTimeout(readyWatchdog);
         setIsProxyReady(true);
       });
 
     return () => {
+      clearTimeout(readyWatchdog);
       ConnectivityService.cleanup();
     };
   }, []);

@@ -76,6 +76,22 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Respons
 }
 
 /**
+ * Linking.getInitialURL() can hang indefinitely on Android when the app cold-starts
+ * behind the lock screen: MainActivity is created but paused by the keyguard, so the
+ * native Linking bridge never resolves. An unbounded await on it stalls the entire
+ * backend-origin resolution (getCandidateOrigins -> initializeProxyOrigin), and since
+ * App.tsx renders null until that resolves, the app shows a blank screen forever
+ * ("doesn't stay open"). Bound it so startup always falls through to the build-time
+ * localApiDomain candidate.
+ */
+async function getInitialUrlWithTimeout(timeoutMs: number): Promise<string | null> {
+  return Promise.race([
+    Linking.getInitialURL().catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+  ]);
+}
+
+/**
  * Extract host from an Expo deep link URL
  * Handles formats like: exps://domain/manifest, exp://domain/manifest
  */
@@ -202,9 +218,10 @@ async function getCandidateOrigins(): Promise<string[]> {
   }
   
   // Candidate 4: Deep link URL (for published apps)
+  // Bounded: getInitialURL() can hang behind the lock screen (see helper above).
   try {
-    const initialUrl = await Linking.getInitialURL();
-    console.log(`[config] Initial URL: ${initialUrl || 'null'}`);
+    const initialUrl = await getInitialUrlWithTimeout(1500);
+    console.log(`[config] Initial URL: ${initialUrl || 'null (or timed out)'}`);
     if (initialUrl) {
       const origin = extractHostFromDeepLink(initialUrl);
       console.log(`[config] Extracted origin from deep link: ${origin || 'null (filtered/local)'}`);
