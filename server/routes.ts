@@ -880,8 +880,11 @@ export async function registerRoutes(
     }
   });
 
-  // Verify a stored device token on app startup (app calls /api/zeke/auth/verify -> rewritten).
-  app.get("/api/auth/verify", async (req, res) => {
+  // Verify a stored device token on app startup. The app's AuthContext calls
+  // GET /api/auth/verify-device (literal path, no /api/zeke prefix); /api/auth/verify
+  // is the equivalent endpoint reached via the /api/zeke/* rewrite. Both share one
+  // handler. Returns { valid, deviceId, deviceName }; 401 when the token is unknown.
+  app.get(["/api/auth/verify-device", "/api/auth/verify"], async (req, res) => {
     try {
       const token = req.headers["x-zeke-device-token"] as string | undefined;
       if (!token) return res.status(401).json({ valid: false });

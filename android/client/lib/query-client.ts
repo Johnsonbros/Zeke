@@ -25,6 +25,15 @@ export function getAuthHeaders(): Record<string, string> {
   return headers;
 }
 
+/**
+ * EXPO_PUBLIC_DOMAIN can be baked in as either a bare host (dev) or a full URL
+ * (the production build bakes the tailnet https URL). Normalize so we never emit
+ * https://https://... candidates, which fail verification and waste a fetch.
+ */
+function ensureHttps(domain: string): string {
+  return /^https?:\/\//.test(domain) ? domain : `https://${domain}`;
+}
+
 async function loadPersistedProxyOrigin(): Promise<string | null> {
   try {
     const stored = await AsyncStorage.getItem(PROXY_ORIGIN_STORAGE_KEY);
@@ -167,9 +176,9 @@ async function getCandidateOrigins(): Promise<string[]> {
     // Candidate 1: Env var with :5000 (most likely correct in dev)
     const envDomain = process.env.EXPO_PUBLIC_DOMAIN;
     if (envDomain) {
-      candidates.push(`https://${envDomain}`);
+      candidates.push(ensureHttps(envDomain));
     }
-    
+
     // Candidate 2: window.location with port 5000 (for local dev)
     const host = window.location.hostname;
     const protocol = window.location.protocol;
@@ -247,7 +256,7 @@ async function getCandidateOrigins(): Promise<string[]> {
   const envDomain = process.env.EXPO_PUBLIC_DOMAIN;
   console.log(`[config] EXPO_PUBLIC_DOMAIN env: ${envDomain || 'null'}`);
   if (envDomain) {
-    const url = `https://${envDomain}`;
+    const url = ensureHttps(envDomain);
     if (!candidates.includes(url)) {
       candidates.push(url);
     }
@@ -353,7 +362,7 @@ export function getLocalApiUrl(): string {
   if (Platform.OS === 'web' && typeof window !== "undefined" && window.location) {
     const envDomain = process.env.EXPO_PUBLIC_DOMAIN;
     if (envDomain) {
-      return `https://${envDomain}`;
+      return ensureHttps(envDomain);
     }
     const host = window.location.hostname;
     const protocol = window.location.protocol;
@@ -371,7 +380,7 @@ export function getLocalApiUrl(): string {
   // Priority 4: Try env var (dev mode)
   const envDomain = process.env.EXPO_PUBLIC_DOMAIN;
   if (envDomain) {
-    return `https://${envDomain}`;
+    return ensureHttps(envDomain);
   }
   
   // CRITICAL: No local domain available - proxy routes will fail
