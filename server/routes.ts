@@ -7971,11 +7971,26 @@ When you learn something new, note it with [LEARNED: category - key insight] at 
   // ==================== CALENDAR API ====================
   
   // Get list of all calendars (for toggle UI)
+  // When Google Calendar isn't wired up on this (self-hosted) backend, the Replit
+  // connector throws "X_REPLIT_TOKEN not found". For read endpoints, degrade to an
+  // empty result with 200 instead of a 500 so the mobile app shows "no events"
+  // rather than an error on the Home screen.
+  const calendarUnconfigured = (error: any): boolean => {
+    const m = String(error?.message || error || "");
+    return (
+      m.includes("X_REPLIT_TOKEN") ||
+      m.includes("REPLIT_CONNECTORS") ||
+      m.includes("not connected") ||
+      m.includes("not configured")
+    );
+  };
+
   app.get("/api/calendar/list", async (_req, res) => {
     try {
       const calendars = await listCalendars();
       res.json(calendars);
     } catch (error: any) {
+      if (calendarUnconfigured(error)) return res.json([]);
       console.error("Calendar list error:", error);
       res.status(500).json({ error: error.message || "Failed to fetch calendars" });
     }
@@ -8003,17 +8018,19 @@ When you learn something new, note it with [LEARNED: category - key insight] at 
       
       res.json(result);
     } catch (error: any) {
+      if (calendarUnconfigured(error)) return res.json({ events: [], failedCalendars: [] });
       console.error("Calendar fetch error:", error);
       res.status(500).json({ error: error.message || "Failed to fetch calendar events" });
     }
   });
-  
+
   // Get today's events
   app.get("/api/calendar/today", async (req, res) => {
     try {
       const events = await getTodaysEvents();
       res.json(events);
     } catch (error: any) {
+      if (calendarUnconfigured(error)) return res.json([]);
       console.error("Calendar today fetch error:", error);
       res.status(500).json({ error: error.message || "Failed to fetch today's events" });
     }
@@ -8094,39 +8111,34 @@ When you learn something new, note it with [LEARNED: category - key insight] at 
     });
   }
   
-  // Get today's events from ZEKE backend
+  // Get today's events from ZEKE backend.
+  // The legacy "ZEKE backend" (Replit) is gone; on the self-hosted deployment this
+  // proxy target is dead, so degrade to an empty list (200) instead of surfacing a
+  // 502 / upstream error on the app's Home screen.
   app.get("/api/zeke/calendar/today", async (_req, res) => {
     try {
       const response = await proxyToZekeBackend("/api/calendar/today");
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        return res.status(response.status).json(errorData);
-      }
+      if (!response.ok) return res.json([]);
       const data = await response.json();
       res.json(data);
     } catch (error: any) {
-      console.error("ZEKE calendar today proxy error:", error);
-      res.status(502).json({ error: "Failed to fetch today's events from ZEKE backend" });
+      return res.json([]);
     }
   });
-  
+
   // Get upcoming events from ZEKE backend
   app.get("/api/zeke/calendar/upcoming", async (req, res) => {
     try {
       const days = req.query.days || "7";
       const response = await proxyToZekeBackend(`/api/calendar/events?days=${days}`);
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        return res.status(response.status).json(errorData);
-      }
+      if (!response.ok) return res.json({ events: [], failedCalendars: [] });
       const data = await response.json();
       res.json(data);
     } catch (error: any) {
-      console.error("ZEKE calendar upcoming proxy error:", error);
-      res.status(502).json({ error: "Failed to fetch upcoming events from ZEKE backend" });
+      return res.json({ events: [], failedCalendars: [] });
     }
   });
-  
+
   // Get events by date range from ZEKE backend
   app.get("/api/zeke/calendar/events", async (req, res) => {
     try {
@@ -8135,17 +8147,13 @@ When you learn something new, note it with [LEARNED: category - key insight] at 
       if (req.query.end) queryParams.set('end', req.query.end as string);
       if (req.query.days) queryParams.set('days', req.query.days as string);
       if (req.query.calendars) queryParams.set('calendars', req.query.calendars as string);
-      
+
       const response = await proxyToZekeBackend(`/api/calendar/events?${queryParams.toString()}`);
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        return res.status(response.status).json(errorData);
-      }
+      if (!response.ok) return res.json({ events: [], failedCalendars: [] });
       const data = await response.json();
       res.json(data);
     } catch (error: any) {
-      console.error("ZEKE calendar events proxy error:", error);
-      res.status(502).json({ error: "Failed to fetch events from ZEKE backend" });
+      return res.json({ events: [], failedCalendars: [] });
     }
   });
   
