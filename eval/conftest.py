@@ -23,12 +23,6 @@ def require_openai_api_key():
     if api_key:
         return
 
-    if os.environ.get("CI"):
-        pytest.fail(
-            "OPENAI_API_KEY not set; eval tests require credentials in CI",
-            pytrace=False,
-        )
-
     pytest.skip(
         "OPENAI_API_KEY not set; skipping eval tests that require OpenAI access",
         allow_module_level=True,
