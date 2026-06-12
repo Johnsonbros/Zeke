@@ -23,10 +23,18 @@ jobs:
           pip install -e .
 
       - name: Run eval suite
+        run: python eval/runner.py --ci
+
+      - name: Upload eval results to OpenAI Evals
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_EVAL_GUID: ${{ secrets.OPENAI_EVAL_GUID }}
-        run: python eval/runner.py --ci --openai-evals
+        run: |
+          if [ -n "$OPENAI_API_KEY" ]; then
+            python eval/runner.py --openai-evals
+          else
+            echo "OPENAI_API_KEY is not configured; skipping optional OpenAI Evals upload."
+          fi
 
       - name: Upload eval run metadata
         if: always()
